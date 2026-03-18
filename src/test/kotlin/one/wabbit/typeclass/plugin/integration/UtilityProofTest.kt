@@ -371,4 +371,230 @@ class UtilityProofTest : IntegrationTestSupport() {
             expectedMessages = listOf("sametypeconstructor", "list", "set"),
         )
     }
+
+    @Test fun sameProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Same
+            import one.wabbit.typeclass.Typeclass
+
+            typealias Age = Int
+
+            @Typeclass
+            interface PairWitness<A, B> {
+                fun verdict(): String
+            }
+
+            @Instance
+            context(_: Same<A, B>)
+            fun <A, B> samePairWitness(): PairWitness<A, B> =
+                object : PairWitness<A, B> {
+                    override fun verdict(): String = "same-pair"
+                }
+
+            context(witness: PairWitness<A, B>)
+            fun <A, B> render(): String = witness.verdict()
+
+            fun main() {
+                println(render<Int, Int>())
+                println(render<Int, Age>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                same-pair
+                same-pair
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun notSameProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.NotSame
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface DistinctPair<A, B> {
+                fun verdict(): String
+            }
+
+            @Instance
+            context(_: NotSame<A, B>)
+            fun <A, B> distinctPairWitness(): DistinctPair<A, B> =
+                object : DistinctPair<A, B> {
+                    override fun verdict(): String = "distinct-pair"
+                }
+
+            context(witness: DistinctPair<A, B>)
+            fun <A, B> render(): String = witness.verdict()
+
+            fun main() {
+                println(render<Int, String>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "distinct-pair",
+        )
+    }
+
+    @Test fun subtypeProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Subtype
+            import one.wabbit.typeclass.Typeclass
+
+            open class Animal
+            class Dog : Animal()
+
+            @Typeclass
+            interface UpcastWitness<A, B> {
+                fun verdict(): String
+            }
+
+            @Instance
+            context(_: Subtype<A, B>)
+            fun <A, B> subtypeWitness(): UpcastWitness<A, B> =
+                object : UpcastWitness<A, B> {
+                    override fun verdict(): String = "subtype-witness"
+                }
+
+            context(witness: UpcastWitness<A, B>)
+            fun <A, B> render(): String = witness.verdict()
+
+            fun main() {
+                println(render<Dog, Animal>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "subtype-witness",
+        )
+    }
+
+    @Test fun knownTypeProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.KnownType
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface TypeWitness<A> {
+                fun rendered(): String
+            }
+
+            @Instance
+            context(known: KnownType<A>)
+            fun <A> knownTypeWitness(): TypeWitness<A> =
+                object : TypeWitness<A> {
+                    override fun rendered(): String {
+                        val rendered = known.kType.toString()
+                        return if ("List" in rendered && "String" in rendered) "list-of-string" else rendered
+                    }
+                }
+
+            context(witness: TypeWitness<A>)
+            fun <A> render(): String = witness.rendered()
+
+            fun main() {
+                println(render<List<String?>>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "list-of-string",
+        )
+    }
+
+    @Test fun isTypeclassInstanceProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.IsTypeclassInstance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A>
+
+            @Typeclass
+            interface TypeclassWitness<TC> {
+                fun verdict(): String
+            }
+
+            @Instance
+            context(_: IsTypeclassInstance<TC>)
+            fun <TC> typeclassWitness(): TypeclassWitness<TC> =
+                object : TypeclassWitness<TC> {
+                    override fun verdict(): String = "typeclass-witness"
+                }
+
+            context(witness: TypeclassWitness<TC>)
+            fun <TC> render(): String = witness.verdict()
+
+            fun main() {
+                println(render<Show<Int>>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "typeclass-witness",
+        )
+    }
+
+    @Test fun sameTypeConstructorProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.SameTypeConstructor
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface OuterWitness<A, B> {
+                fun verdict(): String
+            }
+
+            @Instance
+            context(_: SameTypeConstructor<A, B>)
+            fun <A, B> sameOuterWitness(): OuterWitness<A, B> =
+                object : OuterWitness<A, B> {
+                    override fun verdict(): String = "same-outer-witness"
+                }
+
+            context(witness: OuterWitness<A, B>)
+            fun <A, B> render(): String = witness.verdict()
+
+            fun main() {
+                println(render<List<Int>, List<String>>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "same-outer-witness",
+        )
+    }
 }

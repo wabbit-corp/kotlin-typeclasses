@@ -1,5 +1,6 @@
 # Learnings
 
+- `KnownType<T>` materialization does not require `kotlin-reflect`, but `KType.toString()` is less stable without it. Tests that care about proof availability should avoid asserting an exact Kotlin-reflect string rendering unless the harness explicitly adds `kotlin-reflect` at runtime.
 - Interop test harnesses should declare required third-party compiler ecosystems explicitly. A `requiredPlugins = listOf(...)` model is more durable than sniffing source text for annotations or imports, and it scales to plugin-specific jars, flags, and future options.
 - Compose interop is compatible with keeping the generic JVM test floor at `1.8` as long as the harness lets individual support plugins request a higher minimum target. The mistake was the global `21`, not the existence of a higher target for Compose-specific tests.
 - Support-artifact discovery should not assume the current test JVM already loaded every third-party jar. Looking in the Gradle dependency cache is a practical fallback for compiler-plugin interoperability tests.
