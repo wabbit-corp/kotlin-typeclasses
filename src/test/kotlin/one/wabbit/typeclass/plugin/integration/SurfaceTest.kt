@@ -1455,7 +1455,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("Blocked: test body reads a private property from outside its declaring class")
     @Test fun rewritesContextualContainsOperatorCalls() {
         val source =
             """
@@ -1464,7 +1463,9 @@ class SurfaceTest : IntegrationTestSupport() {
             import one.wabbit.typeclass.Instance
             import one.wabbit.typeclass.Typeclass
 
-            class Tags(private val values: Set<String>)
+            class Tags(private val values: Set<String>) {
+                fun hasTag(value: String): Boolean = value in values
+            }
 
             @Typeclass
             interface Membership<A> {
@@ -1473,7 +1474,7 @@ class SurfaceTest : IntegrationTestSupport() {
 
             @Instance
             object TagsMembership : Membership<Tags> {
-                override fun contains(receiver: Tags, value: String): Boolean = value in receiver.values
+                override fun contains(receiver: Tags, value: String): Boolean = receiver.hasTag(value)
             }
 
             context(membership: Membership<A>)

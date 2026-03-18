@@ -56,3 +56,4 @@
 - Stop indexing illegal `@Instance` declarations from non-companion member scopes during FIR/IR rule discovery, add regression coverage proving those bad declarations no longer create spurious call-site ambiguity, and extend the integration harness with `unexpectedMessages` assertions for diagnostic-shape checks.
 - Tighten IR explicit-context preservation so an existing argument must still satisfy the expected contextual type before it can be rebound to a typeclass slot during wrapper rewriting.
 - Reject sealed derivation for non-generic roots whose generic subclasses introduce free type variables that are not quantified by the sealed root, and cover that failure mode in `ReviewRegressionTest`.
+- Fix contextual `in` / `contains` operator rewriting by swapping Kotlin's lowered `IrStatementOrigin.IN` receiver/value layout back into the original extension-call shape, and enable the `rewritesContextualContainsOperatorCalls` integration test.

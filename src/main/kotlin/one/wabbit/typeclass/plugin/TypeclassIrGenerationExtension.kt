@@ -3128,6 +3128,22 @@ private fun IrCall.normalizedArgumentsForTypeclassRewrite(original: IrSimpleFunc
                 },
         )
     }
+    if (origin == IrStatementOrigin.IN &&
+        original.name.asString() == "contains" &&
+        original.extensionReceiverParameter != null &&
+        extensionReceiver != null &&
+        rawValueArguments.isNotEmpty()
+    ) {
+        return NormalizedCallArguments(
+            dispatchReceiver = dispatchReceiver,
+            extensionReceiver = rawValueArguments.first(),
+            valueArguments =
+                buildList {
+                    add(extensionReceiver)
+                    addAll(rawValueArguments.drop(1))
+                },
+        )
+    }
     if (origin == IrStatementOrigin.GET_ARRAY_ELEMENT && original.extensionReceiverParameter != null && rawValueArguments.isNotEmpty()) {
         return NormalizedCallArguments(
             dispatchReceiver = dispatchReceiver,
