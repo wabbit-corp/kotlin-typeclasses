@@ -272,4 +272,56 @@ class ReviewRegressionTest : IntegrationTestSupport() {
             expectedMessages = listOf("cannot derive", "lit"),
         )
     }
+
+    @Test
+    fun resolvesDependencyModuleInstancesInIrAsWellAsFir() {
+        val dependency =
+            HarnessDependency(
+                sources =
+                    mapOf(
+                        "dep/Api.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.Instance
+                            import one.wabbit.typeclass.Typeclass
+
+                            @Typeclass
+                            interface Show<A> {
+                                fun show(value: A): String
+                            }
+
+                            data class Box(val value: Int) {
+                                companion object {
+                                    @Instance
+                                    val show =
+                                        object : Show<Box> {
+                                            override fun show(value: Box): String = "dep:${'$'}{value.value}"
+                                        }
+                                }
+                            }
+
+                            context(show: Show<Box>)
+                            fun render(value: Box): String = show.show(value)
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.Box
+            import dep.render
+
+            fun main() {
+                println(render(Box(1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "dep:1",
+            dependencies = listOf(dependency),
+        )
+    }
 }

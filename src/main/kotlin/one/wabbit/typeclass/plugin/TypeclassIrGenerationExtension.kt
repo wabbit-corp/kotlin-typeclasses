@@ -1312,6 +1312,9 @@ private class IrRuleIndex private constructor(
     private val associatedRulesByOwner: Map<ClassId, List<ResolvedRule>>,
     private val classInfoById: Map<String, ClassHierarchyInfo>,
 ) {
+    private val lazilyDiscoveredAssociatedRulesByOwner: MutableMap<ClassId, List<ResolvedRule>> = linkedMapOf()
+    private val lazilyDiscoveredRulesById: MutableMap<String, ResolvedRule> = linkedMapOf()
+
     fun originalForWrapper(wrapper: IrSimpleFunction): IrSimpleFunction? = wrapperToOriginal[wrapper]
 
     fun originalForWrapperLikeFunction(wrapperLikeFunction: IrSimpleFunction): IrSimpleFunction? {
@@ -1323,14 +1326,14 @@ private class IrRuleIndex private constructor(
         }
     }
 
-    fun ruleById(ruleId: String): ResolvedRule? = rulesById[ruleId]
+    fun ruleById(ruleId: String): ResolvedRule? = rulesById[ruleId] ?: lazilyDiscoveredRulesById[ruleId]
 
     fun resolveLookupFunction(reference: RuleReference.LookupFunction): IrSimpleFunction? =
         pluginContext.referenceFunctions(reference.callableId)
             .map { it.owner }
             .singleOrNull { function ->
                 !function.isGeneratedTypeclassWrapper() &&
-                    functionShape(function, dropTypeclassContexts = false, configuration = configuration) == reference.shape
+                    lookupFunctionShape(function, dropTypeclassContexts = false, configuration = configuration) == reference.shape
             }
 
     fun resolveLookupProperty(reference: RuleReference.LookupProperty): IrProperty? =
@@ -1342,7 +1345,7 @@ private class IrRuleIndex private constructor(
         val owners = associatedOwnersForGoal(goal)
         val associated =
             owners.flatMapTo(linkedSetOf()) { owner ->
-                associatedRulesByOwner[owner].orEmpty()
+                associatedRulesByOwner[owner].orEmpty() + discoverAssociatedRules(owner)
             }
         return (topLevelRules + associated)
             .asSequence()
@@ -1371,6 +1374,145 @@ private class IrRuleIndex private constructor(
             ownerIds += associatedOwnerIds(argument)
         }
         return ownerIds.map(ClassId::fromString).toSet()
+    }
+
+    private fun discoverAssociatedRules(owner: ClassId): List<ResolvedRule> =
+        if (associatedRulesByOwner.containsKey(owner)) {
+            emptyList()
+        } else lazilyDiscoveredAssociatedRulesByOwner.getOrPut(owner) {
+            val ownerClass = pluginContext.referenceClass(owner)?.owner ?: return@getOrPut emptyList()
+            val companion =
+                ownerClass.declarations
+                    .filterIsInstance<IrClass>()
+                    .firstOrNull(IrClass::isCompanion) ?: return@getOrPut emptyList()
+            buildList {
+                collectAssociatedRules(
+                    declaration = companion,
+                    associatedOwner = owner,
+                    sink = this,
+                )
+            }.also { rules ->
+                rules.forEach { rule ->
+                    lazilyDiscoveredRulesById[rule.rule.id] = rule
+                }
+            }
+        }
+
+    private fun collectAssociatedRules(
+        declaration: IrDeclaration,
+        associatedOwner: ClassId,
+        sink: MutableList<ResolvedRule>,
+    ) {
+        when (declaration) {
+            is IrClass -> {
+                declaration.toDiscoveredObjectRules(idPrefix = "lookup-associated-object", associatedOwner = associatedOwner).forEach(sink::add)
+                declaration.declarations.forEach { nestedDeclaration ->
+                    collectAssociatedRules(
+                        declaration = nestedDeclaration,
+                        associatedOwner = associatedOwner,
+                        sink = sink,
+                    )
+                }
+            }
+
+            is IrSimpleFunction ->
+                declaration.toDiscoveredFunctionRules(idPrefix = "lookup-associated-function", associatedOwner = associatedOwner).forEach(sink::add)
+
+            is IrProperty ->
+                declaration.toDiscoveredPropertyRules(idPrefix = "lookup-associated-property", associatedOwner = associatedOwner).forEach(sink::add)
+
+            else -> Unit
+        }
+    }
+
+    private fun IrClass.toDiscoveredObjectRules(
+        idPrefix: String,
+        associatedOwner: ClassId,
+    ): List<ResolvedRule> {
+        if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) || !irInstanceOwnerContext(this).isIndexableScope) {
+            return emptyList()
+        }
+        return superTypes.providedTypeExpansion(emptyMap(), configuration).validTypes.map { providedType ->
+            ResolvedRule(
+                rule =
+                    InstanceRule(
+                        id = "$idPrefix:${classIdOrFail.asString()}:${providedType.render()}",
+                        typeParameters = emptyList(),
+                        providedType = providedType,
+                        prerequisiteTypes = emptyList(),
+                    ),
+                reference = RuleReference.DirectObject(this),
+                associatedOwner = associatedOwner,
+            )
+        }
+    }
+
+    private fun IrSimpleFunction.toDiscoveredFunctionRules(
+        idPrefix: String,
+        associatedOwner: ClassId,
+    ): List<ResolvedRule> {
+        if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) || !irInstanceOwnerContext(this).isIndexableScope) {
+            return emptyList()
+        }
+        if (extensionReceiverParameter != null) {
+            return emptyList()
+        }
+        if (parameters.any { parameter -> parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular }) {
+            return emptyList()
+        }
+        val typeParameters = this.typeParameters.map { typeParameter ->
+            TcTypeParameter(
+                id = ruleTypeParameterId(this, typeParameter),
+                displayName = typeParameter.name.asString(),
+            )
+        }
+        val typeParameterBySymbol = typeParametersBySymbol(this, typeParameters)
+        val prerequisites =
+            contextParameters().mapNotNull { parameter ->
+                parameter.type.takeIf { type -> type.isTypeclassType(configuration) }?.let { irTypeToModel(it, typeParameterBySymbol) }
+            }
+        if (prerequisites.size != contextParameters().size) {
+            return emptyList()
+        }
+        return listOf(returnType).providedTypeExpansion(typeParameterBySymbol, configuration).validTypes.map { providedType ->
+            ResolvedRule(
+                rule =
+                    InstanceRule(
+                        id = "$idPrefix:${callableId}:${providedType.render()}",
+                        typeParameters = typeParameters,
+                        providedType = providedType,
+                        prerequisiteTypes = prerequisites,
+                    ),
+                reference = RuleReference.DirectFunction(this),
+                associatedOwner = associatedOwner,
+            )
+        }
+    }
+
+    private fun IrProperty.toDiscoveredPropertyRules(
+        idPrefix: String,
+        associatedOwner: ClassId,
+    ): List<ResolvedRule> {
+        if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) || !irInstanceOwnerContext(this).isIndexableScope) {
+            return emptyList()
+        }
+        val getter = getter ?: return emptyList()
+        if (getter.extensionReceiverParameter != null) {
+            return emptyList()
+        }
+        return listOf(backingFieldOrGetterType()).providedTypeExpansion(emptyMap(), configuration).validTypes.map { providedType ->
+            ResolvedRule(
+                rule =
+                    InstanceRule(
+                        id = "$idPrefix:${callableId}:${providedType.render()}",
+                        typeParameters = emptyList(),
+                        providedType = providedType,
+                        prerequisiteTypes = emptyList(),
+                    ),
+                reference = RuleReference.DirectProperty(this),
+                associatedOwner = associatedOwner,
+            )
+        }
     }
 
     private fun associatedOwnerIds(type: TcType): Set<String> =
@@ -1419,12 +1561,15 @@ private class IrRuleIndex private constructor(
             moduleFragment.files.forEach(scanner::scanFile)
 
             val wrapperToOriginal = scanner.buildWrapperMapping()
-            val companionRules = scanner.buildCompanionRules()
-            val topLevelRules = scanner.buildTopLevelRules() + scanner.buildBuiltinRules()
+            val directCompanionRules = scanner.buildCompanionRules()
+            val directTopLevelRules = scanner.buildTopLevelRules()
+            val builtinRules = scanner.buildBuiltinRules()
             val derivedRules = scanner.buildDerivedRules()
-            val allRules = topLevelRules + companionRules + derivedRules
+            val topLevelRules = directTopLevelRules + builtinRules
+            val associatedSourceRules = directCompanionRules + derivedRules
+            val allRules = directTopLevelRules + directCompanionRules + derivedRules + builtinRules
             val associatedRules =
-                (companionRules + derivedRules)
+                associatedSourceRules
                     .groupBy { it.associatedOwner ?: error("Associated rule must have owner") }
             return IrRuleIndex(
                 pluginContext = pluginContext,
@@ -2306,7 +2451,7 @@ private sealed interface RuleReference {
 
     data class LookupFunction(
         val callableId: CallableId,
-        val shape: FunctionShape,
+        val shape: LookupFunctionShape,
     ) : RuleReference
 
     data class DirectProperty(
@@ -2377,14 +2522,6 @@ private data class DerivedCase(
     val name: String,
     val klass: IrClass,
     val type: TcType,
-)
-
-private data class FunctionShape(
-    val dispatchReceiver: Boolean,
-    val extensionReceiverType: TcType?,
-    val typeParameterCount: Int,
-    val contextParameterTypes: List<TcType>,
-    val regularParameterTypes: List<TcType>,
 )
 
 private data class WrapperResolutionShape(
@@ -2519,11 +2656,11 @@ private fun IrClass.primaryConstructorSymbol() =
 
 private fun IrClass.renderClassName(): String = classId?.asFqNameString() ?: name.asString()
 
-private fun functionShape(
+private fun lookupFunctionShape(
     function: IrSimpleFunction,
     dropTypeclassContexts: Boolean,
     configuration: TypeclassConfiguration,
-): FunctionShape {
+): LookupFunctionShape {
     val placeholderParameters =
         visibleTypeParametersForShape(function).associateBy(TcTypeParameter::id)
     val bySymbol =
@@ -2545,7 +2682,7 @@ private fun functionShape(
                     ?: error("Unsupported signature type ${parameter.type} in ${function.callableId}")
             }
     val extensionType = function.extensionReceiverParameter?.type?.let { type -> irTypeToModel(type, bySymbol) }
-    return FunctionShape(
+    return LookupFunctionShape(
         dispatchReceiver = function.dispatchReceiverParameter != null,
         extensionReceiverType = extensionType,
         typeParameterCount = function.visibleSignatureTypeParameterCount(dropTypeclassContexts, configuration),

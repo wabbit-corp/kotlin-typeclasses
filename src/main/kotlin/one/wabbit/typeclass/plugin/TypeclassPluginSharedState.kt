@@ -215,9 +215,9 @@ private class FirResolutionScanner(
     private val session: FirSession,
     private val configuration: TypeclassConfiguration,
 ) {
-    private val topLevelRules = mutableListOf<InstanceRule>()
-    private val associatedRulesByOwner = linkedMapOf<ClassId, MutableList<InstanceRule>>()
-    private val classInfoById = linkedMapOf<String, ResolutionClassHierarchyInfo>()
+    private val topLevelRules = mutableListOf<VisibleInstanceRule>()
+    private val associatedRulesByOwner = linkedMapOf<ClassId, MutableList<VisibleInstanceRule>>()
+    private val classInfoById = linkedMapOf<String, VisibleClassHierarchyInfo>()
     private val derivableTypeclassIdsByOwner = linkedMapOf<String, MutableSet<String>>()
 
     @OptIn(DirectDeclarationsAccess::class)
@@ -230,7 +230,7 @@ private class FirResolutionScanner(
                 val classId = declaration.symbol.classId
                 if (!classId.isLocal) {
                     classInfoById[classId.asString()] =
-                        ResolutionClassHierarchyInfo(
+                        VisibleClassHierarchyInfo(
                             superClassifiers =
                                 declaration.superTypeRefs.mapNotNull { superTypeRef ->
                                     superTypeRef.coneType.classId?.asString()
@@ -254,7 +254,8 @@ private class FirResolutionScanner(
                     if (nextAssociatedOwner == null) {
                         topLevelRules += rule
                     } else {
-                        associatedRulesByOwner.getOrPut(nextAssociatedOwner, ::mutableListOf) += rule
+                        associatedRulesByOwner.getOrPut(nextAssociatedOwner, ::mutableListOf) +=
+                            rule.copy(associatedOwner = nextAssociatedOwner)
                     }
                 }
 
@@ -268,7 +269,8 @@ private class FirResolutionScanner(
                     if (associatedOwner == null) {
                         topLevelRules += rule
                     } else {
-                        associatedRulesByOwner.getOrPut(associatedOwner, ::mutableListOf) += rule
+                        associatedRulesByOwner.getOrPut(associatedOwner, ::mutableListOf) +=
+                            rule.copy(associatedOwner = associatedOwner)
                     }
                 }
             }
@@ -278,7 +280,8 @@ private class FirResolutionScanner(
                     if (associatedOwner == null) {
                         topLevelRules += rule
                     } else {
-                        associatedRulesByOwner.getOrPut(associatedOwner, ::mutableListOf) += rule
+                        associatedRulesByOwner.getOrPut(associatedOwner, ::mutableListOf) +=
+                            rule.copy(associatedOwner = associatedOwner)
                     }
                 }
             }
@@ -290,7 +293,9 @@ private class FirResolutionScanner(
     fun build(): ResolutionIndex =
         ResolutionIndex(
             configuration = configuration,
-            topLevelRules = topLevelRules.toList() + configuration.builtinRules(),
+            topLevelRules = topLevelRules.toList() + configuration.builtinRules().map { rule ->
+                VisibleInstanceRule(rule = rule, associatedOwner = null)
+            },
             associatedRulesByOwner = associatedRulesByOwner.mapValues { (_, rules) -> rules.toList() },
             classInfoById = classInfoById.toMap(),
             derivableTypeclassIdsByOwner =
@@ -300,11 +305,13 @@ private class FirResolutionScanner(
 
 private data class ResolutionIndex(
     val configuration: TypeclassConfiguration,
-    val topLevelRules: List<InstanceRule>,
-    val associatedRulesByOwner: Map<ClassId, List<InstanceRule>>,
-    val classInfoById: Map<String, ResolutionClassHierarchyInfo>,
+    val topLevelRules: List<VisibleInstanceRule>,
+    val associatedRulesByOwner: Map<ClassId, List<VisibleInstanceRule>>,
+    val classInfoById: Map<String, VisibleClassHierarchyInfo>,
     val derivableTypeclassIdsByOwner: Map<String, Set<String>>,
 ) {
+    private val lazilyDiscoveredAssociatedRulesByOwner: MutableMap<ClassId, List<VisibleInstanceRule>> = linkedMapOf()
+
     fun rulesForGoal(
         goal: TcType,
         session: FirSession,
@@ -312,23 +319,24 @@ private data class ResolutionIndex(
         val owners = allowedAssociatedOwnersForGoal(goal)
         val associated =
             owners.flatMapTo(linkedSetOf()) { owner ->
-                associatedRulesByOwner[owner].orEmpty()
+                associatedRulesByOwner[owner].orEmpty() + discoverAssociatedRules(owner, session)
             }
         return (topLevelRules + associated)
             .asSequence()
-            .filter { rule ->
-                rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, session)
+            .filter { visibleRule ->
+                visibleRule.rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, session)
             }
-            .filter { rule ->
-                rule.id != "builtin:nullable" || supportsBuiltinNullableGoal(goal)
+            .filter { visibleRule ->
+                visibleRule.rule.id != "builtin:nullable" || supportsBuiltinNullableGoal(goal)
             }
-            .filter { rule ->
-                rule.id != "builtin:not-nullable" || supportsBuiltinNotNullableGoal(goal)
+            .filter { visibleRule ->
+                visibleRule.rule.id != "builtin:not-nullable" || supportsBuiltinNotNullableGoal(goal)
             }
-            .filter { rule ->
-                rule.id != "builtin:type-id" || supportsBuiltinTypeIdGoal(goal)
+            .filter { visibleRule ->
+                visibleRule.rule.id != "builtin:type-id" || supportsBuiltinTypeIdGoal(goal)
             }
-            .distinctBy(InstanceRule::id)
+            .distinctBy { visibleRule -> visibleRule.rule.id }
+            .map(VisibleInstanceRule::rule)
             .toList()
     }
 
@@ -391,12 +399,69 @@ private data class ResolutionIndex(
         }
         return result
     }
+
+    private fun discoverAssociatedRules(
+        owner: ClassId,
+        session: FirSession,
+    ): List<VisibleInstanceRule> =
+        if (associatedRulesByOwner.containsKey(owner)) {
+            emptyList()
+        } else lazilyDiscoveredAssociatedRulesByOwner.getOrPut(owner) {
+            val ownerSymbol = session.symbolProvider.getClassLikeSymbolByClassId(owner) as? FirRegularClassSymbol ?: return@getOrPut emptyList()
+            val companion =
+                ownerSymbol.fir.declarations
+                    .filterIsInstance<FirRegularClass>()
+                    .firstOrNull { declaration ->
+                        declaration.symbol.classId.shortClassName == SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT
+                    } ?: return@getOrPut emptyList()
+            buildList {
+                collectAssociatedRules(
+                    declaration = companion,
+                    associatedOwner = owner,
+                    session = session,
+                    configuration = configuration,
+                    sink = this,
+                )
+            }
+        }
 }
 
-private data class ResolutionClassHierarchyInfo(
-    val superClassifiers: Set<String>,
-    val isSealed: Boolean,
-)
+private fun collectAssociatedRules(
+    declaration: FirDeclaration,
+    associatedOwner: ClassId,
+    session: FirSession,
+    configuration: TypeclassConfiguration,
+    sink: MutableList<VisibleInstanceRule>,
+) {
+    when (declaration) {
+        is FirRegularClass -> {
+            declaration.toObjectRules(session, configuration).forEach { rule ->
+                sink += rule.copy(associatedOwner = associatedOwner)
+            }
+            declaration.declarations.forEach { nestedDeclaration ->
+                collectAssociatedRules(
+                    declaration = nestedDeclaration,
+                    associatedOwner = associatedOwner,
+                    session = session,
+                    configuration = configuration,
+                    sink = sink,
+                )
+            }
+        }
+
+        is FirSimpleFunction ->
+            declaration.toFunctionRules(session, configuration).forEach { rule ->
+                sink += rule.copy(associatedOwner = associatedOwner)
+            }
+
+        is FirProperty ->
+            declaration.toPropertyRules(session, configuration).forEach { rule ->
+                sink += rule.copy(associatedOwner = associatedOwner)
+            }
+
+        else -> Unit
+    }
+}
 
 private fun FirRegularClass.derivedTypeclassIds(session: FirSession): Set<String> {
     val deriveAnnotation =
@@ -810,7 +875,7 @@ private fun FirRegularClass.declaredOrResolvedSuperTypes(): List<ConeKotlinType>
 private fun FirRegularClass.toObjectRules(
     session: FirSession,
     configuration: TypeclassConfiguration,
-): List<InstanceRule> {
+): List<VisibleInstanceRule> {
     if (classKind != ClassKind.OBJECT || !hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
         return emptyList()
     }
@@ -822,11 +887,15 @@ private fun FirRegularClass.toObjectRules(
     }
 
     return instanceProvidedTypes(session, configuration).validTypes.map { providedType ->
-        InstanceRule(
-            id = "fir-object:${symbol.classId.asString()}:${providedType.render()}",
-            typeParameters = emptyList(),
-            providedType = providedType,
-            prerequisiteTypes = emptyList(),
+        VisibleInstanceRule(
+            rule =
+                InstanceRule(
+                    id = "fir-object:${symbol.classId.asString()}:${providedType.render()}",
+                    typeParameters = emptyList(),
+                    providedType = providedType,
+                    prerequisiteTypes = emptyList(),
+                ),
+            associatedOwner = null,
         )
     }
 }
@@ -834,10 +903,11 @@ private fun FirRegularClass.toObjectRules(
 private fun FirSimpleFunction.toFunctionRules(
     session: FirSession,
     configuration: TypeclassConfiguration,
-): List<InstanceRule> {
+): List<VisibleInstanceRule> {
     if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
         return emptyList()
     }
+    val callableId = symbol.callableId ?: return emptyList()
     if (!firInstanceOwnerContext(session, symbol.callableId).isIndexableScope) {
         return emptyList()
     }
@@ -870,11 +940,15 @@ private fun FirSimpleFunction.toFunctionRules(
     }
 
     return instanceProvidedTypes(session, configuration).validTypes.map { providedType ->
-        InstanceRule(
-            id = "fir-function:${symbol.callableId}:${providedType.render()}",
-            typeParameters = typeParameters,
-            providedType = providedType,
-            prerequisiteTypes = prerequisites,
+        VisibleInstanceRule(
+            rule =
+                InstanceRule(
+                    id = "fir-function:${symbol.callableId}:${providedType.render()}",
+                    typeParameters = typeParameters,
+                    providedType = providedType,
+                    prerequisiteTypes = prerequisites,
+                ),
+            associatedOwner = null,
         )
     }
 }
@@ -882,10 +956,11 @@ private fun FirSimpleFunction.toFunctionRules(
 private fun FirProperty.toPropertyRules(
     session: FirSession,
     configuration: TypeclassConfiguration,
-): List<InstanceRule> {
+): List<VisibleInstanceRule> {
     if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
         return emptyList()
     }
+    val callableId = symbol.callableId ?: return emptyList()
     if (!firInstanceOwnerContext(session, symbol.callableId).isIndexableScope) {
         return emptyList()
     }
@@ -897,11 +972,15 @@ private fun FirProperty.toPropertyRules(
     }
 
     return instanceProvidedTypes(session, configuration).validTypes.map { providedType ->
-        InstanceRule(
-            id = "fir-property:${symbol.callableId}:${providedType.render()}",
-            typeParameters = emptyList(),
-            providedType = providedType,
-            prerequisiteTypes = emptyList(),
+        VisibleInstanceRule(
+            rule =
+                InstanceRule(
+                    id = "fir-property:${symbol.callableId}:${providedType.render()}",
+                    typeParameters = emptyList(),
+                    providedType = providedType,
+                    prerequisiteTypes = emptyList(),
+                ),
+            associatedOwner = null,
         )
     }
 }

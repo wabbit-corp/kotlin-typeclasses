@@ -100,6 +100,16 @@ class PowerAssertInteropTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("show", "int"),
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(
+                        file = "Sample.kt",
+                        line = 14,
+                    ) { message ->
+                        message.contains("no context argument", ignoreCase = true) &&
+                            message.contains("Show<Int>")
+                    },
+                ),
             requiredPlugins = powerAssertPlugins,
         )
     }

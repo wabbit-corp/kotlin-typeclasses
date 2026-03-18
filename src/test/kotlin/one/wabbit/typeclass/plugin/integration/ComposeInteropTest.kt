@@ -223,6 +223,14 @@ class ComposeInteropTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("show", "int"),
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(
+                        file = "Sample.kt",
+                        line = 16,
+                        messageRegex = "(?i)no context argument.*show: Show<Int>.*found",
+                    ),
+                ),
             requiredPlugins = composePlugins,
         )
     }
