@@ -86,6 +86,23 @@ internal fun TcType.references(id: String): Boolean =
         is TcType.Variable -> this.id == id
     }
 
+internal fun TcType.referencedVariableIds(): Set<String> =
+    buildSet {
+        collectReferencedVariableIds(this@referencedVariableIds, this)
+    }
+
+private fun collectReferencedVariableIds(
+    type: TcType,
+    sink: MutableSet<String>,
+) {
+    when (type) {
+        TcType.StarProjection -> Unit
+        is TcType.Projected -> collectReferencedVariableIds(type.type, sink)
+        is TcType.Constructor -> type.arguments.forEach { argument -> collectReferencedVariableIds(argument, sink) }
+        is TcType.Variable -> sink += type.id
+    }
+}
+
 internal fun TcType.containsStarProjection(): Boolean =
     when (this) {
         TcType.StarProjection -> true

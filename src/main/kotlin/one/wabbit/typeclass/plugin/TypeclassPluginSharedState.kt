@@ -814,6 +814,9 @@ private fun FirRegularClass.toObjectRules(
     if (classKind != ClassKind.OBJECT || !hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
         return emptyList()
     }
+    if (!firInstanceOwnerContext(session, symbol.classId).isIndexableScope) {
+        return emptyList()
+    }
     if (status.visibility == Visibilities.Private) {
         return emptyList()
     }
@@ -833,6 +836,9 @@ private fun FirSimpleFunction.toFunctionRules(
     configuration: TypeclassConfiguration,
 ): List<InstanceRule> {
     if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
+        return emptyList()
+    }
+    if (!firInstanceOwnerContext(session, symbol.callableId).isIndexableScope) {
         return emptyList()
     }
     if (status.visibility == Visibilities.Private) {
@@ -878,6 +884,9 @@ private fun FirProperty.toPropertyRules(
     configuration: TypeclassConfiguration,
 ): List<InstanceRule> {
     if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
+        return emptyList()
+    }
+    if (!firInstanceOwnerContext(session, symbol.callableId).isIndexableScope) {
         return emptyList()
     }
     if (status.visibility == Visibilities.Private) {

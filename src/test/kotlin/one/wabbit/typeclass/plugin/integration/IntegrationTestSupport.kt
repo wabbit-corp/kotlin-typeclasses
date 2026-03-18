@@ -46,12 +46,14 @@ abstract class IntegrationTestSupport {
     protected fun assertDoesNotCompile(
         source: String,
         expectedMessages: List<String>,
+        unexpectedMessages: List<String> = emptyList(),
         requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
     ) {
         assertDoesNotCompile(
             sources = mapOf("Sample.kt" to source),
             expectedMessages = expectedMessages,
+            unexpectedMessages = unexpectedMessages,
             requiredPlugins = requiredPlugins,
             pluginOptions = pluginOptions,
         )
@@ -60,6 +62,7 @@ abstract class IntegrationTestSupport {
     protected fun assertDoesNotCompile(
         sources: Map<String, String>,
         expectedMessages: List<String>,
+        unexpectedMessages: List<String> = emptyList(),
         requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
     ) {
@@ -72,6 +75,9 @@ abstract class IntegrationTestSupport {
         val lowercaseOutput = result.stdout.lowercase()
         expectedMessages.forEach { expectedMessage ->
             assertTrue(lowercaseOutput.contains(expectedMessage.lowercase()), result.stdout)
+        }
+        unexpectedMessages.forEach { unexpectedMessage ->
+            assertTrue(!lowercaseOutput.contains(unexpectedMessage.lowercase()), result.stdout)
         }
     }
 

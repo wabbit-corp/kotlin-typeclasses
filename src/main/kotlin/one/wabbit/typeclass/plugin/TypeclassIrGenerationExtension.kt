@@ -17,6 +17,7 @@ import one.wabbit.typeclass.plugin.model.isProvablyNotNullable
 import one.wabbit.typeclass.plugin.model.isProvablyNullable
 import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.render
+import one.wabbit.typeclass.plugin.model.referencedVariableIds
 import one.wabbit.typeclass.plugin.model.substituteType
 import one.wabbit.typeclass.plugin.model.toCanonicalTypeIdName
 import one.wabbit.typeclass.plugin.model.unifyTypes
@@ -1670,6 +1671,9 @@ private class IrModuleScanner(
         if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID)) {
             return emptyList()
         }
+        if (!irInstanceOwnerContext(this).isIndexableScope) {
+            return emptyList()
+        }
         return superTypes.providedTypeExpansion(emptyMap(), configuration).validTypes.map { providedType ->
             ResolvedRule(
                 rule =
@@ -1692,7 +1696,7 @@ private class IrModuleScanner(
         if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID)) {
             return emptyList()
         }
-        if (dispatchReceiverParameter != null && !parentAsClass.isCompanion) {
+        if (!irInstanceOwnerContext(this).isIndexableScope) {
             return emptyList()
         }
         if (extensionReceiverParameter != null) {
@@ -1740,15 +1744,12 @@ private class IrModuleScanner(
         if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID)) {
             return emptyList()
         }
+        if (!irInstanceOwnerContext(this).isIndexableScope) {
+            return emptyList()
+        }
         val getter = getter ?: return emptyList()
         if (getter.extensionReceiverParameter != null) {
             return emptyList()
-        }
-        if (getter.dispatchReceiverParameter != null) {
-            val parentClass = parent as? IrClass ?: return emptyList()
-            if (!parentClass.isCompanion) {
-                return emptyList()
-            }
         }
         return listOf(backingFieldOrGetterType()).providedTypeExpansion(emptyMap(), configuration).validTypes.map { providedType ->
             ResolvedRule(
@@ -1849,16 +1850,31 @@ private class IrModuleScanner(
         if (directSubclasses.isEmpty()) {
             return null
         }
+        val allowedVariableIds = targetType.referencedVariableIds()
         val cases =
             directSubclasses.mapNotNull { subclassId ->
                 val subclass = classesById[subclassId] ?: return@mapNotNull null
                 val caseType = subclass.caseTypeForSealedBase(this, targetType) ?: return@mapNotNull null
+                if (!caseType.referencedVariableIds().all(allowedVariableIds::contains)) {
+                    pluginContext.messageCollector.report(
+                        CompilerMessageSeverity.ERROR,
+                        "Cannot derive ${classIdOrFail.asString()} because sealed subclass ${subclass.classIdOrFail.asString()} introduces type parameters that are not quantified by the sealed root",
+                    )
+                    return null
+                }
                 DerivedCase(
                     name = subclass.name.asString(),
                     klass = subclass,
                     type = caseType,
                 )
             }
+        if (cases.size != directSubclasses.size) {
+            pluginContext.messageCollector.report(
+                CompilerMessageSeverity.ERROR,
+                "Cannot derive ${classIdOrFail.asString()} because one or more sealed subclasses cannot be expressed from the sealed root's type parameters",
+            )
+            return null
+        }
         return DerivedShape.Sum(cases)
     }
 
@@ -3435,10 +3451,7 @@ private fun mapCurrentArgumentsToOriginalParameters(
                 argument.type.isTypeclassType(configuration) ||
                     argument.type.localEvidenceTypes(visibleTypeParameterSymbols, configuration).isNotEmpty()
             ) &&
-            (
-                visibleTypeParameters == null ||
-                    argument.type.satisfiesExpectedContextType(expectedType, visibleTypeParameters)
-            )
+            argument.type.satisfiesExpectedContextType(expectedType, visibleTypeParameters)
 
     fun argumentMatchesRegularParameter(
         argument: IrExpression?,

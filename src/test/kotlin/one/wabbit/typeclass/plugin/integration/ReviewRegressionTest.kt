@@ -144,4 +144,132 @@ class ReviewRegressionTest : IntegrationTestSupport() {
             expectedMessages = listOf("no context argument", "foo"),
         )
     }
+
+    @Test
+    fun illegalMemberInstanceFunctionsDoNotCreateSpuriousCallSiteAmbiguity() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "good:${'$'}value"
+            }
+
+            class BadScope {
+                @Instance
+                fun badShow(): Show<Int> =
+                    object : Show<Int> {
+                        override fun show(value: Int): String = "bad:${'$'}value"
+                    }
+            }
+
+            context(show: Show<Int>)
+            fun render(): String = show.show(1)
+
+            fun main() {
+                println(render())
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("companion"),
+            unexpectedMessages = listOf("ambiguous"),
+        )
+    }
+
+    @Test
+    fun illegalNestedInstanceObjectsDoNotCreateSpuriousCallSiteAmbiguity() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "good:${'$'}value"
+            }
+
+            class BadScope {
+                @Instance
+                object BadShow : Show<Int> {
+                    override fun show(value: Int): String = "bad:${'$'}value"
+                }
+            }
+
+            context(show: Show<Int>)
+            fun render(): String = show.show(1)
+
+            fun main() {
+                println(render())
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("companion"),
+            unexpectedMessages = listOf("ambiguous"),
+        )
+    }
+
+    @Test
+    fun genericSealedSubclassesAreRejectedForNonGenericDerivedRoots() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : TypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+
+                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+                }
+            }
+
+            @Derive(Show::class)
+            sealed interface Expr
+
+            data class Lit<T>(val value: T) : Expr
+
+            fun main() {
+                println("unreachable")
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("cannot derive", "lit"),
+        )
+    }
 }

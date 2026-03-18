@@ -55,7 +55,7 @@ internal class TypeclassFirCheckersExtension(
                 }
 
                 validateAssociatedScope(
-                    ownerContext = classOwnerContext(declaration.symbol.classId),
+                    ownerContext = firInstanceOwnerContext(session, declaration.symbol.classId),
                     providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration),
                     declaration = declaration,
                 )
@@ -87,7 +87,7 @@ internal class TypeclassFirCheckersExtension(
                 }
 
                 validateAssociatedScope(
-                    ownerContext = callableOwnerContext(declaration.symbol.callableId),
+                    ownerContext = firInstanceOwnerContext(session, declaration.symbol.callableId),
                     providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration),
                     declaration = declaration,
                 )
@@ -125,7 +125,7 @@ internal class TypeclassFirCheckersExtension(
                 }
 
                 validateAssociatedScope(
-                    ownerContext = callableOwnerContext(declaration.symbol.callableId),
+                    ownerContext = firInstanceOwnerContext(session, declaration.symbol.callableId),
                     providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration),
                     declaration = declaration,
                 )
@@ -251,44 +251,6 @@ internal class TypeclassFirCheckersExtension(
             else -> null
         }
 
-    private fun classOwnerContext(classId: ClassId): InstanceOwnerContext {
-        if (classId.isLocal) {
-            return InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = null)
-        }
-        return if (classId.shortClassName == SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT) {
-            InstanceOwnerContext(
-                isTopLevel = false,
-                isCompanionScope = true,
-                associatedOwner = classId.outerClassId,
-            )
-        } else {
-            nestedOwnerContext(classId.outerClassId)
-        }
-    }
-
-    private fun callableOwnerContext(callableId: CallableId?): InstanceOwnerContext =
-        nestedOwnerContext(callableId?.classId)
-
-    private fun nestedOwnerContext(ownerClassId: ClassId?): InstanceOwnerContext {
-        if (ownerClassId == null) {
-            return InstanceOwnerContext(isTopLevel = true, isCompanionScope = false, associatedOwner = null)
-        }
-        if (ownerClassId.isLocal) {
-            return InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = null)
-        }
-        val ownerClass =
-            session.symbolProvider.getClassLikeSymbolByClassId(ownerClassId) as? org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
-                ?: return InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = null)
-        return if (ownerClass.fir.classKind == ClassKind.OBJECT && ownerClassId.shortClassName == SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT) {
-            InstanceOwnerContext(
-                isTopLevel = false,
-                isCompanionScope = true,
-                associatedOwner = ownerClassId.outerClassId,
-            )
-        } else {
-            InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = ownerClassId)
-        }
-    }
 }
 
 private fun containsStarProjection(type: ConeKotlinType): Boolean {
@@ -317,12 +279,6 @@ private fun containsDefinitelyNonNullOrIntersection(type: ConeKotlinType): Boole
         else -> false
     }
 }
-
-private data class InstanceOwnerContext(
-    val isTopLevel: Boolean,
-    val isCompanionScope: Boolean,
-    val associatedOwner: ClassId?,
-)
 
 private data class InstanceFunctionRuleShape(
     val typeParameters: List<TcTypeParameter>,
