@@ -8,6 +8,7 @@ package one.wabbit.typeclass.plugin
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.FirConstructor
 import org.jetbrains.kotlin.fir.declarations.FirTypeParameterRef
+import org.jetbrains.kotlin.fir.declarations.FirValueParameter
 import org.jetbrains.kotlin.fir.expressions.FirExpression
 import org.jetbrains.kotlin.fir.expressions.FirFunctionCall
 import org.jetbrains.kotlin.fir.expressions.arguments
@@ -80,7 +81,7 @@ internal fun inferFunctionTypeArgumentsFromCallSite(
                     ?: argument.safeResolvedOrInferredTypeOrNull(session)
                     ?: return@forEach
             unifyFunctionTypeArgumentsForInference(
-                parameterType = parameter.returnTypeRef.coneType,
+                parameterType = parameter.inferenceParameterType(),
                 argumentType = argumentType,
                 functionTypeParameters = functionTypeParameters,
                 inferred = inferred,
@@ -94,7 +95,7 @@ internal fun inferFunctionTypeArgumentsFromCallSite(
                     ?: argument.safeResolvedOrInferredTypeOrNull(session)
                     ?: return@forEach
             unifyFunctionTypeArgumentsForInference(
-                parameterType = parameter.returnTypeRef.coneType,
+                parameterType = parameter.inferenceParameterType(),
                 argumentType = argumentType,
                 functionTypeParameters = functionTypeParameters,
                 inferred = inferred,
@@ -146,14 +147,27 @@ internal fun FirFunctionCall.inferReturnTypeOrNull(session: FirSession): ConeKot
             inferred[typeParameter.symbol] = explicitType
         }
 
-    function.valueParameters.zip(arguments).forEach { (parameter, argument) ->
-        val argumentType = argument.safeResolvedOrInferredTypeOrNull(session) ?: return@forEach
-        unifyFunctionTypeArgumentsForInference(
-            parameterType = parameter.returnTypeRef.coneType,
-            argumentType = argumentType,
-            functionTypeParameters = functionTypeParameters,
-            inferred = inferred,
-        )
+    val parameterByArgument = resolvedArgumentMapping
+    if (parameterByArgument != null) {
+        parameterByArgument.forEach { (argument, parameter) ->
+            val argumentType = argument.safeResolvedOrInferredTypeOrNull(session) ?: return@forEach
+            unifyFunctionTypeArgumentsForInference(
+                parameterType = parameter.inferenceParameterType(),
+                argumentType = argumentType,
+                functionTypeParameters = functionTypeParameters,
+                inferred = inferred,
+            )
+        }
+    } else {
+        function.valueParameters.zip(arguments).forEach { (parameter, argument) ->
+            val argumentType = argument.safeResolvedOrInferredTypeOrNull(session) ?: return@forEach
+            unifyFunctionTypeArgumentsForInference(
+                parameterType = parameter.inferenceParameterType(),
+                argumentType = argumentType,
+                functionTypeParameters = functionTypeParameters,
+                inferred = inferred,
+            )
+        }
     }
 
     val result = substituteInferredTypes(
@@ -167,9 +181,6 @@ internal fun FirFunctionCall.inferReturnTypeOrNull(session: FirSession): ConeKot
 private fun FirFunctionCall.inferConstructedClassTypeOrNull(session: FirSession): ConeKotlinType? {
     val resolved = safeResolvedTypeOrNull() ?: return null
     val classLike = resolved.lowerBoundIfFlexible() as? ConeClassLikeType ?: return null
-    if (!resolved.containsTypeParameterReference()) {
-        return resolved
-    }
     val classSymbol =
         session.symbolProvider.getClassLikeSymbolByClassId(classLike.lookupTag.classId)
             as? FirRegularClassSymbol ?: return resolved
@@ -219,7 +230,10 @@ private fun ConeKotlinType.containsTypeParameterReference(): Boolean =
         is ConeTypeParameterType -> true
         is ConeTypeVariableType -> true
         is ConeStubType -> true
-        is ConeClassLikeType -> lowered.typeArguments.any { argument -> argument.type?.containsTypeParameterReference() == true }
+        is ConeClassLikeType ->
+            lowered.typeArguments.any { argument ->
+                argument.type == null || argument.type?.containsTypeParameterReference() == true
+            }
         else -> false
     }
 
@@ -275,6 +289,18 @@ private fun unifyFunctionTypeArgumentsForInference(
 
 private fun FirExpression.safeResolvedTypeOrNull(): ConeKotlinType? =
     runCatching { resolvedType }.getOrNull()
+
+private fun FirValueParameter.inferenceParameterType(): ConeKotlinType =
+    if (isVararg) {
+        returnTypeRef.coneType.varargElementTypeOrSelf()
+    } else {
+        returnTypeRef.coneType
+    }
+
+private fun ConeKotlinType.varargElementTypeOrSelf(): ConeKotlinType {
+    val lowered = lowerBoundIfFlexible() as? ConeClassLikeType ?: return this
+    return lowered.typeArguments.singleOrNull()?.type ?: this
+}
 
 internal fun substituteInferredTypes(
     type: ConeKotlinType,

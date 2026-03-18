@@ -130,7 +130,7 @@ private class TypeclassIrCallTransformer(
             val visibleTypeParameters = visibleTypeParameters(enclosingFunctions)
             val localContexts = collectLocalContexts(enclosingFunctions, visibleTypeParameters)
             val normalizedCall = call.normalizedArgumentsForTypeclassRewrite(original)
-            val typeArgumentsForOriginal =
+            val inferredOriginalTypeArguments =
                 try {
                     inferOriginalTypeArguments(
                         original = original,
@@ -153,15 +153,14 @@ private class TypeclassIrCallTransformer(
                 extractExplicitArguments(
                     original = original,
                     normalizedValueArguments = normalizedCall.valueArguments,
-                    visibleTypeParameters = visibleTypeParameters,
-                    typeArgumentsForOriginal = typeArgumentsForOriginal,
+                    substitutionBySymbol = inferredOriginalTypeArguments.substitutionBySymbol,
                 )
             buildOriginalCall(
                 original = original,
                 currentFunction = currentFunction,
                 localContexts = localContexts,
                 visibleTypeParameters = visibleTypeParameters,
-                typeArgumentsForOriginal = typeArgumentsForOriginal,
+                inferredOriginalTypeArguments = inferredOriginalTypeArguments,
                 fallbackCall = call,
                 dispatchReceiver = normalizedCall.dispatchReceiver,
                 extensionReceiver = normalizedCall.extensionReceiver,
@@ -184,13 +183,13 @@ private class TypeclassIrCallTransformer(
         currentFunction: IrFunction,
         localContexts: List<LocalTypeclassContext>,
         visibleTypeParameters: VisibleTypeParameters,
-        typeArgumentsForOriginal: List<IrType>,
+        inferredOriginalTypeArguments: InferredOriginalTypeArguments,
         fallbackCall: IrCall,
         dispatchReceiver: IrExpression?,
         extensionReceiver: IrExpression?,
         explicitArguments: List<ExplicitArgument>,
     ): IrExpression {
-        val typeArgumentMap = original.typeParameters.map(IrTypeParameter::symbol).zip(typeArgumentsForOriginal).toMap()
+        val typeArgumentMap = inferredOriginalTypeArguments.substitutionBySymbol
         val planner =
             TypeclassResolutionPlanner(
                 ruleProvider = { goal: TcType ->
@@ -202,7 +201,7 @@ private class TypeclassIrCallTransformer(
         originalCall.dispatchReceiver = dispatchReceiver
         originalCall.extensionReceiver = extensionReceiver
 
-        typeArgumentsForOriginal.forEachIndexed { index, irType ->
+        inferredOriginalTypeArguments.callTypeArguments.forEachIndexed { index, irType ->
             originalCall.putTypeArgument(index, irType)
         }
 
@@ -1255,6 +1254,11 @@ private data class NormalizedCallArguments(
     val valueArguments: List<IrExpression?>,
 )
 
+private data class InferredOriginalTypeArguments(
+    val callTypeArguments: List<IrType>,
+    val substitutionBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, IrType>,
+)
+
 private sealed interface ExplicitArgument {
     data object Omitted : ExplicitArgument
 
@@ -1709,17 +1713,15 @@ private fun IrCall.normalizedArgumentsForTypeclassRewrite(original: IrSimpleFunc
 private fun extractExplicitArguments(
     original: IrSimpleFunction,
     normalizedValueArguments: List<IrExpression?>,
-    visibleTypeParameters: VisibleTypeParameters,
-    typeArgumentsForOriginal: List<IrType>,
+    substitutionBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, IrType>,
 ): List<ExplicitArgument> {
-    val typeArgumentMap = original.typeParameters.map(IrTypeParameter::symbol).zip(typeArgumentsForOriginal).toMap()
     val originalParameters = original.regularAndContextParameters()
     val currentToOriginal =
         mapCurrentArgumentsToOriginalParameters(
             originalParameters = originalParameters,
             currentArguments = normalizedValueArguments,
-            typeArgumentMap = typeArgumentMap,
-            visibleTypeParameters = visibleTypeParameters,
+            typeArgumentMap = substitutionBySymbol,
+            visibleTypeParameters = null,
         )
 
     val explicitByOriginalIndex = linkedMapOf<Int, ExplicitArgument>()
@@ -1736,7 +1738,7 @@ private fun extractExplicitArguments(
     }
 
     return originalParameters.mapIndexedNotNull { index, parameter ->
-        val substitutedType = parameter.type.substitute(typeArgumentMap)
+        val substitutedType = parameter.type.substitute(substitutionBySymbol)
         if (parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context && substitutedType.isTypeclassType()) {
             return@mapIndexedNotNull null
         }
@@ -1824,15 +1826,15 @@ private fun inferOriginalTypeArguments(
     visibleTypeParameters: VisibleTypeParameters,
     localContexts: List<LocalTypeclassContext>,
     pluginContext: IrPluginContext,
-): List<IrType> {
-    val originalTypeParameters =
-        original.typeParameters.map { typeParameter ->
-            typeParameter to TcTypeParameter(ruleTypeParameterId(original, typeParameter), typeParameter.name.asString())
+): InferredOriginalTypeArguments {
+    val originalTypeParameterBySymbol =
+        visibleTypeParameterSymbols(listOf(original)).associateWith { symbol ->
+            TcTypeParameter(
+                id = visibleTypeParameterId(symbol),
+                displayName = symbol.owner.name.asString(),
+            )
         }
-    val originalTypeParameterBySymbol = originalTypeParameters.associate { (typeParameter, parameter) ->
-        typeParameter.symbol to parameter
-    }
-    val bindableVariableIds = originalTypeParameters.map { (_, parameter) -> parameter.id }.toSet()
+    val bindableVariableIds = originalTypeParameterBySymbol.values.mapTo(linkedSetOf(), TcTypeParameter::id)
     val bindings = linkedMapOf<String, TcType>()
 
     fun mergeBindingsFromIrTypes(
@@ -1903,15 +1905,29 @@ private fun inferOriginalTypeArguments(
         bindings[bindingId] = currentModel
     }
 
-    return original.typeParameters.map { typeParameter ->
-        val bindingId = ruleTypeParameterId(original, typeParameter)
-        val model =
-            bindings[bindingId]?.substituteType(bindings)
-                ?: throw TypeArgumentInferenceFailure(
-                    missingTypeArgumentMessage(original, typeParameter),
-                )
-        modelToIrType(model, visibleTypeParameters, pluginContext)
-    }
+    val substitutionBySymbol =
+        originalTypeParameterBySymbol.mapNotNull { (symbol, parameter) ->
+            val model = bindings[parameter.id]?.substituteType(bindings) ?: return@mapNotNull null
+            symbol to modelToIrType(model, visibleTypeParameters, pluginContext)
+        }.toMap()
+
+    val callTypeArguments =
+        original.typeParameters.map { typeParameter ->
+            val parameter =
+                originalTypeParameterBySymbol[typeParameter.symbol]
+                    ?: error("Missing visible type parameter metadata for ${typeParameter.symbol}")
+            val model =
+                bindings[parameter.id]?.substituteType(bindings)
+                    ?: throw TypeArgumentInferenceFailure(
+                        missingTypeArgumentMessage(original, typeParameter),
+                    )
+            modelToIrType(model, visibleTypeParameters, pluginContext)
+        }
+
+    return InferredOriginalTypeArguments(
+        callTypeArguments = callTypeArguments,
+        substitutionBySymbol = substitutionBySymbol,
+    )
 }
 
 private class TypeArgumentInferenceFailure(

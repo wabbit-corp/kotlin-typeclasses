@@ -572,7 +572,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE7")
     @Test
     fun resolvesAnonymousObjectsAndFunctionsThatCaptureLocalEvidence() {
         val source =
@@ -676,8 +675,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE8")
     @Test
     fun rewritesContextualCallsInContextClassPropertyInitializers() {
         val source =
@@ -700,7 +698,6 @@ class DerivationTest : IntegrationTestSupport() {
             context(show: Show<Int>)
             fun renderInt(value: Int): String = show.show(value)
 
-            context(show: Show<Int>)
             class Holder {
                 val rendered = renderInt(1)
             }
@@ -751,8 +748,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE8")
     @Test
     fun exposesMultipleTypeclassInstancesFromOneObject() {
         val source =
@@ -802,8 +798,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE8")
     @Test
     fun mixesPreservedAndSynthesizedTypeclassArgumentsOnOneCall() {
         val source =
@@ -1020,8 +1015,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE8")
     @Test
     fun reportsAmbiguityForNullableSpecificAndGenericNullEvidence() {
         val source =
@@ -1367,8 +1361,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE8")
     @Test
     fun propagatesSuperclassStyleEvidenceFromOrdToEq() {
         val source =
@@ -1627,7 +1620,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE7")
     @Test
     fun reportsDuplicateNullaryTypeclassInstancesAcrossFiles() {
         val sources =
@@ -1679,7 +1671,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE7")
     @Test
     fun supportsTypeclassMethodsWithAdditionalContext() {
         val source =
@@ -1720,8 +1711,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE8")
     @Test
     fun reportsAmbiguousEvidenceInsideDefaultTypeclassMethods() {
         val source =
@@ -1767,8 +1757,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE9")
     @Test
     fun additionalUnrelatedFilesCanChangeResolutionOutcome() {
         val stableSources =

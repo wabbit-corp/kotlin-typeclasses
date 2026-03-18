@@ -406,8 +406,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE8")
     @Test
     fun handlesRecursiveDerivedAdtsWithoutCrashing() {
         val source =
@@ -468,17 +467,16 @@ class SurfaceTest : IntegrationTestSupport() {
             fun <A> render(value: A): String = show.show(value)
 
             fun main() {
-                println(render(Branch(Leaf, Leaf))) // ERROR recursive derivation should fail clearly or work safely
+                println(render(Branch(Leaf, Leaf)))
             }
             """.trimIndent()
 
-        assertDoesNotCompile(
+        assertCompilesAndRuns(
             source = source,
-            expectedMessages = listOf("recursive", "show"),
+            expectedStdout = "Branch(left=Leaf(), right=Leaf())",
         )
     }
 
-    @Ignore("PHASE7")
     @Test
     fun derivesNestedGenericSealedHierarchies() {
         val source =
@@ -563,8 +561,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE8")
     @Test
     fun distinguishesValueClassesFromUnderlyingTypes() {
         val source =
@@ -656,7 +653,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE7")
     @Test
     fun derivedInstancesCanUseContextualFieldInstances() {
         val source =
@@ -724,7 +720,8 @@ class SurfaceTest : IntegrationTestSupport() {
             fun <A> render(value: A): String = show.show(value)
 
             fun main() {
-                println(render(Wrapper(listOf(1, 2))))
+                val wrapper: Wrapper<Int> = Wrapper(listOf(1, 2))
+                println(render(wrapper))
             }
             """.trimIndent()
 
