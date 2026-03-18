@@ -192,8 +192,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun resolvesContextualOverloadsBetweenSingleAndVarargAlternatives() {
         val source =
@@ -480,8 +478,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE7")
     @Test
     fun derivesNestedGenericSealedHierarchies() {
         val source =
@@ -623,8 +620,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun reportsConflictingBindingsFromLocalContexts() {
         val source =
@@ -661,8 +656,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE7")
     @Test
     fun derivedInstancesCanUseContextualFieldInstances() {
         val source =
@@ -1120,8 +1114,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun treatsNestedTypeAliasesAsTransparentForResolution() {
         val source =
@@ -1235,7 +1227,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE5")
     @Test
     fun resolvesLocalContextualFunctions() {
         val source =
@@ -1462,8 +1453,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun distinguishesShadowedTypeParametersAcrossNestedGenericScopes() {
         val source =

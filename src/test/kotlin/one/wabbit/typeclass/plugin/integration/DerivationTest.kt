@@ -6,8 +6,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class DerivationTest : IntegrationTestSupport() {
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun derivesSealedInterfaces() {
         val source =
@@ -501,8 +499,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun rewritesVarargCallsWithTrailingLambdas() {
         val source =
@@ -542,8 +538,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun resolvesInlineReifiedHelpersAroundSummon() {
         val source =
@@ -578,8 +572,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE7")
     @Test
     fun resolvesAnonymousObjectsAndFunctionsThatCaptureLocalEvidence() {
         val source =
@@ -1257,8 +1250,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun derivesSealedHierarchiesWithDataObjects() {
         val source =
@@ -1339,8 +1330,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun rewritesContextualCallsInsideSecondaryConstructorDelegation() {
         val source =
@@ -1363,7 +1352,6 @@ class DerivationTest : IntegrationTestSupport() {
             context(show: Show<Int>)
             fun renderInt(value: Int): String = show.show(value)
 
-            context(show: Show<Int>)
             class Holder(val rendered: String) {
                 constructor() : this(renderInt(1))
             }
@@ -1606,8 +1594,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun supportsNullaryTypeclasses() {
         val source =
@@ -1641,8 +1627,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE7")
     @Test
     fun reportsDuplicateNullaryTypeclassInstancesAcrossFiles() {
         val sources =
@@ -1694,8 +1679,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE7")
     @Test
     fun supportsTypeclassMethodsWithAdditionalContext() {
         val source =

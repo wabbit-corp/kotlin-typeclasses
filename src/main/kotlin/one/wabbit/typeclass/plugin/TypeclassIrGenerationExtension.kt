@@ -131,19 +131,24 @@ private class TypeclassIrCallTransformer(
             val localContexts = collectLocalContexts(enclosingFunctions, visibleTypeParameters)
             val normalizedCall = call.normalizedArgumentsForTypeclassRewrite(original)
             val typeArgumentsForOriginal =
-                inferOriginalTypeArguments(
-                    original = original,
-                    normalizedCall = normalizedCall,
-                    currentCallTypeArgumentsByName =
-                        original.typeParameters.mapIndexedNotNull { index, typeParameter ->
-                            call.getTypeArgument(index)?.let { irType ->
-                                typeParameter.name.asString() to irType
-                            }
-                        }.toMap(),
-                    visibleTypeParameters = visibleTypeParameters,
-                    localContexts = localContexts,
-                    pluginContext = pluginContext,
-                )
+                try {
+                    inferOriginalTypeArguments(
+                        original = original,
+                        normalizedCall = normalizedCall,
+                        currentCallTypeArgumentsByName =
+                            original.typeParameters.mapIndexedNotNull { index, typeParameter ->
+                                call.getTypeArgument(index)?.let { irType ->
+                                    typeParameter.name.asString() to irType
+                                }
+                            }.toMap(),
+                        visibleTypeParameters = visibleTypeParameters,
+                        localContexts = localContexts,
+                        pluginContext = pluginContext,
+                    )
+                } catch (error: TypeArgumentInferenceFailure) {
+                    reportTypeclassResolutionFailure(error.message ?: "Type argument inference failed for ${original.renderIdentity()}")
+                    return call
+                }
             val explicitArguments =
                 extractExplicitArguments(
                     original = original,
@@ -1443,7 +1448,7 @@ private fun IrFunction.enclosingFunctions(): List<IrFunction> {
 private fun typeParameterOwnerId(function: IrSimpleFunction): String {
     val shape = wrapperResolutionShape(function, dropTypeclassContexts = false)
     return buildString {
-        append(function.callableId)
+        append(function.safeCallableIdentity())
         append("#dispatch=")
         append(shape.dispatchReceiver)
         append("#ext=")
@@ -1456,6 +1461,38 @@ private fun typeParameterOwnerId(function: IrSimpleFunction): String {
         append(shape.typeParameterCount)
     }
 }
+
+private fun IrSimpleFunction.safeCallableIdentity(): String =
+    runCatching { callableId.toString() }.getOrElse {
+        buildString {
+            append("local:")
+            append(name.asString())
+            append('@')
+            append(startOffset)
+            append(':')
+            append(endOffset)
+            append("#parent=")
+            append(parent.localDeclarationIdentity())
+        }
+    }
+
+private fun org.jetbrains.kotlin.ir.declarations.IrDeclarationParent.localDeclarationIdentity(): String =
+    when (this) {
+        is IrSimpleFunction ->
+            buildString {
+                append("fun:")
+                append(name.asString())
+                append('@')
+                append(startOffset)
+                append(':')
+                append(endOffset)
+                append("->")
+                append(parent.localDeclarationIdentity())
+            }
+        is IrClass -> "class:${name.asString()}"
+        is IrFile -> "file:${fileEntry.name}"
+        else -> this::class.simpleName ?: "unknown-parent"
+    }
 
 private fun ruleTypeParameterId(
     function: IrSimpleFunction,
@@ -1802,10 +1839,14 @@ private fun inferOriginalTypeArguments(
         expectedType: IrType,
         actualType: IrType,
     ) {
-        val expectedModel = irTypeToModel(expectedType, originalTypeParameterBySymbol) ?: return
-        val actualModel = irTypeToModel(actualType, visibleTypeParameters.bySymbol) ?: return
-        val candidateBindings = unifyTypes(expectedModel, actualModel, bindableVariableIds) ?: return
-        mergeTypeBindings(bindings, candidateBindings.filterKeys { it !in bindings }, bindableVariableIds)
+        val expectedModel =
+            irTypeToModel(expectedType, originalTypeParameterBySymbol)
+                ?.substituteType(bindings)
+                ?: return
+        actualType.inferenceModels(visibleTypeParameters).forEach { actualModel ->
+            val candidateBindings = unifyTypes(expectedModel, actualModel, bindableVariableIds) ?: return@forEach
+            mergeTypeBindings(bindings, candidateBindings, bindableVariableIds)
+        }
     }
 
     original.dispatchReceiverParameter?.type?.let { expectedDispatchType ->
@@ -1841,13 +1882,14 @@ private fun inferOriginalTypeArguments(
         .forEach { parameter ->
             val goalType =
                 irTypeToModel(parameter.type, originalTypeParameterBySymbol)
+                    ?.substituteType(bindings)
                     ?: error("Unsupported typeclass context ${parameter.type} in ${original.callableId}")
             localContexts.forEach { localContext ->
                 val candidateBindings =
                     unifyTypes(goalType, localContext.providedType, bindableVariableIds) ?: return@forEach
-            mergeTypeBindings(bindings, candidateBindings.filterKeys { it !in bindings }, bindableVariableIds)
+                mergeTypeBindings(bindings, candidateBindings, bindableVariableIds)
+            }
         }
-    }
 
     original.typeParameters.forEach { typeParameter ->
         val bindingId = ruleTypeParameterId(original, typeParameter)
@@ -1865,8 +1907,26 @@ private fun inferOriginalTypeArguments(
         val bindingId = ruleTypeParameterId(original, typeParameter)
         val model =
             bindings[bindingId]?.substituteType(bindings)
-                ?: error("Missing type argument for ${typeParameter.name} in ${original.callableId}")
+                ?: throw TypeArgumentInferenceFailure(
+                    missingTypeArgumentMessage(original, typeParameter),
+                )
         modelToIrType(model, visibleTypeParameters, pluginContext)
+    }
+}
+
+private class TypeArgumentInferenceFailure(
+    message: String,
+) : IllegalStateException(message)
+
+private fun missingTypeArgumentMessage(
+    original: IrSimpleFunction,
+    typeParameter: IrTypeParameter,
+): String {
+    val typeclassContextCount = original.contextParameters().count { parameter -> parameter.type.isTypeclassType() }
+    return if (typeclassContextCount > 1) {
+        "Conflicting type bindings prevented inferring ${typeParameter.name} in ${original.renderIdentity()}"
+    } else {
+        "Missing type argument for ${typeParameter.name} in ${original.renderIdentity()}"
     }
 }
 
@@ -1881,9 +1941,29 @@ private fun mergeTypeBindings(
             existing[key] = value
         } else {
             val unified = unifyTypes(current, value, bindableVariableIds)
-                ?: error("Conflicting type bindings for $key: ${current.render()} vs ${value.render()}")
+                ?: throw TypeArgumentInferenceFailure(
+                    "Conflicting type bindings for $key: ${current.render()} vs ${value.render()}",
+                )
             unified.forEach { (nestedKey, nestedValue) ->
                 existing[nestedKey] = nestedValue
+            }
+        }
+    }
+}
+
+private fun IrType.inferenceModels(
+    visibleTypeParameters: VisibleTypeParameters,
+): List<TcType> {
+    val directModel = irTypeToModel(this, visibleTypeParameters.bySymbol)
+    val expandedModels =
+        listOf(this)
+            .providedTypeExpansion(visibleTypeParameters.bySymbol)
+            .validTypes
+    return buildList {
+        directModel?.let(::add)
+        expandedModels.forEach { candidate ->
+            if (candidate != directModel) {
+                add(candidate)
             }
         }
     }
@@ -1915,10 +1995,18 @@ private fun mapCurrentArgumentsToOriginalParameters(
                 }
             val currentArgument = currentArguments[currentIndex]
             val substitutedType = typeArgumentMap?.let(parameter.type::substitute) ?: parameter.type
+            val currentArgumentProvidesTypeclass =
+                currentArgument != null &&
+                    (
+                        currentArgument.type.isTypeclassType() ||
+                            listOf(currentArgument.type)
+                                .providedTypeExpansion(visibleTypeParameters?.bySymbol.orEmpty())
+                                .validTypes
+                                .isNotEmpty()
+                    )
             val preservedTypeclassContext =
                 remainingCurrentArguments > remainingRequiredArguments &&
-                    currentArgument != null &&
-                    currentArgument.type.isTypeclassType() &&
+                    currentArgumentProvidesTypeclass &&
                     (
                         visibleTypeParameters == null ||
                             currentArgument.type.satisfiesExpectedContextType(substitutedType, visibleTypeParameters)
