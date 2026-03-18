@@ -27,6 +27,13 @@ import org.jetbrains.kotlin.fir.declarations.hasAnnotation
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
 import org.jetbrains.kotlin.fir.symbols.SymbolInternals
 import org.jetbrains.kotlin.fir.types.coneType
+import org.jetbrains.kotlin.fir.types.ConeClassLikeType
+import org.jetbrains.kotlin.fir.types.ConeDefinitelyNotNullType
+import org.jetbrains.kotlin.fir.types.ConeIntersectionType
+import org.jetbrains.kotlin.fir.types.ConeKotlinType
+import org.jetbrains.kotlin.fir.types.ConeStarProjection
+import org.jetbrains.kotlin.fir.types.lowerBoundIfFlexible
+import org.jetbrains.kotlin.fir.types.type
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.SpecialNames
@@ -183,6 +190,13 @@ internal class TypeclassFirCheckersExtension(
     private fun validateFunctionRuleSemantics(
         declaration: FirSimpleFunction,
     ) {
+        declaration.contextParameters.firstNotNullOfOrNull { parameter ->
+            invalidInstancePrerequisiteMessage(parameter.returnTypeRef.coneType)
+        }?.let { message ->
+            reportInvalid(declaration, message)
+            return
+        }
+
         val ruleShape = declaration.instanceFunctionRuleShape(session, sharedState) ?: return
         val providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration)
         if (providedTypes.validTypes.isEmpty()) {
@@ -223,6 +237,20 @@ internal class TypeclassFirCheckersExtension(
         reporter.reportOn(source, TypeclassErrors.INVALID_INSTANCE_DECLARATION, message)
     }
 
+    private fun invalidInstancePrerequisiteMessage(type: ConeKotlinType): String? =
+        when {
+            !sharedState.isTypeclassType(session, type) ->
+                "instance function context parameters must be typeclass prerequisites"
+
+            containsStarProjection(type) ->
+                "instance function typeclass prerequisites must not use star projections"
+
+            containsDefinitelyNonNullOrIntersection(type) ->
+                "instance function typeclass prerequisites must not use definitely-non-null type arguments"
+
+            else -> null
+        }
+
     private fun classOwnerContext(classId: ClassId): InstanceOwnerContext {
         if (classId.isLocal) {
             return InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = null)
@@ -260,6 +288,33 @@ internal class TypeclassFirCheckersExtension(
         } else {
             InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = ownerClassId)
         }
+    }
+}
+
+private fun containsStarProjection(type: ConeKotlinType): Boolean {
+    val lowerBound = type.lowerBoundIfFlexible()
+    return when (lowerBound) {
+        is ConeClassLikeType ->
+            lowerBound.typeArguments.any { argument ->
+                argument is ConeStarProjection || argument.type?.let(::containsStarProjection) == true
+            }
+
+        is ConeDefinitelyNotNullType -> containsStarProjection(lowerBound.original)
+        else -> false
+    }
+}
+
+private fun containsDefinitelyNonNullOrIntersection(type: ConeKotlinType): Boolean {
+    val lowerBound = type.lowerBoundIfFlexible()
+    return when (lowerBound) {
+        is ConeDefinitelyNotNullType -> true
+        is ConeIntersectionType -> true
+        is ConeClassLikeType ->
+            lowerBound.typeArguments.any { argument ->
+                argument.type?.let(::containsDefinitelyNonNullOrIntersection) == true
+            }
+
+        else -> false
     }
 }
 

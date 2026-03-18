@@ -8,6 +8,7 @@ package one.wabbit.typeclass.plugin
 import one.wabbit.typeclass.plugin.model.InstanceRule
 import one.wabbit.typeclass.plugin.model.TcType
 import one.wabbit.typeclass.plugin.model.TcTypeParameter
+import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.render
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.Modality
@@ -277,6 +278,8 @@ private class FirResolutionScanner(
 
     fun build(): ResolutionIndex =
         ResolutionIndex(
+            session = session,
+            configuration = configuration,
             topLevelRules = topLevelRules.toList() + configuration.builtinRules(),
             associatedRulesByOwner = associatedRulesByOwner.mapValues { (_, rules) -> rules.toList() },
             classInfoById = classInfoById.toMap(),
@@ -285,6 +288,8 @@ private class FirResolutionScanner(
 }
 
 private data class ResolutionIndex(
+    val session: FirSession,
+    val configuration: TypeclassConfiguration,
     val topLevelRules: List<InstanceRule>,
     val associatedRulesByOwner: Map<ClassId, List<InstanceRule>>,
     val classInfoById: Map<String, ResolutionClassHierarchyInfo>,
@@ -296,7 +301,13 @@ private data class ResolutionIndex(
             owners.flatMapTo(linkedSetOf()) { owner ->
                 associatedRulesByOwner[owner].orEmpty()
             }
-        return (topLevelRules + associated).distinctBy(InstanceRule::id)
+        return (topLevelRules + associated)
+            .asSequence()
+            .filter { rule ->
+                rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, session)
+            }
+            .distinctBy(InstanceRule::id)
+            .toList()
     }
 
     fun canDeriveGoal(goal: TcType): Boolean {
@@ -365,6 +376,9 @@ private fun TypeclassConfiguration.builtinRules(): List<InstanceRule> =
         if (builtinKClassTypeclass == TypeclassBuiltinMode.ENABLED) {
             add(builtinKClassRule())
         }
+        if (builtinKSerializerTypeclass == TypeclassBuiltinMode.ENABLED) {
+            add(builtinKSerializerRule())
+        }
     }
 
 private fun builtinKClassRule(): InstanceRule {
@@ -379,6 +393,69 @@ private fun builtinKClassRule(): InstanceRule {
             ),
         prerequisiteTypes = emptyList(),
     )
+}
+
+private fun builtinKSerializerRule(): InstanceRule {
+    val parameter = TcTypeParameter(id = "builtin:kserializer:T", displayName = "T")
+    return InstanceRule(
+        id = "builtin:kserializer",
+        typeParameters = listOf(parameter),
+        providedType =
+            TcType.Constructor(
+                classifierId = KSERIALIZER_CLASS_ID.asString(),
+                arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun supportsBuiltinKSerializerGoal(
+    goal: TcType,
+    session: FirSession,
+): Boolean {
+    val constructor = goal as? TcType.Constructor ?: return true
+    if (constructor.classifierId != KSERIALIZER_CLASS_ID.asString()) {
+        return true
+    }
+    val targetType = constructor.arguments.singleOrNull() ?: return false
+    return isPotentiallySerializableType(
+        type = targetType,
+        session = session,
+        visiting = linkedSetOf(),
+    )
+}
+
+private fun isPotentiallySerializableType(
+    type: TcType,
+    session: FirSession,
+    visiting: MutableSet<String>,
+): Boolean {
+    return when (type) {
+        is TcType.Variable -> true
+
+        is TcType.Constructor -> {
+            val visitKey = type.normalizedKey()
+            if (!visiting.add(visitKey)) {
+                return true
+            }
+            if (type.classifierId in BUILTIN_SERIALIZABLE_CLASSIFIER_IDS) {
+                return type.arguments.all { argument ->
+                    isPotentiallySerializableType(argument, session, visiting)
+                }
+            }
+            val classId = runCatching { ClassId.fromString(type.classifierId) }.getOrNull() ?: return false
+            val classSymbol =
+                try {
+                    session.symbolProvider.getClassLikeSymbolByClassId(classId) as? FirRegularClassSymbol
+                } catch (_: IllegalArgumentException) {
+                    null
+                } ?: return false
+            classSymbol.hasAnnotation(SERIALIZABLE_ANNOTATION_CLASS_ID, session) &&
+                type.arguments.all { argument ->
+                    isPotentiallySerializableType(argument, session, visiting)
+                }
+        }
+    }
 }
 
 internal data class ProvidedTypeExpansion(

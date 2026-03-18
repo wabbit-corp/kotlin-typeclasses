@@ -17,6 +17,7 @@ internal const val SUM_TYPECLASS_METADATA_FQ_NAME: String = "one.wabbit.typeclas
 internal const val RECURSIVE_TYPECLASS_INSTANCE_CELL_FQ_NAME: String = "one.wabbit.typeclass.RecursiveTypeclassInstanceCell"
 internal const val KCLASS_FQ_NAME: String = "kotlin.reflect.KClass"
 internal const val KSERIALIZER_FQ_NAME: String = "kotlinx.serialization.KSerializer"
+internal const val SERIALIZABLE_ANNOTATION_FQ_NAME: String = "kotlinx.serialization.Serializable"
 
 internal val TYPECLASS_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(FqName(TYPECLASS_ANNOTATION_FQ_NAME))
 internal val INSTANCE_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(FqName(INSTANCE_ANNOTATION_FQ_NAME))
@@ -32,3 +33,26 @@ internal val RECURSIVE_TYPECLASS_INSTANCE_CELL_CLASS_ID: ClassId =
     ClassId.topLevel(FqName(RECURSIVE_TYPECLASS_INSTANCE_CELL_FQ_NAME))
 internal val KCLASS_CLASS_ID: ClassId = ClassId.topLevel(FqName(KCLASS_FQ_NAME))
 internal val KSERIALIZER_CLASS_ID: ClassId = ClassId.topLevel(FqName(KSERIALIZER_FQ_NAME))
+internal val SERIALIZABLE_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(FqName(SERIALIZABLE_ANNOTATION_FQ_NAME))
+internal val BUILTIN_SERIALIZABLE_CLASSIFIER_IDS: Set<String> =
+    setOf(
+        ClassId.topLevel(FqName("kotlin.Boolean")).asString(),
+        ClassId.topLevel(FqName("kotlin.Byte")).asString(),
+        ClassId.topLevel(FqName("kotlin.Char")).asString(),
+        ClassId.topLevel(FqName("kotlin.Double")).asString(),
+        ClassId.topLevel(FqName("kotlin.Float")).asString(),
+        ClassId.topLevel(FqName("kotlin.Int")).asString(),
+        ClassId.topLevel(FqName("kotlin.Long")).asString(),
+        ClassId.topLevel(FqName("kotlin.Short")).asString(),
+        ClassId.topLevel(FqName("kotlin.String")).asString(),
+        ClassId.topLevel(FqName("kotlin.Unit")).asString(),
+        ClassId.topLevel(FqName("kotlin.Pair")).asString(),
+        ClassId.topLevel(FqName("kotlin.Triple")).asString(),
+        ClassId.topLevel(FqName("kotlin.Array")).asString(),
+        ClassId.topLevel(FqName("kotlin.collections.List")).asString(),
+        ClassId.topLevel(FqName("kotlin.collections.MutableList")).asString(),
+        ClassId.topLevel(FqName("kotlin.collections.Set")).asString(),
+        ClassId.topLevel(FqName("kotlin.collections.MutableSet")).asString(),
+        ClassId.topLevel(FqName("kotlin.collections.Map")).asString(),
+        ClassId.topLevel(FqName("kotlin.collections.MutableMap")).asString(),
+    )

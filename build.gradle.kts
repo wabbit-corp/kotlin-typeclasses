@@ -64,6 +64,8 @@ dependencies {
 
     compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.3.10")
     testImplementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.3.10")
+    testImplementation("org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable:2.3.10")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.9.0")
 }
 
 java {

@@ -1,5 +1,8 @@
 # Learnings
 
+- The integration harness should model third-party compiler/runtime ecosystems as pluggable support bundles, not one-off conditionals. `kotlinx.serialization` needed both an extra runtime jar and an extra compiler plugin jar, and future interoperability suites will need the same shape.
+- Builtin `KSerializer<T>` evidence works best when it delegates to `kotlinx.serialization.serializer<T>()` instead of trying to replicate serializer lookup in the typeclass plugin. The missing piece is a separate FIR/IR gate that only offers the builtin rule for types that are plausibly serializable from metadata, standard-library rules, or still-generic placeholders.
+- `TcType` classifier ids are stored in `ClassId.asString()` form, which is slash-based. Any whitelist keyed by classifier id must normalize to that format; dotted FQNs silently misclassify builtin types like `kotlin.Int`.
 - K2 IR can present supplied arguments as a dense prefix with trailing `null` placeholders for omitted contextual/default slots. Rewriting needs a real matcher that can choose whether a given prefix argument is preserved contextual evidence or the first regular argument.
 - Raw `IrExpression.type` is not always the apparent type a user wrote. Generic helper calls such as `summon<Debug<Int>>()` still expose their return type as the callee's type parameter `T`, so type inference must sometimes recover the instantiated type from the call's explicit type arguments.
 - Default methods on generic typeclass interfaces reuse the owner class's type parameters, not just method type parameters. Rewriting `Debug<A>.debug` therefore needs owner-type substitution before it can synthesize extra contextual prerequisites like `Show<A>`.

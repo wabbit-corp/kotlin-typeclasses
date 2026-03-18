@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Generalize the integration harness around source-detected support bundles so tests can attach extra runtime jars and compiler plugins, and use that mechanism to exercise `kotlinx.serialization` without making it a blanket assumption for every compilation.
+- Implement PHASE10A declaration-site checks for invalid instance-function prerequisites, including non-typeclass contexts, star-projected prerequisites, and definitely-non-null typeclass prerequisites.
+- Implement PHASE11 builtin `KSerializer` evidence by routing synthesized instances through the official `kotlinx.serialization.serializer<T>()` API, while gating FIR/IR builtin-rule selection so obvious non-serializable concrete types still fail at compile time.
 - Add compiler options for builtin `KClass` and `KSerializer` typeclass evidence, and enable the PHASE10 builtin-`KClass` regression coverage.
 - Normalize packed IR value-argument prefixes with a backtracking matcher so contextual rewriting can distinguish omitted typeclass contexts from named/default argument shapes.
 - Infer generic owner type arguments from the apparent types of generic call expressions, which fixes default typeclass methods that require additional contextual evidence.

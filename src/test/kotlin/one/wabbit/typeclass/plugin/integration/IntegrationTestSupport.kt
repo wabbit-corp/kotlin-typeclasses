@@ -15,6 +15,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 abstract class IntegrationTestSupport {
+    internal open fun supportBundles(): List<CompilerHarnessSupportBundle> = defaultHarnessSupportBundles()
+
     protected fun assertCompiles(source: String) {
         compileSource(source)
     }
@@ -74,7 +76,7 @@ abstract class IntegrationTestSupport {
             ProcessBuilder(
                 javaExecutable,
                 "-cp",
-                listOf(artifacts.outputDir, artifacts.runtimeClasspathEntry, artifacts.stdlibJar)
+                (listOf(artifacts.outputDir) + artifacts.runtimeClasspathEntries)
                     .joinToString(separator = java.io.File.pathSeparator) { path -> path.toAbsolutePath().toString() },
                 mainClass,
             ).redirectErrorStream(true)
@@ -139,10 +141,24 @@ abstract class IntegrationTestSupport {
                 }
         val runtimeClasspathEntry = locateRuntimeClasspathEntry(runtimeProjectRoot)
         val stdlibJar = locateStdlibJar()
+        val resolvedSupport = resolveHarnessSupport(sources.values)
 
         assertTrue(pluginJar.toFile().isFile, "Plugin jar is missing at $pluginJar")
         assertTrue(runtimeClasspathEntry.toFile().exists(), "Runtime classpath entry is missing at $runtimeClasspathEntry")
         assertTrue(stdlibJar.toFile().isFile, "Kotlin stdlib jar is missing at $stdlibJar")
+        resolvedSupport.runtimeClasspathEntries.forEach { runtimeJar ->
+            assertTrue(runtimeJar.toFile().isFile, "Support runtime jar is missing at $runtimeJar")
+        }
+        resolvedSupport.compilerPluginJars.forEach { compilerPluginJar ->
+            assertTrue(compilerPluginJar.toFile().isFile, "Support compiler plugin jar is missing at $compilerPluginJar")
+        }
+
+        val runtimeClasspathEntries =
+            buildList {
+                add(runtimeClasspathEntry)
+                add(stdlibJar)
+                addAll(resolvedSupport.runtimeClasspathEntries)
+            }
 
         val stdout = ByteArrayOutputStream()
         val compilerArguments =
@@ -151,12 +167,11 @@ abstract class IntegrationTestSupport {
                 add("-no-stdlib")
                 add("-no-reflect")
                 add("-Xplugin=${pluginJar.toAbsolutePath()}")
+                resolvedSupport.compilerPluginJars.forEach { compilerPluginJar ->
+                    add("-Xplugin=${compilerPluginJar.toAbsolutePath()}")
+                }
                 add("-classpath")
-                add(
-                    listOf(runtimeClasspathEntry, stdlibJar).joinToString(separator = java.io.File.pathSeparator) {
-                        it.toAbsolutePath().toString()
-                    },
-                )
+                add(runtimeClasspathEntries.joinToString(separator = java.io.File.pathSeparator) { it.toAbsolutePath().toString() })
                 pluginOptions.forEach { option ->
                     add("-P")
                     add("plugin:$TYPECLASS_PLUGIN_ID:$option")
@@ -177,8 +192,7 @@ abstract class IntegrationTestSupport {
             artifacts =
                 CompilationArtifacts(
                     outputDir = outputDir,
-                    runtimeClasspathEntry = runtimeClasspathEntry,
-                    stdlibJar = stdlibJar,
+                    runtimeClasspathEntries = runtimeClasspathEntries,
                 ),
         )
     }
@@ -284,12 +298,44 @@ abstract class IntegrationTestSupport {
             "Could not locate kotlin-stdlib on the test classpath"
         }.let(Path::of)
     }
+
+    private fun resolveHarnessSupport(sourceContents: Collection<String>): ResolvedHarnessSupport {
+        val combinedSource = sourceContents.joinToString(separator = "\n")
+        val runtimeClasspathEntries = linkedMapOf<String, Path>()
+        val compilerPluginJars = linkedMapOf<String, Path>()
+        supportBundles().forEach { bundle ->
+            val runtimeRequired = bundle.requiresRuntime(combinedSource)
+            val compilerPluginRequired = bundle.requiresCompilerPlugin(combinedSource)
+            if (runtimeRequired || compilerPluginRequired) {
+                bundle.runtimeClasspathJarMarkers.forEach { marker ->
+                    runtimeClasspathEntries.putIfAbsent(marker, locateClasspathJar(containing = marker))
+                }
+            }
+            if (compilerPluginRequired) {
+                bundle.compilerPluginJarMarkers.forEach { marker ->
+                    compilerPluginJars.putIfAbsent(marker, locateClasspathJar(containing = marker))
+                }
+            }
+        }
+        return ResolvedHarnessSupport(
+            runtimeClasspathEntries = runtimeClasspathEntries.values.toList(),
+            compilerPluginJars = compilerPluginJars.values.toList(),
+        )
+    }
+
+    private fun locateClasspathJar(containing: String): Path =
+        System.getProperty("java.class.path")
+            .split(java.io.File.pathSeparator)
+            .firstOrNull { entry ->
+                entry.contains(containing) && entry.endsWith(".jar")
+            }
+            ?.let(Path::of)
+            ?: error("Could not locate $containing on the test classpath")
 }
 
 data class CompilationArtifacts(
     val outputDir: Path,
-    val runtimeClasspathEntry: Path,
-    val stdlibJar: Path,
+    val runtimeClasspathEntries: List<Path>,
 )
 
 data class CompilationResult(
@@ -297,3 +343,36 @@ data class CompilationResult(
     val stdout: String,
     val artifacts: CompilationArtifacts,
 )
+
+internal data class CompilerHarnessSupportBundle(
+    val name: String,
+    val runtimeClasspathJarMarkers: List<String>,
+    val compilerPluginJarMarkers: List<String> = emptyList(),
+    val requiresRuntime: (String) -> Boolean,
+    val requiresCompilerPlugin: (String) -> Boolean = { false },
+)
+
+private data class ResolvedHarnessSupport(
+    val runtimeClasspathEntries: List<Path>,
+    val compilerPluginJars: List<Path>,
+)
+
+private fun defaultHarnessSupportBundles(): List<CompilerHarnessSupportBundle> =
+    listOf(
+        CompilerHarnessSupportBundle(
+            name = "kotlinx-serialization",
+            runtimeClasspathJarMarkers = listOf("kotlinx-serialization-core-jvm"),
+            compilerPluginJarMarkers = listOf("kotlin-serialization-compiler-plugin-embeddable"),
+            requiresRuntime = { source ->
+                "kotlinx.serialization" in source ||
+                    "@Serializable" in source ||
+                    "KSerializer<" in source ||
+                    "serializer<" in source
+            },
+            requiresCompilerPlugin = { source ->
+                "@Serializable" in source ||
+                    "serializer<" in source ||
+                    "serializer(" in source
+            },
+        ),
+    )

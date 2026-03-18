@@ -327,7 +327,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE10A")
     @Test fun rejectsInstanceFunctionsWithNonTypeclassContextParametersAtDeclarationSite() {
         val source =
             """
@@ -372,7 +371,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE10A")
     @Test fun rejectsInstanceFunctionsWithStarProjectedTypeclassPrerequisitesAtDeclarationSite() {
         val source =
             """
@@ -412,7 +410,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE10A")
     @Test fun rejectsInstanceFunctionsWithDefinitelyNonNullTypeclassPrerequisitesAtDeclarationSite() {
         // FIXME: perhaps we will want to re-enable this behavior in the future.
         // For now, a safe strategy is to disallow non-nullable typeclass prerequisites on @Instance functions.

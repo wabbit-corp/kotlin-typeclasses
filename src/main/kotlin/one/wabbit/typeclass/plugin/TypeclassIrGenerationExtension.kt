@@ -359,6 +359,55 @@ private class TypeclassIrCallTransformer(
         return irAs(irNull(), expressionType)
     }
 
+    private fun IrStatementsBuilder<*>.buildBuiltinKSerializerExpression(
+        plan: ResolutionPlan.ApplyRule,
+        visibleTypeParameters: VisibleTypeParameters,
+    ): IrExpression {
+        val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
+        val targetModel = plan.appliedTypeArguments.singleOrNull()
+            ?: return invalidBuiltinKSerializerExpression(
+                expressionType = expressionType,
+                message = "Builtin KSerializer typeclass resolution requires exactly one target type argument.",
+            )
+        val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
+        val targetSimpleType = targetType as? IrSimpleType
+            ?: return invalidBuiltinKSerializerExpression(
+                expressionType = expressionType,
+                message = "Builtin KSerializer typeclass resolution requires a concrete or reified target type, but found ${targetType.render()}.",
+            )
+        val classifier = targetSimpleType.classifier
+        if (classifier is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol && !classifier.owner.isReified) {
+            return invalidBuiltinKSerializerExpression(
+                expressionType = expressionType,
+                message = "Builtin KSerializer typeclass resolution requires a concrete target type or a reified type parameter, but found ${targetType.render()}.",
+            )
+        }
+        val serializerFunction =
+            pluginContext.referenceFunctions(CallableId(FqName("kotlinx.serialization"), Name.identifier("serializer")))
+                .map { it.owner }
+                .singleOrNull { function ->
+                    function.dispatchReceiverParameter == null &&
+                        function.extensionReceiverParameter == null &&
+                        function.typeParameters.size == 1 &&
+                        function.valueParameters.isEmpty()
+                }
+                ?: return invalidBuiltinKSerializerExpression(
+                    expressionType = expressionType,
+                    message = "Could not resolve kotlinx.serialization.serializer<T>() on the compilation classpath.",
+                )
+        return irCall(serializerFunction.symbol, expressionType).apply {
+            putTypeArgument(0, targetType)
+        }
+    }
+
+    private fun IrStatementsBuilder<*>.invalidBuiltinKSerializerExpression(
+        expressionType: IrType,
+        message: String,
+    ): IrExpression {
+        reportTypeclassResolutionFailure(message)
+        return irAs(irNull(), expressionType)
+    }
+
     private fun IrStatementsBuilder<*>.buildExpressionForPlan(
         plan: ResolutionPlan,
         currentDeclaration: IrDeclarationBase,
@@ -444,6 +493,12 @@ private class TypeclassIrCallTransformer(
 
                     RuleReference.BuiltinKClass ->
                         buildBuiltinKClassExpression(
+                            plan = plan,
+                            visibleTypeParameters = visibleTypeParameters,
+                        )
+
+                    RuleReference.BuiltinKSerializer ->
+                        buildBuiltinKSerializerExpression(
                             plan = plan,
                             visibleTypeParameters = visibleTypeParameters,
                         )
@@ -940,7 +995,14 @@ private class IrRuleIndex private constructor(
             owners.flatMapTo(linkedSetOf()) { owner ->
                 associatedRulesByOwner[owner].orEmpty()
             }
-        return (topLevelRules + associated).distinctBy { resolvedRule -> resolvedRule.rule.id }.map(ResolvedRule::rule)
+        return (topLevelRules + associated)
+            .asSequence()
+            .filter { resolvedRule ->
+                resolvedRule.rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, pluginContext)
+            }
+            .distinctBy { resolvedRule -> resolvedRule.rule.id }
+            .map(ResolvedRule::rule)
+            .toList()
     }
 
     private fun associatedOwnersForGoal(goal: TcType): Set<ClassId> {
@@ -1060,6 +1122,15 @@ private class IrModuleScanner(
                     ResolvedRule(
                         rule = builtinKClassRule(),
                         reference = RuleReference.BuiltinKClass,
+                        associatedOwner = null,
+                    ),
+                )
+            }
+            if (configuration.builtinKSerializerTypeclass == TypeclassBuiltinMode.ENABLED) {
+                add(
+                    ResolvedRule(
+                        rule = builtinKSerializerRule(),
+                        reference = RuleReference.BuiltinKSerializer,
                         associatedOwner = null,
                     ),
                 )
@@ -1459,6 +1530,64 @@ private fun builtinKClassRule(): InstanceRule {
     )
 }
 
+private fun builtinKSerializerRule(): InstanceRule {
+    val parameter = TcTypeParameter(id = "builtin:kserializer:T", displayName = "T")
+    return InstanceRule(
+        id = "builtin:kserializer",
+        typeParameters = listOf(parameter),
+        providedType =
+            TcType.Constructor(
+                classifierId = KSERIALIZER_CLASS_ID.asString(),
+                arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun supportsBuiltinKSerializerGoal(
+    goal: TcType,
+    pluginContext: IrPluginContext,
+): Boolean {
+    val constructor = goal as? TcType.Constructor ?: return true
+    if (constructor.classifierId != KSERIALIZER_CLASS_ID.asString()) {
+        return true
+    }
+    val targetType = constructor.arguments.singleOrNull() ?: return false
+    return isPotentiallySerializableType(
+        type = targetType,
+        pluginContext = pluginContext,
+        visiting = linkedSetOf(),
+    )
+}
+
+private fun isPotentiallySerializableType(
+    type: TcType,
+    pluginContext: IrPluginContext,
+    visiting: MutableSet<String>,
+): Boolean {
+    return when (type) {
+        is TcType.Variable -> true
+
+        is TcType.Constructor -> {
+            val visitKey = type.normalizedKey()
+            if (!visiting.add(visitKey)) {
+                return true
+            }
+            if (type.classifierId in BUILTIN_SERIALIZABLE_CLASSIFIER_IDS) {
+                return type.arguments.all { argument ->
+                    isPotentiallySerializableType(argument, pluginContext, visiting)
+                }
+            }
+            val classId = runCatching { ClassId.fromString(type.classifierId) }.getOrNull() ?: return false
+            val klass = pluginContext.referenceClass(classId)?.owner ?: return false
+            klass.hasAnnotation(SERIALIZABLE_ANNOTATION_CLASS_ID) &&
+                type.arguments.all { argument ->
+                    isPotentiallySerializableType(argument, pluginContext, visiting)
+                }
+        }
+    }
+}
+
 private data class ResolvedRule(
     val rule: InstanceRule,
     val reference: RuleReference,
@@ -1492,6 +1621,8 @@ private sealed interface RuleReference {
     ) : RuleReference
 
     data object BuiltinKClass : RuleReference
+
+    data object BuiltinKSerializer : RuleReference
 
     data class Derived(
         val targetClass: IrClass,
