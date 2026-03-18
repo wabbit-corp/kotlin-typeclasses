@@ -18,3 +18,4 @@
 - Add regressions for platform-type safe calls, cross-file overloaded wrappers, and star-projected contextual lambdas that forward associated typeclass evidence through higher-order calls.
 - Fix receiver-only FIR type inference for contextual extension/operator calls, and stop synthetic implicit receiver injection from polluting unrelated lambda overload resolution such as `run { ... }`.
 - Add FIR declaration-site validation for invalid `@Instance` scopes and shapes, propagate recursive instance search failures instead of downgrading them to missing evidence, and enable the `PHASE2` regression tests that cover those cases.
+- Expand `@Instance` declarations through inherited `@Typeclass` supertypes, reject non-`@Typeclass` intermediates that try to smuggle inherited instances, and enable the remaining `PHASE3` hierarchy regressions including local `Group -> Monoid -> Semigroup` evidence.

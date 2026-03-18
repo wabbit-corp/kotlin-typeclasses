@@ -840,16 +840,10 @@ private class IrModuleScanner(
                 when {
                     declaration.isGeneratedTypeclassWrapperClass() -> Unit
                     declaration.isInstanceObject() && associatedOwner == null -> {
-                        val resolvedRule = declaration.toObjectRule(idPrefix = "top-level-object", associatedOwner = null)
-                        if (resolvedRule != null) {
-                            topLevelRules += resolvedRule
-                        }
+                        topLevelRules += declaration.toObjectRules(idPrefix = "top-level-object", associatedOwner = null)
                     }
                     declaration.isInstanceObject() && nextAssociatedOwner != null -> {
-                        val resolvedRule = declaration.toObjectRule(idPrefix = "associated-object", associatedOwner = nextAssociatedOwner)
-                        if (resolvedRule != null) {
-                            companionRules += resolvedRule
-                        }
+                        companionRules += declaration.toObjectRules(idPrefix = "associated-object", associatedOwner = nextAssociatedOwner)
                     }
                 }
 
@@ -866,75 +860,59 @@ private class IrModuleScanner(
                 }
 
                 if (associatedOwner == null) {
-                    declaration.toFunctionRule(idPrefix = "top-level-function", associatedOwner = null)?.let { rule ->
-                        topLevelRules += rule
-                    }
+                    topLevelRules += declaration.toFunctionRules(idPrefix = "top-level-function", associatedOwner = null)
                 } else {
-                    declaration.toFunctionRule(idPrefix = "associated-function", associatedOwner = associatedOwner)?.let { rule ->
-                        companionRules += rule
-                    }
+                    companionRules += declaration.toFunctionRules(idPrefix = "associated-function", associatedOwner = associatedOwner)
                 }
             }
 
             is IrProperty -> {
                 if (associatedOwner == null) {
-                    declaration.toPropertyRule(idPrefix = "top-level-property", associatedOwner = null)?.let { rule ->
-                        topLevelRules += rule
-                    }
+                    topLevelRules += declaration.toPropertyRules(idPrefix = "top-level-property", associatedOwner = null)
                 } else {
-                    declaration.toPropertyRule(idPrefix = "associated-property", associatedOwner = associatedOwner)?.let { rule ->
-                        companionRules += rule
-                    }
+                    companionRules += declaration.toPropertyRules(idPrefix = "associated-property", associatedOwner = associatedOwner)
                 }
             }
         }
     }
 
-    private fun IrClass.toObjectRule(
+    private fun IrClass.toObjectRules(
         idPrefix: String,
         associatedOwner: ClassId?,
-    ): ResolvedRule? {
+    ): List<ResolvedRule> {
         if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID)) {
-            return null
+            return emptyList()
         }
-        val providedType =
-            superTypes.firstNotNullOfOrNull { superType ->
-                if (!superType.isTypeclassType()) {
-                    return@firstNotNullOfOrNull null
-                }
-                irTypeToModel(superType, emptyMap())
-            } ?: return null
-        return ResolvedRule(
-            rule =
-                InstanceRule(
-                    id = "$idPrefix:${classIdOrFail.asString()}",
-                    typeParameters = emptyList(),
-                    providedType = providedType,
-                    prerequisiteTypes = emptyList(),
-                ),
-            reference = RuleReference.DirectObject(this),
-            associatedOwner = associatedOwner,
-        )
+        return superTypes.providedTypeExpansion(emptyMap()).validTypes.map { providedType ->
+            ResolvedRule(
+                rule =
+                    InstanceRule(
+                        id = "$idPrefix:${classIdOrFail.asString()}:${providedType.render()}",
+                        typeParameters = emptyList(),
+                        providedType = providedType,
+                        prerequisiteTypes = emptyList(),
+                    ),
+                reference = RuleReference.DirectObject(this),
+                associatedOwner = associatedOwner,
+            )
+        }
     }
 
-    private fun IrSimpleFunction.toFunctionRule(
+    private fun IrSimpleFunction.toFunctionRules(
         idPrefix: String,
         associatedOwner: ClassId?,
-    ): ResolvedRule? {
+    ): List<ResolvedRule> {
         if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID)) {
-            return null
+            return emptyList()
         }
         if (dispatchReceiverParameter != null && !parentAsClass.isCompanion) {
-            return null
+            return emptyList()
         }
         if (extensionReceiverParameter != null) {
-            return null
+            return emptyList()
         }
         if (parameters.any { it.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular }) {
-            return null
-        }
-        if (!returnType.isTypeclassType()) {
-            return null
+            return emptyList()
         }
 
         val typeParameters = this.typeParameters.map { typeParameter ->
@@ -949,53 +927,54 @@ private class IrModuleScanner(
                 parameter.type.takeIf(IrType::isTypeclassType)?.let { irTypeToModel(it, typeParameterBySymbol) }
             }
         if (prerequisites.size != contextParameters().size) {
-            return null
+            return emptyList()
         }
 
-        return ResolvedRule(
-            rule =
-                InstanceRule(
-                    id = "$idPrefix:${callableId}",
-                    typeParameters = typeParameters,
-                    providedType = irTypeToModel(returnType, typeParameterBySymbol) ?: return null,
-                    prerequisiteTypes = prerequisites,
-                ),
-            reference = RuleReference.DirectFunction(this),
-            associatedOwner = associatedOwner,
-        )
+        return listOf(returnType).providedTypeExpansion(typeParameterBySymbol).validTypes.map { providedType ->
+            ResolvedRule(
+                rule =
+                    InstanceRule(
+                        id = "$idPrefix:${callableId}:${providedType.render()}",
+                        typeParameters = typeParameters,
+                        providedType = providedType,
+                        prerequisiteTypes = prerequisites,
+                    ),
+                reference = RuleReference.DirectFunction(this),
+                associatedOwner = associatedOwner,
+            )
+        }
     }
 
-    private fun IrProperty.toPropertyRule(
+    private fun IrProperty.toPropertyRules(
         idPrefix: String,
         associatedOwner: ClassId?,
-    ): ResolvedRule? {
+    ): List<ResolvedRule> {
         if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID)) {
-            return null
+            return emptyList()
         }
-        val getter = getter ?: return null
+        val getter = getter ?: return emptyList()
         if (getter.extensionReceiverParameter != null) {
-            return null
+            return emptyList()
         }
         if (getter.dispatchReceiverParameter != null) {
-            val parentClass = parent as? IrClass ?: return null
+            val parentClass = parent as? IrClass ?: return emptyList()
             if (!parentClass.isCompanion) {
-                return null
+                return emptyList()
             }
         }
-        if (!backingFieldOrGetterType().isTypeclassType()) {
-            return null
+        return listOf(backingFieldOrGetterType()).providedTypeExpansion(emptyMap()).validTypes.map { providedType ->
+            ResolvedRule(
+                rule =
+                    InstanceRule(
+                        id = "$idPrefix:${callableId}:${providedType.render()}",
+                        typeParameters = emptyList(),
+                        providedType = providedType,
+                        prerequisiteTypes = emptyList(),
+                    ),
+                reference = RuleReference.DirectProperty(this),
+                associatedOwner = associatedOwner,
+            )
         }
-        return ResolvedRule(
-            rule =
-                InstanceRule(
-                    id = "$idPrefix:${callableId}",
-                    typeParameters = emptyList(),
-                    providedType = irTypeToModel(backingFieldOrGetterType(), emptyMap()) ?: return null,
-                    prerequisiteTypes = emptyList(),
-                ),
-            reference = RuleReference.DirectProperty(this),
-            associatedOwner = associatedOwner,
-        )
     }
 
     private fun IrClass.toDerivedRule(
@@ -1495,23 +1474,29 @@ private fun collectLocalContexts(
     enclosingFunctions: List<IrFunction>,
     visible: VisibleTypeParameters,
 ): List<LocalTypeclassContext> {
-    val parameters =
-        buildList {
-            enclosingFunctions.asReversed().forEach { function ->
-                function.extensionReceiverParameter
-                    ?.takeIf { parameter -> parameter.type.isTypeclassType() }
-                    ?.let(::add)
-                function.contextParameters()
-                    .filter { parameter -> parameter.type.isTypeclassType() }
-                    .forEach(::add)
-            }
+    return buildList {
+        enclosingFunctions.asReversed().forEach { function ->
+            function.extensionReceiverParameter
+                ?.takeIf { parameter -> parameter.type.isTypeclassType() }
+                ?.let { parameter ->
+                    listOf(parameter.type)
+                        .providedTypeExpansion(visible.bySymbol)
+                        .validTypes
+                        .forEach { providedType ->
+                            add(LocalTypeclassContext(parameter = parameter, providedType = providedType))
+                        }
+                }
+            function.contextParameters()
+                .filter { parameter -> parameter.type.isTypeclassType() }
+                .forEach { parameter ->
+                    listOf(parameter.type)
+                        .providedTypeExpansion(visible.bySymbol)
+                        .validTypes
+                        .forEach { providedType ->
+                            add(LocalTypeclassContext(parameter = parameter, providedType = providedType))
+                        }
+                }
         }
-    return parameters.map { parameter ->
-        LocalTypeclassContext(
-            parameter = parameter,
-            providedType = irTypeToModel(parameter.type, visible.bySymbol)
-                ?: error("Unsupported local context type ${parameter.type}"),
-        )
     }
 }
 
@@ -1547,6 +1532,95 @@ private fun irTypeToModel(
         else -> null
     }
 }
+
+private fun Iterable<IrType>.providedTypeExpansion(
+    typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
+): ProvidedTypeExpansion {
+    val validTypes = linkedMapOf<String, TcType>()
+    val invalidTypes = linkedMapOf<String, TcType>()
+    for (type in this) {
+        val expansion =
+            type.providedTypeExpansion(
+                typeParameterBySymbol = typeParameterBySymbol,
+                previousWereTypeclass = true,
+                visited = emptySet(),
+            )
+        expansion.validTypes.forEach { candidate ->
+            validTypes.putIfAbsent(candidate.render(), candidate)
+        }
+        expansion.invalidTypes.forEach { candidate ->
+            invalidTypes.putIfAbsent(candidate.render(), candidate)
+        }
+    }
+    return ProvidedTypeExpansion(
+        validTypes = validTypes.values.toList(),
+        invalidTypes = invalidTypes.values.toList(),
+    )
+}
+
+private fun IrType.providedTypeExpansion(
+    typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
+    previousWereTypeclass: Boolean,
+    visited: Set<String>,
+): ProvidedTypeExpansion {
+    val simpleType = this as? IrSimpleType ?: return ProvidedTypeExpansion(emptyList(), emptyList())
+    val currentType = irTypeToModel(this, typeParameterBySymbol) ?: return ProvidedTypeExpansion(emptyList(), emptyList())
+    val visitKey = currentType.render()
+    if (visitKey in visited) {
+        return ProvidedTypeExpansion(emptyList(), emptyList())
+    }
+
+    val classSymbol = simpleType.classOrNull ?: return ProvidedTypeExpansion(emptyList(), emptyList())
+    val currentIsTypeclass = classSymbol.owner.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID)
+    val validTypes = linkedMapOf<String, TcType>()
+    val invalidTypes = linkedMapOf<String, TcType>()
+    if (currentIsTypeclass) {
+        if (previousWereTypeclass) {
+            validTypes[visitKey] = currentType
+        } else {
+            invalidTypes[visitKey] = currentType
+        }
+    }
+
+    val substitutions =
+        classSymbol.owner.typeParameters.zip(simpleType.arguments).mapNotNull { (parameter, argument) ->
+            argument.argumentTypeOrNull()?.let { type -> parameter.symbol to type }
+        }.toMap()
+    val nextPreviousWereTypeclass = previousWereTypeclass && currentIsTypeclass
+    val nextVisited = visited + visitKey
+    classSymbol.owner.superTypes.forEach { superType ->
+        val substitutedSuperType =
+            if (substitutions.isEmpty()) {
+                superType
+            } else {
+                superType.substitute(substitutions)
+            }
+        val nested =
+            substitutedSuperType.providedTypeExpansion(
+                typeParameterBySymbol = typeParameterBySymbol,
+                previousWereTypeclass = nextPreviousWereTypeclass,
+                visited = nextVisited,
+            )
+        nested.validTypes.forEach { candidate ->
+            validTypes.putIfAbsent(candidate.render(), candidate)
+        }
+        nested.invalidTypes.forEach { candidate ->
+            invalidTypes.putIfAbsent(candidate.render(), candidate)
+        }
+    }
+
+    return ProvidedTypeExpansion(
+        validTypes = validTypes.values.toList(),
+        invalidTypes = invalidTypes.values.toList(),
+    )
+}
+
+private fun org.jetbrains.kotlin.ir.types.IrTypeArgument.argumentTypeOrNull(): IrType? =
+    when (this) {
+        is IrType -> this
+        is org.jetbrains.kotlin.ir.types.IrTypeProjection -> type
+        is IrStarProjection -> null
+    }
 
 private fun modelToIrType(
     type: TcType,

@@ -42,10 +42,9 @@ internal class TypeclassFirCheckersExtension(
                     return
                 }
 
-                val providedType = declaration.instanceProvidedType(session) ?: return
                 validateAssociatedScope(
                     ownerContext = classOwnerContext(declaration.symbol.classId),
-                    providedType = providedType,
+                    providedTypes = declaration.instanceProvidedTypes(session),
                     declaration = declaration,
                 )
             }
@@ -75,10 +74,9 @@ internal class TypeclassFirCheckersExtension(
                     }
                 }
 
-                val providedType = declaration.instanceProvidedType(session) ?: return
                 validateAssociatedScope(
                     ownerContext = callableOwnerContext(declaration.symbol.callableId),
-                    providedType = providedType,
+                    providedTypes = declaration.instanceProvidedTypes(session),
                     declaration = declaration,
                 )
             }
@@ -113,10 +111,9 @@ internal class TypeclassFirCheckersExtension(
                     }
                 }
 
-                val providedType = declaration.instanceProvidedType(session) ?: return
                 validateAssociatedScope(
                     ownerContext = callableOwnerContext(declaration.symbol.callableId),
-                    providedType = providedType,
+                    providedTypes = declaration.instanceProvidedTypes(session),
                     declaration = declaration,
                 )
             }
@@ -132,9 +129,27 @@ internal class TypeclassFirCheckersExtension(
     context(context: CheckerContext, reporter: DiagnosticReporter)
     private fun validateAssociatedScope(
         ownerContext: InstanceOwnerContext,
-        providedType: one.wabbit.typeclass.plugin.model.TcType,
+        providedTypes: ProvidedTypeExpansion,
         declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
     ) {
+        when {
+            providedTypes.invalidTypes.isNotEmpty() -> {
+                reportInvalid(
+                    declaration,
+                    "non-@Typeclass intermediate supertypes cannot provide inherited typeclass instances",
+                )
+                return
+            }
+
+            providedTypes.validTypes.isEmpty() -> {
+                reportInvalid(
+                    declaration,
+                    "@Instance declarations must provide a @Typeclass type",
+                )
+                return
+            }
+        }
+
         when {
             ownerContext.isTopLevel -> Unit
             !ownerContext.isCompanionScope -> {
@@ -144,11 +159,16 @@ internal class TypeclassFirCheckersExtension(
                 )
             }
 
-            ownerContext.associatedOwner !in sharedState.allowedAssociatedOwnersForProvidedType(session, providedType) -> {
-                reportInvalid(
-                    declaration,
-                    "associated owner does not match the provided typeclass head or its type arguments",
-                )
+            else -> {
+                providedTypes.validTypes.forEach { providedType ->
+                    if (ownerContext.associatedOwner !in sharedState.allowedAssociatedOwnersForProvidedType(session, providedType)) {
+                        reportInvalid(
+                            declaration,
+                            "associated owner does not match the provided typeclass head or its type arguments",
+                        )
+                        return
+                    }
+                }
             }
         }
     }

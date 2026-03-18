@@ -240,9 +240,9 @@ internal class TypeclassFirFunctionCallRefinementExtension(
                 }
             }
         val directlyAvailableContextModels =
-            directlyAvailableContextTypes.mapNotNull { availableType ->
-                coneTypeToModel(availableType, typeParameterModels)
-            }
+            directlyAvailableContextTypes
+                .expandProvidedTypes(session = session, typeParameterBySymbol = typeParameterModels)
+                .validTypes
         return FirTypeContext(
             typeParameterModels = typeParameterModels,
             bindableVariableIds = bindableVariableIds,

@@ -90,7 +90,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE3")
     @Test
     fun rejectsInstanceObjectsDeclaredInsideNamespaceObjectsAtDeclarationSite() {
         val source =
@@ -161,7 +160,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE3")
     @Test
     fun resolvesAssociatedInstancesThroughTypeArguments() {
         val source =
@@ -866,7 +864,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE3")
     @Test
     fun resolvesContextualCallsThroughInterfaceOverrides() {
         val source =
@@ -952,7 +949,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE3")
     @Test
     fun usesExtensionReceiverAsTheOnlyAvailableEvidence() {
         val source =
@@ -1079,7 +1075,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE3")
     @Test
     fun rejectsNonTypeclassIntermediateSupertypesThatExtendTypeclasses() {
         val source =
@@ -1108,7 +1103,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE3")
     @Test
     fun allowsIntermediateTypeclassSupertypesThatExtendTypeclasses() {
         val source =
@@ -1142,6 +1136,125 @@ class DerivationTest : IntegrationTestSupport() {
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "int:1",
+        )
+    }
+
+    @Test
+    fun resolvesIntermediateTypeclassHierarchiesFromGroupInstances() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Semigroup<A> {
+                fun combine(left: A, right: A): A
+            }
+
+            @Typeclass
+            interface Monoid<A> : Semigroup<A> {
+                fun empty(): A
+            }
+
+            @Typeclass
+            interface Group<A> : Monoid<A> {
+                fun invert(value: A): A
+            }
+
+            @Instance
+            object IntGroup : Group<Int> {
+                override fun combine(left: Int, right: Int): Int = left + right
+
+                override fun empty(): Int = 0
+
+                override fun invert(value: Int): Int = -value
+            }
+
+            context(monoid: Monoid<Int>)
+            fun renderFromMonoid(value: Int): Int = monoid.combine(monoid.empty(), value)
+
+            context(group: Group<Int>)
+            fun localMonoidSum(value: Int): Int =
+                summon<Monoid<Int>>().combine(summon<Monoid<Int>>().empty(), value)
+
+            context(group: Group<Int>)
+            fun localSemigroupDouble(value: Int): Int =
+                summon<Semigroup<Int>>().combine(value, value)
+
+            fun main() {
+                println(renderFromMonoid(4))
+                context(IntGroup) {
+                    println(localMonoidSum(5))
+                    println(localSemigroupDouble(6))
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                4
+                5
+                12
+                """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun reportsAmbiguousInheritedIntermediateTypeclassInstances() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Semigroup<A> {
+                fun combine(left: A, right: A): A
+            }
+
+            @Typeclass
+            interface Monoid<A> : Semigroup<A> {
+                fun empty(): A
+            }
+
+            @Typeclass
+            interface Group<A> : Monoid<A> {
+                fun invert(value: A): A
+            }
+
+            @Instance
+            object IntMonoid : Monoid<Int> {
+                override fun combine(left: Int, right: Int): Int = left + right
+
+                override fun empty(): Int = 0
+            }
+
+            @Instance
+            object IntGroup : Group<Int> {
+                override fun combine(left: Int, right: Int): Int = left + right
+
+                override fun empty(): Int = 0
+
+                override fun invert(value: Int): Int = -value
+            }
+
+            context(monoid: Monoid<Int>)
+            fun use(): Int = monoid.empty()
+
+            fun main() {
+                println(use())
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("ambiguous typeclass instance"),
         )
     }
 
