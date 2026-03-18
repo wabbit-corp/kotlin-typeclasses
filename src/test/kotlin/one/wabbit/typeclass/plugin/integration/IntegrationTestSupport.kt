@@ -511,6 +511,13 @@ sealed interface CompilerHarnessPlugin {
         override val compilerPluginId: String = "org.jetbrains.kotlin.parcelize"
     }
 
+    data object AtomicFu : CompilerHarnessPlugin {
+        override val runtimeClasspathJarMarkers: List<String> =
+            listOf("atomicfu-jvm")
+        override val compilerPluginJarMarkers: List<String> =
+            listOf("kotlin-atomicfu-compiler-plugin-embeddable")
+    }
+
     data class External(
         override val supportSources: Map<String, String> = emptyMap(),
         override val runtimeClasspathJarMarkers: List<String> = emptyList(),

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Enable the PHASE16 AtomicFU interop coverage and keep the harness generic enough to load AtomicFU as an explicit support plugin rather than treating it as ambient test infrastructure.
 - Enable the PHASE15 Parcelize interop coverage and extend the integration harness so support plugins can contribute synthetic support sources alongside runtime jars, compiler plugin jars, and plugin options.
 - Enable the PHASE13C and PHASE13D proof-operator regressions, add runtime-facing equality/subtyping combinators, and synthesize builtin `StrictSubtype` evidence as the conjunction of `Subtype` and `NotSame`.
 - Enable the PHASE14 Power Assert interop coverage and extend the integration harness so support plugins can declare compiler plugin ids plus repeated `-P plugin:<id>:...` options instead of smuggling raw option strings through ad hoc arguments.

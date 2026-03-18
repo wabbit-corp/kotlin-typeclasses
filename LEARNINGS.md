@@ -1,5 +1,7 @@
 # Learnings
 
+- Some third-party interop failures are just invalid fixtures, not compiler-plugin conflicts. AtomicFU's `updateAndGet` is a top-level extension in `kotlinx.atomicfu`, so tests need to import it explicitly instead of assuming it is a member on `AtomicInt`.
+- AtomicFU interoperability tests also need to respect AtomicFU's own IR constraints: atomic operations must target direct atomic properties, not atomics leaked through parameters or locals. A failing `updateAndGet` on a function parameter is an AtomicFU misuse, not evidence that contextual rewriting broke.
 - Some interoperability tests need compile-time platform stubs rather than published runtime dependencies. Parcelize is the first concrete example: the harness needs the compiler plugin and parcelize runtime jar, but `android.os.Parcelable` itself can be satisfied by tiny synthetic test sources.
 - Builtin rules that are defined in terms of other builtins still need their own IR validation path if prerequisite success is only approximated during planning. `StrictSubtype` exposed this because planner success for builtin `NotSame` does not imply the later IR check will succeed.
 - The clean runtime shape for these proof builtins is still zero-state singletons. The interesting API lives on the proof interfaces (`coerce`, `flip`, `compose`, `andThen`, `toSubtype`, `toNotSame`, `bracket`), while the compiler continues to materialize a single shared witness object.
