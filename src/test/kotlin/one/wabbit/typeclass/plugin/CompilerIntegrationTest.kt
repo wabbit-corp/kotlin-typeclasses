@@ -537,6 +537,229 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun infersOuterContextInsideSafeCallLetWithoutExplicitTypeArguments() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            class ItemMeta
+            class ItemStack(val itemMeta: ItemMeta? = ItemMeta())
+
+            @Typeclass
+            interface ItemComponentType<A>
+
+            data class Curse(val soulbound: Boolean) {
+                companion object {
+                    @Instance
+                    val itemComponentType =
+                        object : ItemComponentType<Curse> {}
+                }
+            }
+
+            class Items {
+                context(type: ItemComponentType<Type>)
+                fun <Type> getComponent(item: ItemStack): Type? =
+                    item.itemMeta?.let { getComponent(it) }
+
+                context(type: ItemComponentType<Type>)
+                fun <Type> getComponent(item: ItemMeta): Type? = null
+
+                context(type: ItemComponentType<Type>)
+                fun <Type> use(item: ItemStack): Boolean = getComponent(item) == null
+            }
+
+            fun main() {
+                with(Curse.itemComponentType) {
+                    println(Items().use(ItemStack()))
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "true",
+        )
+    }
+
+    @Test
+    fun infersOuterContextAcrossSameNameOverloadsInsideSafeCallLet() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            class ItemMeta
+            class ItemStack(val itemMeta: ItemMeta? = ItemMeta())
+
+            @Typeclass
+            interface ItemComponentType<A>
+
+            data class Curse(val soulbound: Boolean) {
+                companion object {
+                    @Instance
+                    val itemComponentType =
+                        object : ItemComponentType<Curse> {}
+                }
+            }
+
+            class Items {
+                context(type: ItemComponentType<Type>)
+                fun <Type> getComponent(item: ItemStack): Type? =
+                    item.itemMeta?.let { getComponent(it) }
+
+                context(type: ItemComponentType<Type>)
+                fun <Type> getComponent(item: ItemMeta): Type? = null
+            }
+
+            fun main() {
+                with(Curse.itemComponentType) {
+                    println(Items().getComponent(ItemStack()) == null)
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "true",
+        )
+    }
+
+    @Test
+    fun infersOuterContextAcrossPlatformSafeCallLetInsideSameNameOverload() {
+        val sources =
+            mapOf(
+                "demo/Items.kt" to
+                    """
+                    package demo
+
+                    import java.util.concurrent.atomic.AtomicReference
+                    import one.wabbit.typeclass.Typeclass
+
+                    class ItemMeta
+
+                    class ItemStack(meta: ItemMeta? = ItemMeta()) {
+                        val itemMetaRef = AtomicReference(meta)
+                    }
+
+                    @Typeclass
+                    interface ItemComponentType<A>
+
+                    class Items {
+                        context(type: ItemComponentType<Type>)
+                        fun <Type> getComponent(item: ItemStack): Type? =
+                            item.itemMetaRef.get()?.let { getComponent(it) }
+
+                        context(type: ItemComponentType<Type>)
+                        fun <Type> getComponent(item: ItemMeta): Type? = null
+                    }
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import one.wabbit.typeclass.Instance
+
+                    data class Curse(val soulbound: Boolean) {
+                        companion object {
+                            @Instance
+                            val itemComponentType =
+                                object : ItemComponentType<Curse> {}
+                        }
+                    }
+
+                    fun main() {
+                        with(Curse.itemComponentType) {
+                            println(Items().getComponent(ItemStack()) == null)
+                        }
+                    }
+                    """.trimIndent(),
+            )
+
+        assertCompilesAndRuns(
+            sources = sources,
+            expectedStdout = "true",
+            mainClass = "demo.MainKt",
+        )
+    }
+
+    @Test
+    fun supportsCrossFileExplicitTypeArgumentsOnNestedOverloadedSelfCall() {
+        val sources =
+            mapOf(
+                "demo/Helpers.kt" to
+                    """
+                    package demo
+
+                    class ItemMeta
+
+                    class ItemStack {
+                        fun withItemMeta(block: (ItemMeta) -> Unit): ItemStack {
+                            block(ItemMeta())
+                            return this
+                        }
+                    }
+                    """.trimIndent(),
+                "demo/Items.kt" to
+                    """
+                    package demo
+
+                    import one.wabbit.typeclass.Typeclass
+
+                    @Typeclass
+                    interface ItemComponentType<A> {
+                        fun label(): String
+                    }
+
+                    class Items {
+                        context(type: ItemComponentType<Type>)
+                        fun <Type> removeComponent(item: ItemStack): ItemStack =
+                            item.withItemMeta { meta -> removeComponent<Type>(meta) }
+
+                        context(type: ItemComponentType<Type>)
+                        fun <Type> removeComponent(item: ItemMeta) {
+                            println(type.label())
+                        }
+                    }
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import one.wabbit.typeclass.Instance
+
+                    data class Curse(val soulbound: Boolean) {
+                        companion object {
+                            @Instance
+                            val itemComponentType =
+                                object : ItemComponentType<Curse> {
+                                    override fun label(): String = "curse"
+                                }
+                        }
+                    }
+
+                    fun main() {
+                        println(Items().removeComponent<Curse>(ItemStack()) is ItemStack)
+                    }
+                    """.trimIndent(),
+            )
+
+        assertCompilesAndRuns(
+            sources = sources,
+            expectedStdout =
+                """
+                curse
+                true
+                """.trimIndent(),
+            mainClass = "demo.MainKt",
+        )
+    }
+
+    @Test
     fun rewritesContextualCallsInsideHigherOrderArguments() {
         val source =
             """
@@ -4833,6 +5056,1437 @@ class CompilerIntegrationTest {
         )
     }
 
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun capturesDefinitionSiteEvidenceForReturnedLambdasObjectsAndBoundReferences() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object GlobalIntShow : Show<Int> {
+                override fun show(value: Int): String = "global:${'$'}value"
+            }
+
+            context(show: Show<Int>)
+            fun makeLambda(): () -> String = { show.show(1) }
+
+            interface Renderer {
+                fun render(): String
+            }
+
+            context(show: Show<Int>)
+            fun makeRenderer(): Renderer =
+                object : Renderer {
+                    override fun render(): String = show.show(2)
+                }
+
+            fun main() {
+                val localShow =
+                    object : Show<Int> {
+                        override fun show(value: Int): String = "local:${'$'}value"
+                    }
+
+                val globalLambda = makeLambda()
+                val localLambda = context(localShow) { makeLambda() }
+                val globalRenderer = makeRenderer()
+                val localRenderer = context(localShow) { makeRenderer() }
+                val globalBound = makeRenderer()::render
+                val localBound = context(localShow) { makeRenderer()::render }
+
+                println(globalLambda())
+                context(localShow) {
+                    println(globalLambda())
+                }
+                println(localLambda())
+                println(globalRenderer.render())
+                println(localRenderer.render())
+                println(globalBound())
+                println(localBound())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                global:1
+                global:1
+                local:1
+                global:2
+                local:2
+                global:2
+                local:2
+                """.trimIndent(),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun superclassEntailmentRespectsDirectLocalShadowing() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Eq<A> {
+                fun label(): String
+            }
+
+            @Typeclass
+            interface Ord<A> : Eq<A> {
+                fun compare(left: A, right: A): Int
+            }
+
+            @Instance
+            object IntOrd : Ord<Int> {
+                override fun label(): String = "ord"
+
+                override fun compare(left: Int, right: Int): Int = left.compareTo(right)
+            }
+
+            context(eq: Eq<A>)
+            fun <A> which(): String = eq.label()
+
+            fun main() {
+                println(which<Int>())
+
+                val localEq =
+                    object : Eq<Int> {
+                        override fun label(): String = "local-eq"
+                    }
+
+                context(localEq) {
+                    println(which<Int>())
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                ord
+                local-eq
+                """.trimIndent(),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun oneObjectCanProvideMultipleHeadsAndSuperclassEvidence() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Eq<A> {
+                fun label(): String
+            }
+
+            @Typeclass
+            interface Ord<A> : Eq<A> {
+                fun compare(left: A, right: A): Int
+            }
+
+            @Typeclass
+            interface Hash<A> {
+                fun hash(value: A): String
+            }
+
+            @Instance
+            object IntInstances : Ord<Int>, Hash<Int> {
+                override fun label(): String = "ord"
+
+                override fun compare(left: Int, right: Int): Int = left.compareTo(right)
+
+                override fun hash(value: Int): String = "hash:${'$'}value"
+            }
+
+            context(eq: Eq<A>, hash: Hash<A>)
+            fun <A> summary(value: A): String = eq.label() + ":" + hash.hash(value)
+
+            fun main() {
+                println(summary(7))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "ord:hash:7",
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun purelyLocalEvidenceSelectsOverloads() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Eq<A>
+
+            @Typeclass
+            interface Show<A>
+
+            context(_: Eq<Int>)
+            fun choose(value: Int): String = "eq"
+
+            context(_: Show<Int>)
+            fun choose(value: Int): String = "show"
+
+            fun main() {
+                val localEq = object : Eq<Int> {}
+                val localShow = object : Show<Int> {}
+
+                context(localEq) {
+                    println(choose(1))
+                }
+                context(localShow) {
+                    println(choose(1))
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                eq
+                show
+                """.trimIndent(),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun reportsNestedAmbiguityFromPrerequisiteResolution() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface JsonWriter<A> {
+                fun write(value: A): String
+            }
+
+            @Typeclass
+            interface BodySerializer<A> {
+                fun serialize(value: A): String
+            }
+
+            @Instance
+            object IntJsonWriterOne : JsonWriter<Int> {
+                override fun write(value: Int): String = "one:${'$'}value"
+            }
+
+            @Instance
+            object IntJsonWriterTwo : JsonWriter<Int> { // ERROR duplicate prerequisite evidence
+                override fun write(value: Int): String = "two:${'$'}value"
+            }
+
+            @Instance
+            context(writer: JsonWriter<A>)
+            fun <A> jsonBodySerializer(): BodySerializer<A> =
+                object : BodySerializer<A> {
+                    override fun serialize(value: A): String = writer.write(value)
+                }
+
+            context(serializer: BodySerializer<A>)
+            fun <A> send(value: A): String = serializer.serialize(value)
+
+            fun main() {
+                println(send(1)) // ERROR should report ambiguous JsonWriter<Int>, not missing BodySerializer<Int>
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("ambiguous", "jsonwriter"),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun preservesValueClassSpecificityWhenSolvingPrerequisites() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @JvmInline
+            value class UserId(val value: Int)
+
+            data class Box<A>(val value: A)
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun label(): String = "int"
+            }
+
+            @Instance
+            object UserIdShow : Show<UserId> {
+                override fun label(): String = "user-id"
+            }
+
+            @Instance
+            context(show: Show<A>)
+            fun <A> boxShow(): Show<Box<A>> =
+                object : Show<Box<A>> {
+                    override fun label(): String = "box-" + show.label()
+                }
+
+            context(_: Show<A>)
+            fun <A> which(): String = summon<Show<A>>().label()
+
+            fun main() {
+                println(which<Box<UserId>>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "box-user-id",
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun preservesProjectionSpecificityWhenSolvingPrerequisites() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            data class Box<A>(val value: A)
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object OutStringArrayShow : Show<Array<out String>> {
+                override fun label(): String = "out-string-array"
+            }
+
+            @Instance
+            object InStringArrayShow : Show<Array<in String>> {
+                override fun label(): String = "in-string-array"
+            }
+
+            @Instance
+            context(show: Show<A>)
+            fun <A> boxShow(): Show<Box<A>> =
+                object : Show<Box<A>> {
+                    override fun label(): String = "box-" + show.label()
+                }
+
+            context(_: Show<A>)
+            fun <A> which(): String = summon<Show<A>>().label()
+
+            fun main() {
+                println(which<Box<Array<out String>>>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "box-out-string-array",
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun importsControlWhichInstancesAreVisibleAcrossPackages() {
+        val sources =
+            mapOf(
+                "shared/Api.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Typeclass
+
+                    @Typeclass
+                    interface Show<A> {
+                        fun show(value: A): String
+                    }
+
+                    context(show: Show<A>)
+                    fun <A> render(value: A): String = show.show(value)
+                    """.trimIndent(),
+                "alpha/Instances.kt" to
+                    """
+                    package alpha
+
+                    import one.wabbit.typeclass.Instance
+                    import shared.Show
+
+                    @Instance
+                    object IntShow : Show<Int> {
+                        override fun show(value: Int): String = "alpha:${'$'}value"
+                    }
+                    """.trimIndent(),
+                "beta/Instances.kt" to
+                    """
+                    package beta
+
+                    import one.wabbit.typeclass.Instance
+                    import shared.Show
+
+                    @Instance
+                    object IntShow : Show<Int> {
+                        override fun show(value: Int): String = "beta:${'$'}value"
+                    }
+                    """.trimIndent(),
+                "demo/UseAlpha.kt" to
+                    """
+                    package demo
+
+                    import alpha.IntShow
+                    import shared.render
+
+                    fun main() {
+                        println(render(1))
+                    }
+                    """.trimIndent(),
+                "demo/UseBeta.kt" to
+                    """
+                    package demo
+
+                    import beta.IntShow
+                    import shared.render
+
+                    fun main() {
+                        println(render(1))
+                    }
+                    """.trimIndent(),
+            )
+
+        assertCompilesAndRuns(
+            sources = sources,
+            expectedStdout = "alpha:1",
+            mainClass = "demo.UseAlphaKt",
+        )
+        assertCompilesAndRuns(
+            sources = sources,
+            expectedStdout = "beta:1",
+            mainClass = "demo.UseBetaKt",
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun associatedOwnerLookupShouldRespectImportedInstanceVisibility() {
+        val sources =
+            mapOf(
+                "shared/Api.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Instance
+                    import one.wabbit.typeclass.Typeclass
+                    import one.wabbit.typeclass.summon
+
+                    data class Box<A>(val value: A)
+
+                    @Typeclass
+                    interface Show<A> {
+                        fun label(): String
+                    }
+
+                    @Instance
+                    context(show: Show<A>)
+                    fun <A> boxShow(): Show<Box<A>> =
+                        object : Show<Box<A>> {
+                            override fun label(): String = "box-" + show.label()
+                        }
+
+                    context(_: Show<A>)
+                    fun <A> which(): String = summon<Show<A>>().label()
+                    """.trimIndent(),
+                "alpha/AlphaId.kt" to
+                    """
+                    package alpha
+
+                    import one.wabbit.typeclass.Instance
+                    import shared.Show
+
+                    data class AlphaId(val value: Int) {
+                        companion object {
+                            @Instance
+                            val show =
+                                object : Show<AlphaId> {
+                                    override fun label(): String = "alpha-id"
+                                }
+                        }
+                    }
+                    """.trimIndent(),
+                "beta/Instances.kt" to
+                    """
+                    package beta
+
+                    import alpha.AlphaId
+                    import one.wabbit.typeclass.Instance
+                    import shared.Box
+                    import shared.Show
+
+                    @Instance
+                    object BetaBoxAlphaIdShow : Show<Box<AlphaId>> {
+                        override fun label(): String = "beta-box"
+                    }
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import alpha.AlphaId
+                    import shared.Box
+                    import shared.which
+
+                    fun main() {
+                        println(which<Box<AlphaId>>())
+                    }
+                    """.trimIndent(),
+            )
+
+        assertCompilesAndRuns(
+            sources = sources,
+            expectedStdout = "box-alpha-id",
+            mainClass = "demo.MainKt",
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun treatsKSerializerAsBuiltinTypeclassWhenFlagEnabled() {
+        val source =
+            """
+            package demo
+
+            import kotlinx.serialization.KSerializer
+            import kotlinx.serialization.Serializable
+
+            @Serializable
+            data class User(val name: String)
+
+            context(serializer: KSerializer<T>)
+            fun <T> serialName(): String = serializer.descriptor.serialName
+
+            fun main() {
+                println(serialName<User>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "demo.User",
+            pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun reifiedHelpersCanSummonSyntheticKSerializers() {
+        val source =
+            """
+            package demo
+
+            import kotlinx.serialization.KSerializer
+            import kotlinx.serialization.Serializable
+            import one.wabbit.typeclass.summon
+
+            @Serializable
+            data class User(val name: String)
+
+            context(serializer: KSerializer<T>)
+            fun <T> contextualSerialName(): String = serializer.descriptor.serialName
+
+            inline fun <reified T> reifiedSerialName(): String =
+                summon<KSerializer<T>>().descriptor.serialName
+
+            fun main() {
+                println(contextualSerialName<User>())
+                println(reifiedSerialName<User>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                demo.User
+                demo.User
+                """.trimIndent(),
+            pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun rejectsSyntheticKSerializerEvidenceForNonSerializableTypes() {
+        val source =
+            """
+            package demo
+
+            import kotlinx.serialization.KSerializer
+
+            data class User(val name: String)
+
+            context(serializer: KSerializer<T>)
+            fun <T> serialName(): String = serializer.descriptor.serialName
+
+            fun main() {
+                println(serialName<User>()) // ERROR no generated serializer exists for User
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("serializer", "user"),
+            pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun materializesNestedGeneratedKSerializersFromTypeArguments() {
+        val source =
+            """
+            package demo
+
+            import kotlinx.serialization.KSerializer
+            import kotlinx.serialization.Serializable
+            import one.wabbit.typeclass.summon
+
+            @Serializable
+            data class Box<T>(val value: T)
+
+            inline fun <reified T> boxSerialName(): String =
+                summon<KSerializer<Box<T>>>().descriptor.serialName
+
+            fun main() {
+                println(boxSerialName<Int>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "demo.Box",
+            pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun treatsKClassAsBuiltinTypeclassWhenFlagEnabled() {
+        val source =
+            """
+            package demo
+
+            import kotlin.reflect.KClass
+
+            context(kClass: KClass<T>)
+            fun <T : Any> matches(expected: KClass<T>): Boolean = kClass == expected
+
+            fun main() {
+                println(matches<Int>(Int::class))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "true",
+            pluginOptions = listOf("builtinKClassTypeclass=enabled"),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun reifiedHelpersCanSummonSyntheticKClasses() {
+        val source =
+            """
+            package demo
+
+            import kotlin.reflect.KClass
+            import one.wabbit.typeclass.summon
+
+            context(kClass: KClass<T>)
+            fun <T : Any> contextualClass(): KClass<T> = kClass
+
+            inline fun <reified T : Any> reifiedClass(): KClass<T> = summon<KClass<T>>()
+
+            fun main() {
+                println(contextualClass<Int>() == Int::class)
+                println(reifiedClass<String>() == String::class)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                """.trimIndent(),
+            pluginOptions = listOf("builtinKClassTypeclass=enabled"),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun rejectsNonReifiedGenericKClassMaterializationWithoutExplicitEvidence() {
+        val source =
+            """
+            package demo
+
+            import kotlin.reflect.KClass
+            import one.wabbit.typeclass.summon
+
+            fun <T : Any> impossible(): KClass<T> =
+                summon<KClass<T>>() // ERROR generic T has no concrete KClass proof here
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("kclass", "concrete"),
+            pluginOptions = listOf("builtinKClassTypeclass=enabled"),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun materializesSameProofForIdenticalTypesAliasesAndReflexiveTypeParameters() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Same
+
+            typealias Age = Int
+
+            context(_: Same<A, B>)
+            fun <A, B> provenSame(): String = "same"
+
+            fun <A> reflexive(): String = provenSame<A, A>()
+
+            fun main() {
+                println(provenSame<Int, Int>())
+                println(provenSame<Int, Age>())
+                println(reflexive<String>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                same
+                same
+                same
+                """.trimIndent(),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun rejectsSameProofForDistinctTypes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Same
+
+            context(_: Same<A, B>)
+            fun <A, B> provenSame(): String = "same"
+
+            fun main() {
+                println(provenSame<Int, String>()) // ERROR Int and String are not the same type
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("same", "int", "string"),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun materializesNotSameProofForProvablyDistinctTypes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.NotSame
+
+            @JvmInline
+            value class UserId(val value: Int)
+
+            context(_: NotSame<A, B>)
+            fun <A, B> provenDifferent(): String = "different"
+
+            fun main() {
+                println(provenDifferent<Int, String>())
+                println(provenDifferent<UserId, Int>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                different
+                different
+                """.trimIndent(),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun rejectsNotSameProofForAliasesToTheSameType() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.NotSame
+
+            typealias Age = Int
+
+            context(_: NotSame<A, B>)
+            fun <A, B> provenDifferent(): String = "different"
+
+            fun main() {
+                println(provenDifferent<Int, Age>()) // ERROR Age is exactly Int
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("notsame", "int"),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun rejectsNotSameProofForUnconstrainedTypeParameters() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.NotSame
+
+            context(_: NotSame<A, B>)
+            fun <A, B> provenDifferent(): String = "different"
+
+            fun <A, B> impossible(): String =
+                provenDifferent<A, B>() // ERROR the compiler cannot prove that A and B differ
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("notsame", "prove"),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun isTypeclassInstanceRecognizesAnnotatedTypeclassesNullaryTypeclassesAndStarProjectedApplications() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.IsTypeclassInstance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A>
+
+            @Typeclass
+            interface FeatureFlag
+
+            @Typeclass
+            interface Foo<A>
+
+            context(_: IsTypeclassInstance<TC>)
+            fun <TC> proof(): String = "typeclass"
+
+            fun main() {
+                println(proof<Show<Int>>())
+                println(proof<FeatureFlag>())
+                println(proof<Foo<*>>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                typeclass
+                typeclass
+                typeclass
+                """.trimIndent(),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun isTypeclassInstanceRejectsOrdinaryAppliedTypes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.IsTypeclassInstance
+
+            context(_: IsTypeclassInstance<TC>)
+            fun <TC> proof(): String = "typeclass"
+
+            fun main() {
+                println(proof<List<Int>>()) // ERROR List<Int> is not a typeclass application
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("typeclass", "list"),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun isTypeclassInstanceRecognizesFlagBackedKSerializerTypeclasses() {
+        val source =
+            """
+            package demo
+
+            import kotlinx.serialization.KSerializer
+            import kotlinx.serialization.Serializable
+            import one.wabbit.typeclass.IsTypeclassInstance
+
+            @Serializable
+            data class User(val name: String)
+
+            context(_: IsTypeclassInstance<KSerializer<User>>)
+            fun serializerProof(): String = "serializer-typeclass"
+
+            fun main() {
+                println(serializerProof())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "serializer-typeclass",
+            pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun isTypeclassInstanceRecognizesFlagBackedKClassTypeclasses() {
+        val source =
+            """
+            package demo
+
+            import kotlin.reflect.KClass
+            import one.wabbit.typeclass.IsTypeclassInstance
+
+            context(_: IsTypeclassInstance<KClass<Int>>)
+            fun kclassProof(): String = "kclass-typeclass"
+
+            fun main() {
+                println(kclassProof())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "kclass-typeclass",
+            pluginOptions = listOf("builtinKClassTypeclass=enabled"),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun starProjectedContextsCanBeSatisfiedByConcreteInstances() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Foo<A> {
+                fun label(): String
+            }
+
+            @Instance
+            val wozzle: Foo<Int> =
+                object : Foo<Int> {
+                    override fun label(): String = "int"
+                }
+
+            context(foo: Foo<*>)
+            fun baz(): String = foo.label()
+
+            fun main() {
+                println(baz())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int",
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun starProjectedSummonsCanReuseConcreteInstances() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Foo<A> {
+                fun label(): String
+            }
+
+            @Instance
+            val wozzle: Foo<Int> =
+                object : Foo<Int> {
+                    override fun label(): String = "int"
+                }
+
+            context(_: Foo<*>)
+            fun baz(): String = summon<Foo<*>>().label()
+
+            fun main() {
+                println(baz())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int",
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun oneConcreteInstanceCanSatisfySpecificAndStarProjectedNeedsTogether() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Foo<A>
+
+            @Instance
+            val wozzle: Foo<Int> =
+                object : Foo<Int> {}
+
+            context(_: Foo<Int>, _: Foo<*>)
+            fun ok(): String = "ok"
+
+            fun main() {
+                println(ok())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "ok",
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun reportsAmbiguityForStarProjectedContextsWithMultipleConcreteCandidates() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Foo<A> {
+                fun label(): String
+            }
+
+            @Instance
+            val intFoo: Foo<Int> =
+                object : Foo<Int> {
+                    override fun label(): String = "int"
+                }
+
+            @Instance
+            val stringFoo: Foo<String> =
+                object : Foo<String> {
+                    override fun label(): String = "string"
+                }
+
+            context(foo: Foo<*>)
+            fun baz(): String = foo.label()
+
+            fun main() {
+                println(baz()) // ERROR both Foo<Int> and Foo<String> satisfy Foo<*>
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("ambiguous", "foo"),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: candidate utility proof")
+    @Test
+    fun sameTypeConstructorRecognizesMatchingOuterConstructors() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.SameTypeConstructor
+
+            context(_: SameTypeConstructor<A, B>)
+            fun <A, B> sameOuter(): String = "same-outer"
+
+            fun main() {
+                println(sameOuter<List<Int>, List<String>>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "same-outer",
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: candidate utility proof")
+    @Test
+    fun sameTypeConstructorRejectsDifferentOuterConstructors() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.SameTypeConstructor
+
+            context(_: SameTypeConstructor<A, B>)
+            fun <A, B> sameOuter(): String = "same-outer"
+
+            fun main() {
+                println(sameOuter<List<Int>, Set<Int>>()) // ERROR List and Set have different outer constructors
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("sametypeconstructor", "list", "set"),
+        )
+    }
+
+    // REVIEWED : won't add, too dangerous
+    @Ignore("NEW: requires future plugin features")
+    @Test
+    fun capturesLexicallyScopedLocalInstanceDeclarations() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                @Instance
+                val localShow: Show<Int> =
+                    object : Show<Int> {
+                        override fun show(value: Int): String = "local:${'$'}value"
+                    }
+
+                val renderLater = { render(1) }
+                println(renderLater())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "local:1",
+        )
+    }
+
+    // REVIEWED : desirable, could use `val foo by lazy { ... }`? Or not...
+    @Ignore("NEW: requires future plugin features")
+    @Test
+    fun supportsLazyRecursiveLocalInstances() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            data class Box(val next: Box?)
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                // WONT COMPILE, NEEDS NEW SYNTAX
+                @Instance(lazy = true)
+                val localBoxShow: Show<Box> =
+                    object : Show<Box> {
+                        override fun show(value: Box): String =
+                            if (value.next == null) "Box(end)" else "Box(" + localBoxShow.show(value.next) + ")"
+                    }
+
+                println(render(Box(Box(null))))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "Box(Box(end))",
+        )
+    }
+
+    // REVIEWED : need to understand the rationale
+    @Ignore("NEW: requires future plugin features")
+    @Test
+    fun supportsFunctionalDependencyStyleImprovement() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            // WONT COMPILE, NEEDS NEW SYNTAX
+            @FunctionalDependency("A -> B")
+            interface Convert<A, B>
+
+            @Instance
+            object IntToString : Convert<Int, String>
+
+            context(_: Convert<A, B>)
+            fun <A, B> onlyInput(value: A): String = "ok:${'$'}value"
+
+            fun main() {
+                println(onlyInput(1))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "ok:1",
+        )
+    }
+
+    // REVIEWED : won't add
+    @Ignore("NEW: requires future plugin features")
+    @Test
+    fun normalizesAssociatedTypesDuringInstanceSearch() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Typeclass
+            interface ElementType<C> {
+                // WONT COMPILE, NEEDS NEW SYNTAX
+                associatedtype Element
+            }
+
+            @Instance
+            object StringShow : Show<String> {
+                override fun label(): String = "string"
+            }
+
+            @Instance
+            object StringsHaveStringElements : ElementType<List<String>> {
+                // WONT COMPILE, NEEDS NEW SYNTAX
+                typealias Element = String
+            }
+
+            // WONT COMPILE, NEEDS NEW SYNTAX
+            context(_: ElementType<C>, _: Show<ElementType<C>.Element>)
+            fun <C> label(): String = "ok"
+
+            fun main() {
+                println(label<List<String>>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "ok",
+        )
+    }
+
+    // REVIEWED : won't add
+    @Ignore("NEW: requires future plugin features")
+    @Test
+    fun supportsQuantifiedConstraintLikeEvidence() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+
+            data class Box<A>(val value: A)
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            // WONT COMPILE, NEEDS NEW SYNTAX
+            context(forall<A> { Show<A> implies Show<Box<A>> })
+            fun lifted(): String = "lifted"
+
+            fun main() {
+                println(lifted())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "lifted",
+        )
+    }
+
+    // REVIEWED : to be added
+    @Ignore("NEW: requires future plugin features")
+    @Test
+    fun supportsDerivingViaWrapperInstances() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            // WONT COMPILE, NEEDS NEW SYNTAX
+            @DeriveVia(Int::class, Show::class)
+            @JvmInline
+            value class UserId(val value: Int)
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(UserId(1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int:1",
+        )
+    }
+
     private fun assertCompiles(source: String) {
         compileSource(source)
     }
@@ -4840,18 +6494,21 @@ class CompilerIntegrationTest {
     private fun assertDoesNotCompile(
         source: String,
         expectedMessages: List<String>,
+        pluginOptions: List<String> = emptyList(),
     ) {
         assertDoesNotCompile(
             sources = mapOf("Sample.kt" to source),
             expectedMessages = expectedMessages,
+            pluginOptions = pluginOptions,
         )
     }
 
     private fun assertDoesNotCompile(
         sources: Map<String, String>,
         expectedMessages: List<String>,
+        pluginOptions: List<String> = emptyList(),
     ) {
-        val result = compileSourceInternal(sources)
+        val result = compileSourceInternal(sources, pluginOptions)
         assertEquals(
             ExitCode.COMPILATION_ERROR,
             result.exitCode,
@@ -4867,8 +6524,23 @@ class CompilerIntegrationTest {
         source: String,
         expectedStdout: String,
         mainClass: String = "demo.SampleKt",
+        pluginOptions: List<String> = emptyList(),
     ) {
-        val artifacts = compileSource(source)
+        assertCompilesAndRuns(
+            sources = mapOf("Sample.kt" to source),
+            expectedStdout = expectedStdout,
+            mainClass = mainClass,
+            pluginOptions = pluginOptions,
+        )
+    }
+
+    private fun assertCompilesAndRuns(
+        sources: Map<String, String>,
+        expectedStdout: String,
+        mainClass: String,
+        pluginOptions: List<String> = emptyList(),
+    ) {
+        val artifacts = compileSource(sources, pluginOptions)
         val javaExecutable = Path.of(System.getProperty("java.home"), "bin", "java").toAbsolutePath().toString()
         val process =
             ProcessBuilder(
@@ -4885,8 +6557,11 @@ class CompilerIntegrationTest {
         assertEquals(expectedStdout.trim(), stdout.trim())
     }
 
-    private fun compileSource(source: String): CompilationArtifacts {
-        val result = compileSourceInternal(mapOf("Sample.kt" to source))
+    private fun compileSource(
+        sources: Map<String, String>,
+        pluginOptions: List<String> = emptyList(),
+    ): CompilationArtifacts {
+        val result = compileSourceInternal(sources, pluginOptions)
         assertEquals(
             ExitCode.OK,
             result.exitCode,
@@ -4895,11 +6570,24 @@ class CompilerIntegrationTest {
         return result.artifacts
     }
 
-    private fun compileSourceInternal(source: String): CompilationResult {
-        return compileSourceInternal(mapOf("Sample.kt" to source))
+    private fun compileSource(
+        source: String,
+        pluginOptions: List<String> = emptyList(),
+    ): CompilationArtifacts {
+        return compileSource(mapOf("Sample.kt" to source), pluginOptions)
     }
 
-    private fun compileSourceInternal(sources: Map<String, String>): CompilationResult {
+    private fun compileSourceInternal(
+        source: String,
+        pluginOptions: List<String> = emptyList(),
+    ): CompilationResult {
+        return compileSourceInternal(mapOf("Sample.kt" to source), pluginOptions)
+    }
+
+    private fun compileSourceInternal(
+        sources: Map<String, String>,
+        pluginOptions: List<String> = emptyList(),
+    ): CompilationResult {
         val workingDir = createTempDirectory(prefix = "typeclass-compile-")
         val outputDir = workingDir.resolve("out")
         outputDir.createDirectories()
@@ -4922,20 +6610,30 @@ class CompilerIntegrationTest {
         assertTrue(stdlibJar.toFile().isFile, "Kotlin stdlib jar is missing at $stdlibJar")
 
         val stdout = ByteArrayOutputStream()
+        val compilerArguments =
+            buildList {
+                add("-Xcontext-parameters")
+                add("-no-stdlib")
+                add("-no-reflect")
+                add("-Xplugin=${pluginJar.toAbsolutePath()}")
+                add("-classpath")
+                add(
+                    listOf(runtimeClasspathEntry, stdlibJar).joinToString(separator = java.io.File.pathSeparator) {
+                        it.toAbsolutePath().toString()
+                    },
+                )
+                pluginOptions.forEach { option ->
+                    add("-P")
+                    add("plugin:$TYPECLASS_PLUGIN_ID:$option")
+                }
+                add("-d")
+                add(outputDir.toAbsolutePath().toString())
+                addAll(sourceFiles.map { it.toAbsolutePath().toString() })
+            }
         val exitCode =
             K2JVMCompiler().exec(
                 PrintStream(stdout),
-                "-Xcontext-parameters",
-                "-no-stdlib",
-                "-no-reflect",
-                "-Xplugin=${pluginJar.toAbsolutePath()}",
-                "-classpath",
-                listOf(runtimeClasspathEntry, stdlibJar).joinToString(separator = java.io.File.pathSeparator) {
-                    it.toAbsolutePath().toString()
-                },
-                "-d",
-                outputDir.toAbsolutePath().toString(),
-                *sourceFiles.map { it.toAbsolutePath().toString() }.toTypedArray(),
+                *compilerArguments.toTypedArray(),
             )
 
         return CompilationResult(

@@ -94,13 +94,12 @@ private class TypeclassIrCallTransformer(
     private val pluginContext: IrPluginContext,
     private val ruleIndex: IrRuleIndex,
 ) : IrElementTransformerVoid() {
-    private var currentFunction: IrFunction? = null
+    private val functionStack = ArrayDeque<IrFunction>()
 
     override fun visitFunction(declaration: IrFunction): IrStatement {
-        val previous = currentFunction
-        currentFunction = declaration
+        functionStack.addLast(declaration)
         declaration.transformChildrenVoid(this)
-        currentFunction = previous
+        functionStack.removeLast()
         return declaration
     }
 
@@ -111,12 +110,13 @@ private class TypeclassIrCallTransformer(
             return rewritten
         }
 
-        val enclosingFunction = currentFunction
+        val enclosingFunction = functionStack.lastOrNull()
             ?: error("Typeclass call ${callee.callableId} is not enclosed by a function")
         return buildResolvedTypeclassCall(
             call = rewritten,
             original = callee,
             currentFunction = enclosingFunction,
+            enclosingFunctions = enclosingFunction.enclosingFunctions(),
         )
     }
 
@@ -124,14 +124,16 @@ private class TypeclassIrCallTransformer(
         call: IrCall,
         original: IrSimpleFunction,
         currentFunction: IrFunction,
+        enclosingFunctions: List<IrFunction>,
     ): IrExpression =
         DeclarationIrBuilder(pluginContext, currentFunction.symbol, call.startOffset, call.endOffset).run {
-            val localContexts = collectLocalContexts(currentFunction)
-            val visibleTypeParameters = visibleTypeParameters(currentFunction)
+            val visibleTypeParameters = visibleTypeParameters(enclosingFunctions)
+            val localContexts = collectLocalContexts(enclosingFunctions, visibleTypeParameters)
+            val normalizedCall = call.normalizedArgumentsForTypeclassRewrite(original)
             val typeArgumentsForOriginal =
                 inferOriginalTypeArguments(
                     original = original,
-                    call = call,
+                    normalizedCall = normalizedCall,
                     currentCallTypeArgumentsByName =
                         original.typeParameters.mapIndexedNotNull { index, typeParameter ->
                             call.getTypeArgument(index)?.let { irType ->
@@ -143,8 +145,9 @@ private class TypeclassIrCallTransformer(
                     pluginContext = pluginContext,
                 )
             val explicitArguments =
-                call.extractExplicitArguments(
+                extractExplicitArguments(
                     original = original,
+                    normalizedValueArguments = normalizedCall.valueArguments,
                     visibleTypeParameters = visibleTypeParameters,
                     typeArgumentsForOriginal = typeArgumentsForOriginal,
                 )
@@ -155,8 +158,8 @@ private class TypeclassIrCallTransformer(
                 visibleTypeParameters = visibleTypeParameters,
                 typeArgumentsForOriginal = typeArgumentsForOriginal,
                 fallbackCall = call,
-                dispatchReceiver = call.dispatchReceiver,
-                extensionReceiver = call.extensionReceiver,
+                dispatchReceiver = normalizedCall.dispatchReceiver,
+                extensionReceiver = normalizedCall.extensionReceiver,
                 explicitArguments = explicitArguments,
             )
         }
@@ -1260,6 +1263,12 @@ private data class LocalTypeclassContext(
     val providedType: TcType,
 )
 
+private data class NormalizedCallArguments(
+    val dispatchReceiver: IrExpression?,
+    val extensionReceiver: IrExpression?,
+    val valueArguments: List<IrExpression?>,
+)
+
 private sealed interface ExplicitArgument {
     data object Omitted : ExplicitArgument
 
@@ -1334,7 +1343,7 @@ private fun functionShape(
     val placeholderParameters =
         visibleTypeParametersForShape(function).associateBy(TcTypeParameter::id)
     val bySymbol =
-        visibleTypeParameterSymbols(function).zip(placeholderParameters.values).associate { (symbol, parameter) ->
+        visibleTypeParameterSymbols(listOf(function)).zip(placeholderParameters.values).associate { (symbol, parameter) ->
             symbol to parameter
         }
     val contextTypes =
@@ -1383,8 +1392,8 @@ private fun wrapperResolutionShape(
     )
 }
 
-private fun visibleTypeParameters(function: IrFunction): VisibleTypeParameters {
-    val symbols = visibleTypeParameterSymbols(function)
+private fun visibleTypeParameters(enclosingFunctions: List<IrFunction>): VisibleTypeParameters {
+    val symbols = visibleTypeParameterSymbols(enclosingFunctions)
     val parameters =
         symbols.map { symbol ->
             TcTypeParameter(
@@ -1399,14 +1408,18 @@ private fun visibleTypeParameters(function: IrFunction): VisibleTypeParameters {
 }
 
 private fun visibleTypeParametersForShape(function: IrFunction): List<TcTypeParameter> =
-    visibleTypeParameterSymbols(function).mapIndexed { index, _ ->
+    visibleTypeParameterSymbols(listOf(function)).mapIndexed { index, _ ->
         TcTypeParameter(id = "P$index", displayName = "P$index")
     }
 
-private fun visibleTypeParameterSymbols(function: IrFunction): List<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol> {
+private fun visibleTypeParameterSymbols(enclosingFunctions: List<IrFunction>): List<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol> {
     val result = mutableListOf<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol>()
-    collectParentTypeParameters(function.parent, result)
-    function.typeParameters.mapTo(result) { it.symbol }
+    enclosingFunctions.firstOrNull()?.let { outermostFunction ->
+        collectParentTypeParameters(outermostFunction.parent, result)
+    }
+    enclosingFunctions.forEach { function ->
+        function.typeParameters.mapTo(result) { it.symbol }
+    }
     return result
 }
 
@@ -1434,10 +1447,39 @@ private fun visibleTypeParameterId(symbol: org.jetbrains.kotlin.ir.symbols.IrTyp
         else -> "type:${symbol.owner.name}:${symbol.hashCode()}"
     }
 
+private fun IrFunction.enclosingFunctions(): List<IrFunction> {
+    val result = ArrayDeque<IrFunction>()
+    var current: org.jetbrains.kotlin.ir.declarations.IrDeclarationParent? = this
+    while (current is IrDeclaration) {
+        if (current is IrFunction) {
+            result.addFirst(current)
+        }
+        current = current.parent
+    }
+    return result.toList()
+}
+
+private fun typeParameterOwnerId(function: IrSimpleFunction): String {
+    val shape = wrapperResolutionShape(function, dropTypeclassContexts = false)
+    return buildString {
+        append(function.callableId)
+        append("#dispatch=")
+        append(shape.dispatchReceiver)
+        append("#ext=")
+        append(shape.extensionReceiverType ?: "-")
+        append("#ctx=")
+        append(shape.contextParameterTypes.joinToString(","))
+        append("#regular=")
+        append(shape.regularParameterTypes.joinToString(","))
+        append("#tp=")
+        append(shape.typeParameterCount)
+    }
+}
+
 private fun ruleTypeParameterId(
     function: IrSimpleFunction,
     typeParameter: IrTypeParameter,
-): String = "function:${function.callableId}:${typeParameter.name}"
+): String = "function:${typeParameterOwnerId(function)}:${typeParameter.name}"
 
 private fun typeParametersBySymbol(
     function: IrSimpleFunction,
@@ -1447,28 +1489,28 @@ private fun typeParametersBySymbol(
         typeParameter.symbol to parameter
     }
 
-private fun collectLocalContexts(function: IrFunction): List<LocalTypeclassContext> {
-    val visible = visibleTypeParameters(function)
+private fun collectLocalContexts(
+    enclosingFunctions: List<IrFunction>,
+    visible: VisibleTypeParameters,
+): List<LocalTypeclassContext> {
     val parameters =
         buildList {
-            var current: org.jetbrains.kotlin.ir.declarations.IrDeclarationParent? = function
-            while (current is IrFunction) {
-                current.extensionReceiverParameter
+            enclosingFunctions.asReversed().forEach { function ->
+                function.extensionReceiverParameter
                     ?.takeIf { parameter -> parameter.type.isTypeclassType() }
                     ?.let(::add)
-                current.contextParameters()
+                function.contextParameters()
                     .filter { parameter -> parameter.type.isTypeclassType() }
                     .forEach(::add)
-                current = current.parent
             }
         }
     return parameters.map { parameter ->
-            LocalTypeclassContext(
-                parameter = parameter,
-                providedType = irTypeToModel(parameter.type, visible.bySymbol)
-                    ?: error("Unsupported local context type ${parameter.type}"),
-            )
-        }
+        LocalTypeclassContext(
+            parameter = parameter,
+            providedType = irTypeToModel(parameter.type, visible.bySymbol)
+                ?: error("Unsupported local context type ${parameter.type}"),
+        )
+    }
 }
 
 private fun irTypeToModel(
@@ -1530,45 +1572,52 @@ private fun <T> Iterator<T>.nextOrNull(): T? = if (hasNext()) next() else null
 private fun IrCall.valueArguments(): List<IrExpression?> =
     (0 until valueArgumentsCount).map(::getValueArgument)
 
-private fun IrCall.extractExplicitArguments(
+private fun IrCall.normalizedArgumentsForTypeclassRewrite(original: IrSimpleFunction): NormalizedCallArguments {
+    val rawValueArguments = valueArguments()
+    if (origin == IrStatementOrigin.GET_ARRAY_ELEMENT && original.extensionReceiverParameter != null && rawValueArguments.isNotEmpty()) {
+        return NormalizedCallArguments(
+            dispatchReceiver = dispatchReceiver,
+            extensionReceiver = rawValueArguments.first(),
+            valueArguments =
+                buildList {
+                    add(extensionReceiver)
+                    addAll(rawValueArguments.drop(1))
+                },
+        )
+    }
+
+    return NormalizedCallArguments(
+        dispatchReceiver = dispatchReceiver,
+        extensionReceiver = extensionReceiver,
+        valueArguments = rawValueArguments,
+    )
+}
+
+private fun extractExplicitArguments(
     original: IrSimpleFunction,
+    normalizedValueArguments: List<IrExpression?>,
     visibleTypeParameters: VisibleTypeParameters,
     typeArgumentsForOriginal: List<IrType>,
 ): List<ExplicitArgument> {
     val typeArgumentMap = original.typeParameters.map(IrTypeParameter::symbol).zip(typeArgumentsForOriginal).toMap()
     val originalParameters = original.regularAndContextParameters()
-    val preservedContextSlots =
-        originalParameters.mapIndexedNotNull { index, parameter ->
-            if (parameter.kind != org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context) {
-                return@mapIndexedNotNull null
-            }
-            val substitutedType = parameter.type.substitute(typeArgumentMap)
-            val argument = getValueArgument(index) ?: return@mapIndexedNotNull null
-            index.takeIf { argument.type.satisfiesExpectedContextType(substitutedType, visibleTypeParameters) }
-        }.toSet()
-
     val currentToOriginal =
-        buildList {
-            originalParameters.forEachIndexed { index, parameter ->
-                val substitutedType = parameter.type.substitute(typeArgumentMap)
-                val droppedTypeclassContext =
-                    parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context &&
-                        substitutedType.isTypeclassType() &&
-                        index !in preservedContextSlots
-                if (!droppedTypeclassContext) {
-                    add(index)
-                }
-            }
-        }
+        mapCurrentArgumentsToOriginalParameters(
+            originalParameters = originalParameters,
+            currentArguments = normalizedValueArguments,
+            typeArgumentMap = typeArgumentMap,
+            visibleTypeParameters = visibleTypeParameters,
+        )
 
     val explicitByOriginalIndex = linkedMapOf<Int, ExplicitArgument>()
-    currentToOriginal.forEachIndexed { currentIndex, originalIndex ->
-        val argument = getValueArgument(currentIndex)
+    currentToOriginal.forEach { (currentIndex, originalIndex) ->
+        val argument = normalizedValueArguments.getOrNull(currentIndex)
         val parameter = originalParameters[originalIndex]
         explicitByOriginalIndex[originalIndex] =
             when {
                 argument != null -> ExplicitArgument.PassThrough(argument)
                 parameter.defaultValue != null -> ExplicitArgument.Omitted
+                parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context -> ExplicitArgument.Omitted
                 else -> error("Missing explicit argument for ${original.callableId}")
             }
     }
@@ -1580,6 +1629,7 @@ private fun IrCall.extractExplicitArguments(
         }
         explicitByOriginalIndex[index] ?: when {
             parameter.defaultValue != null -> ExplicitArgument.Omitted
+            parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context -> ExplicitArgument.Omitted
             else -> error("Missing explicit argument for ${original.callableId}")
         }
     }
@@ -1656,7 +1706,7 @@ private fun IrType.collectReferencedTypeParameters(
 
 private fun inferOriginalTypeArguments(
     original: IrSimpleFunction,
-    call: IrCall,
+    normalizedCall: NormalizedCallArguments,
     currentCallTypeArgumentsByName: Map<String, IrType>,
     visibleTypeParameters: VisibleTypeParameters,
     localContexts: List<LocalTypeclassContext>,
@@ -1683,24 +1733,28 @@ private fun inferOriginalTypeArguments(
     }
 
     original.dispatchReceiverParameter?.type?.let { expectedDispatchType ->
-        call.dispatchReceiver?.type?.let { actualDispatchType ->
+        normalizedCall.dispatchReceiver?.type?.let { actualDispatchType ->
             mergeBindingsFromIrTypes(expectedDispatchType, actualDispatchType)
         }
     }
 
     original.extensionReceiverParameter?.type?.let { expectedExtensionType ->
-        call.extensionReceiver?.type?.let { actualExtensionType ->
+        normalizedCall.extensionReceiver?.type?.let { actualExtensionType ->
             mergeBindingsFromIrTypes(expectedExtensionType, actualExtensionType)
         }
     }
 
-    var currentValueArgumentIndex = 0
-    original.regularAndContextParameters().forEach { parameter ->
-        if (parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context && parameter.type.isTypeclassType()) {
-            return@forEach
-        }
-        val actualArgumentType = call.getValueArgument(currentValueArgumentIndex)?.type
-        currentValueArgumentIndex += 1
+    val originalParameters = original.regularAndContextParameters()
+    val currentToOriginal =
+        mapCurrentArgumentsToOriginalParameters(
+            originalParameters = originalParameters,
+            currentArguments = normalizedCall.valueArguments,
+            typeArgumentMap = null,
+            visibleTypeParameters = null,
+        )
+    currentToOriginal.forEach { (currentValueArgumentIndex, originalParameterIndex) ->
+        val parameter = originalParameters[originalParameterIndex]
+        val actualArgumentType = normalizedCall.valueArguments.getOrNull(currentValueArgumentIndex)?.type
         if (actualArgumentType != null) {
             mergeBindingsFromIrTypes(parameter.type, actualArgumentType)
         }
@@ -1763,3 +1817,44 @@ private fun IrFunction.renderIdentity(): String =
     (this as? IrSimpleFunction)?.let { function ->
         runCatching { function.callableId.toString() }.getOrElse { function.name.asString() }
     } ?: name.asString()
+
+private fun mapCurrentArgumentsToOriginalParameters(
+    originalParameters: List<IrValueParameter>,
+    currentArguments: List<IrExpression?>,
+    typeArgumentMap: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, IrType>?,
+    visibleTypeParameters: VisibleTypeParameters?,
+): List<Pair<Int, Int>> {
+    val mapping = mutableListOf<Pair<Int, Int>>()
+    var currentIndex = 0
+    originalParameters.forEachIndexed { originalIndex, parameter ->
+        if (currentIndex >= currentArguments.size) {
+            return@forEachIndexed
+        }
+        if (parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context && parameter.type.isTypeclassType()) {
+            val remainingCurrentArguments = currentArguments.size - currentIndex
+            val remainingRequiredArguments =
+                originalParameters.drop(originalIndex).count { remainingParameter ->
+                    remainingParameter.kind != org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context ||
+                        !remainingParameter.type.isTypeclassType()
+                }
+            val currentArgument = currentArguments[currentIndex]
+            val substitutedType = typeArgumentMap?.let(parameter.type::substitute) ?: parameter.type
+            val preservedTypeclassContext =
+                remainingCurrentArguments > remainingRequiredArguments &&
+                    currentArgument != null &&
+                    currentArgument.type.isTypeclassType() &&
+                    (
+                        visibleTypeParameters == null ||
+                            currentArgument.type.satisfiesExpectedContextType(substitutedType, visibleTypeParameters)
+                    )
+            if (preservedTypeclassContext) {
+                mapping += currentIndex to originalIndex
+                currentIndex += 1
+            }
+            return@forEachIndexed
+        }
+        mapping += currentIndex to originalIndex
+        currentIndex += 1
+    }
+    return mapping
+}
