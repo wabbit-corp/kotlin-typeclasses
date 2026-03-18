@@ -1,5 +1,6 @@
 package one.wabbit.typeclass.plugin.integration
 
+import kotlin.test.Ignore
 import kotlin.test.Test
 
 class UtilityProofTest : IntegrationTestSupport() {
@@ -595,6 +596,514 @@ class UtilityProofTest : IntegrationTestSupport() {
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "same-outer-witness",
+        )
+    }
+
+    @Test fun sameProofSupportsCoercionFlipCompositionAndSubtypeConversion() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Same
+            import one.wabbit.typeclass.summon
+
+            typealias Age = Int
+
+            fun main() {
+                val eq = summon<Same<Int, Age>>()
+                val age: Age = eq.coerce(41)
+                val back: Int = eq.flip().coerce(age)
+                val idInt: Same<Int, Int> = eq.andThen(eq.flip())
+                val idAge: Same<Age, Age> = eq.compose(eq.flip())
+                val widened: Age = eq.toSubtype().coerce(42)
+
+                println(age)
+                println(back)
+                println(idInt.coerce(7))
+                println(idAge.coerce(8))
+                println(widened)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                41
+                41
+                7
+                8
+                42
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun subtypeProofSupportsCoercionAndComposition() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Subtype
+            import one.wabbit.typeclass.summon
+
+            open class Animal
+            open class Dog : Animal()
+            class Puppy : Dog()
+
+            fun main() {
+                val puppyDog = summon<Subtype<Puppy, Dog>>()
+                val dogAnimal = summon<Subtype<Dog, Animal>>()
+                val chained: Subtype<Puppy, Animal> = puppyDog.andThen(dogAnimal)
+                val composed: Subtype<Puppy, Animal> = dogAnimal.compose(puppyDog)
+
+                println(chained.coerce(Puppy()) is Animal)
+                println(composed.coerce(Puppy()) is Animal)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun notSameProofSupportsFlipAndContradictionSurface() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.NotSame
+            import one.wabbit.typeclass.Same
+            import one.wabbit.typeclass.summon
+
+            fun impossible(neq: NotSame<Int, String>, eq: Same<Int, String>): Nothing =
+                neq.contradicts(eq)
+
+            fun main() {
+                val neq = summon<NotSame<Int, String>>()
+                val flipped: NotSame<String, Int> = neq.flip()
+                println(flipped != null)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "true",
+        )
+    }
+
+    @Test fun bracketTurnsBidirectionalSubtypeIntoEquality() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Same
+            import one.wabbit.typeclass.Subtype
+            import one.wabbit.typeclass.bracket
+            import one.wabbit.typeclass.summon
+
+            typealias Age = Int
+
+            fun main() {
+                val eq: Same<Int, Age> = bracket(
+                    summon<Subtype<Int, Age>>(),
+                    summon<Subtype<Age, Int>>(),
+                )
+                println(eq.coerce(5))
+                println(eq.flip().coerce(6))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                5
+                6
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun materializesStrictSubtypeProofForProperSubtypes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.StrictSubtype
+            import one.wabbit.typeclass.summon
+
+            open class Animal
+            open class Dog : Animal()
+            class Puppy : Dog()
+
+            fun main() {
+                println(summon<StrictSubtype<Dog, Animal>>() != null)
+                println(summon<StrictSubtype<Puppy, Dog>>() != null)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun rejectsStrictSubtypeProofForEqualAliasAndUnrelatedTypes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.StrictSubtype
+
+            typealias Age = Int
+
+            context(_: StrictSubtype<A, B>)
+            fun <A, B> provenStrictSubtype(): String = "strict-subtype"
+
+            fun main() {
+                println(provenStrictSubtype<Int, Age>()) // ERROR aliases are equal, not a proper subtype
+                println(provenStrictSubtype<String, Int>()) // ERROR unrelated types
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("strict", "subtype", "int", "string"),
+        )
+    }
+
+    @Test fun strictSubtypeSupportsCoercionAndDecompositionToSubtypeAndNotSame() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.NotSame
+            import one.wabbit.typeclass.Same
+            import one.wabbit.typeclass.StrictSubtype
+            import one.wabbit.typeclass.Subtype
+            import one.wabbit.typeclass.summon
+
+            open class Animal
+            class Dog : Animal()
+
+            fun impossible(strict: StrictSubtype<Dog, Animal>, eq: Same<Dog, Animal>): Nothing =
+                strict.toNotSame().contradicts(eq)
+
+            fun main() {
+                val strict = summon<StrictSubtype<Dog, Animal>>()
+                val widened: Animal = strict.coerce(Dog())
+                val weak: Subtype<Dog, Animal> = strict.toSubtype()
+                val apart: NotSame<Dog, Animal> = strict.toNotSame()
+
+                println(widened is Animal)
+                println(weak.coerce(Dog()) is Animal)
+                println(apart != null)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                true
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun strictSubtypeComposesWithStrictSubtypeSubtypeAndSame() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Same
+            import one.wabbit.typeclass.StrictSubtype
+            import one.wabbit.typeclass.Subtype
+            import one.wabbit.typeclass.summon
+
+            open class Animal
+            open class Mammal : Animal()
+            open class Dog : Mammal()
+            class Puppy : Dog()
+
+            typealias Hound = Dog
+            typealias Creature = Animal
+
+            fun main() {
+                val puppyDog = summon<StrictSubtype<Puppy, Dog>>()
+                val dogMammal = summon<StrictSubtype<Dog, Mammal>>()
+                val mammalCreature = summon<Subtype<Mammal, Creature>>()
+                val houndDog = summon<Same<Hound, Dog>>()
+                val animalCreature = summon<Same<Animal, Creature>>()
+
+                val puppyMammal: StrictSubtype<Puppy, Mammal> = puppyDog.andThen(dogMammal)
+                val puppyCreature: StrictSubtype<Puppy, Creature> = puppyMammal.andThen(mammalCreature)
+                val houndMammal: StrictSubtype<Hound, Mammal> = dogMammal.compose(houndDog)
+                val dogCreature: StrictSubtype<Dog, Creature> =
+                    summon<StrictSubtype<Dog, Animal>>().andThen(animalCreature)
+
+                println(puppyMammal.coerce(Puppy()) is Mammal)
+                println(puppyCreature.coerce(Puppy()) is Creature)
+                println(houndMammal.coerce(Dog()) is Mammal)
+                println(dogCreature.coerce(Dog()) is Creature)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                true
+                true
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun strictSubtypeProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.StrictSubtype
+            import one.wabbit.typeclass.Typeclass
+
+            open class Animal
+            class Dog : Animal()
+
+            @Typeclass
+            interface ProperUpcastWitness<A, B> {
+                fun verdict(): String
+            }
+
+            @Instance
+            context(_: StrictSubtype<A, B>)
+            fun <A, B> strictSubtypeWitness(): ProperUpcastWitness<A, B> =
+                object : ProperUpcastWitness<A, B> {
+                    override fun verdict(): String = "strict-subtype-witness"
+                }
+
+            context(witness: ProperUpcastWitness<A, B>)
+            fun <A, B> render(): String = witness.verdict()
+
+            fun main() {
+                println(render<Dog, Animal>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "strict-subtype-witness",
+        )
+    }
+
+    @Ignore("PHASE13E")
+    @Test fun materializesNullableAndNotNullableProofsForProvableCases() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.NotNullable
+            import one.wabbit.typeclass.Nullable
+            import one.wabbit.typeclass.summon
+
+            typealias MaybeName = String?
+
+            fun main() {
+                println(summon<Nullable<String?>>() != null)
+                println(summon<Nullable<MaybeName>>() != null)
+                println(summon<NotNullable<String>>() != null)
+                println(summon<NotNullable<List<String?>>>() != null)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                true
+                true
+                """.trimIndent(),
+        )
+    }
+
+    @Ignore("PHASE13E")
+    @Test fun rejectsNullableAndNotNullableProofsWhenNullabilityIsUnknownOrWrong() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.NotNullable
+            import one.wabbit.typeclass.Nullable
+
+            context(_: Nullable<T>)
+            fun <T> needsNullable(): String = "nullable"
+
+            context(_: NotNullable<T>)
+            fun <T> needsNotNullable(): String = "not-nullable"
+
+            fun <T> impossibleNullable(): String =
+                needsNullable<T>() // ERROR the compiler cannot prove that T admits null
+
+            fun <T> impossibleNotNullable(): String =
+                needsNotNullable<T>() // ERROR the compiler cannot prove that T excludes null
+
+            fun main() {
+                println(needsNullable<String>()) // ERROR String is not nullable
+                println(needsNotNullable<String?>()) // ERROR String? is nullable
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("nullable", "notnullable", "string"),
+        )
+    }
+
+    @Ignore("PHASE13E")
+    @Test fun nullableProofSupportsNullValueContradictionAndTransportAcrossSameAndSubtype() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.NotNullable
+            import one.wabbit.typeclass.Nullable
+            import one.wabbit.typeclass.Same
+            import one.wabbit.typeclass.Subtype
+            import one.wabbit.typeclass.summon
+
+            open class Box
+            class FancyBox : Box()
+
+            fun impossible(nullable: Nullable<String?>, notNullable: NotNullable<String?>): Nothing =
+                nullable.contradicts(notNullable)
+
+            fun main() {
+                val nullableString = summon<Nullable<String?>>()
+                val sameAlias = summon<Same<String?, String?>>()
+                val widened = summon<Subtype<String?, Any?>>()
+                val aliasNullable: Nullable<String?> = nullableString.andThen(sameAlias)
+                val anyNullable: Nullable<Any?> = nullableString.andThen(widened)
+                val nullValue: String? = nullableString.nullValue()
+
+                println(aliasNullable != null)
+                println(anyNullable != null)
+                println(nullValue == null)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                true
+                """.trimIndent(),
+        )
+    }
+
+    @Ignore("PHASE13E")
+    @Test fun notNullableProofSupportsContradictionAndTransportAcrossSameAndSubtype() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.NotNullable
+            import one.wabbit.typeclass.Nullable
+            import one.wabbit.typeclass.Same
+            import one.wabbit.typeclass.Subtype
+            import one.wabbit.typeclass.summon
+
+            open class Animal
+            class Dog : Animal()
+            typealias Hound = Dog
+
+            fun impossible(notNullable: NotNullable<String>, nullable: Nullable<String>): Nothing =
+                notNullable.contradicts(nullable)
+
+            fun main() {
+                val dogNotNull = summon<NotNullable<Dog>>()
+                val houndDog = summon<Same<Hound, Dog>>()
+                val dogAnimal = summon<Subtype<Dog, Animal>>()
+                val houndNotNull: NotNullable<Hound> = dogNotNull.compose(houndDog)
+                val dogStillNotNull: NotNullable<Dog> =
+                    summon<NotNullable<Animal>>().compose(dogAnimal)
+
+                println(houndNotNull != null)
+                println(dogStillNotNull != null)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                """.trimIndent(),
+        )
+    }
+
+    @Ignore("PHASE13E")
+    @Test fun nullableAndNotNullableProofsCanActAsPrerequisitesForOrdinaryRuleSearch() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.NotNullable
+            import one.wabbit.typeclass.Nullable
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface NullabilityWitness<A> {
+                fun verdict(): String
+            }
+
+            @Instance
+            context(_: Nullable<A>)
+            fun <A> nullableWitness(): NullabilityWitness<A> =
+                object : NullabilityWitness<A> {
+                    override fun verdict(): String = "nullable"
+                }
+
+            @Instance
+            context(_: NotNullable<A>)
+            fun <A> notNullableWitness(): NullabilityWitness<A> =
+                object : NullabilityWitness<A> {
+                    override fun verdict(): String = "not-nullable"
+                }
+
+            context(witness: NullabilityWitness<A>)
+            fun <A> render(): String = witness.verdict()
+
+            fun main() {
+                println(render<String?>())
+                println(render<String>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                nullable
+                not-nullable
+                """.trimIndent(),
         )
     }
 }

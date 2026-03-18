@@ -1,5 +1,7 @@
 # Learnings
 
+- Builtin rules that are defined in terms of other builtins still need their own IR validation path if prerequisite success is only approximated during planning. `StrictSubtype` exposed this because planner success for builtin `NotSame` does not imply the later IR check will succeed.
+- The clean runtime shape for these proof builtins is still zero-state singletons. The interesting API lives on the proof interfaces (`coerce`, `flip`, `compose`, `andThen`, `toSubtype`, `toNotSame`, `bracket`), while the compiler continues to materialize a single shared witness object.
 - Interop harnesses need a first-class way to express compiler plugin ids and repeated `-P` options, not just extra jars. Power Assert is a good example: it has no meaningful runtime dependency for these tests, but it does require repeated `function=<fqName>` plugin options.
 - `KnownType<T>` materialization does not require `kotlin-reflect`, but `KType.toString()` is less stable without it. Tests that care about proof availability should avoid asserting an exact Kotlin-reflect string rendering unless the harness explicitly adds `kotlin-reflect` at runtime.
 - Interop test harnesses should declare required third-party compiler ecosystems explicitly. A `requiredPlugins = listOf(...)` model is more durable than sniffing source text for annotations or imports, and it scales to plugin-specific jars, flags, and future options.

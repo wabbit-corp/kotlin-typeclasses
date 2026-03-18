@@ -464,6 +464,27 @@ private class TypeclassIrCallTransformer(
         return buildBuiltinProofSingletonExpression(expressionType, SUBTYPE_PROOF_CLASS_ID)
     }
 
+    private fun IrStatementsBuilder<*>.buildBuiltinStrictSubtypeExpression(
+        plan: ResolutionPlan.ApplyRule,
+        visibleTypeParameters: VisibleTypeParameters,
+    ): IrExpression {
+        val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
+        val subModel = plan.appliedTypeArguments.getOrNull(0)
+            ?: return invalidBuiltinProofExpression(expressionType, "StrictSubtype proof requires two type arguments.")
+        val superModel = plan.appliedTypeArguments.getOrNull(1)
+            ?: return invalidBuiltinProofExpression(expressionType, "StrictSubtype proof requires two type arguments.")
+        val subType = modelToIrType(subModel, visibleTypeParameters, pluginContext)
+        val superType = modelToIrType(superModel, visibleTypeParameters, pluginContext)
+        if (!canProveSubtype(subType, superType, pluginContext) || !canProveNotSame(subModel, superModel)) {
+            return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message =
+                    "StrictSubtype proof could not prove ${subModel.render()} is a proper subtype of ${superModel.render()}.",
+            )
+        }
+        return buildBuiltinProofSingletonExpression(expressionType, STRICT_SUBTYPE_PROOF_CLASS_ID)
+    }
+
     private fun IrStatementsBuilder<*>.buildBuiltinIsTypeclassInstanceExpression(
         plan: ResolutionPlan.ApplyRule,
         visibleTypeParameters: VisibleTypeParameters,
@@ -662,6 +683,12 @@ private class TypeclassIrCallTransformer(
 
                     RuleReference.BuiltinSubtype ->
                         buildBuiltinSubtypeExpression(
+                            plan = plan,
+                            visibleTypeParameters = visibleTypeParameters,
+                        )
+
+                    RuleReference.BuiltinStrictSubtype ->
+                        buildBuiltinStrictSubtypeExpression(
                             plan = plan,
                             visibleTypeParameters = visibleTypeParameters,
                         )
@@ -1334,6 +1361,13 @@ private class IrModuleScanner(
             )
             add(
                 ResolvedRule(
+                    rule = builtinStrictSubtypeRule(),
+                    reference = RuleReference.BuiltinStrictSubtype,
+                    associatedOwner = null,
+                ),
+            )
+            add(
+                ResolvedRule(
                     rule = builtinIsTypeclassInstanceRule(),
                     reference = RuleReference.BuiltinIsTypeclassInstance,
                     associatedOwner = null,
@@ -1822,6 +1856,33 @@ private fun builtinSubtypeRule(): InstanceRule {
     )
 }
 
+private fun builtinStrictSubtypeRule(): InstanceRule {
+    val sub = TcTypeParameter(id = "builtin:strict-subtype:Sub", displayName = "Sub")
+    val sup = TcTypeParameter(id = "builtin:strict-subtype:Super", displayName = "Super")
+    val subType = TcType.Variable(sub.id, sub.displayName)
+    val superType = TcType.Variable(sup.id, sup.displayName)
+    return InstanceRule(
+        id = "builtin:strict-subtype",
+        typeParameters = listOf(sub, sup),
+        providedType =
+            TcType.Constructor(
+                classifierId = STRICT_SUBTYPE_CLASS_ID.asString(),
+                arguments = listOf(subType, superType),
+            ),
+        prerequisiteTypes =
+            listOf(
+                TcType.Constructor(
+                    classifierId = SUBTYPE_CLASS_ID.asString(),
+                    arguments = listOf(subType, superType),
+                ),
+                TcType.Constructor(
+                    classifierId = NOT_SAME_CLASS_ID.asString(),
+                    arguments = listOf(subType, superType),
+                ),
+            ),
+    )
+}
+
 private fun builtinIsTypeclassInstanceRule(): InstanceRule {
     val parameter = TcTypeParameter(id = "builtin:is-typeclass-instance:TC", displayName = "TC")
     return InstanceRule(
@@ -1996,6 +2057,8 @@ private sealed interface RuleReference {
     data object BuiltinNotSame : RuleReference
 
     data object BuiltinSubtype : RuleReference
+
+    data object BuiltinStrictSubtype : RuleReference
 
     data object BuiltinIsTypeclassInstance : RuleReference
 

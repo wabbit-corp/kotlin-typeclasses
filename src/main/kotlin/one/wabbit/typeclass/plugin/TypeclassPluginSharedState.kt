@@ -378,6 +378,7 @@ private fun TypeclassConfiguration.builtinRules(): List<InstanceRule> =
         add(builtinSameRule())
         add(builtinNotSameRule())
         add(builtinSubtypeRule())
+        add(builtinStrictSubtypeRule())
         add(builtinIsTypeclassInstanceRule())
         add(builtinKnownTypeRule())
         add(builtinSameTypeConstructorRule())
@@ -456,6 +457,33 @@ private fun builtinSubtypeRule(): InstanceRule {
                     ),
             ),
         prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinStrictSubtypeRule(): InstanceRule {
+    val sub = TcTypeParameter(id = "builtin:strict-subtype:Sub", displayName = "Sub")
+    val sup = TcTypeParameter(id = "builtin:strict-subtype:Super", displayName = "Super")
+    val subType = TcType.Variable(sub.id, sub.displayName)
+    val superType = TcType.Variable(sup.id, sup.displayName)
+    return InstanceRule(
+        id = "builtin:strict-subtype",
+        typeParameters = listOf(sub, sup),
+        providedType =
+            TcType.Constructor(
+                classifierId = STRICT_SUBTYPE_CLASS_ID.asString(),
+                arguments = listOf(subType, superType),
+            ),
+        prerequisiteTypes =
+            listOf(
+                TcType.Constructor(
+                    classifierId = SUBTYPE_CLASS_ID.asString(),
+                    arguments = listOf(subType, superType),
+                ),
+                TcType.Constructor(
+                    classifierId = NOT_SAME_CLASS_ID.asString(),
+                    arguments = listOf(subType, superType),
+                ),
+            ),
     )
 }
 
