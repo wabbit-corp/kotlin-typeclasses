@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Enable the PHASE14 Power Assert interop coverage and extend the integration harness so support plugins can declare compiler plugin ids plus repeated `-P plugin:<id>:...` options instead of smuggling raw option strings through ad hoc arguments.
 - Enable the PHASE13B utility-proof regressions so builtin proofs can act as prerequisites for ordinary rule search, and tighten the builtin `KSerializer` gate to reject star-projected serializer goals before runtime.
 - Enable the PHASE13 Compose interop suite and replace source-sniffed support detection in the integration harness with explicit `requiredPlugins` declarations that can contribute runtime jars, compiler plugin jars, compiler arguments, and minimum JVM targets.
 - Add Gradle-cache fallback lookup for harness support artifacts so interop tests can resolve third-party compiler plugins and runtimes without assuming they are already on the test JVM classpath.

@@ -357,6 +357,12 @@ abstract class IntegrationTestSupport {
             plugin.compilerPluginJarMarkers.forEach { marker ->
                 compilerPluginJars.putIfAbsent(marker, locateSupportJar(containing = marker))
             }
+            if (plugin.compilerPluginId != null) {
+                plugin.compilerPluginOptions.forEach { option ->
+                    compilerArguments += "-P"
+                    compilerArguments += "plugin:${plugin.compilerPluginId}:$option"
+                }
+            }
             compilerArguments += plugin.compilerArguments
         }
         return ResolvedHarnessSupport(
@@ -416,6 +422,10 @@ sealed interface CompilerHarnessPlugin {
     val runtimeClasspathJarMarkers: List<String>
     val compilerPluginJarMarkers: List<String>
         get() = emptyList()
+    val compilerPluginId: String?
+        get() = null
+    val compilerPluginOptions: List<String>
+        get() = emptyList()
     val compilerArguments: List<String>
         get() = emptyList()
     val minimumJvmTarget: String
@@ -444,9 +454,22 @@ sealed interface CompilerHarnessPlugin {
         override val minimumJvmTarget: String = "11"
     }
 
+    data class PowerAssert(
+        val functions: List<String> = listOf("kotlin.assert"),
+    ) : CompilerHarnessPlugin {
+        override val runtimeClasspathJarMarkers: List<String> = emptyList()
+        override val compilerPluginJarMarkers: List<String> =
+            listOf("kotlin-power-assert-compiler-plugin-embeddable")
+        override val compilerPluginId: String = "org.jetbrains.kotlin.powerassert"
+        override val compilerPluginOptions: List<String> =
+            functions.map { functionFqName -> "function=$functionFqName" }
+    }
+
     data class External(
         override val runtimeClasspathJarMarkers: List<String> = emptyList(),
         override val compilerPluginJarMarkers: List<String> = emptyList(),
+        override val compilerPluginId: String? = null,
+        override val compilerPluginOptions: List<String> = emptyList(),
         override val compilerArguments: List<String> = emptyList(),
         override val minimumJvmTarget: String = "1.8",
     ) : CompilerHarnessPlugin
