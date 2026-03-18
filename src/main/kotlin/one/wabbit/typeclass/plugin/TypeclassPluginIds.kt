@@ -38,6 +38,7 @@ internal const val KNOWN_TYPE_FACTORY_FQ_NAME: String = "one.wabbit.typeclass.kn
 internal const val TYPE_ID_FQ_NAME: String = "one.wabbit.typeclass.TypeId"
 internal const val TYPE_ID_FACTORY_FQ_NAME: String = "one.wabbit.typeclass.typeId"
 internal const val KCLASS_FQ_NAME: String = "kotlin.reflect.KClass"
+internal const val KTYPE_FQ_NAME: String = "kotlin.reflect.KType"
 internal const val KSERIALIZER_FQ_NAME: String = "kotlinx.serialization.KSerializer"
 internal const val SERIALIZABLE_ANNOTATION_FQ_NAME: String = "kotlinx.serialization.Serializable"
 
@@ -71,7 +72,9 @@ internal val SAME_TYPE_CONSTRUCTOR_CLASS_ID: ClassId = ClassId.topLevel(FqName(S
 internal val SAME_TYPE_CONSTRUCTOR_PROOF_CLASS_ID: ClassId = ClassId.topLevel(FqName(SAME_TYPE_CONSTRUCTOR_PROOF_FQ_NAME))
 internal val KNOWN_TYPE_CLASS_ID: ClassId = ClassId.topLevel(FqName(KNOWN_TYPE_FQ_NAME))
 internal val TYPE_ID_CLASS_ID: ClassId = ClassId.topLevel(FqName(TYPE_ID_FQ_NAME))
+internal val STRING_CLASS_ID: ClassId = ClassId.topLevel(FqName("kotlin.String"))
 internal val KCLASS_CLASS_ID: ClassId = ClassId.topLevel(FqName(KCLASS_FQ_NAME))
+internal val KTYPE_CLASS_ID: ClassId = ClassId.topLevel(FqName(KTYPE_FQ_NAME))
 internal val KSERIALIZER_CLASS_ID: ClassId = ClassId.topLevel(FqName(KSERIALIZER_FQ_NAME))
 internal val SERIALIZABLE_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(FqName(SERIALIZABLE_ANNOTATION_FQ_NAME))
 internal val KNOWN_TYPE_FACTORY_CALLABLE_ID: CallableId =

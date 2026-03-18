@@ -1,9 +1,21 @@
 package one.wabbit.typeclass.plugin.model
 
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.types.Variance
 
 internal sealed interface TcType {
     data object StarProjection : TcType
+
+    data class Projected(
+        val variance: Variance,
+        val type: TcType,
+    ) : TcType {
+        init {
+            require(variance != Variance.INVARIANT) {
+                "Projected TcType must use IN or OUT variance."
+            }
+        }
+    }
 
     data class Variable(
         val id: String,
@@ -57,6 +69,7 @@ internal class AlphaRenamer {
     fun rename(type: TcType): TcType =
         when (type) {
             TcType.StarProjection -> TcType.StarProjection
+            is TcType.Projected -> TcType.Projected(type.variance, rename(type.type))
             is TcType.Constructor -> TcType.Constructor(type.classifierId, type.arguments.map(::rename), type.isNullable)
             is TcType.Variable -> TcType.Variable(nameFor(type.id), nameFor(type.id), type.isNullable)
         }
@@ -68,6 +81,7 @@ internal class AlphaRenamer {
 internal fun TcType.references(id: String): Boolean =
     when (this) {
         TcType.StarProjection -> false
+        is TcType.Projected -> type.references(id)
         is TcType.Constructor -> arguments.any { it.references(id) }
         is TcType.Variable -> this.id == id
     }
@@ -75,6 +89,7 @@ internal fun TcType.references(id: String): Boolean =
 internal fun TcType.containsStarProjection(): Boolean =
     when (this) {
         TcType.StarProjection -> true
+        is TcType.Projected -> type.containsStarProjection()
         is TcType.Constructor -> arguments.any(TcType::containsStarProjection)
         is TcType.Variable -> false
     }
@@ -82,6 +97,18 @@ internal fun TcType.containsStarProjection(): Boolean =
 internal fun TcType.render(): String =
     when (this) {
         TcType.StarProjection -> "*"
+        is TcType.Projected ->
+            buildString {
+                append(
+                    when (variance) {
+                        Variance.IN_VARIANCE -> "in "
+                        Variance.OUT_VARIANCE -> "out "
+                        Variance.INVARIANT -> ""
+                    },
+                )
+                append(type.render())
+            }
+
         is TcType.Constructor ->
             buildString {
                 if (arguments.isEmpty()) {
@@ -108,6 +135,7 @@ internal fun TcType.normalizedKey(): String = AlphaRenamer().rename(this).render
 internal fun TcType.isProvablyNullable(): Boolean =
     when (this) {
         TcType.StarProjection -> false
+        is TcType.Projected -> false
         is TcType.Constructor -> isNullable
         is TcType.Variable -> false
     }
@@ -115,6 +143,7 @@ internal fun TcType.isProvablyNullable(): Boolean =
 internal fun TcType.isProvablyNotNullable(): Boolean =
     when (this) {
         TcType.StarProjection -> false
+        is TcType.Projected -> false
         is TcType.Constructor -> !isNullable
         is TcType.Variable -> false
     }
@@ -122,6 +151,7 @@ internal fun TcType.isProvablyNotNullable(): Boolean =
 internal fun TcType.isExactTypeIdentity(): Boolean =
     when (this) {
         TcType.StarProjection -> true
+        is TcType.Projected -> type.isExactTypeIdentity()
         is TcType.Constructor -> arguments.all(TcType::isExactTypeIdentity)
         is TcType.Variable -> false
     }
@@ -129,6 +159,18 @@ internal fun TcType.isExactTypeIdentity(): Boolean =
 internal fun TcType.toCanonicalTypeIdName(): String =
     when (this) {
         TcType.StarProjection -> "*"
+
+        is TcType.Projected ->
+            buildString {
+                append(
+                    when (variance) {
+                        Variance.IN_VARIANCE -> "in "
+                        Variance.OUT_VARIANCE -> "out "
+                        Variance.INVARIANT -> ""
+                    },
+                )
+                append(type.toCanonicalTypeIdName())
+            }
 
         is TcType.Constructor ->
             buildString {

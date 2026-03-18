@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Enable the PHASE13G `TypeId` regressions, preserve use-site variance in the internal semantic type model, and materialize reified `TypeId<T>` evidence through `typeOf<T>()` plus a runtime `KType` factory.
 - Enable the PHASE13E and PHASE13F utility-proof regressions, synthesize builtin `Nullable`, `NotNullable`, and `TypeId` evidence, and keep the proof surface usable from end-user code without leaking `InternalTypeclassApi` opt-in requirements.
 - Add an explicit regression proving that end users can summon and use builtin proof evidence without opting into `InternalTypeclassApi`.
 - Enable the PHASE16 AtomicFU interop coverage and keep the harness generic enough to load AtomicFU as an explicit support plugin rather than treating it as ambient test infrastructure.

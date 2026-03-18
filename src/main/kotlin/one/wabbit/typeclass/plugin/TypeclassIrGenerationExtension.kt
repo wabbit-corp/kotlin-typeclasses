@@ -81,6 +81,7 @@ import org.jetbrains.kotlin.ir.types.makeNullable
 import org.jetbrains.kotlin.ir.types.typeWith
 import org.jetbrains.kotlin.ir.types.impl.IrSimpleTypeImpl
 import org.jetbrains.kotlin.ir.types.impl.IrStarProjectionImpl
+import org.jetbrains.kotlin.ir.types.impl.makeTypeProjection
 import org.jetbrains.kotlin.ir.util.callableId
 import org.jetbrains.kotlin.ir.util.classId
 import org.jetbrains.kotlin.ir.util.classIdOrFail
@@ -97,6 +98,7 @@ import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.types.Variance
 
 internal class TypeclassIrGenerationExtension(
     private val sharedState: TypeclassPluginSharedState,
@@ -606,24 +608,59 @@ private class TypeclassIrCallTransformer(
                 expressionType = expressionType,
                 message = "TypeId proof requires an exact semantic type, but found ${targetModel.render()}.",
             )
-        val classifier = targetSimpleType.classifier
-        if (classifier is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol) {
+        if (targetModel.isExactTypeIdentity()) {
+            val stringTypeIdFactory =
+                pluginContext.referenceFunctions(TYPE_ID_FACTORY_CALLABLE_ID)
+                    .map { it.owner }
+                    .singleOrNull { function ->
+                        function.valueParameters.singleOrNull()?.type?.classOrNull?.owner?.classId == STRING_CLASS_ID
+                    }
+                    ?: return invalidBuiltinProofExpression(
+                        expressionType = expressionType,
+                        message = "Could not resolve one.wabbit.typeclass.typeId(String) on the compilation classpath.",
+                    )
+            val typeIdCall =
+                irCall(stringTypeIdFactory.symbol).apply {
+                    putValueArgument(0, irString(targetModel.toCanonicalTypeIdName()))
+                }
+            return irAs(typeIdCall, expressionType)
+        }
+
+        if (!canMaterializeTypeIdViaTypeOf(targetSimpleType)) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
                 message = "TypeId proof requires an exact semantic type, but found ${targetModel.render()}.",
             )
         }
-        val typeIdFactory =
-            pluginContext.referenceFunctions(TYPE_ID_FACTORY_CALLABLE_ID)
+
+        val typeOfFunction =
+            pluginContext.referenceFunctions(CallableId(FqName("kotlin.reflect"), Name.identifier("typeOf")))
                 .map { it.owner }
-                .singleOrNull { function -> function.valueParameters.size == 1 }
+                .singleOrNull { function ->
+                    function.typeParameters.size == 1 &&
+                        function.valueParameters.isEmpty()
+                }
                 ?: return invalidBuiltinProofExpression(
                     expressionType = expressionType,
-                    message = "Could not resolve one.wabbit.typeclass.typeId(...) on the compilation classpath.",
+                    message = "Could not resolve kotlin.reflect.typeOf<T>() on the compilation classpath.",
                 )
+        val kTypeIdFactory =
+            pluginContext.referenceFunctions(TYPE_ID_FACTORY_CALLABLE_ID)
+                .map { it.owner }
+                .singleOrNull { function ->
+                    function.valueParameters.singleOrNull()?.type?.classOrNull?.owner?.classId == KTYPE_CLASS_ID
+                }
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message = "Could not resolve one.wabbit.typeclass.typeId(KType) on the compilation classpath.",
+                )
+        val typeOfCall =
+            irCall(typeOfFunction.symbol).apply {
+                putTypeArgument(0, targetType)
+            }
         val typeIdCall =
-            irCall(typeIdFactory.symbol).apply {
-                putValueArgument(0, irString(targetModel.toCanonicalTypeIdName()))
+            irCall(kTypeIdFactory.symbol).apply {
+                putValueArgument(0, typeOfCall)
             }
         return irAs(typeIdCall, expressionType)
     }
@@ -1338,6 +1375,7 @@ private class IrRuleIndex private constructor(
     private fun associatedOwnerIds(type: TcType): Set<String> =
         when (type) {
             TcType.StarProjection -> emptySet()
+            is TcType.Projected -> associatedOwnerIds(type.type)
             is TcType.Variable -> emptySet()
 
             is TcType.Constructor -> {
@@ -2149,8 +2187,7 @@ private fun supportsBuiltinTypeIdGoal(goal: TcType): Boolean {
     if (constructor.classifierId != TYPE_ID_CLASS_ID.asString()) {
         return true
     }
-    val targetType = constructor.arguments.singleOrNull() ?: return false
-    return targetType.isExactTypeIdentity()
+    return constructor.arguments.singleOrNull() != null
 }
 
 private fun isPotentiallySerializableType(
@@ -2160,6 +2197,7 @@ private fun isPotentiallySerializableType(
 ): Boolean {
     return when (type) {
         TcType.StarProjection -> true
+        is TcType.Projected -> isPotentiallySerializableType(type.type, pluginContext, visiting)
         is TcType.Variable -> true
 
         is TcType.Constructor -> {
@@ -2191,6 +2229,8 @@ private fun canProveNotSame(
     }
     return when {
         left === TcType.StarProjection || right === TcType.StarProjection -> false
+        left is TcType.Projected && right is TcType.Projected ->
+            left.variance != right.variance || canProveNotSame(left.type, right.type)
         left is TcType.Constructor && right is TcType.Constructor -> {
             left.classifierId != right.classifierId ||
                 left.isNullable != right.isNullable ||
@@ -2219,6 +2259,23 @@ private fun canProveNotNullable(
     targetType: IrType,
     pluginContext: IrPluginContext,
 ): Boolean = targetType.isSubtypeOf(pluginContext.irBuiltIns.anyType, JvmIrTypeSystemContext(pluginContext.irBuiltIns))
+
+private fun canMaterializeTypeIdViaTypeOf(targetType: IrType): Boolean {
+    val simpleType = targetType as? IrSimpleType ?: return false
+    return when (val classifier = simpleType.classifier) {
+        is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol -> classifier.owner.isReified
+        is org.jetbrains.kotlin.ir.symbols.IrClassSymbol ->
+            simpleType.arguments.all { argument ->
+                when (argument) {
+                    is IrStarProjection -> true
+                    is org.jetbrains.kotlin.ir.types.IrTypeProjection -> canMaterializeTypeIdViaTypeOf(argument.type)
+                    is IrType -> canMaterializeTypeIdViaTypeOf(argument)
+                }
+            }
+
+        else -> false
+    }
+}
 
 private data class ResolvedRule(
     val rule: InstanceRule,
@@ -2685,11 +2742,7 @@ private fun irTypeToModel(
             val classifierId = classifier.owner.classId?.asString() ?: return null
             val arguments =
                 simpleType.arguments.map { argument ->
-                    when (argument) {
-                        is IrType -> irTypeToModel(argument, typeParameterBySymbol)
-                        is org.jetbrains.kotlin.ir.types.IrTypeProjection -> irTypeToModel(argument.type, typeParameterBySymbol)
-                        is IrStarProjection -> TcType.StarProjection
-                    } ?: return null
+                    irTypeArgumentToModel(argument, typeParameterBySymbol) ?: return null
                 }
             TcType.Constructor(classifierId, arguments, isNullable = type.isNullable())
         }
@@ -2711,6 +2764,24 @@ private fun irTypeToModel(
         else -> null
     }
 }
+
+private fun irTypeArgumentToModel(
+    argument: org.jetbrains.kotlin.ir.types.IrTypeArgument,
+    typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
+): TcType? =
+    when (argument) {
+        is IrStarProjection -> TcType.StarProjection
+        is org.jetbrains.kotlin.ir.types.IrTypeProjection -> {
+            val nested = irTypeToModel(argument.type, typeParameterBySymbol) ?: return null
+            when (argument.variance) {
+                Variance.INVARIANT -> nested
+                Variance.IN_VARIANCE -> TcType.Projected(Variance.IN_VARIANCE, nested)
+                Variance.OUT_VARIANCE -> TcType.Projected(Variance.OUT_VARIANCE, nested)
+            }
+        }
+
+        is IrType -> irTypeToModel(argument, typeParameterBySymbol)
+    }
 
 private fun Iterable<IrType>.providedTypeExpansion(
     typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
@@ -2812,6 +2883,7 @@ private fun modelToIrType(
 ): IrType =
     when (type) {
         TcType.StarProjection -> error("Top-level star projections cannot be materialized as standalone IR types.")
+        is TcType.Projected -> error("Top-level projected arguments cannot be materialized as standalone IR types.")
         is TcType.Variable -> {
             val symbol = visibleTypeParameters.byId[type.id]
                 ?: error("Unbound type variable ${type.displayName}")
@@ -2832,6 +2904,11 @@ private fun modelToIrType(
                 type.arguments.map { nested ->
                     when (nested) {
                         TcType.StarProjection -> IrStarProjectionImpl
+                        is TcType.Projected ->
+                            makeTypeProjection(
+                                modelToIrType(nested.type, visibleTypeParameters, pluginContext),
+                                nested.variance,
+                            )
                         else -> modelToIrType(nested, visibleTypeParameters, pluginContext)
                     }
                 }

@@ -365,6 +365,7 @@ private fun FirSimpleFunction.instanceFunctionRuleShape(
 private fun TcType.renderForMessage(): String =
     when (this) {
         TcType.StarProjection -> "*"
+        is TcType.Projected -> "${variance.label} ${type.renderForMessage()}"
         is TcType.Constructor -> classifierId.substringAfterLast('.')
         is TcType.Variable -> displayName
     }

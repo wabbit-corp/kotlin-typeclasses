@@ -35,6 +35,7 @@ import org.jetbrains.kotlin.fir.types.ConeClassLikeType
 import org.jetbrains.kotlin.fir.types.ConeIntegerLiteralType
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
 import org.jetbrains.kotlin.fir.types.ConeTypeParameterType
+import org.jetbrains.kotlin.fir.types.ProjectionKind
 import org.jetbrains.kotlin.fir.types.classId
 import org.jetbrains.kotlin.fir.types.isMarkedNullable
 import org.jetbrains.kotlin.fir.types.lowerBoundIfFlexible
@@ -342,6 +343,7 @@ private data class ResolutionIndex(
     private fun associatedOwnerIds(type: TcType): Set<String> =
         when (type) {
             TcType.StarProjection -> emptySet()
+            is TcType.Projected -> associatedOwnerIds(type.type)
             is TcType.Variable -> emptySet()
 
             is TcType.Constructor -> {
@@ -647,8 +649,7 @@ private fun supportsBuiltinTypeIdGoal(goal: TcType): Boolean {
     if (constructor.classifierId != TYPE_ID_CLASS_ID.asString()) {
         return true
     }
-    val targetType = constructor.arguments.singleOrNull() ?: return false
-    return targetType.isExactTypeIdentity()
+    return constructor.arguments.singleOrNull() != null
 }
 
 private fun isPotentiallySerializableType(
@@ -658,6 +659,7 @@ private fun isPotentiallySerializableType(
 ): Boolean {
     return when (type) {
         TcType.StarProjection -> true
+        is TcType.Projected -> isPotentiallySerializableType(type.type, session, visiting)
         is TcType.Variable -> true
 
         is TcType.Constructor -> {
@@ -914,7 +916,13 @@ internal fun coneTypeToModel(
                     if (nested == null) {
                         TcType.StarProjection
                     } else {
-                        coneTypeToModel(nested, typeParameterBySymbol) ?: return null
+                        val nestedModel = coneTypeToModel(nested, typeParameterBySymbol) ?: return null
+                        when (argument.kind) {
+                            ProjectionKind.STAR -> TcType.StarProjection
+                            ProjectionKind.IN -> TcType.Projected(org.jetbrains.kotlin.types.Variance.IN_VARIANCE, nestedModel)
+                            ProjectionKind.OUT -> TcType.Projected(org.jetbrains.kotlin.types.Variance.OUT_VARIANCE, nestedModel)
+                            ProjectionKind.INVARIANT -> nestedModel
+                        }
                     }
                 }
             TcType.Constructor(classifierId.asString(), arguments, isNullable = lowerBound.isMarkedNullable)

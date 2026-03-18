@@ -236,6 +236,13 @@ private class Unifier {
 
         return when {
             left === TcType.StarProjection && right === TcType.StarProjection -> true
+            left is TcType.Projected && right is TcType.Projected ->
+                left.variance == right.variance &&
+                    unifyInternal(
+                        left.type.substitute(substitution),
+                        right.type.substitute(substitution),
+                    )
+
             left is TcType.Variable && right is TcType.Variable -> {
                 when {
                     isBindable(left.id) && bindVariable(left, right) -> true
@@ -320,6 +327,7 @@ private fun TcType.substitute(
 ): TcType =
     when (this) {
         TcType.StarProjection -> TcType.StarProjection
+        is TcType.Projected -> TcType.Projected(variance, type.substitute(substitution, visiting))
         is TcType.Constructor -> TcType.Constructor(classifierId, arguments.map { it.substitute(substitution, visiting) }, isNullable)
 
         is TcType.Variable -> {
@@ -342,6 +350,7 @@ private fun TcType.substitute(
 private fun TcType.stripOuterNullability(): TcType? =
     when (this) {
         TcType.StarProjection -> null
+        is TcType.Projected -> null
         is TcType.Constructor -> if (isNullable) copy(isNullable = false) else null
         is TcType.Variable -> if (isNullable) copy(isNullable = false) else null
     }
@@ -349,6 +358,7 @@ private fun TcType.stripOuterNullability(): TcType? =
 private fun TcType.makeNullable(): TcType =
     when (this) {
         TcType.StarProjection -> this
+        is TcType.Projected -> this
         is TcType.Constructor -> if (isNullable) this else copy(isNullable = true)
         is TcType.Variable -> if (isNullable) this else copy(isNullable = true)
     }

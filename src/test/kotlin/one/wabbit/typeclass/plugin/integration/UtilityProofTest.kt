@@ -1246,7 +1246,6 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13G")
     @Test fun typeIdSupportsHashMapLookupAcrossRepeatedSummonsAndAliases() {
         val source =
             """
@@ -1277,7 +1276,6 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13G")
     @Test fun typeIdCompareProducesEqualityProofForSemanticAliases() {
         val source =
             """
@@ -1308,7 +1306,6 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13G")
     @Test fun typeIdCompareProducesInequalityForDistinctSemanticTypes() {
         val source =
             """
@@ -1340,7 +1337,6 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13G")
     @Test fun typeIdDistinguishesStarProjectionsFromConcreteAndNullableArguments() {
         val source =
             """
@@ -1367,7 +1363,6 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13G")
     @Test fun typeIdPreservesUseSiteVariance() {
         val source =
             """
@@ -1392,7 +1387,6 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13G")
     @Test fun typeIdTreatsNestedAliasesAsSemanticallyEqualInsideGenericArguments() {
         val source =
             """
@@ -1423,7 +1417,6 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13G")
     @Test fun typeIdDistinguishesValueClassesFromTheirUnderlyingTypes() {
         val source =
             """
@@ -1460,7 +1453,6 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13G")
     @Test fun rejectsTypeIdMaterializationForUnfixedGenericTypeParameters() {
         val source =
             """
@@ -1479,7 +1471,6 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13G")
     @Test fun reifiedTypeIdMatchesConcreteInstantiationAndAliases() {
         val source =
             """
@@ -1509,7 +1500,6 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13G")
     @Test fun typeIdDistinguishesFunctionTypeArgumentsAndNullability() {
         val source =
             """
