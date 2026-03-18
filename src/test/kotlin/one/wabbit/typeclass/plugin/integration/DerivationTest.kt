@@ -327,6 +327,136 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
+    @Ignore("PHASE10A")
+    @Test fun rejectsInstanceFunctionsWithNonTypeclassContextParametersAtDeclarationSite() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            data class Prefix(val value: String)
+            data class Box(val value: Int)
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = value.toString()
+            }
+
+            @Instance
+            context(prefix: Prefix, show: Show<Int>)
+            fun boxShow(): Show<Box> = // ERROR @Instance functions must not depend on non-typeclass contexts
+                object : Show<Box> {
+                    override fun show(value: Box): String = prefix.value + show.show(value.value)
+                }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                context(Prefix("box=")) {
+                    println(render(Box(1)))
+                }
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("invalid @instance declaration", "context", "typeclass"),
+        )
+    }
+
+    @Ignore("PHASE10A")
+    @Test fun rejectsInstanceFunctionsWithStarProjectedTypeclassPrerequisitesAtDeclarationSite() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object StringShow : Show<String> {
+                override fun show(value: String): String = value
+            }
+
+            @Instance
+            context(_: Show<*>)
+            fun listShow(): Show<List<String>> =
+                object : Show<List<String>> {
+                    override fun show(value: List<String>): String = value.joinToString(",")
+                }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(listOf("a")))
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("invalid @instance declaration", "star", "instance"),
+        )
+    }
+
+    @Ignore("PHASE10A")
+    @Test fun rejectsInstanceFunctionsWithDefinitelyNonNullTypeclassPrerequisitesAtDeclarationSite() {
+        // FIXME: perhaps we will want to re-enable this behavior in the future.
+        // For now, a safe strategy is to disallow non-nullable typeclass prerequisites on @Instance functions.
+
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            data class Box<A>(val value: A)
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object StringShow : Show<String> {
+                override fun show(value: String): String = value
+            }
+
+            @Instance
+            context(_: Show<T & Any>)
+            fun <T> boxShow(): Show<Box<T>> =
+                object : Show<Box<T>> {
+                    override fun show(value: Box<T>): String = value.value.toString()
+                }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(Box("a")))
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("invalid @instance declaration", "context", "instance"),
+        )
+    }
+
     @Test fun rejectsInstancesDeclaredInUnrelatedCompanionObjectsAtDeclarationSite() {
         val source =
             """
@@ -1652,24 +1782,20 @@ class DerivationTest : IntegrationTestSupport() {
             import one.wabbit.typeclass.Typeclass
             import one.wabbit.typeclass.summon
 
-            @Typeclass
-            interface Show<A> {
+            @Typeclass interface Show<A> {
                 fun show(value: A): String
             }
 
-            @Typeclass
-            interface Debug<A> {
+            @Typeclass interface Debug<A> {
                 context(show: Show<A>)
                 fun debug(value: A): String = "debug:" + show.show(value)
             }
 
-            @Instance
-            object IntShow : Show<Int> {
+            @Instance object IntShow : Show<Int> {
                 override fun show(value: Int): String = "int:${'$'}value"
             }
 
-            @Instance
-            object IntDebug : Debug<Int>
+            @Instance object IntDebug : Debug<Int>
 
             fun main() {
                 println(summon<Debug<Int>>().debug(1))

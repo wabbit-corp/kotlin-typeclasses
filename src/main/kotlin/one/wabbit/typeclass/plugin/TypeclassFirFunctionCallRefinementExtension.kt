@@ -56,7 +56,7 @@ internal class TypeclassFirFunctionCallRefinementExtension(
             return null
         }
 
-        val visibleTypeParameterNames = symbol.wrapperVisibleTypeParameterNames(session).toSet()
+        val visibleTypeParameterNames = symbol.wrapperVisibleTypeParameterNames(session, sharedState).toSet()
         val shouldDropInvisibleTypeParameters = callInfo.typeArguments.isEmpty()
         return CallReturnType(symbol.resolvedReturnTypeRef) { refinedSymbol ->
             val refinedFunction = refinedSymbol.fir
@@ -132,7 +132,7 @@ internal class TypeclassFirFunctionCallRefinementExtension(
                     substitutions = inferredTypeArguments,
                     session = session,
                 )
-            val isTypeclass = isTypeclassType(substitutedType, session)
+            val isTypeclass = sharedState.isTypeclassType(session, substitutedType)
             if (!isTypeclass) {
                 return@map false
             }
@@ -181,7 +181,7 @@ internal class TypeclassFirFunctionCallRefinementExtension(
         val requiredContextModels =
             symbol.fir.contextParameters.mapNotNull { parameter ->
                 parameter.returnTypeRef.coneType
-                    .takeIf { type -> isTypeclassType(type, session) }
+                    .takeIf { type -> sharedState.isTypeclassType(session, type) }
                     ?.let { type ->
                         substituteInferredTypes(
                             type = type,
@@ -232,10 +232,10 @@ internal class TypeclassFirFunctionCallRefinementExtension(
             containingFunctions.flatMap { declaration ->
                 buildList {
                     declaration.receiverParameter?.typeRef?.coneType
-                        ?.takeIf { type -> isTypeclassType(type, session) }
+                        ?.takeIf { type -> sharedState.isTypeclassType(session, type) }
                         ?.let(::add)
                     declaration.contextParameters.mapNotNullTo(this) { parameter ->
-                        parameter.returnTypeRef.coneType.takeIf { type -> isTypeclassType(type, session) }
+                        parameter.returnTypeRef.coneType.takeIf { type -> sharedState.isTypeclassType(session, type) }
                     }
                 }
             }
@@ -265,6 +265,7 @@ internal class TypeclassFirFunctionCallRefinementExtension(
                 functionCall = functionCall,
                 resolvedFunction = symbol,
                 containingFunction = containingFunction,
+                sharedState = sharedState,
             )
         }
 

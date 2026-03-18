@@ -11,6 +11,7 @@ import kotlin.test.assertTrue
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.net.URI
+import java.nio.file.Files
 import java.nio.file.Path
 
 abstract class IntegrationTestSupport {
@@ -128,7 +129,14 @@ abstract class IntegrationTestSupport {
 
         val pluginProjectRoot = locateProjectRoot()
         val runtimeProjectRoot = pluginProjectRoot.parent.resolve("kotlin-typeclasses")
-        val pluginJar = locateBuiltJar(pluginProjectRoot.resolve("build/libs"), "kotlin-typeclasses-plugin")
+        val pluginJar =
+            locateBuiltJar(pluginProjectRoot.resolve("build/libs"), "kotlin-typeclasses-plugin")
+                .let { builtJar ->
+                    val isolatedPluginJar = workingDir.resolve("plugin").resolve(builtJar.fileName.toString())
+                    isolatedPluginJar.parent.createDirectories()
+                    Files.copy(builtJar, isolatedPluginJar)
+                    isolatedPluginJar
+                }
         val runtimeClasspathEntry = locateRuntimeClasspathEntry(runtimeProjectRoot)
         val stdlibJar = locateStdlibJar()
 

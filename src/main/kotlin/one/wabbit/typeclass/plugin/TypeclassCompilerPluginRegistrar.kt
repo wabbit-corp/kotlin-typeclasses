@@ -12,8 +12,8 @@ internal class TypeclassCompilerPluginRegistrar : CompilerPluginRegistrar() {
     override val supportsK2: Boolean = true
 
     override fun ExtensionStorage.registerExtensions(configuration: CompilerConfiguration) {
-        val sharedState = TypeclassPluginSharedState()
+        val sharedState = TypeclassPluginSharedState(configuration.toTypeclassConfiguration())
         FirExtensionRegistrarAdapter.registerExtension(TypeclassFirExtensionRegistrar(sharedState))
-        IrGenerationExtension.registerExtension(TypeclassIrGenerationExtension(sharedState))
+        IrGenerationExtension.Companion.registerExtension(TypeclassIrGenerationExtension(sharedState))
     }
 }

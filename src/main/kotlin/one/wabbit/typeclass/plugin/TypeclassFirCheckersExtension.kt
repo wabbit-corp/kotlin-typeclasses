@@ -49,7 +49,7 @@ internal class TypeclassFirCheckersExtension(
 
                 validateAssociatedScope(
                     ownerContext = classOwnerContext(declaration.symbol.classId),
-                    providedTypes = declaration.instanceProvidedTypes(session),
+                    providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration),
                     declaration = declaration,
                 )
             }
@@ -81,7 +81,7 @@ internal class TypeclassFirCheckersExtension(
 
                 validateAssociatedScope(
                     ownerContext = callableOwnerContext(declaration.symbol.callableId),
-                    providedTypes = declaration.instanceProvidedTypes(session),
+                    providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration),
                     declaration = declaration,
                 )
                 validateFunctionRuleSemantics(declaration)
@@ -119,7 +119,7 @@ internal class TypeclassFirCheckersExtension(
 
                 validateAssociatedScope(
                     ownerContext = callableOwnerContext(declaration.symbol.callableId),
-                    providedTypes = declaration.instanceProvidedTypes(session),
+                    providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration),
                     declaration = declaration,
                 )
             }
@@ -183,8 +183,8 @@ internal class TypeclassFirCheckersExtension(
     private fun validateFunctionRuleSemantics(
         declaration: FirSimpleFunction,
     ) {
-        val ruleShape = declaration.instanceFunctionRuleShape(session) ?: return
-        val providedTypes = declaration.instanceProvidedTypes(session)
+        val ruleShape = declaration.instanceFunctionRuleShape(session, sharedState) ?: return
+        val providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration)
         if (providedTypes.validTypes.isEmpty()) {
             return
         }
@@ -277,6 +277,7 @@ private data class InstanceFunctionRuleShape(
 
 private fun FirSimpleFunction.instanceFunctionRuleShape(
     session: FirSession,
+    sharedState: TypeclassPluginSharedState,
 ): InstanceFunctionRuleShape? {
     val typeParameters =
         typeParameters.mapIndexed { index, typeParameter ->
@@ -293,7 +294,7 @@ private fun FirSimpleFunction.instanceFunctionRuleShape(
     val prerequisites =
         contextParameters.mapNotNull { parameter ->
             parameter.returnTypeRef.coneType
-                .takeIf { type -> isTypeclassType(type, session) }
+                .takeIf { type -> sharedState.isTypeclassType(session, type) }
                 ?.let { type -> coneTypeToModel(type, typeParameterBySymbol) }
         }
     if (prerequisites.size != contextParameters.size) {

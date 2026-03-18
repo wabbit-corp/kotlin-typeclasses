@@ -26,11 +26,13 @@ internal class TypeclassFirExtensionRegistrar(
 
 internal class TypeclassFirGenerationExtension(
     session: FirSession,
-    @Suppress("UNUSED_PARAMETER")
     sharedState: TypeclassPluginSharedState,
 ) : FirDeclarationGenerationExtension(session)
 
-internal fun FirNamedFunctionSymbol.wrapperVisibleTypeParameterNames(session: FirSession): List<String> {
+internal fun FirNamedFunctionSymbol.wrapperVisibleTypeParameterNames(
+    session: FirSession,
+    sharedState: TypeclassPluginSharedState,
+): List<String> {
     val function = fir
     val visibleSignatureTypes =
         buildList {
@@ -38,7 +40,7 @@ internal fun FirNamedFunctionSymbol.wrapperVisibleTypeParameterNames(session: Fi
             add(function.returnTypeRef.coneType)
             function.valueParameters.mapTo(this) { parameter -> parameter.returnTypeRef.coneType }
             function.contextParameters
-                .filterNot { parameter -> isTypeclassType(parameter.returnTypeRef.coneType, session) }
+                .filterNot { parameter -> sharedState.isTypeclassType(session, parameter.returnTypeRef.coneType) }
                 .mapTo(this) { parameter -> parameter.returnTypeRef.coneType }
         }
 

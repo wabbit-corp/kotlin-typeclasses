@@ -40,7 +40,9 @@ import org.jetbrains.kotlin.name.SpecialNames
 import java.util.Collections
 import java.util.WeakHashMap
 
-internal class TypeclassPluginSharedState {
+internal class TypeclassPluginSharedState(
+    internal val configuration: TypeclassConfiguration = TypeclassConfiguration(),
+) {
     private val sourceIndexes = SessionScopedCache<FirSession, SourceIndex>()
     private val resolutionIndexes = SessionScopedCache<FirSession, ResolutionIndex>()
 
@@ -73,6 +75,11 @@ internal class TypeclassPluginSharedState {
         session: FirSession,
         providedType: TcType,
     ): Set<ClassId> = resolutionIndex(session).allowedAssociatedOwnersForGoal(providedType)
+
+    fun isTypeclassType(
+        session: FirSession,
+        type: ConeKotlinType,
+    ): Boolean = isTypeclassType(type, session, configuration)
 
     private fun sourceIndex(session: FirSession): SourceIndex =
         sourceIndexes.getOrPut(session) {
@@ -127,7 +134,7 @@ internal class TypeclassPluginSharedState {
     }
 
     private fun buildResolutionIndex(session: FirSession): ResolutionIndex {
-        val scanner = FirResolutionScanner(session)
+        val scanner = FirResolutionScanner(session, configuration)
         val symbolProvider = session.firProvider.symbolProvider
         val symbolNamesProvider = symbolProvider.symbolNamesProvider
         val packageNames = symbolNamesProvider.getPackageNames().orEmpty()
@@ -195,6 +202,7 @@ internal class TypeclassPluginSharedState {
 
 private class FirResolutionScanner(
     private val session: FirSession,
+    private val configuration: TypeclassConfiguration,
 ) {
     private val topLevelRules = mutableListOf<InstanceRule>()
     private val associatedRulesByOwner = linkedMapOf<ClassId, MutableList<InstanceRule>>()
@@ -230,7 +238,7 @@ private class FirResolutionScanner(
                         else -> null
                     }
 
-                declaration.toObjectRules(session).forEach { rule ->
+                declaration.toObjectRules(session, configuration).forEach { rule ->
                     if (nextAssociatedOwner == null) {
                         topLevelRules += rule
                     } else {
@@ -244,7 +252,7 @@ private class FirResolutionScanner(
             }
 
             is FirSimpleFunction -> {
-                declaration.toFunctionRules(session).forEach { rule ->
+                declaration.toFunctionRules(session, configuration).forEach { rule ->
                     if (associatedOwner == null) {
                         topLevelRules += rule
                     } else {
@@ -254,7 +262,7 @@ private class FirResolutionScanner(
             }
 
             is FirProperty -> {
-                declaration.toPropertyRules(session).forEach { rule ->
+                declaration.toPropertyRules(session, configuration).forEach { rule ->
                     if (associatedOwner == null) {
                         topLevelRules += rule
                     } else {
@@ -269,7 +277,7 @@ private class FirResolutionScanner(
 
     fun build(): ResolutionIndex =
         ResolutionIndex(
-            topLevelRules = topLevelRules.toList(),
+            topLevelRules = topLevelRules.toList() + configuration.builtinRules(),
             associatedRulesByOwner = associatedRulesByOwner.mapValues { (_, rules) -> rules.toList() },
             classInfoById = classInfoById.toMap(),
             derivableClassIds = derivableClassIds.toSet(),
@@ -352,25 +360,58 @@ private data class ResolutionClassHierarchyInfo(
     val isSealed: Boolean,
 )
 
+private fun TypeclassConfiguration.builtinRules(): List<InstanceRule> =
+    buildList {
+        if (builtinKClassTypeclass == TypeclassBuiltinMode.ENABLED) {
+            add(builtinKClassRule())
+        }
+    }
+
+private fun builtinKClassRule(): InstanceRule {
+    val parameter = TcTypeParameter(id = "builtin:kclass:T", displayName = "T")
+    return InstanceRule(
+        id = "builtin:kclass",
+        typeParameters = listOf(parameter),
+        providedType =
+            TcType.Constructor(
+                classifierId = KCLASS_CLASS_ID.asString(),
+                arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
 internal data class ProvidedTypeExpansion(
     val validTypes: List<TcType>,
     val invalidTypes: List<TcType>,
 )
 
-internal fun FirRegularClass.instanceProvidedType(session: FirSession): TcType? =
-    instanceProvidedTypes(session).validTypes.firstOrNull()
+internal fun FirRegularClass.instanceProvidedType(
+    session: FirSession,
+    configuration: TypeclassConfiguration = TypeclassConfiguration(),
+): TcType? = instanceProvidedTypes(session, configuration).validTypes.firstOrNull()
 
-internal fun FirRegularClass.instanceProvidedTypes(session: FirSession): ProvidedTypeExpansion =
+internal fun FirRegularClass.instanceProvidedTypes(
+    session: FirSession,
+    configuration: TypeclassConfiguration = TypeclassConfiguration(),
+): ProvidedTypeExpansion =
     declaredOrResolvedSuperTypes().expandProvidedTypes(
         session = session,
         typeParameterBySymbol = emptyMap(),
+        configuration = configuration,
     )
 
-internal fun FirSimpleFunction.instanceProvidedType(session: FirSession): TcType? {
-    return instanceProvidedTypes(session).validTypes.firstOrNull()
+internal fun FirSimpleFunction.instanceProvidedType(
+    session: FirSession,
+    configuration: TypeclassConfiguration = TypeclassConfiguration(),
+): TcType? {
+    return instanceProvidedTypes(session, configuration).validTypes.firstOrNull()
 }
 
-internal fun FirSimpleFunction.instanceProvidedTypes(session: FirSession): ProvidedTypeExpansion {
+internal fun FirSimpleFunction.instanceProvidedTypes(
+    session: FirSession,
+    configuration: TypeclassConfiguration = TypeclassConfiguration(),
+): ProvidedTypeExpansion {
     val returnType = returnTypeRef.coneType
     val typeParameters =
         typeParameters.mapIndexed { index, typeParameter ->
@@ -386,18 +427,26 @@ internal fun FirSimpleFunction.instanceProvidedTypes(session: FirSession): Provi
     return listOf(returnType).expandProvidedTypes(
         session = session,
         typeParameterBySymbol = typeParameterBySymbol,
+        configuration = configuration,
     )
 }
 
-internal fun FirProperty.instanceProvidedType(session: FirSession): TcType? {
-    return instanceProvidedTypes(session).validTypes.firstOrNull()
+internal fun FirProperty.instanceProvidedType(
+    session: FirSession,
+    configuration: TypeclassConfiguration = TypeclassConfiguration(),
+): TcType? {
+    return instanceProvidedTypes(session, configuration).validTypes.firstOrNull()
 }
 
-internal fun FirProperty.instanceProvidedTypes(session: FirSession): ProvidedTypeExpansion {
+internal fun FirProperty.instanceProvidedTypes(
+    session: FirSession,
+    configuration: TypeclassConfiguration = TypeclassConfiguration(),
+): ProvidedTypeExpansion {
     val returnType = returnTypeRef.coneType
     return listOf(returnType).expandProvidedTypes(
         session = session,
         typeParameterBySymbol = emptyMap(),
+        configuration = configuration,
     )
 }
 
@@ -409,7 +458,10 @@ private fun FirRegularClass.declaredOrResolvedSuperTypes(): List<ConeKotlinType>
     return symbol.resolvedSuperTypes
 }
 
-private fun FirRegularClass.toObjectRules(session: FirSession): List<InstanceRule> {
+private fun FirRegularClass.toObjectRules(
+    session: FirSession,
+    configuration: TypeclassConfiguration,
+): List<InstanceRule> {
     if (classKind != ClassKind.OBJECT || !hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
         return emptyList()
     }
@@ -417,7 +469,7 @@ private fun FirRegularClass.toObjectRules(session: FirSession): List<InstanceRul
         return emptyList()
     }
 
-    return instanceProvidedTypes(session).validTypes.map { providedType ->
+    return instanceProvidedTypes(session, configuration).validTypes.map { providedType ->
         InstanceRule(
             id = "fir-object:${symbol.classId.asString()}:${providedType.render()}",
             typeParameters = emptyList(),
@@ -427,7 +479,10 @@ private fun FirRegularClass.toObjectRules(session: FirSession): List<InstanceRul
     }
 }
 
-private fun FirSimpleFunction.toFunctionRules(session: FirSession): List<InstanceRule> {
+private fun FirSimpleFunction.toFunctionRules(
+    session: FirSession,
+    configuration: TypeclassConfiguration,
+): List<InstanceRule> {
     if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
         return emptyList()
     }
@@ -451,7 +506,7 @@ private fun FirSimpleFunction.toFunctionRules(session: FirSession): List<Instanc
         }
     val prerequisites =
         contextParameters.mapNotNull { parameter ->
-            parameter.returnTypeRef.coneType.takeIf { type -> isTypeclassType(type, session) }?.let { type ->
+            parameter.returnTypeRef.coneType.takeIf { type -> isTypeclassType(type, session, configuration) }?.let { type ->
                 coneTypeToModel(type, typeParameterBySymbol)
             }
         }
@@ -459,7 +514,7 @@ private fun FirSimpleFunction.toFunctionRules(session: FirSession): List<Instanc
         return emptyList()
     }
 
-    return instanceProvidedTypes(session).validTypes.map { providedType ->
+    return instanceProvidedTypes(session, configuration).validTypes.map { providedType ->
         InstanceRule(
             id = "fir-function:${symbol.callableId}:${providedType.render()}",
             typeParameters = typeParameters,
@@ -469,7 +524,10 @@ private fun FirSimpleFunction.toFunctionRules(session: FirSession): List<Instanc
     }
 }
 
-private fun FirProperty.toPropertyRules(session: FirSession): List<InstanceRule> {
+private fun FirProperty.toPropertyRules(
+    session: FirSession,
+    configuration: TypeclassConfiguration,
+): List<InstanceRule> {
     if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
         return emptyList()
     }
@@ -480,7 +538,7 @@ private fun FirProperty.toPropertyRules(session: FirSession): List<InstanceRule>
         return emptyList()
     }
 
-    return instanceProvidedTypes(session).validTypes.map { providedType ->
+    return instanceProvidedTypes(session, configuration).validTypes.map { providedType ->
         InstanceRule(
             id = "fir-property:${symbol.callableId}:${providedType.render()}",
             typeParameters = emptyList(),
@@ -515,10 +573,14 @@ internal data class SourceIndex(
 internal fun isTypeclassType(
     type: ConeKotlinType,
     session: FirSession,
+    configuration: TypeclassConfiguration,
 ): Boolean {
     val classId = type.lowerBoundIfFlexible().classId ?: return false
     if (classId.isLocal) {
         return false
+    }
+    if (configuration.isBuiltinTypeclass(classId)) {
+        return true
     }
     val classSymbol =
         try {
@@ -568,6 +630,7 @@ internal fun ConeKotlinType.approximateIntegerLiteralType(): ConeKotlinType =
 internal fun Iterable<ConeKotlinType>.expandProvidedTypes(
     session: FirSession,
     typeParameterBySymbol: Map<FirTypeParameterSymbol, TcTypeParameter>,
+    configuration: TypeclassConfiguration = TypeclassConfiguration(),
 ): ProvidedTypeExpansion {
     val validTypes = linkedMapOf<String, TcType>()
     val invalidTypes = linkedMapOf<String, TcType>()
@@ -576,6 +639,7 @@ internal fun Iterable<ConeKotlinType>.expandProvidedTypes(
             type.expandProvidedTypes(
                 session = session,
                 typeParameterBySymbol = typeParameterBySymbol,
+                configuration = configuration,
                 previousWereTypeclass = true,
                 visited = linkedSetOf(),
             )
@@ -595,6 +659,7 @@ internal fun Iterable<ConeKotlinType>.expandProvidedTypes(
 private fun ConeKotlinType.expandProvidedTypes(
     session: FirSession,
     typeParameterBySymbol: Map<FirTypeParameterSymbol, TcTypeParameter>,
+    configuration: TypeclassConfiguration,
     previousWereTypeclass: Boolean,
     visited: Set<String>,
 ): ProvidedTypeExpansion {
@@ -618,7 +683,8 @@ private fun ConeKotlinType.expandProvidedTypes(
             null
         } ?: return ProvidedTypeExpansion(emptyList(), emptyList())
 
-    val currentIsTypeclass = classSymbol.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)
+    val currentIsTypeclass =
+        configuration.isBuiltinTypeclass(classId) || classSymbol.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)
     val validTypes = linkedMapOf<String, TcType>()
     val invalidTypes = linkedMapOf<String, TcType>()
     if (currentIsTypeclass) {
@@ -641,6 +707,7 @@ private fun ConeKotlinType.expandProvidedTypes(
             substitutedSuperType.expandProvidedTypes(
                 session = session,
                 typeParameterBySymbol = typeParameterBySymbol,
+                configuration = configuration,
                 previousWereTypeclass = nextPreviousWereTypeclass,
                 visited = nextVisited,
             )

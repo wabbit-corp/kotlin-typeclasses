@@ -12,9 +12,10 @@ import org.jetbrains.kotlin.fir.types.coneType
 
 internal class TypeclassFirStatusTransformerExtension(
     session: FirSession,
+    private val sharedState: TypeclassPluginSharedState,
 ) : FirStatusTransformerExtension(session) {
     override fun needTransformStatus(declaration: FirDeclaration): Boolean =
-        declaration is FirSimpleFunction && declaration.shouldHideTypeclassOriginal(session)
+        declaration is FirSimpleFunction && declaration.shouldHideTypeclassOriginal(session, sharedState)
 
     override fun transformStatus(
         status: org.jetbrains.kotlin.fir.declarations.FirDeclarationStatus,
@@ -22,14 +23,17 @@ internal class TypeclassFirStatusTransformerExtension(
         containingClass: FirClassLikeSymbol<*>?,
         isLocal: Boolean,
     ): org.jetbrains.kotlin.fir.declarations.FirDeclarationStatus =
-        if (function.shouldHideTypeclassOriginal(session)) {
+        if (function.shouldHideTypeclassOriginal(session, sharedState)) {
             status.transform(visibility = Visibilities.InvisibleFake)
         } else {
             status
         }
 }
 
-private fun FirSimpleFunction.shouldHideTypeclassOriginal(session: FirSession): Boolean {
+private fun FirSimpleFunction.shouldHideTypeclassOriginal(
+    session: FirSession,
+    sharedState: TypeclassPluginSharedState,
+): Boolean {
     if (origin.generated) {
         return false
     }
@@ -40,6 +44,6 @@ private fun FirSimpleFunction.shouldHideTypeclassOriginal(session: FirSession): 
         return false
     }
     return contextParameters.any { parameter ->
-        isTypeclassType(parameter.returnTypeRef.coneType, session)
+        sharedState.isTypeclassType(session, parameter.returnTypeRef.coneType)
     }
 }

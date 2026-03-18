@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add compiler options for builtin `KClass` and `KSerializer` typeclass evidence, and enable the PHASE10 builtin-`KClass` regression coverage.
+- Normalize packed IR value-argument prefixes with a backtracking matcher so contextual rewriting can distinguish omitted typeclass contexts from named/default argument shapes.
+- Infer generic owner type arguments from the apparent types of generic call expressions, which fixes default typeclass methods that require additional contextual evidence.
 - Fix `origin=EQ` contextual `set` operator rewrites by swapping Kotlin's lowered extension-receiver/index layout and trimming the synthetic trailing `null` assignment shim argument.
 - Enable the active `PHASE9` operator and resolution regressions, and reclassify contextual property-getter coverage plus the invalid private-field `contains` fixture as blocked tests instead of phase-gated work.
 - Represent recursive derived-instance metadata slots with runtime cells instead of reflective/provider indirection, and emit cell setter calls from IR so recursive ADT derivation survives JVM codegen and runtime access checks.

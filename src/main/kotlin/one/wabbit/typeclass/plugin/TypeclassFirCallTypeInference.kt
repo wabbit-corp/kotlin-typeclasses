@@ -51,6 +51,7 @@ internal fun inferFunctionTypeArgumentsFromCallSite(
     functionCall: FirFunctionCall,
     resolvedFunction: FirNamedFunctionSymbol,
     containingFunction: FirNamedFunctionSymbol?,
+    sharedState: TypeclassPluginSharedState,
 ): Map<FirTypeParameterSymbol, ConeKotlinType> {
     val function = resolvedFunction.fir
     val inferred = linkedMapOf<FirTypeParameterSymbol, ConeKotlinType>()
@@ -106,7 +107,7 @@ internal fun inferFunctionTypeArgumentsFromCallSite(
     val localContextTypes =
         containingFunction?.fir?.contextParameters.orEmpty()
             .mapNotNull { parameter ->
-                parameter.returnTypeRef.coneType.takeIf { isTypeclassType(it, session) }
+                parameter.returnTypeRef.coneType.takeIf { sharedState.isTypeclassType(session, it) }
             }
 
     function.contextParameters.forEach { parameter ->
