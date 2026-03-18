@@ -90,17 +90,15 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE3")
     @Test
-    fun discoversInstancesInsideNamespaceObjects() {
+    fun rejectsInstanceObjectsDeclaredInsideNamespaceObjectsAtDeclarationSite() {
         val source =
             """
             package demo
 
             import one.wabbit.typeclass.Instance
             import one.wabbit.typeclass.Typeclass
-            import one.wabbit.typeclass.summon
 
             @Typeclass
             interface Show<A> {
@@ -109,27 +107,19 @@ class DerivationTest : IntegrationTestSupport() {
 
             object Instances {
                 @Instance
-                object IntShow : Show<Int> {
+                object IntShow : Show<Int> { // ERROR invalid scope: namespace objects are neither top-level nor associated owners
                     override fun show(): String = "namespace-object"
                 }
             }
-
-            context(_: Show<A>)
-            fun <A> render(): String = summon<Show<A>>().show()
-
-            fun main() {
-                println(render<Int>())
-            }
             """.trimIndent()
 
-        assertCompilesAndRuns(
+        assertDoesNotCompile(
             source = source,
-            expectedStdout = "namespace-object",
+            expectedMessages = listOf("scope"),
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE2")
     @Test
     fun reportsDuplicateInstancesAcrossCompanionAndTopLevelScopes() {
         val source =
@@ -172,8 +162,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE3")
     @Test
     fun resolvesAssociatedInstancesThroughTypeArguments() {
         val source =
@@ -214,10 +203,9 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE2")
     @Test
-    fun rejectsNonCompanionMemberInstanceObjectsAtDeclarationSite() {
+    fun rejectsInstanceObjectsDeclaredOutsideAllowedScopesAtDeclarationSite() {
         val source =
             """
             package demo
@@ -232,7 +220,7 @@ class DerivationTest : IntegrationTestSupport() {
 
             class Holder {
                 @Instance
-                object IntShow : Show<Int> { // ERROR non-companion member @Instance objects should be rejected
+                object IntShow : Show<Int> { // ERROR invalid scope: neither companion nor top-level nor Int's companion
                     override fun show(value: Int): String = "int:${'$'}value"
                 }
             }
@@ -244,8 +232,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE2")
     @Test
     fun rejectsExtensionInstanceFunctionsAtDeclarationSite() {
         val source =
@@ -273,8 +260,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE2")
     @Test
     fun rejectsInstanceFunctionsWithRegularParametersAtDeclarationSite() {
         val source =
@@ -299,6 +285,177 @@ class DerivationTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("regular parameter"),
+        )
+    }
+
+    @Ignore("PHASE2")
+    @Test
+    fun rejectsInstancesDeclaredInUnrelatedCompanionObjectsAtDeclarationSite() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            data class Box(val value: Int) {
+                companion object {
+                    @Instance
+                    object StringShow : Show<String> { // ERROR associated instance owners must match the provided type
+                        override fun show(value: String): String = value
+                    }
+                }
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("associated", "owner"),
+        )
+    }
+
+    // FIXME: re-review in the future
+    @Ignore("PHASE2")
+    @Test
+    fun rejectsClassBasedInstancesAtDeclarationSite() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            class IntShow : Show<Int> { // ERROR class-based @Instance declarations are not allowed for now
+                override fun show(value: Int): String = value.toString()
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("class"),
+        )
+    }
+
+    @Ignore("PHASE2")
+    @Test
+    fun rejectsMutableInstancePropertiesAtDeclarationSite() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            var intShow: Show<Int> = // ERROR mutable instance properties are not allowed
+                object : Show<Int> {
+                    override fun show(value: Int): String = value.toString()
+                }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("mutable", "property"),
+        )
+    }
+
+    @Ignore("PHASE2")
+    @Test
+    fun rejectsLateinitInstancePropertiesAtDeclarationSite() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            lateinit var intShow: Show<Int> // ERROR lateinit instance properties are not allowed
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("lateinit", "property"),
+        )
+    }
+
+    // FIXME: re-review in the future
+    @Ignore("PHASE2")
+    @Test
+    fun rejectsCustomGetterInstancePropertiesAtDeclarationSite() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            val intShow: Show<Int> // ERROR custom getter instance properties are not allowed
+                get() =
+                    object : Show<Int> {
+                        override fun show(value: Int): String = value.toString()
+                    }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("getter", "property"),
+        )
+    }
+
+    // FIXME: re-review in the future
+    @Ignore("PHASE2")
+    @Test
+    fun rejectsSuspendInstanceFunctionsAtDeclarationSite() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            suspend fun intShow(): Show<Int> = // ERROR suspend @Instance functions are not allowed for now
+                object : Show<Int> {
+                    override fun show(value: Int): String = value.toString()
+                }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("suspend"),
         )
     }
 
@@ -665,8 +822,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE3")
     @Test
     fun resolvesContextualCallsThroughInterfaceOverrides() {
         val source =
@@ -752,8 +908,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE3")
     @Test
     fun usesExtensionReceiverAsTheOnlyAvailableEvidence() {
         val source =
@@ -789,8 +944,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE4")
     @Test
     fun keepsIntegerLiteralInferenceStableAcrossFirAndIr() {
         val source =
@@ -881,10 +1035,9 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE3")
     @Test
-    fun discoversInstancesInheritedThroughHelperBaseClasses() {
+    fun rejectsNonTypeclassIntermediateSupertypesThatExtendTypeclasses() {
         val source =
             """
             package demo
@@ -897,10 +1050,40 @@ class DerivationTest : IntegrationTestSupport() {
                 fun show(value: A): String
             }
 
-            abstract class IntShowBase : Show<Int>
+            abstract class IntShowBase : Show<Int> // ERROR non-typeclass intermediate supertypes should not extend typeclasses
 
             @Instance
             object IntShow : IntShowBase() {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("typeclass"),
+        )
+    }
+
+    @Ignore("PHASE3")
+    @Test
+    fun allowsIntermediateTypeclassSupertypesThatExtendTypeclasses() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Typeclass
+            interface IntShowBase : Show<Int>
+
+            @Instance
+            object IntShow : IntShowBase {
                 override fun show(value: Int): String = "int:${'$'}value"
             }
 
@@ -1097,8 +1280,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE4")
     @Test
     fun rejectsInstanceRulesWithTypeParametersOnlyInPrerequisites() {
         val source =
@@ -1127,17 +1309,15 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE4")
     @Test
-    fun remainsStableWhenRecursiveCandidatesAppearBeforeOrAfterViableOnes() {
-        val recursiveFirst =
+    fun rejectsDirectSelfRecursiveInstanceRulesAtDeclarationSite() {
+        val source =
             """
             package demo
 
             import one.wabbit.typeclass.Instance
             import one.wabbit.typeclass.Typeclass
-            import one.wabbit.typeclass.summon
 
             data class Box<A>(val value: A)
 
@@ -1147,81 +1327,16 @@ class DerivationTest : IntegrationTestSupport() {
             }
 
             @Instance
-            object IntShow : Show<Int> {
-                override fun label(): String = "int"
-            }
-
-            @Instance
             context(_: Show<Box<A>>)
-            fun <A> recursiveBoxShow(): Show<Box<A>> =
+            fun <A> recursiveBoxShow(): Show<Box<A>> = // ERROR direct self-recursive instance rule Show<Box<A>> => Show<Box<A>>
                 object : Show<Box<A>> {
                     override fun label(): String = "recursive"
                 }
-
-            @Instance
-            context(_: Show<A>)
-            fun <A> boxShow(): Show<Box<A>> =
-                object : Show<Box<A>> {
-                    override fun label(): String = "box"
-                }
-
-            context(_: Show<A>)
-            fun <A> which(): String = summon<Show<A>>().label()
-
-            fun main() {
-                println(which<Box<Int>>())
-            }
             """.trimIndent()
 
-        val viableFirst =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.Typeclass
-            import one.wabbit.typeclass.summon
-
-            data class Box<A>(val value: A)
-
-            @Typeclass
-            interface Show<A> {
-                fun label(): String
-            }
-
-            @Instance
-            object IntShow : Show<Int> {
-                override fun label(): String = "int"
-            }
-
-            @Instance
-            context(_: Show<A>)
-            fun <A> boxShow(): Show<Box<A>> =
-                object : Show<Box<A>> {
-                    override fun label(): String = "box"
-                }
-
-            @Instance
-            context(_: Show<Box<A>>)
-            fun <A> recursiveBoxShow(): Show<Box<A>> =
-                object : Show<Box<A>> {
-                    override fun label(): String = "recursive"
-                }
-
-            context(_: Show<A>)
-            fun <A> which(): String = summon<Show<A>>().label()
-
-            fun main() {
-                println(which<Box<Int>>())
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = recursiveFirst,
-            expectedStdout = "box",
-        )
-        assertCompilesAndRuns(
-            source = viableFirst,
-            expectedStdout = "box",
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("recursive"),
         )
     }
 

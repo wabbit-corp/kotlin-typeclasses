@@ -2,8 +2,20 @@ package one.wabbit.typeclass.plugin.model
 
 internal class TypeclassResolutionPlanner(
     private val ruleProvider: (TcType) -> List<InstanceRule>,
+    private val bindableDesiredVariableIds: Set<String> = emptySet(),
 ) {
-    constructor(rules: List<InstanceRule>) : this(ruleProvider = { rules })
+    constructor(rules: List<InstanceRule>) : this(
+        ruleProvider = { _: TcType -> rules },
+        bindableDesiredVariableIds = emptySet(),
+    )
+
+    constructor(
+        rules: List<InstanceRule>,
+        bindableDesiredVariableIds: Set<String>,
+    ) : this(
+        ruleProvider = { _: TcType -> rules },
+        bindableDesiredVariableIds = bindableDesiredVariableIds,
+    )
 
     fun resolve(
         desiredType: TcType,
@@ -49,7 +61,10 @@ internal class TypeclassResolutionPlanner(
 
                 val substitution =
                     Unifier(
-                        bindableVariableIds = instantiatedRule.rule.typeParameters.mapTo(linkedSetOf(), TcTypeParameter::id),
+                        bindableVariableIds =
+                            instantiatedRule.rule.typeParameters.mapTo(linkedSetOf(), TcTypeParameter::id).apply {
+                                addAll(bindableDesiredVariableIds)
+                            },
                     ).unify(
                         desiredType,
                         instantiatedRule.rule.providedType,

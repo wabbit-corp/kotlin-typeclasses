@@ -187,9 +187,11 @@ private class TypeclassIrCallTransformer(
     ): IrExpression {
         val typeArgumentMap = original.typeParameters.map(IrTypeParameter::symbol).zip(typeArgumentsForOriginal).toMap()
         val planner =
-            TypeclassResolutionPlanner { goal ->
-                ruleIndex.rulesForGoal(goal)
-            }
+            TypeclassResolutionPlanner(
+                ruleProvider = { goal: TcType ->
+                    ruleIndex.rulesForGoal(goal)
+                },
+            )
 
         val originalCall = irCall(original.symbol)
         originalCall.dispatchReceiver = dispatchReceiver

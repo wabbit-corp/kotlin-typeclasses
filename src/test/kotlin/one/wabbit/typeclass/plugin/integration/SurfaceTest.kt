@@ -101,8 +101,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE2")
     @Test
     fun detectsMutualRecursionAcrossTypeclasses() {
         val source =
@@ -957,8 +956,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE4")
     @Test
     fun treatsTypeAliasesAsTransparentForResolution() {
         val source =

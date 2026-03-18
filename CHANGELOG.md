@@ -16,3 +16,4 @@
 - Document the current compiler-plugin edge cases and Kotlin IR slot-layout learnings in `LEARNINGS.md`.
 - Fix IR rewriting for preserved explicit context arguments inside contextual lambdas, overloaded self-calls in anonymous functions, and generic `summon<T>()` calls whose contextuality only appears after type substitution.
 - Add regressions for platform-type safe calls, cross-file overloaded wrappers, and star-projected contextual lambdas that forward associated typeclass evidence through higher-order calls.
+- Fix receiver-only FIR type inference for contextual extension/operator calls, and stop synthetic implicit receiver injection from polluting unrelated lambda overload resolution such as `run { ... }`.

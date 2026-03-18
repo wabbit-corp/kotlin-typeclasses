@@ -113,6 +113,31 @@ class WrapperPlannerTest {
         assertEquals(2, ambiguous.matchingPlans.size)
     }
 
+    @Test
+    fun `bindable desired variables can match concrete instance rules`() {
+        val a = TcTypeParameter("outer:A", "A")
+        val concreteRule =
+            InstanceRule(
+                id = "boxIntEq",
+                typeParameters = emptyList(),
+                providedType = eq(box(intType())),
+                prerequisiteTypes = emptyList(),
+            )
+
+        val result =
+            TypeclassResolutionPlanner(
+                rules = listOf(concreteRule),
+                bindableDesiredVariableIds = setOf(a.id),
+            ).resolve(
+                desiredType = eq(typeVariable(a)),
+                localContextTypes = emptyList(),
+            )
+
+        val success = assertIs<ResolutionSearchResult.Success>(result)
+        val applied = assertIs<ResolutionPlan.ApplyRule>(success.plan)
+        assertEquals("boxIntEq", applied.ruleId)
+    }
+
     private fun typeConstructor(
         classifierId: String,
         vararg arguments: TcType,
@@ -121,6 +146,10 @@ class WrapperPlannerTest {
     private fun typeVariable(parameter: TcTypeParameter): TcType = TcType.Variable(parameter.id, parameter.displayName)
 
     private fun eq(argument: TcType): TcType = typeConstructor("demo.Eq", argument)
+
+    private fun box(argument: TcType): TcType = typeConstructor("demo.Box", argument)
+
+    private fun intType(): TcType = typeConstructor("kotlin.Int")
 
     private fun pair(
         first: TcType,
