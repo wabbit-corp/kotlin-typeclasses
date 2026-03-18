@@ -1,5 +1,6 @@
 # Learnings
 
+- All-open and no-arg are a good fit for the current raw compiler harness. Unlike KSP/KAPT, they only need extra compiler plugin jars plus repeated annotation options, not a generated-sources pipeline.
 - `TypeId` needs more than star-projection preservation. Use-site variance (`in`/`out`) has to survive FIR capture, planner unification, IR reconstruction, and canonical-name rendering, otherwise `TypeId<Array<Int>>` and `TypeId<Array<out Int>>` collapse incorrectly.
 - Reified `TypeId<T>` cannot be implemented with compiler-baked canonical strings alone because the semantic identity only becomes concrete at the instantiation site. The reliable shape is `typeOf<T>()` in IR plus a runtime `typeId(KType)` factory.
 - `Nullable`, `NotNullable`, and `TypeId` fit the same builtin-proof pattern as the earlier utility proofs: planner-visible synthetic rules plus a final IR validity check. The opt-in-only carrier objects can stay internal as long as the public proof interfaces remain opt-in-free and the compiler materializes the carrier singletons on behalf of user code.

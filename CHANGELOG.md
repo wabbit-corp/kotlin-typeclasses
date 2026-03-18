@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Enable the PHASE17 all-open/no-arg interop coverage and extend the integration harness with explicit `AllOpen(...)` and `NoArg(...)` support plugins that forward annotation-based compiler-plugin options.
 - Enable the PHASE13G `TypeId` regressions, preserve use-site variance in the internal semantic type model, and materialize reified `TypeId<T>` evidence through `typeOf<T>()` plus a runtime `KType` factory.
 - Enable the PHASE13E and PHASE13F utility-proof regressions, synthesize builtin `Nullable`, `NotNullable`, and `TypeId` evidence, and keep the proof surface usable from end-user code without leaking `InternalTypeclassApi` opt-in requirements.
 - Add an explicit regression proving that end users can summon and use builtin proof evidence without opting into `InternalTypeclassApi`.

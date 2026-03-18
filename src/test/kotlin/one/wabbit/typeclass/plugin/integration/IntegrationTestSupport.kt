@@ -518,6 +518,48 @@ sealed interface CompilerHarnessPlugin {
             listOf("kotlin-atomicfu-compiler-plugin-embeddable")
     }
 
+    data class AllOpen(
+        val annotations: List<String>,
+        val presets: List<String> = emptyList(),
+    ) : CompilerHarnessPlugin {
+        override val runtimeClasspathJarMarkers: List<String> = emptyList()
+        override val compilerPluginJarMarkers: List<String> =
+            listOf("kotlin-allopen-compiler-plugin-embeddable")
+        override val compilerPluginId: String = "org.jetbrains.kotlin.allopen"
+        override val compilerPluginOptions: List<String> =
+            buildList {
+                annotations.forEach { annotationFqName ->
+                    add("annotation=$annotationFqName")
+                }
+                presets.forEach { presetName ->
+                    add("preset=$presetName")
+                }
+            }
+    }
+
+    data class NoArg(
+        val annotations: List<String>,
+        val presets: List<String> = emptyList(),
+        val invokeInitializers: Boolean = false,
+    ) : CompilerHarnessPlugin {
+        override val runtimeClasspathJarMarkers: List<String> = emptyList()
+        override val compilerPluginJarMarkers: List<String> =
+            listOf("kotlin-noarg-compiler-plugin-embeddable")
+        override val compilerPluginId: String = "org.jetbrains.kotlin.noarg"
+        override val compilerPluginOptions: List<String> =
+            buildList {
+                annotations.forEach { annotationFqName ->
+                    add("annotation=$annotationFqName")
+                }
+                presets.forEach { presetName ->
+                    add("preset=$presetName")
+                }
+                if (invokeInitializers) {
+                    add("invokeInitializers=true")
+                }
+            }
+    }
+
     data class External(
         override val supportSources: Map<String, String> = emptyMap(),
         override val runtimeClasspathJarMarkers: List<String> = emptyList(),

@@ -68,6 +68,8 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable:2.3.10")
     testImplementation("org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:2.3.10")
     testImplementation("org.jetbrains.kotlin:kotlin-atomicfu-compiler-plugin-embeddable:2.3.10")
+    testImplementation("org.jetbrains.kotlin:kotlin-allopen-compiler-plugin-embeddable:2.3.10")
+    testImplementation("org.jetbrains.kotlin:kotlin-noarg-compiler-plugin-embeddable:2.3.10")
     testImplementation("org.jetbrains.kotlin:kotlin-parcelize-compiler:2.3.10")
     testImplementation("org.jetbrains.kotlin:kotlin-parcelize-runtime:2.3.10")
     testImplementation("org.jetbrains.kotlin:kotlin-power-assert-compiler-plugin-embeddable:2.3.10")
