@@ -3,6 +3,8 @@ package one.wabbit.typeclass.plugin.integration
 import kotlin.test.Test
 
 class UtilityProofTest : IntegrationTestSupport() {
+    private val serializationPlugins = listOf(CompilerHarnessPlugin.Serialization)
+
     @Test fun materializesSameProofForIdenticalTypesAliasesAndReflexiveTypeParameters() {
         val source =
             """
@@ -251,6 +253,7 @@ class UtilityProofTest : IntegrationTestSupport() {
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "serializer-typeclass",
+            requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
     }

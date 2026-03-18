@@ -2,6 +2,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 repositories {
+    google()
     mavenCentral()
 
     maven("https://jitpack.io")
@@ -65,7 +66,12 @@ dependencies {
     compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.3.10")
     testImplementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.3.10")
     testImplementation("org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable:2.3.10")
+    testImplementation("org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:2.3.10")
     testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.9.0")
+    testImplementation("androidx.compose.runtime:runtime:1.9.3")
+    testImplementation("androidx.compose.runtime:runtime-annotation-jvm:1.9.3")
+    testImplementation("androidx.collection:collection-jvm:1.5.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.1")
 }
 
 java {

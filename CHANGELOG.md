@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Enable the PHASE13 Compose interop suite and replace source-sniffed support detection in the integration harness with explicit `requiredPlugins` declarations that can contribute runtime jars, compiler plugin jars, compiler arguments, and minimum JVM targets.
+- Add Gradle-cache fallback lookup for harness support artifacts so interop tests can resolve third-party compiler plugins and runtimes without assuming they are already on the test JVM classpath.
+- Keep the integration harness default JVM target at `1.8`, while allowing specific interop plugins such as Compose to raise the minimum target they need for their own bytecode.
 - Implement PHASE12 utility-proof builtins for `Same`, `NotSame`, `Subtype`, `KnownType`, `SameTypeConstructor`, and `IsTypeclassInstance`, including IR materialization through runtime proof singletons, star-projection support in the internal type model, and the `knownType(kType)` factory.
 - Enable the PHASE12 utility-proof regression suite and fix the invalid invariant-fixture shape so the tests exercise subtype proof failures instead of Kotlin front-end parse errors.
 - Generalize the integration harness around source-detected support bundles so tests can attach extra runtime jars and compiler plugins, and use that mechanism to exercise `kotlinx.serialization` without making it a blanket assumption for every compilation.

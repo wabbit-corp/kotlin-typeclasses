@@ -1,8 +1,11 @@
 package one.wabbit.typeclass.plugin.integration
 
+import kotlin.test.Ignore
 import kotlin.test.Test
 
 class KSerializerBuiltinTest : IntegrationTestSupport() {
+    private val serializationPlugins = listOf(CompilerHarnessPlugin.Serialization)
+
     @Test fun treatsKSerializerAsBuiltinTypeclassWhenFlagEnabled() {
         val source =
             """
@@ -25,6 +28,7 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "demo.User",
+            requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
     }
@@ -60,6 +64,7 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 demo.User
                 demo.User
                 """.trimIndent(),
+            requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
     }
@@ -84,6 +89,7 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("serializer", "user"),
+            requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
     }
@@ -111,6 +117,7 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "demo.Box",
+            requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
     }
@@ -147,6 +154,7 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 true
                 true
                 """.trimIndent(),
+            requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
     }
@@ -198,6 +206,7 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 true
                 true
                 """.trimIndent(),
+            requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
     }
@@ -255,6 +264,7 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 true
                 true
                 """.trimIndent(),
+            requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
     }
@@ -305,6 +315,7 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 true
                 true
                 """.trimIndent(),
+            requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
     }
@@ -361,6 +372,225 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 true
                 true
                 """.trimIndent(),
+            requiredPlugins = serializationPlugins,
+            pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
+        )
+    }
+
+    @Ignore("PHASE13A")
+    @Test
+    fun rejectsStarProjectedKSerializerGoalsCleanly() {
+        val source =
+            """
+            package demo
+
+            import kotlinx.serialization.KSerializer
+            import one.wabbit.typeclass.summon
+
+            fun main() {
+                println(summon<KSerializer<List<*>>>().descriptor.serialName) // ERROR star-projected serializers are not materializable
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("star", "serializer"),
+            requiredPlugins = serializationPlugins,
+            pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
+        )
+    }
+
+    @Ignore("PHASE13A")
+    @Test
+    fun rejectsNonReifiedGenericKSerializerMaterialization() {
+        val source =
+            """
+            package demo
+
+            import kotlinx.serialization.KSerializer
+            import one.wabbit.typeclass.summon
+
+            fun <T> impossible(): String =
+                summon<KSerializer<T>>().descriptor.serialName // ERROR T is not reified/runtime-available
+
+            fun main() {
+                println("unused")
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("reified", "serializer"),
+            requiredPlugins = serializationPlugins,
+            pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
+        )
+    }
+
+    @Ignore("PHASE13A")
+    @Test
+    fun builtinKSerializerCanActAsPrerequisiteForOrdinaryRuleSearch() {
+        val source =
+            """
+            package demo
+
+            import kotlinx.serialization.KSerializer
+            import kotlinx.serialization.Serializable
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface JsonWriter<A> {
+                fun serialName(): String
+            }
+
+            @Instance
+            context(serializer: KSerializer<A>)
+            fun <A> generatedJsonWriter(): JsonWriter<A> =
+                object : JsonWriter<A> {
+                    override fun serialName(): String = serializer.descriptor.serialName
+                }
+
+            @Serializable
+            data class User(val name: String)
+
+            context(writer: JsonWriter<A>)
+            fun <A> renderName(): String = writer.serialName()
+
+            fun main() {
+                println(renderName<User>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "demo.User",
+            requiredPlugins = serializationPlugins,
+            pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
+        )
+    }
+
+    @Ignore("PHASE13A")
+    @Test
+    fun contextualAndUseSerializersAnnotationsMatchOfficialSerializerApi() {
+        val source =
+            """
+            @file:UseSerializers(PointAsStringSerializer::class)
+
+            package demo
+
+            import kotlinx.serialization.Contextual
+            import kotlinx.serialization.KSerializer
+            import kotlinx.serialization.Serializable
+            import kotlinx.serialization.UseSerializers
+            import kotlinx.serialization.descriptors.PrimitiveKind
+            import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+            import kotlinx.serialization.descriptors.SerialDescriptor
+            import kotlinx.serialization.encoding.Decoder
+            import kotlinx.serialization.encoding.Encoder
+            import kotlinx.serialization.serializer
+            import one.wabbit.typeclass.summon
+
+            data class Point(val x: Int, val y: Int)
+
+            object PointAsStringSerializer : KSerializer<Point> {
+                override val descriptor: SerialDescriptor =
+                    PrimitiveSerialDescriptor("demo.PointAsString", PrimitiveKind.STRING)
+
+                override fun serialize(encoder: Encoder, value: Point) = error("unused")
+
+                override fun deserialize(decoder: Decoder): Point = error("unused")
+            }
+
+            @Serializable
+            data class UsesSerializer(val point: Point)
+
+            @Serializable
+            data class UsesContextual(@Contextual val point: Point)
+
+            inline fun <reified T> sameSerializerRuntimeType(): Boolean {
+                val builtin = summon<KSerializer<T>>()
+                val official = serializer<T>()
+                return builtin::class == official::class
+            }
+
+            fun main() {
+                val builtinUses = summon<KSerializer<UsesSerializer>>()
+                val officialUses = serializer<UsesSerializer>()
+                println(sameSerializerRuntimeType<UsesSerializer>())
+                println(
+                    builtinUses.descriptor.getElementDescriptor(0).serialName ==
+                        officialUses.descriptor.getElementDescriptor(0).serialName,
+                )
+
+                val builtinContextual = summon<KSerializer<UsesContextual>>()
+                val officialContextual = serializer<UsesContextual>()
+                println(sameSerializerRuntimeType<UsesContextual>())
+                println(
+                    builtinContextual.descriptor.getElementDescriptor(0).serialName ==
+                        officialContextual.descriptor.getElementDescriptor(0).serialName,
+                )
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                true
+                true
+                """.trimIndent(),
+            requiredPlugins = serializationPlugins,
+            pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
+        )
+    }
+
+    @Ignore("PHASE13A")
+    @Test
+    fun sealedInterfaceAndDataObjectKSerializersMatchOfficialSerializerApi() {
+        val source =
+            """
+            package demo
+
+            import kotlinx.serialization.KSerializer
+            import kotlinx.serialization.Serializable
+            import kotlinx.serialization.serializer
+            import one.wabbit.typeclass.summon
+
+            @Serializable
+            sealed interface Token
+
+            @Serializable
+            data class Word(val value: String) : Token
+
+            @Serializable
+            data object End : Token
+
+            inline fun <reified T> sameSerializerRuntimeType(): Boolean {
+                val builtin = summon<KSerializer<T>>()
+                val official = serializer<T>()
+                return builtin::class == official::class
+            }
+
+            fun main() {
+                val builtin = summon<KSerializer<Token>>()
+                val official = serializer<Token>()
+                println(sameSerializerRuntimeType<Token>())
+                println(builtin.descriptor.serialName == official.descriptor.serialName)
+                println(builtin.descriptor.elementsCount == official.descriptor.elementsCount)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                true
+                """.trimIndent(),
+            requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
     }

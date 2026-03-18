@@ -13,22 +13,46 @@ import java.io.PrintStream
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.io.path.isRegularFile
 
 abstract class IntegrationTestSupport {
-    internal open fun supportBundles(): List<CompilerHarnessSupportBundle> = defaultHarnessSupportBundles()
+    private companion object {
+        private const val DEFAULT_HARNESS_JVM_TARGET = "1.8"
+        private val locatedSupportJars: MutableMap<String, Path> = linkedMapOf()
 
-    protected fun assertCompiles(source: String) {
-        compileSource(source)
+        private fun maxJvmTarget(left: String, right: String): String =
+            if (normalizeJvmTarget(left) >= normalizeJvmTarget(right)) {
+                left
+            } else {
+                right
+            }
+
+        private fun normalizeJvmTarget(value: String): Int =
+            value.removePrefix("1.").toInt()
+    }
+
+    protected fun assertCompiles(
+        source: String,
+        requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
+        pluginOptions: List<String> = emptyList(),
+    ) {
+        compileSource(
+            source = source,
+            requiredPlugins = requiredPlugins,
+            pluginOptions = pluginOptions,
+        )
     }
 
     protected fun assertDoesNotCompile(
         source: String,
         expectedMessages: List<String>,
+        requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
     ) {
         assertDoesNotCompile(
             sources = mapOf("Sample.kt" to source),
             expectedMessages = expectedMessages,
+            requiredPlugins = requiredPlugins,
             pluginOptions = pluginOptions,
         )
     }
@@ -36,9 +60,10 @@ abstract class IntegrationTestSupport {
     protected fun assertDoesNotCompile(
         sources: Map<String, String>,
         expectedMessages: List<String>,
+        requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
     ) {
-        val result = compileSourceInternal(sources, pluginOptions)
+        val result = compileSourceInternal(sources, requiredPlugins, pluginOptions)
         assertEquals(
             ExitCode.COMPILATION_ERROR,
             result.exitCode,
@@ -54,12 +79,14 @@ abstract class IntegrationTestSupport {
         source: String,
         expectedStdout: String,
         mainClass: String = "demo.SampleKt",
+        requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
     ) {
         assertCompilesAndRuns(
             sources = mapOf("Sample.kt" to source),
             expectedStdout = expectedStdout,
             mainClass = mainClass,
+            requiredPlugins = requiredPlugins,
             pluginOptions = pluginOptions,
         )
     }
@@ -68,9 +95,10 @@ abstract class IntegrationTestSupport {
         sources: Map<String, String>,
         expectedStdout: String,
         mainClass: String,
+        requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
     ) {
-        val artifacts = compileSource(sources, pluginOptions)
+        val artifacts = compileSource(sources, requiredPlugins, pluginOptions)
         val javaExecutable = Path.of(System.getProperty("java.home"), "bin", "java").toAbsolutePath().toString()
         val process =
             ProcessBuilder(
@@ -89,9 +117,10 @@ abstract class IntegrationTestSupport {
 
     protected fun compileSource(
         sources: Map<String, String>,
+        requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
     ): CompilationArtifacts {
-        val result = compileSourceInternal(sources, pluginOptions)
+        val result = compileSourceInternal(sources, requiredPlugins, pluginOptions)
         assertEquals(
             ExitCode.OK,
             result.exitCode,
@@ -102,20 +131,31 @@ abstract class IntegrationTestSupport {
 
     protected fun compileSource(
         source: String,
+        requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
     ): CompilationArtifacts {
-        return compileSource(mapOf("Sample.kt" to source), pluginOptions)
+        return compileSource(
+            sources = mapOf("Sample.kt" to source),
+            requiredPlugins = requiredPlugins,
+            pluginOptions = pluginOptions,
+        )
     }
 
     protected fun compileSourceInternal(
         source: String,
+        requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
     ): CompilationResult {
-        return compileSourceInternal(mapOf("Sample.kt" to source), pluginOptions)
+        return compileSourceInternal(
+            sources = mapOf("Sample.kt" to source),
+            requiredPlugins = requiredPlugins,
+            pluginOptions = pluginOptions,
+        )
     }
 
     protected fun compileSourceInternal(
         sources: Map<String, String>,
+        requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
     ): CompilationResult {
         val workingDir = createTempDirectory(prefix = "typeclass-compile-")
@@ -141,7 +181,7 @@ abstract class IntegrationTestSupport {
                 }
         val runtimeClasspathEntry = locateRuntimeClasspathEntry(runtimeProjectRoot)
         val stdlibJar = locateStdlibJar()
-        val resolvedSupport = resolveHarnessSupport(sources.values)
+        val resolvedSupport = resolveHarnessSupport(requiredPlugins)
 
         assertTrue(pluginJar.toFile().isFile, "Plugin jar is missing at $pluginJar")
         assertTrue(runtimeClasspathEntry.toFile().exists(), "Runtime classpath entry is missing at $runtimeClasspathEntry")
@@ -161,15 +201,22 @@ abstract class IntegrationTestSupport {
             }
 
         val stdout = ByteArrayOutputStream()
+        val jvmTarget =
+            requiredPlugins.fold(DEFAULT_HARNESS_JVM_TARGET) { current, plugin ->
+                maxJvmTarget(current, plugin.minimumJvmTarget)
+            }
         val compilerArguments =
             buildList {
                 add("-Xcontext-parameters")
                 add("-no-stdlib")
                 add("-no-reflect")
+                add("-jvm-target")
+                add(jvmTarget)
                 add("-Xplugin=${pluginJar.toAbsolutePath()}")
                 resolvedSupport.compilerPluginJars.forEach { compilerPluginJar ->
                     add("-Xplugin=${compilerPluginJar.toAbsolutePath()}")
                 }
+                addAll(resolvedSupport.compilerArguments)
                 add("-classpath")
                 add(runtimeClasspathEntries.joinToString(separator = java.io.File.pathSeparator) { it.toAbsolutePath().toString() })
                 pluginOptions.forEach { option ->
@@ -299,38 +346,59 @@ abstract class IntegrationTestSupport {
         }.let(Path::of)
     }
 
-    private fun resolveHarnessSupport(sourceContents: Collection<String>): ResolvedHarnessSupport {
-        val combinedSource = sourceContents.joinToString(separator = "\n")
+    private fun resolveHarnessSupport(requiredPlugins: List<CompilerHarnessPlugin>): ResolvedHarnessSupport {
         val runtimeClasspathEntries = linkedMapOf<String, Path>()
         val compilerPluginJars = linkedMapOf<String, Path>()
-        supportBundles().forEach { bundle ->
-            val runtimeRequired = bundle.requiresRuntime(combinedSource)
-            val compilerPluginRequired = bundle.requiresCompilerPlugin(combinedSource)
-            if (runtimeRequired || compilerPluginRequired) {
-                bundle.runtimeClasspathJarMarkers.forEach { marker ->
-                    runtimeClasspathEntries.putIfAbsent(marker, locateClasspathJar(containing = marker))
-                }
+        val compilerArguments = mutableListOf<String>()
+        requiredPlugins.forEach { plugin ->
+            plugin.runtimeClasspathJarMarkers.forEach { marker ->
+                runtimeClasspathEntries.putIfAbsent(marker, locateSupportJar(containing = marker))
             }
-            if (compilerPluginRequired) {
-                bundle.compilerPluginJarMarkers.forEach { marker ->
-                    compilerPluginJars.putIfAbsent(marker, locateClasspathJar(containing = marker))
-                }
+            plugin.compilerPluginJarMarkers.forEach { marker ->
+                compilerPluginJars.putIfAbsent(marker, locateSupportJar(containing = marker))
             }
+            compilerArguments += plugin.compilerArguments
         }
         return ResolvedHarnessSupport(
             runtimeClasspathEntries = runtimeClasspathEntries.values.toList(),
             compilerPluginJars = compilerPluginJars.values.toList(),
+            compilerArguments = compilerArguments,
         )
     }
 
-    private fun locateClasspathJar(containing: String): Path =
+    private fun locateSupportJar(containing: String): Path =
+        locatedSupportJars.getOrPut(containing) {
+            locateClasspathJar(containing)
+                ?: locateGradleCacheJar(containing)
+                ?: error("Could not locate $containing on the test classpath or in the Gradle artifact cache")
+        }
+
+    private fun locateClasspathJar(containing: String): Path? =
         System.getProperty("java.class.path")
             .split(java.io.File.pathSeparator)
             .firstOrNull { entry ->
                 entry.contains(containing) && entry.endsWith(".jar")
             }
             ?.let(Path::of)
-            ?: error("Could not locate $containing on the test classpath")
+
+    private fun locateGradleCacheJar(containing: String): Path? {
+        val gradleCacheRoot = Path.of(System.getProperty("user.home"), ".gradle", "caches", "modules-2", "files-2.1")
+        if (!Files.isDirectory(gradleCacheRoot)) {
+            return null
+        }
+        return Files.walk(gradleCacheRoot).use { paths ->
+            paths
+                .filter { candidate ->
+                    candidate.isRegularFile() &&
+                        candidate.fileName.toString().endsWith(".jar") &&
+                        candidate.fileName.toString().contains(containing)
+                }
+                .max { left, right ->
+                    Files.getLastModifiedTime(left).compareTo(Files.getLastModifiedTime(right))
+                }
+                .orElse(null)
+        }
+    }
 }
 
 data class CompilationArtifacts(
@@ -344,35 +412,48 @@ data class CompilationResult(
     val artifacts: CompilationArtifacts,
 )
 
-internal data class CompilerHarnessSupportBundle(
-    val name: String,
-    val runtimeClasspathJarMarkers: List<String>,
-    val compilerPluginJarMarkers: List<String> = emptyList(),
-    val requiresRuntime: (String) -> Boolean,
-    val requiresCompilerPlugin: (String) -> Boolean = { false },
-)
+sealed interface CompilerHarnessPlugin {
+    val runtimeClasspathJarMarkers: List<String>
+    val compilerPluginJarMarkers: List<String>
+        get() = emptyList()
+    val compilerArguments: List<String>
+        get() = emptyList()
+    val minimumJvmTarget: String
+        get() = "1.8"
+
+    data object Serialization : CompilerHarnessPlugin {
+        override val runtimeClasspathJarMarkers: List<String> =
+            listOf(
+                "kotlinx-serialization-core-jvm",
+            )
+        override val compilerPluginJarMarkers: List<String> =
+            listOf("kotlin-serialization-compiler-plugin-embeddable")
+    }
+
+    data object Compose : CompilerHarnessPlugin {
+        override val runtimeClasspathJarMarkers: List<String> =
+            listOf(
+                "runtime-metadata-",
+                "runtime-desktop-",
+                "runtime-annotation-jvm-",
+                "collection-jvm-",
+                "kotlinx-coroutines-core-jvm-",
+            )
+        override val compilerPluginJarMarkers: List<String> =
+            listOf("kotlin-compose-compiler-plugin-embeddable")
+        override val minimumJvmTarget: String = "11"
+    }
+
+    data class External(
+        override val runtimeClasspathJarMarkers: List<String> = emptyList(),
+        override val compilerPluginJarMarkers: List<String> = emptyList(),
+        override val compilerArguments: List<String> = emptyList(),
+        override val minimumJvmTarget: String = "1.8",
+    ) : CompilerHarnessPlugin
+}
 
 private data class ResolvedHarnessSupport(
     val runtimeClasspathEntries: List<Path>,
     val compilerPluginJars: List<Path>,
+    val compilerArguments: List<String>,
 )
-
-private fun defaultHarnessSupportBundles(): List<CompilerHarnessSupportBundle> =
-    listOf(
-        CompilerHarnessSupportBundle(
-            name = "kotlinx-serialization",
-            runtimeClasspathJarMarkers = listOf("kotlinx-serialization-core-jvm"),
-            compilerPluginJarMarkers = listOf("kotlin-serialization-compiler-plugin-embeddable"),
-            requiresRuntime = { source ->
-                "kotlinx.serialization" in source ||
-                    "@Serializable" in source ||
-                    "KSerializer<" in source ||
-                    "serializer<" in source
-            },
-            requiresCompilerPlugin = { source ->
-                "@Serializable" in source ||
-                    "serializer<" in source ||
-                    "serializer(" in source
-            },
-        ),
-    )

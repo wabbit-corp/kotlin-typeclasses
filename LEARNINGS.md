@@ -1,5 +1,8 @@
 # Learnings
 
+- Interop test harnesses should declare required third-party compiler ecosystems explicitly. A `requiredPlugins = listOf(...)` model is more durable than sniffing source text for annotations or imports, and it scales to plugin-specific jars, flags, and future options.
+- Compose interop is compatible with keeping the generic JVM test floor at `1.8` as long as the harness lets individual support plugins request a higher minimum target. The mistake was the global `21`, not the existence of a higher target for Compose-specific tests.
+- Support-artifact discovery should not assume the current test JVM already loaded every third-party jar. Looking in the Gradle dependency cache is a practical fallback for compiler-plugin interoperability tests.
 - Builtin proof surfaces are cleaner when they reuse the same rule planner as ordinary typeclass instances and defer the final validity check to IR materialization. `Same`, `NotSame`, `Subtype`, `KnownType`, `SameTypeConstructor`, and `IsTypeclassInstance` all fit that shape without special-casing `summon`.
 - `Subtype` proofs should lean on Kotlin’s own IR type checker, not an ad hoc supertype walk. The compiler checker gets nullability, declaration-site variance, and star projections right, and it immediately exposed that `Contravariant<Int> <: Contravariant<Any>` is false because contravariance reverses the direction.
 - `KnownType<T>` needs a runtime factory boundary instead of constructing proof implementations directly in the compiler plugin. Synthesizing a call to `knownType(typeOf<T>())`-style runtime API keeps the library surface in charge of the evidence representation.
