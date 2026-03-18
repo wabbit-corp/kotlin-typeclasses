@@ -11,6 +11,7 @@ import one.wabbit.typeclass.plugin.model.ResolutionSearchResult
 import one.wabbit.typeclass.plugin.model.TcType
 import one.wabbit.typeclass.plugin.model.TcTypeParameter
 import one.wabbit.typeclass.plugin.model.TypeclassResolutionPlanner
+import one.wabbit.typeclass.plugin.model.containsStarProjection
 import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.render
 import one.wabbit.typeclass.plugin.model.substituteType
@@ -1891,6 +1892,9 @@ private fun supportsBuiltinKSerializerGoal(
         return true
     }
     val targetType = constructor.arguments.singleOrNull() ?: return false
+    if (targetType.containsStarProjection()) {
+        return false
+    }
     return isPotentiallySerializableType(
         type = targetType,
         pluginContext = pluginContext,

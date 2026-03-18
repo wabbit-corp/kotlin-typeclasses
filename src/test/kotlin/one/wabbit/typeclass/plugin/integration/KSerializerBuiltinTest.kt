@@ -1,6 +1,5 @@
 package one.wabbit.typeclass.plugin.integration
 
-import kotlin.test.Ignore
 import kotlin.test.Test
 
 class KSerializerBuiltinTest : IntegrationTestSupport() {
@@ -377,7 +376,6 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13A")
     @Test
     fun rejectsStarProjectedKSerializerGoalsCleanly() {
         val source =
@@ -400,7 +398,6 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13A")
     @Test
     fun rejectsNonReifiedGenericKSerializerMaterialization() {
         val source =
@@ -426,7 +423,6 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13A")
     @Test
     fun builtinKSerializerCanActAsPrerequisiteForOrdinaryRuleSearch() {
         val source =
@@ -469,7 +465,6 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13A")
     @Test
     fun contextualAndUseSerializersAnnotationsMatchOfficialSerializerApi() {
         val source =
@@ -546,7 +541,6 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13A")
     @Test
     fun sealedInterfaceAndDataObjectKSerializersMatchOfficialSerializerApi() {
         val source =

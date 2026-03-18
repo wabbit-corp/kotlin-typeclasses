@@ -70,6 +70,13 @@ internal fun TcType.references(id: String): Boolean =
         is TcType.Variable -> this.id == id
     }
 
+internal fun TcType.containsStarProjection(): Boolean =
+    when (this) {
+        TcType.StarProjection -> true
+        is TcType.Constructor -> arguments.any(TcType::containsStarProjection)
+        is TcType.Variable -> false
+    }
+
 internal fun TcType.render(): String =
     when (this) {
         TcType.StarProjection -> "*"

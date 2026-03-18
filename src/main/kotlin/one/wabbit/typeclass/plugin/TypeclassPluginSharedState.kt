@@ -8,6 +8,7 @@ package one.wabbit.typeclass.plugin
 import one.wabbit.typeclass.plugin.model.InstanceRule
 import one.wabbit.typeclass.plugin.model.TcType
 import one.wabbit.typeclass.plugin.model.TcTypeParameter
+import one.wabbit.typeclass.plugin.model.containsStarProjection
 import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.render
 import org.jetbrains.kotlin.descriptors.ClassKind
@@ -528,6 +529,9 @@ private fun supportsBuiltinKSerializerGoal(
         return true
     }
     val targetType = constructor.arguments.singleOrNull() ?: return false
+    if (targetType.containsStarProjection()) {
+        return false
+    }
     return isPotentiallySerializableType(
         type = targetType,
         session = session,
