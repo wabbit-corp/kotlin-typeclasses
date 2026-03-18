@@ -3,7 +3,7 @@ package one.wabbit.typeclass.plugin.integration
 import org.junit.Ignore
 import kotlin.test.Test
 
-@Ignore("REVIEWED: enable when ready")
+@Ignore("PHASE10")
 class KClassBuiltinTest : IntegrationTestSupport() {
     @Test fun treatsKClassAsBuiltinTypeclassWhenFlagEnabled() {
         val source =

@@ -552,7 +552,7 @@ internal fun coneTypeToModel(
 
         is ConeTypeParameterType -> {
             val parameter = typeParameterBySymbol[lowerBound.lookupTag.typeParameterSymbol] ?: return null
-            TcType.Variable(parameter.id, parameter.displayName)
+            TcType.Variable(parameter.id, parameter.displayName, isNullable = lowerBound.isMarkedNullable)
         }
 
         else -> null

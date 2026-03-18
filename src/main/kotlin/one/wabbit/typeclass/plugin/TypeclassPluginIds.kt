@@ -14,6 +14,7 @@ internal const val PRODUCT_FIELD_METADATA_FQ_NAME: String = "one.wabbit.typeclas
 internal const val PRODUCT_TYPECLASS_METADATA_FQ_NAME: String = "one.wabbit.typeclass.ProductTypeclassMetadata"
 internal const val SUM_CASE_METADATA_FQ_NAME: String = "one.wabbit.typeclass.SumCaseMetadata"
 internal const val SUM_TYPECLASS_METADATA_FQ_NAME: String = "one.wabbit.typeclass.SumTypeclassMetadata"
+internal const val RECURSIVE_TYPECLASS_INSTANCE_CELL_FQ_NAME: String = "one.wabbit.typeclass.RecursiveTypeclassInstanceCell"
 
 internal val TYPECLASS_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(FqName(TYPECLASS_ANNOTATION_FQ_NAME))
 internal val INSTANCE_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(FqName(INSTANCE_ANNOTATION_FQ_NAME))
@@ -25,3 +26,5 @@ internal val PRODUCT_FIELD_METADATA_CLASS_ID: ClassId = ClassId.topLevel(FqName(
 internal val PRODUCT_TYPECLASS_METADATA_CLASS_ID: ClassId = ClassId.topLevel(FqName(PRODUCT_TYPECLASS_METADATA_FQ_NAME))
 internal val SUM_CASE_METADATA_CLASS_ID: ClassId = ClassId.topLevel(FqName(SUM_CASE_METADATA_FQ_NAME))
 internal val SUM_TYPECLASS_METADATA_CLASS_ID: ClassId = ClassId.topLevel(FqName(SUM_TYPECLASS_METADATA_FQ_NAME))
+internal val RECURSIVE_TYPECLASS_INSTANCE_CELL_CLASS_ID: ClassId =
+    ClassId.topLevel(FqName(RECURSIVE_TYPECLASS_INSTANCE_CELL_FQ_NAME))

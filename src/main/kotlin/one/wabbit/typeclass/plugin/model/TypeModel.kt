@@ -4,6 +4,7 @@ internal sealed interface TcType {
     data class Variable(
         val id: String,
         val displayName: String,
+        val isNullable: Boolean = false,
     ) : TcType
 
     data class Constructor(
@@ -23,6 +24,7 @@ internal data class InstanceRule(
     val typeParameters: List<TcTypeParameter>,
     val providedType: TcType,
     val prerequisiteTypes: List<TcType>,
+    val supportsRecursiveResolution: Boolean = false,
 )
 
 internal sealed interface ResolutionPlan {
@@ -39,6 +41,10 @@ internal sealed interface ResolutionPlan {
         val appliedTypeArguments: List<TcType>,
         val prerequisitePlans: List<ResolutionPlan>,
     ) : ResolutionPlan
+
+    data class RecursiveReference(
+        override val providedType: TcType,
+    ) : ResolutionPlan
 }
 
 internal class AlphaRenamer {
@@ -47,7 +53,7 @@ internal class AlphaRenamer {
     fun rename(type: TcType): TcType =
         when (type) {
             is TcType.Constructor -> TcType.Constructor(type.classifierId, type.arguments.map(::rename), type.isNullable)
-            is TcType.Variable -> TcType.Variable(nameFor(type.id), nameFor(type.id))
+            is TcType.Variable -> TcType.Variable(nameFor(type.id), nameFor(type.id), type.isNullable)
         }
 
     fun nameFor(id: String): String =
@@ -75,5 +81,12 @@ internal fun TcType.render(): String =
                 }
             }
 
-        is TcType.Variable -> displayName
+        is TcType.Variable -> buildString {
+            append(displayName)
+            if (isNullable) {
+                append('?')
+            }
+        }
     }
+
+internal fun TcType.normalizedKey(): String = AlphaRenamer().rename(this).render()

@@ -5,7 +5,7 @@ import kotlin.test.Test
 
 @Ignore("NEW: review before enabling")
 class ExistentialTest : IntegrationTestSupport() {
-    @Test fun rejectsStarProjectedGoalsCleanly() {
+    @Test fun reportsMissingInstanceForStarProjectedGoalsWithoutCrashing() {
         val source =
             """
             package demo
@@ -19,7 +19,7 @@ class ExistentialTest : IntegrationTestSupport() {
             fun <A> render(): String = "ok"
 
             fun main() {
-                println(render<List<*>>()) // ERROR star-projected goals should not crash the plugin
+                println(render<List<*>>()) // ERROR no Show<List<*>> instance exists; this should fail cleanly
             }
             """.trimIndent()
 

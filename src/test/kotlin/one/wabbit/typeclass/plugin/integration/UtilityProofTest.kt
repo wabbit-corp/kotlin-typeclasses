@@ -3,7 +3,7 @@ package one.wabbit.typeclass.plugin.integration
 import org.junit.Ignore
 import kotlin.test.Test
 
-@Ignore("REVIEWED: enable when ready")
+@Ignore("PHASE12")
 class UtilityProofTest : IntegrationTestSupport() {
     @Test fun materializesSameProofForIdenticalTypesAliasesAndReflexiveTypeParameters() {
         val source =
@@ -130,6 +130,30 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun materializesSubtypeProofForBoundedTypeParameters() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Subtype
+            import one.wabbit.typeclass.summon
+
+            fun <A, B : A> proveBound(): Subtype<B, A> = summon<Subtype<B, A>>()
+
+            open class Animal
+            class Dog : Animal()
+
+            fun main() {
+                println(proveBound<Animal, Dog>() != null)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "true",
+        )
+    }
+
     @Test fun rejectsSubtypeProofForInvariantOrUnrelatedTypes() {
         val source =
             """
@@ -139,7 +163,7 @@ class UtilityProofTest : IntegrationTestSupport() {
 
             context(_: Subtype<A, B>)
             fun <A, B> provenSubtype(): String = "subtype"
-            
+
             data class Invariant<A>()
 
             fun main() {
@@ -150,7 +174,7 @@ class UtilityProofTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("subtype", "list", "string"),
+            expectedMessages = listOf("subtype", "invariant", "string"),
         )
     }
 

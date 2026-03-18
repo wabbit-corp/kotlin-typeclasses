@@ -36,7 +36,13 @@ internal class TypeclassResolutionPlanner(
     ): InternalResolution {
         val normalizedDesired = desiredType.normalizedKey()
         if (!inProgress.add(normalizedDesired)) {
-            return InternalResolution(ResolutionSearchResult.Recursive(desiredType), freshCounter)
+            val recursiveResult =
+                if (ruleProvider(desiredType).any(InstanceRule::supportsRecursiveResolution)) {
+                    ResolutionSearchResult.Success(ResolutionPlan.RecursiveReference(desiredType))
+                } else {
+                    ResolutionSearchResult.Recursive(desiredType)
+                }
+            return InternalResolution(recursiveResult, freshCounter)
         }
 
         try {
@@ -148,6 +154,7 @@ internal class TypeclassResolutionPlanner(
                     typeParameters = freshParameters,
                     providedType = rule.providedType.substitute(substitution),
                     prerequisiteTypes = rule.prerequisiteTypes.map { it.substitute(substitution) },
+                    supportsRecursiveResolution = rule.supportsRecursiveResolution,
                 ),
             nextFreshCounter = freshCounter + 1,
         )
@@ -230,14 +237,14 @@ private class Unifier {
         return when {
             left is TcType.Variable && right is TcType.Variable -> {
                 when {
-                    isBindable(left.id) -> bind(left.id, right)
-                    isBindable(right.id) -> bind(right.id, left)
+                    isBindable(left.id) && bindVariable(left, right) -> true
+                    isBindable(right.id) && bindVariable(right, left) -> true
                     else -> false
                 }
             }
 
-            left is TcType.Variable && isBindable(left.id) -> bind(left.id, right)
-            right is TcType.Variable && isBindable(right.id) -> bind(right.id, left)
+            left is TcType.Variable && isBindable(left.id) -> bindVariable(left, right)
+            right is TcType.Variable && isBindable(right.id) -> bindVariable(right, left)
             left is TcType.Constructor && right is TcType.Constructor ->
                 left.classifierId == right.classifierId &&
                     left.isNullable == right.isNullable &&
@@ -255,6 +262,19 @@ private class Unifier {
 
     private fun isBindable(variableId: String): Boolean =
         bindableVariableIds == null || variableId in bindableVariableIds
+
+    private fun bindVariable(
+        variable: TcType.Variable,
+        value: TcType,
+    ): Boolean {
+        val normalizedValue =
+            if (variable.isNullable) {
+                value.stripOuterNullability() ?: return false
+            } else {
+                value
+            }
+        return bind(variable.id, normalizedValue)
+    }
 
     private fun bind(
         variableId: String,
@@ -305,11 +325,26 @@ private fun TcType.substitute(
                 return this
             }
             try {
-                substitution.bindings[id]?.substitute(substitution, visiting) ?: this
+                val substituted = substitution.bindings[id]?.substitute(substitution, visiting) ?: this
+                if (isNullable) {
+                    substituted.makeNullable()
+                } else {
+                    substituted
+                }
             } finally {
                 visiting.remove(id)
             }
         }
     }
 
-private fun TcType.normalizedKey(): String = AlphaRenamer().rename(this).render()
+private fun TcType.stripOuterNullability(): TcType? =
+    when (this) {
+        is TcType.Constructor -> if (isNullable) copy(isNullable = false) else null
+        is TcType.Variable -> if (isNullable) copy(isNullable = false) else null
+    }
+
+private fun TcType.makeNullable(): TcType =
+    when (this) {
+        is TcType.Constructor -> if (isNullable) this else copy(isNullable = true)
+        is TcType.Variable -> if (isNullable) this else copy(isNullable = true)
+    }

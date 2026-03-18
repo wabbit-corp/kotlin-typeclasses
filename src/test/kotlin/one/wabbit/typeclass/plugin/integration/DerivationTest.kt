@@ -6,8 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class DerivationTest : IntegrationTestSupport() {
-    @Test
-    fun derivesSealedInterfaces() {
+    @Test fun derivesSealedInterfaces() {
         val source =
             """
             package demo
@@ -88,8 +87,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rejectsInstanceObjectsDeclaredInsideNamespaceObjectsAtDeclarationSite() {
+    @Test fun rejectsInstanceObjectsDeclaredInsideNamespaceObjectsAtDeclarationSite() {
         val source =
             """
             package demo
@@ -116,8 +114,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun reportsDuplicateInstancesAcrossCompanionAndTopLevelScopes() {
+    @Test fun reportsDuplicateInstancesAcrossCompanionAndTopLevelScopes() {
         val source =
             """
             package demo
@@ -158,8 +155,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun resolvesAssociatedInstancesThroughTypeArguments() {
+    @Test fun resolvesAssociatedInstancesThroughTypeArguments() {
         val source =
             """
             package demo
@@ -252,8 +248,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rejectsInstanceObjectsDeclaredOutsideAllowedScopesAtDeclarationSite() {
+    @Test fun rejectsInstanceObjectsDeclaredOutsideAllowedScopesAtDeclarationSite() {
         val source =
             """
             package demo
@@ -280,8 +275,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rejectsExtensionInstanceFunctionsAtDeclarationSite() {
+    @Test fun rejectsExtensionInstanceFunctionsAtDeclarationSite() {
         val source =
             """
             package demo
@@ -307,8 +301,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rejectsInstanceFunctionsWithRegularParametersAtDeclarationSite() {
+    @Test fun rejectsInstanceFunctionsWithRegularParametersAtDeclarationSite() {
         val source =
             """
             package demo
@@ -334,8 +327,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rejectsInstancesDeclaredInUnrelatedCompanionObjectsAtDeclarationSite() {
+    @Test fun rejectsInstancesDeclaredInUnrelatedCompanionObjectsAtDeclarationSite() {
         val source =
             """
             package demo
@@ -365,8 +357,7 @@ class DerivationTest : IntegrationTestSupport() {
     }
 
     // FIXME: re-review in the future
-    @Test
-    fun rejectsClassBasedInstancesAtDeclarationSite() {
+    @Test fun rejectsClassBasedInstancesAtDeclarationSite() {
         val source =
             """
             package demo
@@ -391,8 +382,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rejectsMutableInstancePropertiesAtDeclarationSite() {
+    @Test fun rejectsMutableInstancePropertiesAtDeclarationSite() {
         val source =
             """
             package demo
@@ -418,8 +408,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rejectsLateinitInstancePropertiesAtDeclarationSite() {
+    @Test fun rejectsLateinitInstancePropertiesAtDeclarationSite() {
         val source =
             """
             package demo
@@ -443,8 +432,7 @@ class DerivationTest : IntegrationTestSupport() {
     }
 
     // FIXME: re-review in the future
-    @Test
-    fun rejectsCustomGetterInstancePropertiesAtDeclarationSite() {
+    @Test fun rejectsCustomGetterInstancePropertiesAtDeclarationSite() {
         val source =
             """
             package demo
@@ -472,8 +460,7 @@ class DerivationTest : IntegrationTestSupport() {
     }
 
     // FIXME: re-review in the future
-    @Test
-    fun rejectsSuspendInstanceFunctionsAtDeclarationSite() {
+    @Test fun rejectsSuspendInstanceFunctionsAtDeclarationSite() {
         val source =
             """
             package demo
@@ -499,8 +486,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rewritesVarargCallsWithTrailingLambdas() {
+    @Test fun rewritesVarargCallsWithTrailingLambdas() {
         val source =
             """
             package demo
@@ -538,8 +524,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun resolvesInlineReifiedHelpersAroundSummon() {
+    @Test fun resolvesInlineReifiedHelpersAroundSummon() {
         val source =
             """
             package demo
@@ -572,8 +557,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun resolvesAnonymousObjectsAndFunctionsThatCaptureLocalEvidence() {
+    @Test fun resolvesAnonymousObjectsAndFunctionsThatCaptureLocalEvidence() {
         val source =
             """
             package demo
@@ -675,9 +659,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE8")
-    @Test
-    fun rewritesContextualCallsInContextClassPropertyInitializers() {
+    @Test fun rewritesContextualCallsInContextClassPropertyInitializers() {
         val source =
             """
             package demo
@@ -748,9 +730,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE8")
-    @Test
-    fun exposesMultipleTypeclassInstancesFromOneObject() {
+    @Test fun exposesMultipleTypeclassInstancesFromOneObject() {
         val source =
             """
             package demo
@@ -798,9 +778,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE8")
-    @Test
-    fun mixesPreservedAndSynthesizedTypeclassArgumentsOnOneCall() {
+    @Test fun mixesPreservedAndSynthesizedTypeclassArgumentsOnOneCall() {
         val source =
             """
             package demo
@@ -852,8 +830,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun resolvesContextualCallsThroughInterfaceOverrides() {
+    @Test fun resolvesContextualCallsThroughInterfaceOverrides() {
         val source =
             """
             package demo
@@ -937,8 +914,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun usesExtensionReceiverAsTheOnlyAvailableEvidence() {
+    @Test fun usesExtensionReceiverAsTheOnlyAvailableEvidence() {
         val source =
             """
             package demo
@@ -972,8 +948,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun keepsIntegerLiteralInferenceStableAcrossFirAndIr() {
+    @Test fun keepsIntegerLiteralInferenceStableAcrossFirAndIr() {
         val source =
             """
             package demo
@@ -1015,7 +990,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE8")
     @Test
     fun reportsAmbiguityForNullableSpecificAndGenericNullEvidence() {
         val source =
@@ -1089,8 +1063,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun allowsIntermediateTypeclassSupertypesThatExtendTypeclasses() {
+    @Test fun allowsIntermediateTypeclassSupertypesThatExtendTypeclasses() {
         val source =
             """
             package demo
@@ -1361,7 +1334,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE8")
     @Test
     fun propagatesSuperclassStyleEvidenceFromOrdToEq() {
         val source =
@@ -1476,9 +1448,8 @@ class DerivationTest : IntegrationTestSupport() {
     }
 
     // NEW
-    @Ignore("NEW: review before enabling")
     @Test
-    fun reportsOverlapBetweenLocalEvidenceAndDerivedEvidence() {
+    fun localExactEvidenceOverridesDerivedGlobalEvidence() {
         val source =
             """
             package demo
@@ -1514,14 +1485,14 @@ class DerivationTest : IntegrationTestSupport() {
                     }
 
                 context(localNullable) {
-                    println(which<String?>()) // ERROR local and derived evidence both satisfy Eq<String?>
+                    println(which<String?>())
                 }
             }
             """.trimIndent()
 
-        assertDoesNotCompile(
+        assertCompilesAndRuns(
             source = source,
-            expectedMessages = listOf("ambiguous typeclass instance"),
+            expectedStdout = "local-nullable",
         )
     }
 
@@ -1711,7 +1682,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE8")
     @Test
     fun reportsAmbiguousEvidenceInsideDefaultTypeclassMethods() {
         val source =
@@ -1757,7 +1727,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE9")
     @Test
     fun additionalUnrelatedFilesCanChangeResolutionOutcome() {
         val stableSources =
@@ -1937,7 +1906,6 @@ class DerivationTest : IntegrationTestSupport() {
     }
 
     // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun superclassEntailmentRespectsDirectLocalShadowing() {
         val source =

@@ -7,6 +7,7 @@ package one.wabbit.typeclass.plugin
 
 import one.wabbit.typeclass.plugin.model.TcType
 import one.wabbit.typeclass.plugin.model.TcTypeParameter
+import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.references
 import org.jetbrains.kotlin.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.diagnostics.reportOn
@@ -200,7 +201,10 @@ internal class TypeclassFirCheckersExtension(
         }
 
         val recursiveProvidedType = providedTypes.validTypes.firstOrNull { providedType ->
-            ruleShape.prerequisites.any { prerequisite -> prerequisite == providedType }
+            ruleShape.prerequisites.any { prerequisite ->
+                prerequisite.normalizedKey() == ruleShape.declaredProvidedType.normalizedKey() &&
+                    prerequisite.normalizedKey() == providedType.normalizedKey()
+            }
         }
         if (recursiveProvidedType != null) {
             reportInvalid(

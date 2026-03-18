@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fix `origin=EQ` contextual `set` operator rewrites by swapping Kotlin's lowered extension-receiver/index layout and trimming the synthetic trailing `null` assignment shim argument.
+- Enable the active `PHASE9` operator and resolution regressions, and reclassify contextual property-getter coverage plus the invalid private-field `contains` fixture as blocked tests instead of phase-gated work.
+- Represent recursive derived-instance metadata slots with runtime cells instead of reflective/provider indirection, and emit cell setter calls from IR so recursive ADT derivation survives JVM codegen and runtime access checks.
+- Stop assuming every IR callee has a `callableId`; wrapper lookup and diagnostics now tolerate local and late-bound functions so contextual rewriting works inside anonymous objects, local functions, constructor delegation, and interface delegation.
 - Target Kotlin 2.3.10 with context-parameter inference for `@Typeclass` contexts only.
 - Support object and function instances, including associated companion lookup for target types and type arguments.
 - Add IR-backed `@Derive` support for product types and sealed sums through `TypeclassDeriver` companions.

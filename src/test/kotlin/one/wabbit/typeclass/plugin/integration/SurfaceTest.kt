@@ -406,7 +406,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE8")
     @Test
     fun handlesRecursiveDerivedAdtsWithoutCrashing() {
         val source =
@@ -561,7 +560,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE8")
     @Test
     fun distinguishesValueClassesFromUnderlyingTypes() {
         val source =
@@ -777,7 +775,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("NEW: contextual property access support is not implemented yet")
+    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no property-access refinement hook for contextual getter resolution")
     @Test
     fun resolvesContextualPropertyGetter() {
         val source =
@@ -812,7 +810,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("NEW: contextual extension property access support is not implemented yet")
+    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no property-access refinement hook for contextual getter resolution")
     @Test
     fun resolvesContextualExtensionPropertyGetter() {
         val source =
@@ -999,8 +997,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun resolvesContextualCallsInsideSuspendLambdas() {
         val source =
@@ -1036,8 +1032,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun supportsBuilderInferenceAroundContextualCalls() {
         val source =
@@ -1292,8 +1286,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun resolvesContextualCallsInsideLocalDelegatedProperties() {
         val source =
@@ -1685,8 +1677,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun rewritesContextualSetOperatorCalls() {
         val source =
@@ -1730,8 +1720,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("Blocked: test body reads a private property from outside its declaring class")
     @Test
     fun rewritesContextualContainsOperatorCalls() {
         val source =
@@ -1767,8 +1756,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun rewritesContextualIteratorOperatorCalls() {
         val source =
@@ -1810,8 +1797,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun rewritesContextualComponentOperatorCalls() {
         val source =
@@ -1853,8 +1838,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun rewritesContextualCompareToOperatorCalls() {
         val source =
@@ -1893,8 +1876,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
     @Test
     fun rewritesContextualPlusAssignOperatorCalls() {
         val source =
