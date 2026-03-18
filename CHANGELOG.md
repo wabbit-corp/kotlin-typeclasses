@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Enable a small batch of low-risk core regressions covering fun-interface typeclasses, use-site variance in ordinary typeclass goals, non-discovery of local `@Instance` declarations, definitely-non-null typeclass goals, and filtering of inapplicable associated sealed-supertype candidates.
 - Enable the PHASE17 all-open/no-arg interop coverage and extend the integration harness with explicit `AllOpen(...)` and `NoArg(...)` support plugins that forward annotation-based compiler-plugin options.
 - Enable the PHASE13G `TypeId` regressions, preserve use-site variance in the internal semantic type model, and materialize reified `TypeId<T>` evidence through `typeOf<T>()` plus a runtime `KType` factory.
 - Enable the PHASE13E and PHASE13F utility-proof regressions, synthesize builtin `Nullable`, `NotNullable`, and `TypeId` evidence, and keep the proof surface usable from end-user code without leaking `InternalTypeclassApi` opt-in requirements.
@@ -47,3 +48,4 @@
 - Fix IR type-argument reconstruction for local generic functions and preserved explicit context arguments supplied as instance objects, report contextual binding conflicts as normal compilation errors, and enable the full `PHASE5` regression slice including local contextual functions, nullary typeclasses, sealed-interface derivation, and nested generic shadowing.
 - Enable the full `PHASE6` regression slice covering contextual single-vs-vararg overloads, nested typealias transparency, trailing-lambda vararg rewrites, inline reified `summon`, and secondary-constructor delegation rewrites in Kotlin-supported source forms.
 - Bind owner-class type parameters when rewriting generic typeclass member methods in IR, improve FIR generic-call inference for vararg and generic-constructor arguments, and enable the `PHASE7` slice covering captured local evidence, duplicate nullary instances, typeclass default methods with extra context, nested generic sealed derivation, and contextual field-instance derivation.
+- Split callable-reference integration coverage out of `SurfaceTest` into a dedicated `CallableReferenceTest` while leaving property-reference cases in `SurfaceTest`.
