@@ -5,6 +5,9 @@
 
 package one.wabbit.typeclass.plugin
 
+import one.wabbit.typeclass.plugin.model.TcType
+import one.wabbit.typeclass.plugin.model.TcTypeParameter
+import one.wabbit.typeclass.plugin.model.references
 import org.jetbrains.kotlin.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.diagnostics.reportOn
 import org.jetbrains.kotlin.descriptors.ClassKind
@@ -22,6 +25,7 @@ import org.jetbrains.kotlin.fir.declarations.FirSimpleFunction
 import org.jetbrains.kotlin.fir.declarations.hasAnnotation
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
 import org.jetbrains.kotlin.fir.symbols.SymbolInternals
+import org.jetbrains.kotlin.fir.types.coneType
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.SpecialNames
@@ -79,6 +83,7 @@ internal class TypeclassFirCheckersExtension(
                     providedTypes = declaration.instanceProvidedTypes(session),
                     declaration = declaration,
                 )
+                validateFunctionRuleSemantics(declaration)
             }
         }
 
@@ -174,6 +179,38 @@ internal class TypeclassFirCheckersExtension(
     }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun validateFunctionRuleSemantics(
+        declaration: FirSimpleFunction,
+    ) {
+        val ruleShape = declaration.instanceFunctionRuleShape(session) ?: return
+        val providedTypes = declaration.instanceProvidedTypes(session)
+        if (providedTypes.validTypes.isEmpty()) {
+            return
+        }
+
+        ruleShape.typeParameters.forEach { parameter ->
+            if (ruleShape.declaredProvidedType.references(parameter.id)) {
+                return@forEach
+            }
+            reportInvalid(
+                declaration,
+                "instance type parameter ${parameter.displayName} must appear in the provided type, not only prerequisites",
+            )
+            return
+        }
+
+        val recursiveProvidedType = providedTypes.validTypes.firstOrNull { providedType ->
+            ruleShape.prerequisites.any { prerequisite -> prerequisite == providedType }
+        }
+        if (recursiveProvidedType != null) {
+            reportInvalid(
+                declaration,
+                "direct recursive instance rule for ${recursiveProvidedType.renderForMessage()} is not allowed",
+            )
+        }
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
     private fun reportInvalid(
         declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
         message: String,
@@ -227,3 +264,46 @@ private data class InstanceOwnerContext(
     val isCompanionScope: Boolean,
     val associatedOwner: ClassId?,
 )
+
+private data class InstanceFunctionRuleShape(
+    val typeParameters: List<TcTypeParameter>,
+    val declaredProvidedType: TcType,
+    val prerequisites: List<TcType>,
+)
+
+private fun FirSimpleFunction.instanceFunctionRuleShape(
+    session: FirSession,
+): InstanceFunctionRuleShape? {
+    val typeParameters =
+        typeParameters.mapIndexed { index, typeParameter ->
+            TcTypeParameter(
+                id = "fir-function:${symbol.callableId}:$index:${typeParameter.symbol.name.asString()}",
+                displayName = typeParameter.symbol.name.asString(),
+            )
+        }
+    val typeParameterBySymbol =
+        this.typeParameters.zip(typeParameters).associate { (typeParameter, parameter) ->
+            typeParameter.symbol to parameter
+        }
+    val declaredProvidedType = coneTypeToModel(returnTypeRef.coneType, typeParameterBySymbol) ?: return null
+    val prerequisites =
+        contextParameters.mapNotNull { parameter ->
+            parameter.returnTypeRef.coneType
+                .takeIf { type -> isTypeclassType(type, session) }
+                ?.let { type -> coneTypeToModel(type, typeParameterBySymbol) }
+        }
+    if (prerequisites.size != contextParameters.size) {
+        return null
+    }
+    return InstanceFunctionRuleShape(
+        typeParameters = typeParameters,
+        declaredProvidedType = declaredProvidedType,
+        prerequisites = prerequisites,
+    )
+}
+
+private fun TcType.renderForMessage(): String =
+    when (this) {
+        is TcType.Constructor -> classifierId.substringAfterLast('.')
+        is TcType.Variable -> displayName
+    }

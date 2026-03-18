@@ -984,7 +984,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE4")
     @Test
     fun keepsIntegerLiteralInferenceStableAcrossFirAndIr() {
         val source =
@@ -1437,7 +1436,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE4")
     @Test
     fun rejectsInstanceRulesWithTypeParametersOnlyInPrerequisites() {
         val source =
@@ -1466,7 +1464,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE4")
     @Test
     fun rejectsDirectSelfRecursiveInstanceRulesAtDeclarationSite() {
         val source =

@@ -1084,7 +1084,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE4")
     @Test
     fun treatsTypeAliasesAsTransparentForResolution() {
         val source =
@@ -1236,8 +1235,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
+    @Ignore("PHASE5")
     @Test
     fun resolvesLocalContextualFunctions() {
         val source =
