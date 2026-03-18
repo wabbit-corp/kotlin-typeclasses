@@ -24,6 +24,10 @@ import org.jetbrains.kotlin.fir.declarations.FirProperty
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 import org.jetbrains.kotlin.fir.declarations.FirSimpleFunction
 import org.jetbrains.kotlin.fir.declarations.hasAnnotation
+import org.jetbrains.kotlin.fir.expressions.FirAnnotationCall
+import org.jetbrains.kotlin.fir.expressions.FirExpression
+import org.jetbrains.kotlin.fir.expressions.FirGetClassCall
+import org.jetbrains.kotlin.fir.expressions.FirVarargArgumentsExpression
 import org.jetbrains.kotlin.fir.resolve.providers.firProvider
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
 import org.jetbrains.kotlin.fir.symbols.SymbolInternals
@@ -40,6 +44,7 @@ import org.jetbrains.kotlin.fir.types.classId
 import org.jetbrains.kotlin.fir.types.isMarkedNullable
 import org.jetbrains.kotlin.fir.types.lowerBoundIfFlexible
 import org.jetbrains.kotlin.fir.types.coneType
+import org.jetbrains.kotlin.fir.types.resolvedType
 import org.jetbrains.kotlin.fir.types.type
 import org.jetbrains.kotlin.name.*
 import org.jetbrains.kotlin.name.SpecialNames
@@ -70,7 +75,7 @@ internal class TypeclassPluginSharedState(
     fun rulesForGoal(
         session: FirSession,
         goal: TcType,
-    ): List<InstanceRule> = resolutionIndex(session).rulesForGoal(goal)
+    ): List<InstanceRule> = resolutionIndex(session).rulesForGoal(goal, session)
 
     fun canDeriveGoal(
         session: FirSession,
@@ -213,7 +218,7 @@ private class FirResolutionScanner(
     private val topLevelRules = mutableListOf<InstanceRule>()
     private val associatedRulesByOwner = linkedMapOf<ClassId, MutableList<InstanceRule>>()
     private val classInfoById = linkedMapOf<String, ResolutionClassHierarchyInfo>()
-    private val derivableClassIds = linkedSetOf<String>()
+    private val derivableTypeclassIdsByOwner = linkedMapOf<String, MutableSet<String>>()
 
     @OptIn(DirectDeclarationsAccess::class)
     fun scanDeclaration(
@@ -232,8 +237,9 @@ private class FirResolutionScanner(
                                 }.toSet(),
                             isSealed = declaration.status.modality == Modality.SEALED,
                         )
-                    if (declaration.hasAnnotation(DERIVE_ANNOTATION_CLASS_ID, session)) {
-                        derivableClassIds += classId.asString()
+                    val derivedTypeclassIds = declaration.derivedTypeclassIds(session)
+                    if (derivedTypeclassIds.isNotEmpty()) {
+                        derivableTypeclassIdsByOwner.getOrPut(classId.asString(), ::linkedSetOf) += derivedTypeclassIds
                     }
                 }
 
@@ -283,24 +289,26 @@ private class FirResolutionScanner(
 
     fun build(): ResolutionIndex =
         ResolutionIndex(
-            session = session,
             configuration = configuration,
             topLevelRules = topLevelRules.toList() + configuration.builtinRules(),
             associatedRulesByOwner = associatedRulesByOwner.mapValues { (_, rules) -> rules.toList() },
             classInfoById = classInfoById.toMap(),
-            derivableClassIds = derivableClassIds.toSet(),
+            derivableTypeclassIdsByOwner =
+                derivableTypeclassIdsByOwner.mapValues { (_, typeclassIds) -> typeclassIds.toSet() },
         )
 }
 
 private data class ResolutionIndex(
-    val session: FirSession,
     val configuration: TypeclassConfiguration,
     val topLevelRules: List<InstanceRule>,
     val associatedRulesByOwner: Map<ClassId, List<InstanceRule>>,
     val classInfoById: Map<String, ResolutionClassHierarchyInfo>,
-    val derivableClassIds: Set<String>,
+    val derivableTypeclassIdsByOwner: Map<String, Set<String>>,
 ) {
-    fun rulesForGoal(goal: TcType): List<InstanceRule> {
+    fun rulesForGoal(
+        goal: TcType,
+        session: FirSession,
+    ): List<InstanceRule> {
         val owners = allowedAssociatedOwnersForGoal(goal)
         val associated =
             owners.flatMapTo(linkedSetOf()) { owner ->
@@ -326,8 +334,11 @@ private data class ResolutionIndex(
 
     fun canDeriveGoal(goal: TcType): Boolean {
         val constructor = goal as? TcType.Constructor ?: return false
+        val typeclassId = constructor.classifierId
         val targetType = constructor.arguments.singleOrNull() as? TcType.Constructor ?: return false
-        return derivationOwnersForTarget(targetType.classifierId).isNotEmpty()
+        return derivationOwnersForTarget(targetType.classifierId).any { owner ->
+            typeclassId in derivableTypeclassIdsByOwner[owner].orEmpty()
+        }
     }
 
     fun allowedAssociatedOwnersForGoal(goal: TcType): Set<ClassId> {
@@ -358,7 +369,7 @@ private data class ResolutionIndex(
 
     private fun derivationOwnersForTarget(classifierId: String): Set<String> =
         sealedOwnerChain(classifierId).filterTo(linkedSetOf()) { candidate ->
-            candidate in derivableClassIds
+            candidate in derivableTypeclassIdsByOwner
         }
 
     private fun sealedOwnerChain(classifierId: String): Set<String> {
@@ -386,6 +397,38 @@ private data class ResolutionClassHierarchyInfo(
     val superClassifiers: Set<String>,
     val isSealed: Boolean,
 )
+
+private fun FirRegularClass.derivedTypeclassIds(session: FirSession): Set<String> {
+    val deriveAnnotation =
+        annotations
+            .filterIsInstance<FirAnnotationCall>()
+            .firstOrNull { annotation ->
+                annotation.annotationTypeRef.coneType.classId == DERIVE_ANNOTATION_CLASS_ID
+            } ?: return emptySet()
+    return deriveAnnotation.argumentMapping.mapping.values
+        .asSequence()
+        .flatMap(::flattenDerivedTypeclassArgumentExpressions)
+        .mapNotNull { expression -> expression.derivedTypeclassId(session) }
+        .toCollection(linkedSetOf())
+}
+
+private fun flattenDerivedTypeclassArgumentExpressions(expression: FirExpression): Sequence<FirExpression> =
+    when (expression) {
+        is FirVarargArgumentsExpression -> expression.arguments.asSequence().flatMap(::flattenDerivedTypeclassArgumentExpressions)
+        else -> sequenceOf(expression)
+    }
+
+private fun FirExpression.derivedTypeclassId(session: FirSession): String? {
+    val classReference = this as? FirGetClassCall ?: return null
+    val classId = classReference.argument.resolvedType.lowerBoundIfFlexible().classId ?: return null
+    val classSymbol =
+        try {
+            session.symbolProvider.getClassLikeSymbolByClassId(classId) as? FirRegularClassSymbol
+        } catch (_: IllegalArgumentException) {
+            null
+        } ?: return null
+    return classId.asString().takeIf { classSymbol.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session) }
+}
 
 private fun TypeclassConfiguration.builtinRules(): List<InstanceRule> =
     buildList {

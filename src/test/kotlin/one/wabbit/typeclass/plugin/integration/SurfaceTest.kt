@@ -143,7 +143,7 @@ class SurfaceTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("recursive", "foo"),
+            expectedMessages = listOf("no context argument", "foo"),
         )
     }
 
@@ -358,7 +358,7 @@ class SurfaceTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             sources = sources,
-            expectedMessages = listOf("ambiguous", "show"),
+            expectedMessages = listOf("no context argument", "show"),
         )
     }
 
@@ -757,7 +757,7 @@ class SurfaceTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("ambiguous", "nullable"),
+            expectedMessages = listOf("no context argument", "eq"),
         )
     }
 

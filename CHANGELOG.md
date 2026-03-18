@@ -11,6 +11,8 @@
 - Enable the PHASE15 Parcelize interop coverage and extend the integration harness so support plugins can contribute synthetic support sources alongside runtime jars, compiler plugin jars, and plugin options.
 - Enable the PHASE13C and PHASE13D proof-operator regressions, add runtime-facing equality/subtyping combinators, and synthesize builtin `StrictSubtype` evidence as the conjunction of `Subtype` and `NotSame`.
 - Enable the PHASE14 Power Assert interop coverage and extend the integration harness so support plugins can declare compiler plugin ids plus repeated `-P plugin:<id>:...` options instead of smuggling raw option strings through ad hoc arguments.
+- Make FIR contextual-call masking honest: only fully solved typeclass contexts are hidden now, while ambiguous/recursive/unrelated `@Derive` cases stay visible and fail earlier as ordinary `no context argument` frontend errors.
+- Track `@Derive` facts by `(target class, requested typeclass)` instead of by class alone, so `@Derive(Show::class)` no longer makes FIR pretend that unrelated heads like `Eq<User>` are derivable.
 - Enable the PHASE13B utility-proof regressions so builtin proofs can act as prerequisites for ordinary rule search, and tighten the builtin `KSerializer` gate to reject star-projected serializer goals before runtime.
 - Enable the PHASE13 Compose interop suite and replace source-sniffed support detection in the integration harness with explicit `requiredPlugins` declarations that can contribute runtime jars, compiler plugin jars, compiler arguments, and minimum JVM targets.
 - Add Gradle-cache fallback lookup for harness support artifacts so interop tests can resolve third-party compiler plugins and runtimes without assuming they are already on the test JVM classpath.

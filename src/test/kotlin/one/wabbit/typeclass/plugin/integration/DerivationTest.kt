@@ -151,7 +151,7 @@ class DerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("ambiguous typeclass instance"),
+            expectedMessages = listOf("no context argument", "show"),
         )
     }
 
@@ -1328,7 +1328,7 @@ class DerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("ambiguous typeclass instance"),
+            expectedMessages = listOf("no context argument", "monoid"),
         )
     }
 
@@ -1820,7 +1820,7 @@ class DerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("ambiguous typeclass instance"),
+            expectedMessages = listOf("no context argument", "show"),
         )
     }
 
@@ -1873,7 +1873,7 @@ class DerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             sources = unstableSources,
-            expectedMessages = listOf("ambiguous typeclass instance"),
+            expectedMessages = listOf("no context argument", "show"),
         )
     }
 

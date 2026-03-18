@@ -111,6 +111,27 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun rejectsNotSameProofForIdenticalTypes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.NotSame
+
+            context(_: NotSame<A, B>)
+            fun <A, B> provenDifferent(): String = "different"
+
+            fun main() {
+                println(provenDifferent<Int, Int>())
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("notsame", "int"),
+        )
+    }
+
     @Test fun rejectsNotSameProofForUnconstrainedTypeParameters() {
         val source =
             """

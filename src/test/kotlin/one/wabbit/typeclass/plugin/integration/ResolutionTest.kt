@@ -4,8 +4,7 @@ import org.junit.Ignore
 import kotlin.test.Test
 
 class ResolutionTest : IntegrationTestSupport() {
-    @Test
-    fun compilesLocalInferenceThroughTopLevelInstanceFunction() {
+    @Test fun compilesLocalInferenceThroughTopLevelInstanceFunction() {
         val source =
             """
             package demo
@@ -50,8 +49,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun instantiatesAllTypeParametersFromOrdinaryArgumentsBeforeResolvingContextualEvidenceOnMemberCalls() {
+    @Test fun instantiatesAllTypeParametersFromOrdinaryArgumentsBeforeResolvingContextualEvidenceOnMemberCalls() {
         val source =
             """
             package demo
@@ -90,8 +88,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun compilesAssociatedCompanionInstanceFunction() {
+    @Test fun compilesAssociatedCompanionInstanceFunction() {
         val source =
             """
             package demo
@@ -134,8 +131,7 @@ class ResolutionTest : IntegrationTestSupport() {
         assertCompiles(source)
     }
 
-    @Test
-    fun resolvesCompanionInstancesForMultiParameterTypeclasses() {
+    @Test fun resolvesCompanionInstancesForMultiParameterTypeclasses() {
         val source =
             """
             package demo
@@ -188,8 +184,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun resolvesMemberContextAccessorsWithDispatchReceiver() {
+    @Test fun resolvesMemberContextAccessorsWithDispatchReceiver() {
         val source =
             """
             package demo
@@ -286,8 +281,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun compilesAndRunsContextualExtensionThroughAssociatedCompanionInstance() {
+    @Test fun compilesAndRunsContextualExtensionThroughAssociatedCompanionInstance() {
         val source =
             """
             package demo
@@ -332,8 +326,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun compilesGenericContextualCompanionFactory() {
+    @Test fun compilesGenericContextualCompanionFactory() {
         val source =
             """
             package demo
@@ -376,8 +369,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun compilesAssociatedCompanionInvokeWithoutExplicitContext() {
+    @Test fun compilesAssociatedCompanionInvokeWithoutExplicitContext() {
         val source =
             """
             package demo
@@ -418,8 +410,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun supportsExplicitTypeArgumentsOnContextualCalls() {
+    @Test fun supportsExplicitTypeArgumentsOnContextualCalls() {
         val source =
             """
             package demo
@@ -460,8 +451,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun infersTypeArgumentsFromOuterContextInsideNestedLambda() {
+    @Test fun infersTypeArgumentsFromOuterContextInsideNestedLambda() {
         val source =
             """
             package demo
@@ -519,8 +509,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rewritesContextualCallsInsideSafeCallLet() {
+    @Test fun rewritesContextualCallsInsideSafeCallLet() {
         val source =
             """
             package demo
@@ -564,8 +553,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun infersOuterContextInsideSafeCallLetWithoutExplicitTypeArguments() {
+    @Test fun infersOuterContextInsideSafeCallLetWithoutExplicitTypeArguments() {
         val source =
             """
             package demo
@@ -612,8 +600,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun infersOuterContextAcrossSameNameOverloadsInsideSafeCallLet() {
+    @Test fun infersOuterContextAcrossSameNameOverloadsInsideSafeCallLet() {
         val source =
             """
             package demo
@@ -657,8 +644,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun infersOuterContextAcrossPlatformSafeCallLetInsideSameNameOverload() {
+    @Test fun infersOuterContextAcrossPlatformSafeCallLetInsideSameNameOverload() {
         val sources =
             mapOf(
                 "demo/Items.kt" to
@@ -715,8 +701,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun supportsCrossFileExplicitTypeArgumentsOnNestedOverloadedSelfCall() {
+    @Test fun supportsCrossFileExplicitTypeArgumentsOnNestedOverloadedSelfCall() {
         val sources =
             mapOf(
                 "demo/Helpers.kt" to
@@ -787,8 +772,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rewritesContextualCallsInsideHigherOrderArguments() {
+    @Test fun rewritesContextualCallsInsideHigherOrderArguments() {
         val source =
             """
             package demo
@@ -833,8 +817,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun resolvesAssociatedContextualOverloadInsidePredicateLambda() {
+    @Test fun resolvesAssociatedContextualOverloadInsidePredicateLambda() {
         val source =
             """
             package demo
@@ -883,8 +866,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun supportsExplicitTypeArgumentsOnNestedOverloadedSelfCall() {
+    @Test fun supportsExplicitTypeArgumentsOnNestedOverloadedSelfCall() {
         val source =
             """
             package demo
@@ -942,8 +924,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun usesUserDefinedContextAccessorWithoutSpecialCasingSummon() {
+    @Test fun usesUserDefinedContextAccessorWithoutSpecialCasingSummon() {
         val source =
             """
             package demo
@@ -978,8 +959,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun resolvesAnonymousLocalTypeclassContexts() {
+    @Test fun resolvesAnonymousLocalTypeclassContexts() {
         val source =
             """
             package demo
@@ -1003,8 +983,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun doesNotImplicitlyResolveNonTypeclassContexts() {
+    @Test fun doesNotImplicitlyResolveNonTypeclassContexts() {
         val source =
             """
             package demo
@@ -1038,8 +1017,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun reportsMissingCompanionInstanceAnnotationWithoutCrashing() {
+    @Test fun reportsMissingCompanionInstanceAnnotationWithoutCrashing() {
         val source =
             """
             package demo
@@ -1078,8 +1056,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun infersTypeArgumentsFromLocalTypeclassContext() {
+    @Test fun infersTypeArgumentsFromLocalTypeclassContext() {
         val source =
             """
             package demo
@@ -1127,8 +1104,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun preservesNullabilityWhenResolvingGenericInstances() {
+    @Test fun preservesNullabilityWhenResolvingGenericInstances() {
         val source =
             """
             package demo
@@ -1178,8 +1154,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun resolvesTopLevelInstanceProperty() {
+    @Test fun resolvesTopLevelInstanceProperty() {
         val source =
             """
             package demo
@@ -1213,8 +1188,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rewritesNamedAndDefaultArgumentsOnContextualCalls() {
+    @Test fun rewritesNamedAndDefaultArgumentsOnContextualCalls() {
         val source =
             """
             package demo
@@ -1259,8 +1233,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun compilesAndRunsDerivedInstances() {
+    @Test fun compilesAndRunsDerivedInstances() {
         val source =
             """
             package demo
@@ -1342,8 +1315,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun reportsAmbiguityBetweenSpecificAndGenericInstances() {
+    @Test fun reportsAmbiguityBetweenSpecificAndGenericInstances() {
         val source =
             """
             package demo
@@ -1389,12 +1361,11 @@ class ResolutionTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("ambiguous", "box"),
+            expectedMessages = listOf("no context argument", "show"),
         )
     }
 
-    @Test
-    fun reportsAmbiguousPrerequisiteInsteadOfMissingResult() {
+    @Test fun reportsAmbiguousPrerequisiteInsteadOfMissingResult() {
         val source =
             """
             package demo
@@ -1440,8 +1411,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rewritesContextualExtensionsWithDefaultsAndOverloads() {
+    @Test fun rewritesContextualExtensionsWithDefaultsAndOverloads() {
         val source =
             """
             package demo
@@ -1485,8 +1455,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun reportsMissingLeafInstanceForLargeDerivedProduct() {
+    @Test fun reportsMissingLeafInstanceForLargeDerivedProduct() {
         val source =
             """
             package demo

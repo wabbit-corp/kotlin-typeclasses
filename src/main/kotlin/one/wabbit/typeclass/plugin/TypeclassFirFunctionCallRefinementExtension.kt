@@ -139,8 +139,9 @@ internal class TypeclassFirFunctionCallRefinementExtension(
             val goalModel = coneTypeToModel(substitutedType, typeContext.typeParameterModels) ?: return@map false
             val resolution = planner.resolve(goalModel, typeContext.directlyAvailableContextModels)
             when (resolution) {
+                is ResolutionSearchResult.Success -> true
                 is ResolutionSearchResult.Missing -> sharedState.canDeriveGoal(session, goalModel)
-                else -> true
+                else -> false
             }
         }
     }
