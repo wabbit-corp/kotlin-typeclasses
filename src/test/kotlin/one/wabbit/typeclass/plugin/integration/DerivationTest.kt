@@ -194,10 +194,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
-    @Test
-    fun ignoresInapplicableAssociatedSealedSupertypeCandidatesWhenResolvingSubtypeSpecificInstances() {
+    @Test fun ignoresInapplicableAssociatedSealedSupertypeCandidatesWhenResolvingSubtypeSpecificInstances() {
         val source =
             """
             package demo
@@ -729,10 +726,8 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
     @Ignore("NEW: review before enabling")
-    @Test
-    fun resolvesOverloadsThatDifferOnlyByTypeclassContexts() {
+    @Test fun resolvesOverloadsThatDifferOnlyByTypeclassContexts() {
         val source =
             """
             package demo
@@ -822,10 +817,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
-    @Test
-    fun resolvesDefinitelyNonNullTypeclassGoals() {
+    @Test fun resolvesDefinitelyNonNullTypeclassGoals() {
         val source =
             """
             package demo
@@ -1117,8 +1109,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun reportsAmbiguityForNullableSpecificAndGenericNullEvidence() {
+    @Test fun reportsAmbiguityForNullableSpecificAndGenericNullEvidence() {
         val source =
             """
             package demo
@@ -1162,8 +1153,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rejectsNonTypeclassIntermediateSupertypesThatExtendTypeclasses() {
+    @Test fun rejectsNonTypeclassIntermediateSupertypesThatExtendTypeclasses() {
         val source =
             """
             package demo
@@ -1225,8 +1215,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun resolvesIntermediateTypeclassHierarchiesFromGroupInstances() {
+    @Test fun resolvesIntermediateTypeclassHierarchiesFromGroupInstances() {
         val source =
             """
             package demo
@@ -1290,8 +1279,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun reportsAmbiguousInheritedIntermediateTypeclassInstances() {
+    @Test fun reportsAmbiguousInheritedIntermediateTypeclassInstances() {
         val source =
             """
             package demo
@@ -1344,8 +1332,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun derivesSealedHierarchiesWithDataObjects() {
+    @Test fun derivesSealedHierarchiesWithDataObjects() {
         val source =
             """
             package demo
@@ -1424,8 +1411,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rewritesContextualCallsInsideSecondaryConstructorDelegation() {
+    @Test fun rewritesContextualCallsInsideSecondaryConstructorDelegation() {
         val source =
             """
             package demo
@@ -1461,8 +1447,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun propagatesSuperclassStyleEvidenceFromOrdToEq() {
+    @Test fun propagatesSuperclassStyleEvidenceFromOrdToEq() {
         val source =
             """
             package demo
@@ -1516,8 +1501,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rejectsInstanceRulesWithTypeParametersOnlyInPrerequisites() {
+    @Test fun rejectsInstanceRulesWithTypeParametersOnlyInPrerequisites() {
         val source =
             """
             package demo
@@ -1544,8 +1528,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rejectsDirectSelfRecursiveInstanceRulesAtDeclarationSite() {
+    @Test fun rejectsDirectSelfRecursiveInstanceRulesAtDeclarationSite() {
         val source =
             """
             package demo
@@ -1574,9 +1557,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Test
-    fun localExactEvidenceOverridesDerivedGlobalEvidence() {
+    @Test fun localExactEvidenceOverridesDerivedGlobalEvidence() {
         val source =
             """
             package demo
@@ -1623,10 +1604,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
-    @Test
-    fun resolvesApparentlyAmbiguousApisFromExpectedTypeReceiverTypeAndOuterContext() {
+    @Test fun resolvesApparentlyAmbiguousApisFromExpectedTypeReceiverTypeAndOuterContext() {
         val source =
             """
             package demo
@@ -1685,8 +1663,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun supportsNullaryTypeclasses() {
+    @Test fun supportsNullaryTypeclasses() {
         val source =
             """
             package demo
@@ -1718,8 +1695,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun reportsDuplicateNullaryTypeclassInstancesAcrossFiles() {
+    @Test fun reportsDuplicateNullaryTypeclassInstancesAcrossFiles() {
         val sources =
             mapOf(
                 "Flag.kt" to
@@ -1769,8 +1745,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun supportsTypeclassMethodsWithAdditionalContext() {
+    @Test fun supportsTypeclassMethodsWithAdditionalContext() {
         val source =
             """
             package demo
@@ -1805,8 +1780,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun reportsAmbiguousEvidenceInsideDefaultTypeclassMethods() {
+    @Test fun reportsAmbiguousEvidenceInsideDefaultTypeclassMethods() {
         val source =
             """
             package demo
@@ -1850,8 +1824,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun additionalUnrelatedFilesCanChangeResolutionOutcome() {
+    @Test fun additionalUnrelatedFilesCanChangeResolutionOutcome() {
         val stableSources =
             mapOf(
                 "Main.kt" to
@@ -1904,10 +1877,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
-    @Test
-    fun reportsOverlapBetweenAliasSpecificAndGenericSpecializedInstances() {
+    @Test fun reportsOverlapBetweenAliasSpecificAndGenericSpecializedInstances() {
         val source =
             """
             package demo
@@ -1954,10 +1924,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
-    @Test
-    fun capturesDefinitionSiteEvidenceForReturnedLambdasObjectsAndBoundReferences() {
+    @Test fun capturesDefinitionSiteEvidenceForReturnedLambdasObjectsAndBoundReferences() {
         val source =
             """
             package demo
@@ -2028,9 +1995,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Test
-    fun superclassEntailmentRespectsDirectLocalShadowing() {
+    @Test fun superclassEntailmentRespectsDirectLocalShadowing() {
         val source =
             """
             package demo
@@ -2082,10 +2047,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
-    @Test
-    fun oneObjectCanProvideMultipleHeadsAndSuperclassEvidence() {
+    @Test fun oneObjectCanProvideMultipleHeadsAndSuperclassEvidence() {
         val source =
             """
             package demo
@@ -2131,10 +2093,8 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
     @Ignore("NEW: review before enabling")
-    @Test
-    fun purelyLocalEvidenceSelectsOverloads() {
+    @Test fun purelyLocalEvidenceSelectsOverloads() {
         val source =
             """
             package demo
@@ -2225,10 +2185,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
-    @Test
-    fun preservesValueClassSpecificityWhenSolvingPrerequisites() {
+    @Test fun preservesValueClassSpecificityWhenSolvingPrerequisites() {
         val source =
             """
             package demo
@@ -2278,10 +2235,7 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
-    @Test
-    fun preservesProjectionSpecificityWhenSolvingPrerequisites() {
+    @Test fun preservesProjectionSpecificityWhenSolvingPrerequisites() {
         val source =
             """
             package demo
@@ -2328,10 +2282,8 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
     @Ignore("NEW: review before enabling")
-    @Test
-    fun importsControlWhichInstancesAreVisibleAcrossPackages() {
+    @Test fun importsControlWhichInstancesAreVisibleAcrossPackages() {
         val sources =
             mapOf(
                 "shared/Api.kt" to

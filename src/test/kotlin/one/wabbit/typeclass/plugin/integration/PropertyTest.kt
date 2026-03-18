@@ -3,10 +3,10 @@ package one.wabbit.typeclass.plugin.integration
 import org.junit.Ignore
 import kotlin.test.Test
 
-class CallableReferenceTest : IntegrationTestSupport() {
-    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no callable-reference refinement hook for contextual callable adaptation")
+class PropertyTest : IntegrationTestSupport() {
+    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no property-access refinement hook for contextual getter resolution")
     @Test
-    fun adaptsCallableReferencesToContextualTopLevelFunctions() {
+    fun resolvesContextualPropertyGetter() {
         val source =
             """
             package demo
@@ -25,12 +25,11 @@ class CallableReferenceTest : IntegrationTestSupport() {
             }
 
             context(show: Show<Int>)
-            fun renderInt(value: Int): String = show.show(value)
-
-            fun consume(f: (Int) -> String): String = f(1)
+            val intLabel: String
+                get() = show.show(1)
 
             fun main() {
-                println(consume(::renderInt))
+                println(intLabel)
             }
             """.trimIndent()
 
@@ -40,49 +39,9 @@ class CallableReferenceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no callable-reference refinement hook for contextual callable adaptation")
+    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no property-access refinement hook for contextual getter resolution")
     @Test
-    fun adaptsBoundCallableReferencesToContextualMemberFunctions() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.Typeclass
-
-            @Typeclass
-            interface Show<A> {
-                fun show(value: A): String
-            }
-
-            @Instance
-            object IntShow : Show<Int> {
-                override fun show(value: Int): String = "int:${'$'}value"
-            }
-
-            class Items {
-                context(show: Show<Int>)
-                fun renderInt(value: Int): String = show.show(value)
-            }
-
-            fun consume(f: (Int) -> String): String = f(1)
-
-            fun main() {
-                println(consume(Items()::renderInt))
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
-    }
-
-    // NEW
-    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no callable-reference refinement hook for contextual callable adaptation")
-    @Test
-    fun preservesExtensionFunctionReferenceInterchangeability() {
+    fun resolvesContextualExtensionPropertyGetter() {
         val source =
             """
             package demo
@@ -101,25 +60,53 @@ class CallableReferenceTest : IntegrationTestSupport() {
             }
 
             context(show: Show<Int>)
-            fun Int.rendered(suffix: String): String = show.show(this) + suffix
-
-            fun consumeAsExtension(f: Int.(String) -> String): String = 1.f("!")
-
-            fun consumeAsPlain(f: (Int, String) -> String): String = f(1, "?")
+            val Int.rendered: String
+                get() = show.show(this)
 
             fun main() {
-                println(consumeAsExtension(Int::rendered))
-                println(consumeAsPlain(Int::rendered))
+                println(1.rendered)
             }
             """.trimIndent()
 
         assertCompilesAndRuns(
             source = source,
-            expectedStdout =
-                """
-                int:1!
-                int:1?
-                """.trimIndent(),
+            expectedStdout = "int:1",
+        )
+    }
+
+    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no property-access refinement hook for contextual property-reference adaptation")
+    @Test
+    fun adaptsPropertyReferencesToContextualProperties() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            context(show: Show<Int>)
+            val intLabel: String
+                get() = show.show(1)
+
+            fun main() {
+                val getter = ::intLabel
+                println(getter.get())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int:1",
         )
     }
 }

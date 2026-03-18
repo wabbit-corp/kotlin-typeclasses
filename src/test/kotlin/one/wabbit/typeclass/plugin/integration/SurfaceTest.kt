@@ -101,8 +101,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun detectsMutualRecursionAcrossTypeclasses() {
+    @Test fun detectsMutualRecursionAcrossTypeclasses() {
         val source =
             """
             package demo
@@ -192,8 +191,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun resolvesContextualOverloadsBetweenSingleAndVarargAlternatives() {
+    @Test fun resolvesContextualOverloadsBetweenSingleAndVarargAlternatives() {
         val source =
             """
             package demo
@@ -237,10 +235,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Ignore("NEW: review before enabling")
-    @Test
-    fun prefersExactContravariantNothingInstanceOverBroaderCandidates() {
+    @Test fun prefersExactContravariantNothingInstanceOverBroaderCandidates() {
         val source =
             """
             package demo
@@ -278,10 +273,8 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
     @Ignore("NEW: review before enabling")
-    @Test
-    fun reportsAmbiguityBetweenBroaderContravariantCandidatesForNothingWithoutExactMatch() {
+    @Test fun reportsAmbiguityBetweenBroaderContravariantCandidatesForNothingWithoutExactMatch() {
         val source =
             """
             package demo
@@ -319,8 +312,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun reportsDuplicateInstancesAcrossFiles() {
+    @Test fun reportsDuplicateInstancesAcrossFiles() {
         val sources =
             mapOf(
                 "demo/InstancesOne.kt" to
@@ -406,8 +398,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun handlesRecursiveDerivedAdtsWithoutCrashing() {
+    @Test fun handlesRecursiveDerivedAdtsWithoutCrashing() {
         val source =
             """
             package demo
@@ -476,8 +467,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun derivesNestedGenericSealedHierarchies() {
+    @Test fun derivesNestedGenericSealedHierarchies() {
         val source =
             """
             package demo
@@ -560,8 +550,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun distinguishesValueClassesFromUnderlyingTypes() {
+    @Test fun distinguishesValueClassesFromUnderlyingTypes() {
         val source =
             """
             package demo
@@ -615,8 +604,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun reportsConflictingBindingsFromLocalContexts() {
+    @Test fun reportsConflictingBindingsFromLocalContexts() {
         val source =
             """
             package demo
@@ -651,8 +639,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun derivedInstancesCanUseContextualFieldInstances() {
+    @Test fun derivedInstancesCanUseContextualFieldInstances() {
         val source =
             """
             package demo
@@ -729,8 +716,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun reportsAmbiguityBetweenNullableSpecificAndGenericRules() {
+    @Test fun reportsAmbiguityBetweenNullableSpecificAndGenericRules() {
         val source =
             """
             package demo
@@ -775,115 +761,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no property-access refinement hook for contextual getter resolution")
-    @Test
-    fun resolvesContextualPropertyGetter() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.Typeclass
-
-            @Typeclass
-            interface Show<A> {
-                fun show(value: A): String
-            }
-
-            @Instance
-            object IntShow : Show<Int> {
-                override fun show(value: Int): String = "int:${'$'}value"
-            }
-
-            context(show: Show<Int>)
-            val intLabel: String
-                get() = show.show(1)
-
-            fun main() {
-                println(intLabel)
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
-    }
-
-    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no property-access refinement hook for contextual getter resolution")
-    @Test
-    fun resolvesContextualExtensionPropertyGetter() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.Typeclass
-
-            @Typeclass
-            interface Show<A> {
-                fun show(value: A): String
-            }
-
-            @Instance
-            object IntShow : Show<Int> {
-                override fun show(value: Int): String = "int:${'$'}value"
-            }
-
-            context(show: Show<Int>)
-            val Int.rendered: String
-                get() = show.show(this)
-
-            fun main() {
-                println(1.rendered)
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
-    }
-
-    // NEW
-    @Ignore("NEW: review before enabling")
-    @Test
-    fun adaptsPropertyReferencesToContextualProperties() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.Typeclass
-
-            @Typeclass
-            interface Show<A> {
-                fun show(value: A): String
-            }
-
-            @Instance
-            object IntShow : Show<Int> {
-                override fun show(value: Int): String = "int:${'$'}value"
-            }
-
-            context(show: Show<Int>)
-            val intLabel: String
-                get() = show.show(1)
-
-            fun main() {
-                val getter = ::intLabel
-                println(getter.get())
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
-    }
-
-    @Test
-    fun resolvesSuspendContextualFunctions() {
+    @Test fun resolvesSuspendContextualFunctions() {
         val source =
             """
             package demo
@@ -922,8 +800,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun resolvesContextualCallsInsideSuspendLambdas() {
+    @Test fun resolvesContextualCallsInsideSuspendLambdas() {
         val source =
             """
             package demo
@@ -957,8 +834,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun supportsBuilderInferenceAroundContextualCalls() {
+    @Test fun supportsBuilderInferenceAroundContextualCalls() {
         val source =
             """
             package demo
@@ -994,8 +870,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun treatsTypeAliasesAsTransparentForResolution() {
+    @Test fun treatsTypeAliasesAsTransparentForResolution() {
         val source =
             """
             package demo
@@ -1030,8 +905,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun treatsNestedTypeAliasesAsTransparentForResolution() {
+    @Test fun treatsNestedTypeAliasesAsTransparentForResolution() {
         val source =
             """
             package demo
@@ -1068,9 +942,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Test
-    fun supportsFunInterfacesAsTypeclassesAndLambdaInstances() {
+    @Test fun supportsFunInterfacesAsTypeclassesAndLambdaInstances() {
         val source =
             """
             package demo
@@ -1100,9 +972,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Test
-    fun preservesUseSiteVarianceInTypeclassGoals() {
+    @Test fun preservesUseSiteVarianceInTypeclassGoals() {
         val source =
             """
             package demo
@@ -1141,8 +1011,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun resolvesLocalContextualFunctions() {
+    @Test fun resolvesLocalContextualFunctions() {
         val source =
             """
             package demo
@@ -1174,9 +1043,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    // NEW
-    @Test
-    fun doesNotDiscoverLocalInstanceDeclarationsGlobally() {
+    @Test fun doesNotDiscoverLocalInstanceDeclarationsGlobally() {
         val source =
             """
             package demo
@@ -1208,8 +1075,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun resolvesContextualCallsInsideLocalDelegatedProperties() {
+    @Test fun resolvesContextualCallsInsideLocalDelegatedProperties() {
         val source =
             """
             package demo
@@ -1242,8 +1108,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun doesNotLeakPrivateTopLevelInstancesAcrossFiles() {
+    @Test fun doesNotLeakPrivateTopLevelInstancesAcrossFiles() {
         val sources =
             mapOf(
                 "Hidden.kt" to
@@ -1283,8 +1148,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun combinesExplicitRegularContextWithImplicitTypeclassResolution() {
+    @Test fun combinesExplicitRegularContextWithImplicitTypeclassResolution() {
         val source =
             """
             package demo
@@ -1320,8 +1184,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun distinguishesShadowedTypeParametersAcrossNestedGenericScopes() {
+    @Test fun distinguishesShadowedTypeParametersAcrossNestedGenericScopes() {
         val source =
             """
             package demo
@@ -1363,8 +1226,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rewritesContextualCallsInsideDefaultValueExpressions() {
+    @Test fun rewritesContextualCallsInsideDefaultValueExpressions() {
         val source =
             """
             package demo
@@ -1399,8 +1261,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rewritesContextualCallsInsideConstructorDelegation() {
+    @Test fun rewritesContextualCallsInsideConstructorDelegation() {
         val source =
             """
             package demo
@@ -1436,8 +1297,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rewritesContextualCallsInsideInterfaceDelegation() {
+    @Test fun rewritesContextualCallsInsideInterfaceDelegation() {
         val source =
             """
             package demo
@@ -1478,8 +1338,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rewritesContextualGetOperatorCalls() {
+    @Test fun rewritesContextualGetOperatorCalls() {
         val source =
             """
             package demo
@@ -1513,8 +1372,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rewritesContextualGetOperatorCallsInsideMemberDispatchScope() {
+    @Test fun rewritesContextualGetOperatorCallsInsideMemberDispatchScope() {
         val source =
             """
             package demo
@@ -1555,8 +1413,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rewritesContextualSetOperatorCalls() {
+    @Test fun rewritesContextualSetOperatorCalls() {
         val source =
             """
             package demo
@@ -1599,8 +1456,7 @@ class SurfaceTest : IntegrationTestSupport() {
     }
 
     @Ignore("Blocked: test body reads a private property from outside its declaring class")
-    @Test
-    fun rewritesContextualContainsOperatorCalls() {
+    @Test fun rewritesContextualContainsOperatorCalls() {
         val source =
             """
             package demo
@@ -1634,8 +1490,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rewritesContextualIteratorOperatorCalls() {
+    @Test fun rewritesContextualIteratorOperatorCalls() {
         val source =
             """
             package demo
@@ -1675,8 +1530,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rewritesContextualComponentOperatorCalls() {
+    @Test fun rewritesContextualComponentOperatorCalls() {
         val source =
             """
             package demo
@@ -1716,8 +1570,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rewritesContextualCompareToOperatorCalls() {
+    @Test fun rewritesContextualCompareToOperatorCalls() {
         val source =
             """
             package demo
@@ -1754,8 +1607,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun rewritesContextualPlusAssignOperatorCalls() {
+    @Test fun rewritesContextualPlusAssignOperatorCalls() {
         val source =
             """
             package demo
@@ -1795,8 +1647,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test
-    fun derivesEnumClasses() {
+    @Test fun derivesEnumClasses() {
         val source =
             """
             package demo
