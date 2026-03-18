@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Implement PHASE12 utility-proof builtins for `Same`, `NotSame`, `Subtype`, `KnownType`, `SameTypeConstructor`, and `IsTypeclassInstance`, including IR materialization through runtime proof singletons, star-projection support in the internal type model, and the `knownType(kType)` factory.
+- Enable the PHASE12 utility-proof regression suite and fix the invalid invariant-fixture shape so the tests exercise subtype proof failures instead of Kotlin front-end parse errors.
 - Generalize the integration harness around source-detected support bundles so tests can attach extra runtime jars and compiler plugins, and use that mechanism to exercise `kotlinx.serialization` without making it a blanket assumption for every compilation.
 - Implement PHASE10A declaration-site checks for invalid instance-function prerequisites, including non-typeclass contexts, star-projected prerequisites, and definitely-non-null typeclass prerequisites.
 - Implement PHASE11 builtin `KSerializer` evidence by routing synthesized instances through the official `kotlinx.serialization.serializer<T>()` API, while gating FIR/IR builtin-rule selection so obvious non-serializable concrete types still fail at compile time.

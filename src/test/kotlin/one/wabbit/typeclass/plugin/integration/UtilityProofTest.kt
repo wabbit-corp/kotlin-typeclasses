@@ -1,9 +1,7 @@
 package one.wabbit.typeclass.plugin.integration
 
-import org.junit.Ignore
 import kotlin.test.Test
 
-@Ignore("PHASE12")
 class UtilityProofTest : IntegrationTestSupport() {
     @Test fun materializesSameProofForIdenticalTypesAliasesAndReflexiveTypeParameters() {
         val source =
@@ -154,6 +152,35 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun materializesSubtypeProofForVarianceNullabilityAndStarProjections() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Subtype
+            import one.wabbit.typeclass.summon
+
+            class Contravariant<in A>
+            class Covariant<out A>
+
+            fun main() {
+                println(summon<Subtype<Contravariant<Any>, Contravariant<Int>>>() != null)
+                println(summon<Subtype<Any, Any?>>() != null)
+                println(summon<Subtype<Covariant<Int>, Covariant<*>>>() != null)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                true
+                """.trimIndent(),
+        )
+    }
+
     @Test fun rejectsSubtypeProofForInvariantOrUnrelatedTypes() {
         val source =
             """
@@ -164,17 +191,19 @@ class UtilityProofTest : IntegrationTestSupport() {
             context(_: Subtype<A, B>)
             fun <A, B> provenSubtype(): String = "subtype"
 
-            data class Invariant<A>()
+            class Invariant<A>(val value: A)
+            class Contravariant<in A>
 
             fun main() {
                 println(provenSubtype<Invariant<String>, Invariant<Any>>()) // ERROR Invariant is invariant
+                println(provenSubtype<Contravariant<Int>, Contravariant<Any>>()) // ERROR contravariance reverses the direction
                 println(provenSubtype<String, Int>()) // ERROR unrelated types
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("subtype", "invariant", "string"),
+            expectedMessages = listOf("subtype", "invariant", "contravariant", "string"),
         )
     }
 

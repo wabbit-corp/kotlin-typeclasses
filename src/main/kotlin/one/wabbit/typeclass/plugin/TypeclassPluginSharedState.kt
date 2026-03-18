@@ -328,6 +328,7 @@ private data class ResolutionIndex(
 
     private fun associatedOwnerIds(type: TcType): Set<String> =
         when (type) {
+            TcType.StarProjection -> emptySet()
             is TcType.Variable -> emptySet()
 
             is TcType.Constructor -> {
@@ -373,6 +374,12 @@ private data class ResolutionClassHierarchyInfo(
 
 private fun TypeclassConfiguration.builtinRules(): List<InstanceRule> =
     buildList {
+        add(builtinSameRule())
+        add(builtinNotSameRule())
+        add(builtinSubtypeRule())
+        add(builtinIsTypeclassInstanceRule())
+        add(builtinKnownTypeRule())
+        add(builtinSameTypeConstructorRule())
         if (builtinKClassTypeclass == TypeclassBuiltinMode.ENABLED) {
             add(builtinKClassRule())
         }
@@ -390,6 +397,109 @@ private fun builtinKClassRule(): InstanceRule {
             TcType.Constructor(
                 classifierId = KCLASS_CLASS_ID.asString(),
                 arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinSameRule(): InstanceRule {
+    val parameter = TcTypeParameter(id = "builtin:same:T", displayName = "T")
+    return InstanceRule(
+        id = "builtin:same",
+        typeParameters = listOf(parameter),
+        providedType =
+            TcType.Constructor(
+                classifierId = SAME_CLASS_ID.asString(),
+                arguments =
+                    listOf(
+                        TcType.Variable(parameter.id, parameter.displayName),
+                        TcType.Variable(parameter.id, parameter.displayName),
+                    ),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinNotSameRule(): InstanceRule {
+    val left = TcTypeParameter(id = "builtin:notsame:A", displayName = "A")
+    val right = TcTypeParameter(id = "builtin:notsame:B", displayName = "B")
+    return InstanceRule(
+        id = "builtin:notsame",
+        typeParameters = listOf(left, right),
+        providedType =
+            TcType.Constructor(
+                classifierId = NOT_SAME_CLASS_ID.asString(),
+                arguments =
+                    listOf(
+                        TcType.Variable(left.id, left.displayName),
+                        TcType.Variable(right.id, right.displayName),
+                    ),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinSubtypeRule(): InstanceRule {
+    val sub = TcTypeParameter(id = "builtin:subtype:Sub", displayName = "Sub")
+    val sup = TcTypeParameter(id = "builtin:subtype:Super", displayName = "Super")
+    return InstanceRule(
+        id = "builtin:subtype",
+        typeParameters = listOf(sub, sup),
+        providedType =
+            TcType.Constructor(
+                classifierId = SUBTYPE_CLASS_ID.asString(),
+                arguments =
+                    listOf(
+                        TcType.Variable(sub.id, sub.displayName),
+                        TcType.Variable(sup.id, sup.displayName),
+                    ),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinIsTypeclassInstanceRule(): InstanceRule {
+    val parameter = TcTypeParameter(id = "builtin:is-typeclass-instance:TC", displayName = "TC")
+    return InstanceRule(
+        id = "builtin:is-typeclass-instance",
+        typeParameters = listOf(parameter),
+        providedType =
+            TcType.Constructor(
+                classifierId = IS_TYPECLASS_INSTANCE_CLASS_ID.asString(),
+                arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinKnownTypeRule(): InstanceRule {
+    val parameter = TcTypeParameter(id = "builtin:known-type:T", displayName = "T")
+    return InstanceRule(
+        id = "builtin:known-type",
+        typeParameters = listOf(parameter),
+        providedType =
+            TcType.Constructor(
+                classifierId = KNOWN_TYPE_CLASS_ID.asString(),
+                arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinSameTypeConstructorRule(): InstanceRule {
+    val left = TcTypeParameter(id = "builtin:same-type-constructor:A", displayName = "A")
+    val right = TcTypeParameter(id = "builtin:same-type-constructor:B", displayName = "B")
+    return InstanceRule(
+        id = "builtin:same-type-constructor",
+        typeParameters = listOf(left, right),
+        providedType =
+            TcType.Constructor(
+                classifierId = SAME_TYPE_CONSTRUCTOR_CLASS_ID.asString(),
+                arguments =
+                    listOf(
+                        TcType.Variable(left.id, left.displayName),
+                        TcType.Variable(right.id, right.displayName),
+                    ),
             ),
         prerequisiteTypes = emptyList(),
     )
@@ -431,6 +541,7 @@ private fun isPotentiallySerializableType(
     visiting: MutableSet<String>,
 ): Boolean {
     return when (type) {
+        TcType.StarProjection -> true
         is TcType.Variable -> true
 
         is TcType.Constructor -> {
@@ -683,8 +794,12 @@ internal fun coneTypeToModel(
             val classifierId = lowerBound.lookupTag.classId
             val arguments =
                 lowerBound.typeArguments.map { argument ->
-                    val nested = argument.type ?: return null
-                    coneTypeToModel(nested, typeParameterBySymbol) ?: return null
+                    val nested = argument.type
+                    if (nested == null) {
+                        TcType.StarProjection
+                    } else {
+                        coneTypeToModel(nested, typeParameterBySymbol) ?: return null
+                    }
                 }
             TcType.Constructor(classifierId.asString(), arguments, isNullable = lowerBound.isMarkedNullable)
         }

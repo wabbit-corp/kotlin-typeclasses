@@ -1,7 +1,9 @@
 package one.wabbit.typeclass.plugin
 
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.name.Name
 
 internal const val TYPECLASS_PLUGIN_ID: String = "one.wabbit.typeclass"
 internal const val TYPECLASS_ANNOTATION_FQ_NAME: String = "one.wabbit.typeclass.Typeclass"
@@ -15,6 +17,18 @@ internal const val PRODUCT_TYPECLASS_METADATA_FQ_NAME: String = "one.wabbit.type
 internal const val SUM_CASE_METADATA_FQ_NAME: String = "one.wabbit.typeclass.SumCaseMetadata"
 internal const val SUM_TYPECLASS_METADATA_FQ_NAME: String = "one.wabbit.typeclass.SumTypeclassMetadata"
 internal const val RECURSIVE_TYPECLASS_INSTANCE_CELL_FQ_NAME: String = "one.wabbit.typeclass.RecursiveTypeclassInstanceCell"
+internal const val SAME_FQ_NAME: String = "one.wabbit.typeclass.Same"
+internal const val SAME_PROOF_FQ_NAME: String = "one.wabbit.typeclass.SameProof"
+internal const val NOT_SAME_FQ_NAME: String = "one.wabbit.typeclass.NotSame"
+internal const val NOT_SAME_PROOF_FQ_NAME: String = "one.wabbit.typeclass.NotSameProof"
+internal const val SUBTYPE_FQ_NAME: String = "one.wabbit.typeclass.Subtype"
+internal const val SUBTYPE_PROOF_FQ_NAME: String = "one.wabbit.typeclass.SubtypeProof"
+internal const val IS_TYPECLASS_INSTANCE_FQ_NAME: String = "one.wabbit.typeclass.IsTypeclassInstance"
+internal const val IS_TYPECLASS_INSTANCE_PROOF_FQ_NAME: String = "one.wabbit.typeclass.IsTypeclassInstanceProof"
+internal const val SAME_TYPE_CONSTRUCTOR_FQ_NAME: String = "one.wabbit.typeclass.SameTypeConstructor"
+internal const val SAME_TYPE_CONSTRUCTOR_PROOF_FQ_NAME: String = "one.wabbit.typeclass.SameTypeConstructorProof"
+internal const val KNOWN_TYPE_FQ_NAME: String = "one.wabbit.typeclass.KnownType"
+internal const val KNOWN_TYPE_FACTORY_FQ_NAME: String = "one.wabbit.typeclass.knownType"
 internal const val KCLASS_FQ_NAME: String = "kotlin.reflect.KClass"
 internal const val KSERIALIZER_FQ_NAME: String = "kotlinx.serialization.KSerializer"
 internal const val SERIALIZABLE_ANNOTATION_FQ_NAME: String = "kotlinx.serialization.Serializable"
@@ -31,9 +45,22 @@ internal val SUM_CASE_METADATA_CLASS_ID: ClassId = ClassId.topLevel(FqName(SUM_C
 internal val SUM_TYPECLASS_METADATA_CLASS_ID: ClassId = ClassId.topLevel(FqName(SUM_TYPECLASS_METADATA_FQ_NAME))
 internal val RECURSIVE_TYPECLASS_INSTANCE_CELL_CLASS_ID: ClassId =
     ClassId.topLevel(FqName(RECURSIVE_TYPECLASS_INSTANCE_CELL_FQ_NAME))
+internal val SAME_CLASS_ID: ClassId = ClassId.topLevel(FqName(SAME_FQ_NAME))
+internal val SAME_PROOF_CLASS_ID: ClassId = ClassId.topLevel(FqName(SAME_PROOF_FQ_NAME))
+internal val NOT_SAME_CLASS_ID: ClassId = ClassId.topLevel(FqName(NOT_SAME_FQ_NAME))
+internal val NOT_SAME_PROOF_CLASS_ID: ClassId = ClassId.topLevel(FqName(NOT_SAME_PROOF_FQ_NAME))
+internal val SUBTYPE_CLASS_ID: ClassId = ClassId.topLevel(FqName(SUBTYPE_FQ_NAME))
+internal val SUBTYPE_PROOF_CLASS_ID: ClassId = ClassId.topLevel(FqName(SUBTYPE_PROOF_FQ_NAME))
+internal val IS_TYPECLASS_INSTANCE_CLASS_ID: ClassId = ClassId.topLevel(FqName(IS_TYPECLASS_INSTANCE_FQ_NAME))
+internal val IS_TYPECLASS_INSTANCE_PROOF_CLASS_ID: ClassId = ClassId.topLevel(FqName(IS_TYPECLASS_INSTANCE_PROOF_FQ_NAME))
+internal val SAME_TYPE_CONSTRUCTOR_CLASS_ID: ClassId = ClassId.topLevel(FqName(SAME_TYPE_CONSTRUCTOR_FQ_NAME))
+internal val SAME_TYPE_CONSTRUCTOR_PROOF_CLASS_ID: ClassId = ClassId.topLevel(FqName(SAME_TYPE_CONSTRUCTOR_PROOF_FQ_NAME))
+internal val KNOWN_TYPE_CLASS_ID: ClassId = ClassId.topLevel(FqName(KNOWN_TYPE_FQ_NAME))
 internal val KCLASS_CLASS_ID: ClassId = ClassId.topLevel(FqName(KCLASS_FQ_NAME))
 internal val KSERIALIZER_CLASS_ID: ClassId = ClassId.topLevel(FqName(KSERIALIZER_FQ_NAME))
 internal val SERIALIZABLE_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(FqName(SERIALIZABLE_ANNOTATION_FQ_NAME))
+internal val KNOWN_TYPE_FACTORY_CALLABLE_ID: CallableId =
+    CallableId(FqName("one.wabbit.typeclass"), Name.identifier("knownType"))
 internal val BUILTIN_SERIALIZABLE_CLASSIFIER_IDS: Set<String> =
     setOf(
         ClassId.topLevel(FqName("kotlin.Boolean")).asString(),

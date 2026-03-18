@@ -15,6 +15,7 @@ import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.render
 import one.wabbit.typeclass.plugin.model.substituteType
 import one.wabbit.typeclass.plugin.model.unifyTypes
+import org.jetbrains.kotlin.backend.jvm.JvmIrTypeSystemContext
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
@@ -67,16 +68,20 @@ import org.jetbrains.kotlin.ir.expressions.IrVararg
 import org.jetbrains.kotlin.ir.expressions.impl.IrFunctionExpressionImpl
 import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.IrStarProjection
+import org.jetbrains.kotlin.ir.types.IrTypeArgument
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.classOrNull
 import org.jetbrains.kotlin.ir.types.defaultType
 import org.jetbrains.kotlin.ir.types.makeNullable
 import org.jetbrains.kotlin.ir.types.typeWith
+import org.jetbrains.kotlin.ir.types.impl.IrSimpleTypeImpl
+import org.jetbrains.kotlin.ir.types.impl.IrStarProjectionImpl
 import org.jetbrains.kotlin.ir.util.callableId
 import org.jetbrains.kotlin.ir.util.classId
 import org.jetbrains.kotlin.ir.util.classIdOrFail
 import org.jetbrains.kotlin.ir.util.hasAnnotation
 import org.jetbrains.kotlin.ir.util.isNullable
+import org.jetbrains.kotlin.ir.util.isSubtypeOf
 import org.jetbrains.kotlin.ir.util.isObject
 import org.jetbrains.kotlin.ir.util.parentAsClass
 import org.jetbrains.kotlin.ir.util.render
@@ -408,6 +413,157 @@ private class TypeclassIrCallTransformer(
         return irAs(irNull(), expressionType)
     }
 
+    private fun IrStatementsBuilder<*>.buildBuiltinProofSingletonExpression(
+        expressionType: IrType,
+        proofClassId: ClassId,
+    ): IrExpression {
+        val proofClass = pluginContext.referenceClass(proofClassId)?.owner
+            ?: return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message = "Could not resolve builtin proof carrier $proofClassId on the compilation classpath.",
+            )
+        return irAs(irGetObject(proofClass.symbol), expressionType)
+    }
+
+    private fun IrStatementsBuilder<*>.buildBuiltinNotSameExpression(
+        plan: ResolutionPlan.ApplyRule,
+        visibleTypeParameters: VisibleTypeParameters,
+    ): IrExpression {
+        val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
+        val left = plan.appliedTypeArguments.getOrNull(0)
+            ?: return invalidBuiltinProofExpression(expressionType, "NotSame proof requires two type arguments.")
+        val right = plan.appliedTypeArguments.getOrNull(1)
+            ?: return invalidBuiltinProofExpression(expressionType, "NotSame proof requires two type arguments.")
+        if (!canProveNotSame(left, right)) {
+            return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message = "NotSame proof could not prove ${left.render()} and ${right.render()} differ.",
+            )
+        }
+        return buildBuiltinProofSingletonExpression(expressionType, NOT_SAME_PROOF_CLASS_ID)
+    }
+
+    private fun IrStatementsBuilder<*>.buildBuiltinSubtypeExpression(
+        plan: ResolutionPlan.ApplyRule,
+        visibleTypeParameters: VisibleTypeParameters,
+    ): IrExpression {
+        val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
+        val subModel = plan.appliedTypeArguments.getOrNull(0)
+            ?: return invalidBuiltinProofExpression(expressionType, "Subtype proof requires two type arguments.")
+        val superModel = plan.appliedTypeArguments.getOrNull(1)
+            ?: return invalidBuiltinProofExpression(expressionType, "Subtype proof requires two type arguments.")
+        val subType = modelToIrType(subModel, visibleTypeParameters, pluginContext)
+        val superType = modelToIrType(superModel, visibleTypeParameters, pluginContext)
+        if (!canProveSubtype(subType, superType, pluginContext)) {
+            return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message = "Subtype proof could not prove ${subModel.render()} is a subtype of ${superModel.render()}.",
+            )
+        }
+        return buildBuiltinProofSingletonExpression(expressionType, SUBTYPE_PROOF_CLASS_ID)
+    }
+
+    private fun IrStatementsBuilder<*>.buildBuiltinIsTypeclassInstanceExpression(
+        plan: ResolutionPlan.ApplyRule,
+        visibleTypeParameters: VisibleTypeParameters,
+    ): IrExpression {
+        val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
+        val targetModel = plan.appliedTypeArguments.singleOrNull()
+            ?: return invalidBuiltinProofExpression(
+                expressionType,
+                "IsTypeclassInstance proof requires exactly one type argument.",
+            )
+        val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
+        if (!targetType.isTypeclassType(configuration)) {
+            return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message = "IsTypeclassInstance proof requires a typeclass application, but found ${targetModel.render()}.",
+            )
+        }
+        return buildBuiltinProofSingletonExpression(expressionType, IS_TYPECLASS_INSTANCE_PROOF_CLASS_ID)
+    }
+
+    private fun IrStatementsBuilder<*>.buildBuiltinKnownTypeExpression(
+        plan: ResolutionPlan.ApplyRule,
+        visibleTypeParameters: VisibleTypeParameters,
+    ): IrExpression {
+        val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
+        val targetModel = plan.appliedTypeArguments.singleOrNull()
+            ?: return invalidBuiltinProofExpression(expressionType, "KnownType proof requires exactly one type argument.")
+        val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
+        val targetSimpleType = targetType as? IrSimpleType
+            ?: return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message = "KnownType proof requires an exact known KType, but found ${targetModel.render()}.",
+            )
+        val classifier = targetSimpleType.classifier
+        if (classifier is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol && !classifier.owner.isReified) {
+            return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message = "KnownType proof requires an exact known KType, but found ${targetModel.render()}.",
+            )
+        }
+        val typeOfFunction =
+            pluginContext.referenceFunctions(CallableId(FqName("kotlin.reflect"), Name.identifier("typeOf")))
+                .map { it.owner }
+                .singleOrNull { function ->
+                    function.typeParameters.size == 1 &&
+                        function.valueParameters.isEmpty()
+                }
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message = "Could not resolve kotlin.reflect.typeOf<T>() on the compilation classpath.",
+                )
+        val knownTypeFactory =
+            pluginContext.referenceFunctions(KNOWN_TYPE_FACTORY_CALLABLE_ID)
+                .map { it.owner }
+                .singleOrNull { function -> function.valueParameters.size == 1 }
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message = "Could not resolve one.wabbit.typeclass.knownType(...) on the compilation classpath.",
+                )
+        val typeOfCall =
+            irCall(typeOfFunction.symbol).apply {
+                putTypeArgument(0, targetType)
+            }
+        val knownTypeCall =
+            irCall(knownTypeFactory.symbol).apply {
+                putValueArgument(0, typeOfCall)
+            }
+        return irAs(knownTypeCall, expressionType)
+    }
+
+    private fun IrStatementsBuilder<*>.buildBuiltinSameTypeConstructorExpression(
+        plan: ResolutionPlan.ApplyRule,
+        visibleTypeParameters: VisibleTypeParameters,
+    ): IrExpression {
+        val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
+        val left = plan.appliedTypeArguments.getOrNull(0)
+            ?: return invalidBuiltinProofExpression(expressionType, "SameTypeConstructor proof requires two type arguments.")
+        val right = plan.appliedTypeArguments.getOrNull(1)
+            ?: return invalidBuiltinProofExpression(expressionType, "SameTypeConstructor proof requires two type arguments.")
+        val valid =
+            left is TcType.Constructor &&
+                right is TcType.Constructor &&
+                left.classifierId == right.classifierId
+        if (!valid) {
+            return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message =
+                    "SameTypeConstructor proof requires matching outer type constructors, but found ${left.render()} and ${right.render()}.",
+            )
+        }
+        return buildBuiltinProofSingletonExpression(expressionType, SAME_TYPE_CONSTRUCTOR_PROOF_CLASS_ID)
+    }
+
+    private fun IrStatementsBuilder<*>.invalidBuiltinProofExpression(
+        expressionType: IrType,
+        message: String,
+    ): IrExpression {
+        reportTypeclassResolutionFailure(message)
+        return irAs(irNull(), expressionType)
+    }
+
     private fun IrStatementsBuilder<*>.buildExpressionForPlan(
         plan: ResolutionPlan,
         currentDeclaration: IrDeclarationBase,
@@ -490,6 +646,42 @@ private class TypeclassIrCallTransformer(
                             ?: error("Could not resolve instance object ${reference.classId}")
                         irGetObject(klass.symbol)
                     }
+
+                    RuleReference.BuiltinSame ->
+                        buildBuiltinProofSingletonExpression(
+                            expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext),
+                            proofClassId = SAME_PROOF_CLASS_ID,
+                        )
+
+                    RuleReference.BuiltinNotSame ->
+                        buildBuiltinNotSameExpression(
+                            plan = plan,
+                            visibleTypeParameters = visibleTypeParameters,
+                        )
+
+                    RuleReference.BuiltinSubtype ->
+                        buildBuiltinSubtypeExpression(
+                            plan = plan,
+                            visibleTypeParameters = visibleTypeParameters,
+                        )
+
+                    RuleReference.BuiltinIsTypeclassInstance ->
+                        buildBuiltinIsTypeclassInstanceExpression(
+                            plan = plan,
+                            visibleTypeParameters = visibleTypeParameters,
+                        )
+
+                    RuleReference.BuiltinKnownType ->
+                        buildBuiltinKnownTypeExpression(
+                            plan = plan,
+                            visibleTypeParameters = visibleTypeParameters,
+                        )
+
+                    RuleReference.BuiltinSameTypeConstructor ->
+                        buildBuiltinSameTypeConstructorExpression(
+                            plan = plan,
+                            visibleTypeParameters = visibleTypeParameters,
+                        )
 
                     RuleReference.BuiltinKClass ->
                         buildBuiltinKClassExpression(
@@ -1017,6 +1209,7 @@ private class IrRuleIndex private constructor(
 
     private fun associatedOwnerIds(type: TcType): Set<String> =
         when (type) {
+            TcType.StarProjection -> emptySet()
             is TcType.Variable -> emptySet()
 
             is TcType.Constructor -> {
@@ -1117,6 +1310,48 @@ private class IrModuleScanner(
 
     fun buildBuiltinRules(): List<ResolvedRule> =
         buildList {
+            add(
+                ResolvedRule(
+                    rule = builtinSameRule(),
+                    reference = RuleReference.BuiltinSame,
+                    associatedOwner = null,
+                ),
+            )
+            add(
+                ResolvedRule(
+                    rule = builtinNotSameRule(),
+                    reference = RuleReference.BuiltinNotSame,
+                    associatedOwner = null,
+                ),
+            )
+            add(
+                ResolvedRule(
+                    rule = builtinSubtypeRule(),
+                    reference = RuleReference.BuiltinSubtype,
+                    associatedOwner = null,
+                ),
+            )
+            add(
+                ResolvedRule(
+                    rule = builtinIsTypeclassInstanceRule(),
+                    reference = RuleReference.BuiltinIsTypeclassInstance,
+                    associatedOwner = null,
+                ),
+            )
+            add(
+                ResolvedRule(
+                    rule = builtinKnownTypeRule(),
+                    reference = RuleReference.BuiltinKnownType,
+                    associatedOwner = null,
+                ),
+            )
+            add(
+                ResolvedRule(
+                    rule = builtinSameTypeConstructorRule(),
+                    reference = RuleReference.BuiltinSameTypeConstructor,
+                    associatedOwner = null,
+                ),
+            )
             if (configuration.builtinKClassTypeclass == TypeclassBuiltinMode.ENABLED) {
                 add(
                     ResolvedRule(
@@ -1530,6 +1765,109 @@ private fun builtinKClassRule(): InstanceRule {
     )
 }
 
+private fun builtinSameRule(): InstanceRule {
+    val parameter = TcTypeParameter(id = "builtin:same:T", displayName = "T")
+    return InstanceRule(
+        id = "builtin:same",
+        typeParameters = listOf(parameter),
+        providedType =
+            TcType.Constructor(
+                classifierId = SAME_CLASS_ID.asString(),
+                arguments =
+                    listOf(
+                        TcType.Variable(parameter.id, parameter.displayName),
+                        TcType.Variable(parameter.id, parameter.displayName),
+                    ),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinNotSameRule(): InstanceRule {
+    val left = TcTypeParameter(id = "builtin:notsame:A", displayName = "A")
+    val right = TcTypeParameter(id = "builtin:notsame:B", displayName = "B")
+    return InstanceRule(
+        id = "builtin:notsame",
+        typeParameters = listOf(left, right),
+        providedType =
+            TcType.Constructor(
+                classifierId = NOT_SAME_CLASS_ID.asString(),
+                arguments =
+                    listOf(
+                        TcType.Variable(left.id, left.displayName),
+                        TcType.Variable(right.id, right.displayName),
+                    ),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinSubtypeRule(): InstanceRule {
+    val sub = TcTypeParameter(id = "builtin:subtype:Sub", displayName = "Sub")
+    val sup = TcTypeParameter(id = "builtin:subtype:Super", displayName = "Super")
+    return InstanceRule(
+        id = "builtin:subtype",
+        typeParameters = listOf(sub, sup),
+        providedType =
+            TcType.Constructor(
+                classifierId = SUBTYPE_CLASS_ID.asString(),
+                arguments =
+                    listOf(
+                        TcType.Variable(sub.id, sub.displayName),
+                        TcType.Variable(sup.id, sup.displayName),
+                    ),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinIsTypeclassInstanceRule(): InstanceRule {
+    val parameter = TcTypeParameter(id = "builtin:is-typeclass-instance:TC", displayName = "TC")
+    return InstanceRule(
+        id = "builtin:is-typeclass-instance",
+        typeParameters = listOf(parameter),
+        providedType =
+            TcType.Constructor(
+                classifierId = IS_TYPECLASS_INSTANCE_CLASS_ID.asString(),
+                arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinKnownTypeRule(): InstanceRule {
+    val parameter = TcTypeParameter(id = "builtin:known-type:T", displayName = "T")
+    return InstanceRule(
+        id = "builtin:known-type",
+        typeParameters = listOf(parameter),
+        providedType =
+            TcType.Constructor(
+                classifierId = KNOWN_TYPE_CLASS_ID.asString(),
+                arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinSameTypeConstructorRule(): InstanceRule {
+    val left = TcTypeParameter(id = "builtin:same-type-constructor:A", displayName = "A")
+    val right = TcTypeParameter(id = "builtin:same-type-constructor:B", displayName = "B")
+    return InstanceRule(
+        id = "builtin:same-type-constructor",
+        typeParameters = listOf(left, right),
+        providedType =
+            TcType.Constructor(
+                classifierId = SAME_TYPE_CONSTRUCTOR_CLASS_ID.asString(),
+                arguments =
+                    listOf(
+                        TcType.Variable(left.id, left.displayName),
+                        TcType.Variable(right.id, right.displayName),
+                    ),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
 private fun builtinKSerializerRule(): InstanceRule {
     val parameter = TcTypeParameter(id = "builtin:kserializer:T", displayName = "T")
     return InstanceRule(
@@ -1566,6 +1904,7 @@ private fun isPotentiallySerializableType(
     visiting: MutableSet<String>,
 ): Boolean {
     return when (type) {
+        TcType.StarProjection -> true
         is TcType.Variable -> true
 
         is TcType.Constructor -> {
@@ -1587,6 +1926,34 @@ private fun isPotentiallySerializableType(
         }
     }
 }
+
+private fun canProveNotSame(
+    left: TcType,
+    right: TcType,
+): Boolean {
+    if (left.normalizedKey() == right.normalizedKey()) {
+        return false
+    }
+    return when {
+        left === TcType.StarProjection || right === TcType.StarProjection -> false
+        left is TcType.Constructor && right is TcType.Constructor -> {
+            left.classifierId != right.classifierId ||
+                left.isNullable != right.isNullable ||
+                left.arguments.size != right.arguments.size ||
+                left.arguments.zip(right.arguments).any { (leftArgument, rightArgument) ->
+                    canProveNotSame(leftArgument, rightArgument)
+                }
+        }
+
+        else -> false
+    }
+}
+
+private fun canProveSubtype(
+    subType: IrType,
+    superType: IrType,
+    pluginContext: IrPluginContext,
+): Boolean = subType.isSubtypeOf(superType, JvmIrTypeSystemContext(pluginContext.irBuiltIns))
 
 private data class ResolvedRule(
     val rule: InstanceRule,
@@ -1619,6 +1986,18 @@ private sealed interface RuleReference {
     data class LookupObject(
         val classId: ClassId,
     ) : RuleReference
+
+    data object BuiltinSame : RuleReference
+
+    data object BuiltinNotSame : RuleReference
+
+    data object BuiltinSubtype : RuleReference
+
+    data object BuiltinIsTypeclassInstance : RuleReference
+
+    data object BuiltinKnownType : RuleReference
+
+    data object BuiltinSameTypeConstructor : RuleReference
 
     data object BuiltinKClass : RuleReference
 
@@ -2036,7 +2415,7 @@ private fun irTypeToModel(
                     when (argument) {
                         is IrType -> irTypeToModel(argument, typeParameterBySymbol)
                         is org.jetbrains.kotlin.ir.types.IrTypeProjection -> irTypeToModel(argument.type, typeParameterBySymbol)
-                        is IrStarProjection -> null
+                        is IrStarProjection -> TcType.StarProjection
                     } ?: return null
                 }
             TcType.Constructor(classifierId, arguments, isNullable = type.isNullable())
@@ -2159,6 +2538,7 @@ private fun modelToIrType(
     pluginContext: IrPluginContext,
 ): IrType =
     when (type) {
+        TcType.StarProjection -> error("Top-level star projections cannot be materialized as standalone IR types.")
         is TcType.Variable -> {
             val symbol = visibleTypeParameters.byId[type.id]
                 ?: error("Unbound type variable ${type.displayName}")
@@ -2175,8 +2555,19 @@ private fun modelToIrType(
             val classId = ClassId.fromString(type.classifierId)
             val classifier = pluginContext.referenceClass(classId)
                 ?: error("Could not resolve classifier ${type.classifierId}")
-            classifier.typeWith(type.arguments.map { nested -> modelToIrType(nested, visibleTypeParameters, pluginContext) })
-                .let { irType -> if (type.isNullable) irType.makeNullable() else irType }
+            val arguments: List<IrTypeArgument> =
+                type.arguments.map { nested ->
+                    when (nested) {
+                        TcType.StarProjection -> IrStarProjectionImpl
+                        else -> modelToIrType(nested, visibleTypeParameters, pluginContext)
+                    }
+                }
+            IrSimpleTypeImpl(
+                classifier = classifier,
+                hasQuestionMark = type.isNullable,
+                arguments = arguments,
+                annotations = emptyList(),
+            )
         }
     }
 
@@ -2661,7 +3052,6 @@ private fun IrDeclarationBase.renderIdentity(): String =
         is IrField -> "field:${name.asString()}"
         is IrProperty -> "property:${name.asString()}"
         is IrClass -> classId?.asString() ?: "class:${name.asString()}"
-        is IrFile -> "file:${fileEntry.name}"
         else -> this::class.simpleName ?: "declaration"
     }
 

@@ -1,6 +1,8 @@
 package one.wabbit.typeclass.plugin.model
 
 internal sealed interface TcType {
+    data object StarProjection : TcType
+
     data class Variable(
         val id: String,
         val displayName: String,
@@ -52,6 +54,7 @@ internal class AlphaRenamer {
 
     fun rename(type: TcType): TcType =
         when (type) {
+            TcType.StarProjection -> TcType.StarProjection
             is TcType.Constructor -> TcType.Constructor(type.classifierId, type.arguments.map(::rename), type.isNullable)
             is TcType.Variable -> TcType.Variable(nameFor(type.id), nameFor(type.id), type.isNullable)
         }
@@ -62,12 +65,14 @@ internal class AlphaRenamer {
 
 internal fun TcType.references(id: String): Boolean =
     when (this) {
+        TcType.StarProjection -> false
         is TcType.Constructor -> arguments.any { it.references(id) }
         is TcType.Variable -> this.id == id
     }
 
 internal fun TcType.render(): String =
     when (this) {
+        TcType.StarProjection -> "*"
         is TcType.Constructor ->
             buildString {
                 if (arguments.isEmpty()) {
