@@ -1,5 +1,6 @@
 package one.wabbit.typeclass.plugin.integration
 
+import org.junit.Ignore
 import kotlin.test.Test
 
 class ResolutionTest : IntegrationTestSupport() {
@@ -46,6 +47,48 @@ class ResolutionTest : IntegrationTestSupport() {
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "true",
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun instantiatesAllTypeParametersFromOrdinaryArgumentsBeforeResolvingContextualEvidenceOnMemberCalls() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            class Foo(val value: Int)
+            class Bar(val value: String)
+
+            @Typeclass
+            interface Pairing<A, B> {
+                fun label(): String
+            }
+
+            @Instance
+            object FooBarPairing : Pairing<Foo, Bar> {
+                override fun label(): String = "foo-bar"
+            }
+
+            class Ops {
+                context(pairing: Pairing<A, B>)
+                fun <A, B> combine(left: A, right: B): String =
+                    pairing.label() + ":" + (left is Foo) + ":" + (right is Bar)
+            }
+
+            fun main() {
+                val ops = Ops()
+                println(ops.combine(Foo(1), Bar("x")))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "foo-bar:true:true",
         )
     }
 

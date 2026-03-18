@@ -17,3 +17,4 @@
 - Fix IR rewriting for preserved explicit context arguments inside contextual lambdas, overloaded self-calls in anonymous functions, and generic `summon<T>()` calls whose contextuality only appears after type substitution.
 - Add regressions for platform-type safe calls, cross-file overloaded wrappers, and star-projected contextual lambdas that forward associated typeclass evidence through higher-order calls.
 - Fix receiver-only FIR type inference for contextual extension/operator calls, and stop synthetic implicit receiver injection from polluting unrelated lambda overload resolution such as `run { ... }`.
+- Add FIR declaration-site validation for invalid `@Instance` scopes and shapes, propagate recursive instance search failures instead of downgrading them to missing evidence, and enable the `PHASE2` regression tests that cover those cases.

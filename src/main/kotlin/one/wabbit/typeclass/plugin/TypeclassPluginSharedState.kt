@@ -68,6 +68,11 @@ internal class TypeclassPluginSharedState {
         goal: TcType,
     ): Boolean = resolutionIndex(session).canDeriveGoal(goal)
 
+    fun allowedAssociatedOwnersForProvidedType(
+        session: FirSession,
+        providedType: TcType,
+    ): Set<ClassId> = resolutionIndex(session).allowedAssociatedOwnersForGoal(providedType)
+
     private fun sourceIndex(session: FirSession): SourceIndex =
         sourceIndexes.getOrPut(session) {
             buildSourceIndex(session)
@@ -277,7 +282,7 @@ private data class ResolutionIndex(
     val derivableClassIds: Set<String>,
 ) {
     fun rulesForGoal(goal: TcType): List<InstanceRule> {
-        val owners = associatedOwnersForGoal(goal)
+        val owners = allowedAssociatedOwnersForGoal(goal)
         val associated =
             owners.flatMapTo(linkedSetOf()) { owner ->
                 associatedRulesByOwner[owner].orEmpty()
@@ -291,7 +296,7 @@ private data class ResolutionIndex(
         return derivationOwnersForTarget(targetType.classifierId).isNotEmpty()
     }
 
-    private fun associatedOwnersForGoal(goal: TcType): Set<ClassId> {
+    fun allowedAssociatedOwnersForGoal(goal: TcType): Set<ClassId> {
         val constructor = goal as? TcType.Constructor ?: return emptySet()
         val ownerIds = linkedSetOf<String>()
         ownerIds += sealedOwnerChain(constructor.classifierId)
@@ -353,6 +358,33 @@ internal fun FirRegularClass.instanceProvidedType(session: FirSession): TcType? 
         }
         coneTypeToModel(superType, emptyMap())
     }
+
+internal fun FirSimpleFunction.instanceProvidedType(session: FirSession): TcType? {
+    val returnType = returnTypeRef.coneType
+    if (!isTypeclassType(returnType, session)) {
+        return null
+    }
+    val typeParameters =
+        typeParameters.mapIndexed { index, typeParameter ->
+            TcTypeParameter(
+                id = "fir-function:${symbol.callableId}:$index:${typeParameter.symbol.name.asString()}",
+                displayName = typeParameter.symbol.name.asString(),
+            )
+        }
+    val typeParameterBySymbol =
+        this.typeParameters.zip(typeParameters).associate { (typeParameter, parameter) ->
+            typeParameter.symbol to parameter
+        }
+    return coneTypeToModel(returnType, typeParameterBySymbol)
+}
+
+internal fun FirProperty.instanceProvidedType(session: FirSession): TcType? {
+    val returnType = returnTypeRef.coneType
+    if (!isTypeclassType(returnType, session)) {
+        return null
+    }
+    return coneTypeToModel(returnType, emptyMap())
+}
 
 private fun FirRegularClass.declaredOrResolvedSuperTypes(): List<ConeKotlinType> {
     val declared = superTypeRefs.map { it.coneType }

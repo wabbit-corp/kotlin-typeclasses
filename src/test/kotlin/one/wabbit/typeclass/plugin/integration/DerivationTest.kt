@@ -119,7 +119,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE2")
     @Test
     fun reportsDuplicateInstancesAcrossCompanionAndTopLevelScopes() {
         val source =
@@ -203,7 +202,60 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE2")
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun ignoresInapplicableAssociatedSealedSupertypeCandidatesWhenResolvingSubtypeSpecificInstances() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Typeclass
+            interface Impossible<A>
+
+            sealed interface Animal {
+                data class Dog(val id: Int) : Animal {
+                    companion object {
+                        @Instance
+                        object DogShow : Show<Dog> {
+                            override fun label(): String = "dog"
+                        }
+                    }
+                }
+
+                companion object {
+                    @Instance
+                    context(_: Impossible<Nothing>)
+                    fun hiddenDogShow(): Show<Dog> =
+                        object : Show<Dog> {
+                            override fun label(): String = "hidden"
+                        }
+                }
+            }
+
+            context(_: Show<A>)
+            fun <A> which(): String = summon<Show<A>>().label()
+
+            fun main() {
+                println(which<Animal.Dog>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "dog",
+        )
+    }
+
     @Test
     fun rejectsInstanceObjectsDeclaredOutsideAllowedScopesAtDeclarationSite() {
         val source =
@@ -232,7 +284,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE2")
     @Test
     fun rejectsExtensionInstanceFunctionsAtDeclarationSite() {
         val source =
@@ -260,7 +311,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE2")
     @Test
     fun rejectsInstanceFunctionsWithRegularParametersAtDeclarationSite() {
         val source =
@@ -288,7 +338,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE2")
     @Test
     fun rejectsInstancesDeclaredInUnrelatedCompanionObjectsAtDeclarationSite() {
         val source =
@@ -320,7 +369,6 @@ class DerivationTest : IntegrationTestSupport() {
     }
 
     // FIXME: re-review in the future
-    @Ignore("PHASE2")
     @Test
     fun rejectsClassBasedInstancesAtDeclarationSite() {
         val source =
@@ -347,7 +395,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE2")
     @Test
     fun rejectsMutableInstancePropertiesAtDeclarationSite() {
         val source =
@@ -375,7 +422,6 @@ class DerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE2")
     @Test
     fun rejectsLateinitInstancePropertiesAtDeclarationSite() {
         val source =
@@ -401,7 +447,6 @@ class DerivationTest : IntegrationTestSupport() {
     }
 
     // FIXME: re-review in the future
-    @Ignore("PHASE2")
     @Test
     fun rejectsCustomGetterInstancePropertiesAtDeclarationSite() {
         val source =
@@ -431,7 +476,6 @@ class DerivationTest : IntegrationTestSupport() {
     }
 
     // FIXME: re-review in the future
-    @Ignore("PHASE2")
     @Test
     fun rejectsSuspendInstanceFunctionsAtDeclarationSite() {
         val source =

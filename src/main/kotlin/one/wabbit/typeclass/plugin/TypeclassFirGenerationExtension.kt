@@ -18,6 +18,7 @@ internal class TypeclassFirExtensionRegistrar(
 ) : FirExtensionRegistrar() {
     override fun ExtensionRegistrarContext.configurePlugin() {
         +{ session: FirSession -> TypeclassFirGenerationExtension(session, sharedState) }
+        +{ session: FirSession -> TypeclassFirCheckersExtension(session, sharedState) }
         +{ session: FirSession -> TypeclassFirExpressionResolutionExtension(session, sharedState) }
         +{ session: FirSession -> TypeclassFirFunctionCallRefinementExtension(session, sharedState) }
     }

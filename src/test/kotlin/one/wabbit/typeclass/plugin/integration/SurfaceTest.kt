@@ -101,7 +101,6 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE2")
     @Test
     fun detectsMutualRecursionAcrossTypeclasses() {
         val source =
@@ -190,6 +189,135 @@ class SurfaceTest : IntegrationTestSupport() {
                 global
                 local
                 """.trimIndent(),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun resolvesContextualOverloadsBetweenSingleAndVarargAlternatives() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            class Logger {
+                context(show: Show<Int>)
+                fun log(value: Int): String = "one:" + show.show(value)
+
+                context(show: Show<Int>)
+                fun log(vararg values: Int): String =
+                    "many:" + values.joinToString("|") { value -> show.show(value) }
+            }
+
+            fun main() {
+                val logger = Logger()
+                println(logger.log(1))
+                println(logger.log(1, 2))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                one:int:1
+                many:int:1|int:2
+                """.trimIndent(),
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun prefersExactContravariantNothingInstanceOverBroaderCandidates() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<in A> {
+                fun label(): String
+            }
+
+            @Instance
+            object NothingShow : Show<Nothing> {
+                override fun label(): String = "nothing"
+            }
+
+            @Instance
+            object AnyShow : Show<Any> {
+                override fun label(): String = "any"
+            }
+
+            context(_: Show<Nothing>)
+            fun which(): String = summon<Show<Nothing>>().label()
+
+            fun main() {
+                println(which())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "nothing",
+        )
+    }
+
+    // NEW
+    @Ignore("NEW: review before enabling")
+    @Test
+    fun reportsAmbiguityBetweenBroaderContravariantCandidatesForNothingWithoutExactMatch() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<in A> {
+                fun label(): String
+            }
+
+            @Instance
+            object AnyShow : Show<Any> {
+                override fun label(): String = "any"
+            }
+
+            @Instance
+            object StringShow : Show<String> {
+                override fun label(): String = "string"
+            }
+
+            context(_: Show<Nothing>)
+            fun which(): String = summon<Show<Nothing>>().label()
+
+            fun main() {
+                println(which()) // ERROR multiple broader contravariant instances match Show<Nothing>
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("ambiguous", "nothing"),
         )
     }
 

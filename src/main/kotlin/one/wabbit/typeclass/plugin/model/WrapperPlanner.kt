@@ -53,6 +53,7 @@ internal class TypeclassResolutionPlanner(
             }
 
             val successfulCandidates = mutableListOf<ResolutionPlan>()
+            var sawRecursiveCandidate = false
             var nextFreshCounter = freshCounter
 
             ruleProvider(desiredType).forEach { rule ->
@@ -87,6 +88,11 @@ internal class TypeclassResolutionPlanner(
                     candidateFreshCounter = nested.freshCounter
                     when (val nestedResult = nested.result) {
                         is ResolutionSearchResult.Success -> prerequisitePlans += nestedResult.plan
+                        is ResolutionSearchResult.Recursive -> {
+                            sawRecursiveCandidate = true
+                            return@forEach
+                        }
+
                         else -> return@forEach
                     }
                 }
@@ -104,7 +110,13 @@ internal class TypeclassResolutionPlanner(
                     )
             }
 
-            return InternalResolution(successfulCandidates.toSearchResult(desiredType), nextFreshCounter)
+            val result =
+                when {
+                    successfulCandidates.isNotEmpty() -> successfulCandidates.toSearchResult(desiredType)
+                    sawRecursiveCandidate -> ResolutionSearchResult.Recursive(desiredType)
+                    else -> ResolutionSearchResult.Missing(desiredType)
+                }
+            return InternalResolution(result, nextFreshCounter)
         } finally {
             inProgress.remove(normalizedDesired)
         }

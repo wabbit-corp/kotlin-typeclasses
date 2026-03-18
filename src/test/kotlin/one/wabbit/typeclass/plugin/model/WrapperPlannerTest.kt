@@ -99,6 +99,34 @@ class WrapperPlannerTest {
     }
 
     @Test
+    fun `mutual recursion surfaces recursive failure instead of missing`() {
+        val a = TcTypeParameter("outer:A", "A")
+        val x = TcTypeParameter("rule:X", "X")
+        val fooRule =
+            InstanceRule(
+                id = "fooFromBar",
+                typeParameters = listOf(x),
+                providedType = foo(typeVariable(x)),
+                prerequisiteTypes = listOf(bar(typeVariable(x))),
+            )
+        val barRule =
+            InstanceRule(
+                id = "barFromFoo",
+                typeParameters = listOf(x),
+                providedType = bar(typeVariable(x)),
+                prerequisiteTypes = listOf(foo(typeVariable(x))),
+            )
+
+        val result =
+            TypeclassResolutionPlanner(listOf(fooRule, barRule)).resolve(
+                desiredType = foo(typeVariable(a)),
+                localContextTypes = emptyList(),
+            )
+
+        assertIs<ResolutionSearchResult.Recursive>(result)
+    }
+
+    @Test
     fun `multiple local matches are ambiguous`() {
         val a = TcTypeParameter("outer:A", "A")
         val planner = TypeclassResolutionPlanner(emptyList())
@@ -146,6 +174,10 @@ class WrapperPlannerTest {
     private fun typeVariable(parameter: TcTypeParameter): TcType = TcType.Variable(parameter.id, parameter.displayName)
 
     private fun eq(argument: TcType): TcType = typeConstructor("demo.Eq", argument)
+
+    private fun foo(argument: TcType): TcType = typeConstructor("demo.Foo", argument)
+
+    private fun bar(argument: TcType): TcType = typeConstructor("demo.Bar", argument)
 
     private fun box(argument: TcType): TcType = typeConstructor("demo.Box", argument)
 
