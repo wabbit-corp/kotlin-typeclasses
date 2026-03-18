@@ -1,5 +1,6 @@
 # Learnings
 
+- Some interoperability tests need compile-time platform stubs rather than published runtime dependencies. Parcelize is the first concrete example: the harness needs the compiler plugin and parcelize runtime jar, but `android.os.Parcelable` itself can be satisfied by tiny synthetic test sources.
 - Builtin rules that are defined in terms of other builtins still need their own IR validation path if prerequisite success is only approximated during planning. `StrictSubtype` exposed this because planner success for builtin `NotSame` does not imply the later IR check will succeed.
 - The clean runtime shape for these proof builtins is still zero-state singletons. The interesting API lives on the proof interfaces (`coerce`, `flip`, `compose`, `andThen`, `toSubtype`, `toNotSame`, `bracket`), while the compiler continues to materialize a single shared witness object.
 - Interop harnesses need a first-class way to express compiler plugin ids and repeated `-P` options, not just extra jars. Power Assert is a good example: it has no meaningful runtime dependency for these tests, but it does require repeated `function=<fqName>` plugin options.

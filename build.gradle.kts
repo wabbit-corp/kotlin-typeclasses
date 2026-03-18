@@ -67,6 +67,8 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.3.10")
     testImplementation("org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable:2.3.10")
     testImplementation("org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:2.3.10")
+    testImplementation("org.jetbrains.kotlin:kotlin-parcelize-compiler:2.3.10")
+    testImplementation("org.jetbrains.kotlin:kotlin-parcelize-runtime:2.3.10")
     testImplementation("org.jetbrains.kotlin:kotlin-power-assert-compiler-plugin-embeddable:2.3.10")
     testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.9.0")
     testImplementation("androidx.compose.runtime:runtime:1.9.3")

@@ -161,8 +161,15 @@ abstract class IntegrationTestSupport {
         val workingDir = createTempDirectory(prefix = "typeclass-compile-")
         val outputDir = workingDir.resolve("out")
         outputDir.createDirectories()
+        val supportSources =
+            buildMap<String, String> {
+                requiredPlugins.forEach { plugin ->
+                    putAll(plugin.supportSources)
+                }
+            }
+        val effectiveSources = supportSources + sources
         val sourceFiles =
-            sources.map { (relativePath, contents) ->
+            effectiveSources.map { (relativePath, contents) ->
                 workingDir.resolve(relativePath).also { sourceFile ->
                     sourceFile.parent?.createDirectories()
                     sourceFile.writeText(contents)
@@ -419,6 +426,8 @@ data class CompilationResult(
 )
 
 sealed interface CompilerHarnessPlugin {
+    val supportSources: Map<String, String>
+        get() = emptyMap()
     val runtimeClasspathJarMarkers: List<String>
     val compilerPluginJarMarkers: List<String>
         get() = emptyList()
@@ -465,7 +474,45 @@ sealed interface CompilerHarnessPlugin {
             functions.map { functionFqName -> "function=$functionFqName" }
     }
 
+    data object Parcelize : CompilerHarnessPlugin {
+        override val supportSources: Map<String, String> =
+            mapOf(
+                "android/os/Parcel.kt" to
+                    """
+                    package android.os
+
+                    public open class Parcel {
+                        public fun writeInt(value: Int): Unit = Unit
+
+                        public fun readInt(): Int = 0
+                    }
+                    """.trimIndent(),
+                "android/os/Parcelable.kt" to
+                    """
+                    package android.os
+
+                    public interface Parcelable {
+                        public fun describeContents(): Int = 0
+
+                        public fun writeToParcel(parcel: Parcel, flags: Int): Unit = Unit
+
+                        public interface Creator<T> {
+                            public fun createFromParcel(parcel: Parcel): T
+
+                            public fun newArray(size: Int): Array<T?>
+                        }
+                    }
+                    """.trimIndent(),
+            )
+        override val runtimeClasspathJarMarkers: List<String> =
+            listOf("kotlin-parcelize-runtime")
+        override val compilerPluginJarMarkers: List<String> =
+            listOf("kotlin-parcelize-compiler")
+        override val compilerPluginId: String = "org.jetbrains.kotlin.parcelize"
+    }
+
     data class External(
+        override val supportSources: Map<String, String> = emptyMap(),
         override val runtimeClasspathJarMarkers: List<String> = emptyList(),
         override val compilerPluginJarMarkers: List<String> = emptyList(),
         override val compilerPluginId: String? = null,
