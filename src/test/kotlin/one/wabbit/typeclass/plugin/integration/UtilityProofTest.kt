@@ -703,13 +703,12 @@ class UtilityProofTest : IntegrationTestSupport() {
 
             import one.wabbit.typeclass.Same
             import one.wabbit.typeclass.Subtype
-            import one.wabbit.typeclass.bracket
             import one.wabbit.typeclass.summon
 
             typealias Age = Int
 
             fun main() {
-                val eq: Same<Int, Age> = bracket(
+                val eq: Same<Int, Age> = Same.bracket(
                     summon<Subtype<Int, Age>>(),
                     summon<Subtype<Age, Int>>(),
                 )
@@ -908,7 +907,6 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13E")
     @Test fun materializesNullableAndNotNullableProofsForProvableCases() {
         val source =
             """
@@ -940,7 +938,6 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13E")
     @Test fun rejectsNullableAndNotNullableProofsWhenNullabilityIsUnknownOrWrong() {
         val source =
             """
@@ -973,7 +970,6 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13E")
     @Test fun nullableProofSupportsNullValueContradictionAndTransportAcrossSameAndSubtype() {
         val source =
             """
@@ -1016,7 +1012,6 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13E")
     @Test fun notNullableProofSupportsContradictionAndTransportAcrossSameAndSubtype() {
         val source =
             """
@@ -1058,7 +1053,6 @@ class UtilityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("PHASE13E")
     @Test fun nullableAndNotNullableProofsCanActAsPrerequisitesForOrdinaryRuleSearch() {
         val source =
             """
@@ -1103,6 +1097,443 @@ class UtilityProofTest : IntegrationTestSupport() {
                 """
                 nullable
                 not-nullable
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun reifiedKnownTypeMatchesConcreteKnownType() {
+        val source =
+            """
+            package demo
+
+            import kotlin.reflect.typeOf
+            import one.wabbit.typeclass.KnownType
+            import one.wabbit.typeclass.knownType
+            import one.wabbit.typeclass.summon
+
+            @OptIn(ExperimentalStdlibApi::class)
+            inline fun <reified T> sameAsConcrete(): Boolean =
+                summon<KnownType<T>>().sameAs(knownType(typeOf<String>()))
+
+            fun main() {
+                println(sameAsConcrete<String>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "true",
+        )
+    }
+
+    @Test fun kClassErasesTypeArgumentsWhileKnownTypeDistinguishesThem() {
+        val source =
+            """
+            package demo
+
+            import kotlin.reflect.KClass
+            import one.wabbit.typeclass.KnownType
+            import one.wabbit.typeclass.summon
+
+            fun main() {
+                val stringListClass = summon<KClass<List<String>>>()
+                val intListClass = summon<KClass<List<Int>>>()
+                val stringListType = summon<KnownType<List<String>>>()
+                val intListType = summon<KnownType<List<Int>>>()
+
+                println(stringListClass == intListClass)
+                println(stringListType.sameAs(intListType))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                false
+                """.trimIndent(),
+            pluginOptions = listOf("builtinKClassTypeclass=enabled"),
+        )
+    }
+
+    @Test fun typeIdTreatsAliasesAsSemanticallyEqual() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.TypeId
+            import one.wabbit.typeclass.summon
+
+            typealias Age = Int
+
+            fun main() {
+                val intId = summon<TypeId<Int>>()
+                val ageId = summon<TypeId<Age>>()
+                println(intId.sameAs(ageId))
+                println(intId.stableHash == ageId.stableHash)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun typeIdDistinguishesArgumentsAndNullability() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.TypeId
+            import one.wabbit.typeclass.summon
+
+            fun main() {
+                println(summon<TypeId<List<String>>>().sameAs(summon<TypeId<List<Int>>>()))
+                println(summon<TypeId<Int>>().sameAs(summon<TypeId<Int?>>()))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                false
+                false
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun knownTypeAndTypeIdCanActAsPrerequisitesForOrdinaryRuleSearch() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.KnownType
+            import one.wabbit.typeclass.TypeId
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface TypeWitness<A> {
+                fun verdict(): String
+            }
+
+            @Instance
+            context(known: KnownType<A>, id: TypeId<A>)
+            fun <A> reflectiveWitness(): TypeWitness<A> =
+                object : TypeWitness<A> {
+                    override fun verdict(): String =
+                        "${'$'}{"List" in known.kType.toString() && "String" in known.kType.toString()} | ${'$'}{id.canonicalName}"
+                }
+
+            context(witness: TypeWitness<A>)
+            fun <A> render(): String = witness.verdict()
+
+            fun main() {
+                println(render<List<String?>>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "true | kotlin.collections.List<kotlin.String?>",
+        )
+    }
+
+    @Ignore("PHASE13G")
+    @Test fun typeIdSupportsHashMapLookupAcrossRepeatedSummonsAndAliases() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.TypeId
+            import one.wabbit.typeclass.summon
+
+            typealias Age = Int
+
+            fun main() {
+                val values = hashMapOf<TypeId<*>, String>()
+                values[summon<TypeId<Int>>()] = "int"
+                println(values[summon<TypeId<Int>>()])
+                println(values[summon<TypeId<Age>>()])
+                println(values.size)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                int
+                int
+                1
+                """.trimIndent(),
+        )
+    }
+
+    @Ignore("PHASE13G")
+    @Test fun typeIdCompareProducesEqualityProofForSemanticAliases() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Same
+            import one.wabbit.typeclass.TypeId
+            import one.wabbit.typeclass.TypeIdComparison
+            import one.wabbit.typeclass.summon
+
+            typealias Age = Int
+
+            fun main() {
+                val cmp = summon<TypeId<Int>>().compare(summon<TypeId<Age>>())
+                when (cmp) {
+                    is TypeIdComparison.Equal -> {
+                        val eq: Same<Int, Age> = cmp.proof
+                        println(eq.coerce(41))
+                    }
+                    is TypeIdComparison.Different -> println("different")
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "41",
+        )
+    }
+
+    @Ignore("PHASE13G")
+    @Test fun typeIdCompareProducesInequalityForDistinctSemanticTypes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.TypeId
+            import one.wabbit.typeclass.TypeIdComparison
+            import one.wabbit.typeclass.summon
+
+            fun main() {
+                val cmp = summon<TypeId<Int>>().compare(summon<TypeId<String>>())
+                when (cmp) {
+                    is TypeIdComparison.Equal -> println("equal")
+                    is TypeIdComparison.Different -> {
+                        println(cmp.proof != null)
+                        println(cmp.proof.flip() != null)
+                    }
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                """.trimIndent(),
+        )
+    }
+
+    @Ignore("PHASE13G")
+    @Test fun typeIdDistinguishesStarProjectionsFromConcreteAndNullableArguments() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.TypeId
+            import one.wabbit.typeclass.summon
+
+            fun main() {
+                println(summon<TypeId<List<Int>>>().sameAs(summon<TypeId<List<*>>>()))
+                println(summon<TypeId<List<*>>>().sameAs(summon<TypeId<List<Any?>>>()))
+                println(summon<TypeId<List<Int?>>>().sameAs(summon<TypeId<List<Int>>>()))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                false
+                false
+                false
+                """.trimIndent(),
+        )
+    }
+
+    @Ignore("PHASE13G")
+    @Test fun typeIdPreservesUseSiteVariance() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.TypeId
+            import one.wabbit.typeclass.summon
+
+            fun main() {
+                println(summon<TypeId<Array<Int>>>().sameAs(summon<TypeId<Array<out Int>>>()))
+                println(summon<TypeId<Array<in String>>>().sameAs(summon<TypeId<Array<Any?>>>()))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                false
+                false
+                """.trimIndent(),
+        )
+    }
+
+    @Ignore("PHASE13G")
+    @Test fun typeIdTreatsNestedAliasesAsSemanticallyEqualInsideGenericArguments() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.TypeId
+            import one.wabbit.typeclass.summon
+
+            typealias Age = Int
+            typealias Ages = List<Age>
+            typealias Ints = List<Int>
+
+            fun main() {
+                val ages = summon<TypeId<Ages>>()
+                val ints = summon<TypeId<Ints>>()
+                println(ages.sameAs(ints))
+                println(ages == ints)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                """.trimIndent(),
+        )
+    }
+
+    @Ignore("PHASE13G")
+    @Test fun typeIdDistinguishesValueClassesFromTheirUnderlyingTypes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.TypeId
+            import one.wabbit.typeclass.summon
+
+            @JvmInline
+            value class UserId(val value: Int)
+
+            fun main() {
+                val userId = summon<TypeId<UserId>>()
+                val intId = summon<TypeId<Int>>()
+                val values = hashMapOf<TypeId<*>, String>()
+                values[userId] = "user-id"
+                values[intId] = "int"
+                println(userId.sameAs(intId))
+                println(values[userId])
+                println(values[intId])
+                println(values.size)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                false
+                user-id
+                int
+                2
+                """.trimIndent(),
+        )
+    }
+
+    @Ignore("PHASE13G")
+    @Test fun rejectsTypeIdMaterializationForUnfixedGenericTypeParameters() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.TypeId
+            import one.wabbit.typeclass.summon
+
+            fun <T> impossible(): TypeId<T> =
+                summon<TypeId<T>>() // ERROR TypeId requires an exact known semantic type
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("TypeId"),
+        )
+    }
+
+    @Ignore("PHASE13G")
+    @Test fun reifiedTypeIdMatchesConcreteInstantiationAndAliases() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.TypeId
+            import one.wabbit.typeclass.summon
+
+            typealias Age = Int
+
+            inline fun <reified T> sameAsConcreteInt(): Boolean =
+                summon<TypeId<T>>() == summon<TypeId<Int>>()
+
+            fun main() {
+                println(sameAsConcreteInt<Int>())
+                println(sameAsConcreteInt<Age>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                """.trimIndent(),
+        )
+    }
+
+    @Ignore("PHASE13G")
+    @Test fun typeIdDistinguishesFunctionTypeArgumentsAndNullability() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.TypeId
+            import one.wabbit.typeclass.summon
+
+            typealias Age = Int
+
+            fun main() {
+                println(summon<TypeId<(Int) -> String>>().sameAs(summon<TypeId<(Age) -> String>>()))
+                println(summon<TypeId<(Int) -> String>>().sameAs(summon<TypeId<(Int?) -> String>>()))
+                println(summon<TypeId<(Int) -> String>>().sameAs(summon<TypeId<(Int) -> String?>>()))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                false
+                false
                 """.trimIndent(),
         )
     }

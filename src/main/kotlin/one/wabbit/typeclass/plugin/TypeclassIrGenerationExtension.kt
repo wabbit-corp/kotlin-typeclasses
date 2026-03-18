@@ -12,9 +12,13 @@ import one.wabbit.typeclass.plugin.model.TcType
 import one.wabbit.typeclass.plugin.model.TcTypeParameter
 import one.wabbit.typeclass.plugin.model.TypeclassResolutionPlanner
 import one.wabbit.typeclass.plugin.model.containsStarProjection
+import one.wabbit.typeclass.plugin.model.isExactTypeIdentity
+import one.wabbit.typeclass.plugin.model.isProvablyNotNullable
+import one.wabbit.typeclass.plugin.model.isProvablyNullable
 import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.render
 import one.wabbit.typeclass.plugin.model.substituteType
+import one.wabbit.typeclass.plugin.model.toCanonicalTypeIdName
 import one.wabbit.typeclass.plugin.model.unifyTypes
 import org.jetbrains.kotlin.backend.jvm.JvmIrTypeSystemContext
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
@@ -485,6 +489,40 @@ private class TypeclassIrCallTransformer(
         return buildBuiltinProofSingletonExpression(expressionType, STRICT_SUBTYPE_PROOF_CLASS_ID)
     }
 
+    private fun IrStatementsBuilder<*>.buildBuiltinNullableExpression(
+        plan: ResolutionPlan.ApplyRule,
+        visibleTypeParameters: VisibleTypeParameters,
+    ): IrExpression {
+        val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
+        val targetModel = plan.appliedTypeArguments.singleOrNull()
+            ?: return invalidBuiltinProofExpression(expressionType, "Nullable proof requires exactly one type argument.")
+        val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
+        if (!canProveNullable(targetType, pluginContext)) {
+            return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message = "Nullable proof could not prove null is a valid inhabitant of ${targetModel.render()}.",
+            )
+        }
+        return buildBuiltinProofSingletonExpression(expressionType, NULLABLE_PROOF_CLASS_ID)
+    }
+
+    private fun IrStatementsBuilder<*>.buildBuiltinNotNullableExpression(
+        plan: ResolutionPlan.ApplyRule,
+        visibleTypeParameters: VisibleTypeParameters,
+    ): IrExpression {
+        val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
+        val targetModel = plan.appliedTypeArguments.singleOrNull()
+            ?: return invalidBuiltinProofExpression(expressionType, "NotNullable proof requires exactly one type argument.")
+        val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
+        if (!canProveNotNullable(targetType, pluginContext)) {
+            return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message = "NotNullable proof could not prove ${targetModel.render()} excludes null.",
+            )
+        }
+        return buildBuiltinProofSingletonExpression(expressionType, NOT_NULLABLE_PROOF_CLASS_ID)
+    }
+
     private fun IrStatementsBuilder<*>.buildBuiltinIsTypeclassInstanceExpression(
         plan: ResolutionPlan.ApplyRule,
         visibleTypeParameters: VisibleTypeParameters,
@@ -553,6 +591,41 @@ private class TypeclassIrCallTransformer(
                 putValueArgument(0, typeOfCall)
             }
         return irAs(knownTypeCall, expressionType)
+    }
+
+    private fun IrStatementsBuilder<*>.buildBuiltinTypeIdExpression(
+        plan: ResolutionPlan.ApplyRule,
+        visibleTypeParameters: VisibleTypeParameters,
+    ): IrExpression {
+        val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
+        val targetModel = plan.appliedTypeArguments.singleOrNull()
+            ?: return invalidBuiltinProofExpression(expressionType, "TypeId proof requires exactly one type argument.")
+        val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
+        val targetSimpleType = targetType as? IrSimpleType
+            ?: return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message = "TypeId proof requires an exact semantic type, but found ${targetModel.render()}.",
+            )
+        val classifier = targetSimpleType.classifier
+        if (classifier is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol) {
+            return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message = "TypeId proof requires an exact semantic type, but found ${targetModel.render()}.",
+            )
+        }
+        val typeIdFactory =
+            pluginContext.referenceFunctions(TYPE_ID_FACTORY_CALLABLE_ID)
+                .map { it.owner }
+                .singleOrNull { function -> function.valueParameters.size == 1 }
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message = "Could not resolve one.wabbit.typeclass.typeId(...) on the compilation classpath.",
+                )
+        val typeIdCall =
+            irCall(typeIdFactory.symbol).apply {
+                putValueArgument(0, irString(targetModel.toCanonicalTypeIdName()))
+            }
+        return irAs(typeIdCall, expressionType)
     }
 
     private fun IrStatementsBuilder<*>.buildBuiltinSameTypeConstructorExpression(
@@ -693,6 +766,18 @@ private class TypeclassIrCallTransformer(
                             visibleTypeParameters = visibleTypeParameters,
                         )
 
+                    RuleReference.BuiltinNullable ->
+                        buildBuiltinNullableExpression(
+                            plan = plan,
+                            visibleTypeParameters = visibleTypeParameters,
+                        )
+
+                    RuleReference.BuiltinNotNullable ->
+                        buildBuiltinNotNullableExpression(
+                            plan = plan,
+                            visibleTypeParameters = visibleTypeParameters,
+                        )
+
                     RuleReference.BuiltinIsTypeclassInstance ->
                         buildBuiltinIsTypeclassInstanceExpression(
                             plan = plan,
@@ -701,6 +786,12 @@ private class TypeclassIrCallTransformer(
 
                     RuleReference.BuiltinKnownType ->
                         buildBuiltinKnownTypeExpression(
+                            plan = plan,
+                            visibleTypeParameters = visibleTypeParameters,
+                        )
+
+                    RuleReference.BuiltinTypeId ->
+                        buildBuiltinTypeIdExpression(
                             plan = plan,
                             visibleTypeParameters = visibleTypeParameters,
                         )
@@ -1220,6 +1311,15 @@ private class IrRuleIndex private constructor(
             .filter { resolvedRule ->
                 resolvedRule.rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, pluginContext)
             }
+            .filter { resolvedRule ->
+                resolvedRule.rule.id != "builtin:nullable" || supportsBuiltinNullableGoal(goal)
+            }
+            .filter { resolvedRule ->
+                resolvedRule.rule.id != "builtin:not-nullable" || supportsBuiltinNotNullableGoal(goal)
+            }
+            .filter { resolvedRule ->
+                resolvedRule.rule.id != "builtin:type-id" || supportsBuiltinTypeIdGoal(goal)
+            }
             .distinctBy { resolvedRule -> resolvedRule.rule.id }
             .map(ResolvedRule::rule)
             .toList()
@@ -1368,6 +1468,20 @@ private class IrModuleScanner(
             )
             add(
                 ResolvedRule(
+                    rule = builtinNullableRule(),
+                    reference = RuleReference.BuiltinNullable,
+                    associatedOwner = null,
+                ),
+            )
+            add(
+                ResolvedRule(
+                    rule = builtinNotNullableRule(),
+                    reference = RuleReference.BuiltinNotNullable,
+                    associatedOwner = null,
+                ),
+            )
+            add(
+                ResolvedRule(
                     rule = builtinIsTypeclassInstanceRule(),
                     reference = RuleReference.BuiltinIsTypeclassInstance,
                     associatedOwner = null,
@@ -1377,6 +1491,13 @@ private class IrModuleScanner(
                 ResolvedRule(
                     rule = builtinKnownTypeRule(),
                     reference = RuleReference.BuiltinKnownType,
+                    associatedOwner = null,
+                ),
+            )
+            add(
+                ResolvedRule(
+                    rule = builtinTypeIdRule(),
+                    reference = RuleReference.BuiltinTypeId,
                     associatedOwner = null,
                 ),
             )
@@ -1883,6 +2004,34 @@ private fun builtinStrictSubtypeRule(): InstanceRule {
     )
 }
 
+private fun builtinNullableRule(): InstanceRule {
+    val parameter = TcTypeParameter(id = "builtin:nullable:T", displayName = "T")
+    return InstanceRule(
+        id = "builtin:nullable",
+        typeParameters = listOf(parameter),
+        providedType =
+            TcType.Constructor(
+                classifierId = NULLABLE_CLASS_ID.asString(),
+                arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinNotNullableRule(): InstanceRule {
+    val parameter = TcTypeParameter(id = "builtin:not-nullable:T", displayName = "T")
+    return InstanceRule(
+        id = "builtin:not-nullable",
+        typeParameters = listOf(parameter),
+        providedType =
+            TcType.Constructor(
+                classifierId = NOT_NULLABLE_CLASS_ID.asString(),
+                arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
 private fun builtinIsTypeclassInstanceRule(): InstanceRule {
     val parameter = TcTypeParameter(id = "builtin:is-typeclass-instance:TC", displayName = "TC")
     return InstanceRule(
@@ -1905,6 +2054,20 @@ private fun builtinKnownTypeRule(): InstanceRule {
         providedType =
             TcType.Constructor(
                 classifierId = KNOWN_TYPE_CLASS_ID.asString(),
+                arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinTypeIdRule(): InstanceRule {
+    val parameter = TcTypeParameter(id = "builtin:type-id:T", displayName = "T")
+    return InstanceRule(
+        id = "builtin:type-id",
+        typeParameters = listOf(parameter),
+        providedType =
+            TcType.Constructor(
+                classifierId = TYPE_ID_CLASS_ID.asString(),
                 arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
             ),
         prerequisiteTypes = emptyList(),
@@ -1961,6 +2124,33 @@ private fun supportsBuiltinKSerializerGoal(
         pluginContext = pluginContext,
         visiting = linkedSetOf(),
     )
+}
+
+private fun supportsBuiltinNullableGoal(goal: TcType): Boolean {
+    val constructor = goal as? TcType.Constructor ?: return true
+    if (constructor.classifierId != NULLABLE_CLASS_ID.asString()) {
+        return true
+    }
+    val targetType = constructor.arguments.singleOrNull() ?: return false
+    return targetType.isProvablyNullable()
+}
+
+private fun supportsBuiltinNotNullableGoal(goal: TcType): Boolean {
+    val constructor = goal as? TcType.Constructor ?: return true
+    if (constructor.classifierId != NOT_NULLABLE_CLASS_ID.asString()) {
+        return true
+    }
+    val targetType = constructor.arguments.singleOrNull() ?: return false
+    return targetType.isProvablyNotNullable()
+}
+
+private fun supportsBuiltinTypeIdGoal(goal: TcType): Boolean {
+    val constructor = goal as? TcType.Constructor ?: return true
+    if (constructor.classifierId != TYPE_ID_CLASS_ID.asString()) {
+        return true
+    }
+    val targetType = constructor.arguments.singleOrNull() ?: return false
+    return targetType.isExactTypeIdentity()
 }
 
 private fun isPotentiallySerializableType(
@@ -2020,6 +2210,16 @@ private fun canProveSubtype(
     pluginContext: IrPluginContext,
 ): Boolean = subType.isSubtypeOf(superType, JvmIrTypeSystemContext(pluginContext.irBuiltIns))
 
+private fun canProveNullable(
+    targetType: IrType,
+    pluginContext: IrPluginContext,
+): Boolean = pluginContext.irBuiltIns.nothingNType.isSubtypeOf(targetType, JvmIrTypeSystemContext(pluginContext.irBuiltIns))
+
+private fun canProveNotNullable(
+    targetType: IrType,
+    pluginContext: IrPluginContext,
+): Boolean = targetType.isSubtypeOf(pluginContext.irBuiltIns.anyType, JvmIrTypeSystemContext(pluginContext.irBuiltIns))
+
 private data class ResolvedRule(
     val rule: InstanceRule,
     val reference: RuleReference,
@@ -2060,9 +2260,15 @@ private sealed interface RuleReference {
 
     data object BuiltinStrictSubtype : RuleReference
 
+    data object BuiltinNullable : RuleReference
+
+    data object BuiltinNotNullable : RuleReference
+
     data object BuiltinIsTypeclassInstance : RuleReference
 
     data object BuiltinKnownType : RuleReference
+
+    data object BuiltinTypeId : RuleReference
 
     data object BuiltinSameTypeConstructor : RuleReference
 

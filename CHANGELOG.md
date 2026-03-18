@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Enable the PHASE13E and PHASE13F utility-proof regressions, synthesize builtin `Nullable`, `NotNullable`, and `TypeId` evidence, and keep the proof surface usable from end-user code without leaking `InternalTypeclassApi` opt-in requirements.
+- Add an explicit regression proving that end users can summon and use builtin proof evidence without opting into `InternalTypeclassApi`.
 - Enable the PHASE16 AtomicFU interop coverage and keep the harness generic enough to load AtomicFU as an explicit support plugin rather than treating it as ambient test infrastructure.
 - Enable the PHASE15 Parcelize interop coverage and extend the integration harness so support plugins can contribute synthetic support sources alongside runtime jars, compiler plugin jars, and plugin options.
 - Enable the PHASE13C and PHASE13D proof-operator regressions, add runtime-facing equality/subtyping combinators, and synthesize builtin `StrictSubtype` evidence as the conjunction of `Subtype` and `NotSame`.

@@ -1,5 +1,7 @@
 package one.wabbit.typeclass.plugin.model
 
+import org.jetbrains.kotlin.name.ClassId
+
 internal sealed interface TcType {
     data object StarProjection : TcType
 
@@ -102,3 +104,52 @@ internal fun TcType.render(): String =
     }
 
 internal fun TcType.normalizedKey(): String = AlphaRenamer().rename(this).render()
+
+internal fun TcType.isProvablyNullable(): Boolean =
+    when (this) {
+        TcType.StarProjection -> false
+        is TcType.Constructor -> isNullable
+        is TcType.Variable -> false
+    }
+
+internal fun TcType.isProvablyNotNullable(): Boolean =
+    when (this) {
+        TcType.StarProjection -> false
+        is TcType.Constructor -> !isNullable
+        is TcType.Variable -> false
+    }
+
+internal fun TcType.isExactTypeIdentity(): Boolean =
+    when (this) {
+        TcType.StarProjection -> true
+        is TcType.Constructor -> arguments.all(TcType::isExactTypeIdentity)
+        is TcType.Variable -> false
+    }
+
+internal fun TcType.toCanonicalTypeIdName(): String =
+    when (this) {
+        TcType.StarProjection -> "*"
+
+        is TcType.Constructor ->
+            buildString {
+                append(normalizeClassifierId(classifierId))
+                if (arguments.isNotEmpty()) {
+                    append(arguments.joinToString(prefix = "<", postfix = ">", separator = ",", transform = TcType::toCanonicalTypeIdName))
+                }
+                if (isNullable) {
+                    append('?')
+                }
+            }
+
+        is TcType.Variable ->
+            buildString {
+                append(displayName)
+                if (isNullable) {
+                    append('?')
+                }
+            }
+    }
+
+private fun normalizeClassifierId(classifierId: String): String =
+    runCatching { ClassId.fromString(classifierId).asSingleFqName().asString() }
+        .getOrElse { classifierId.replace('/', '.') }

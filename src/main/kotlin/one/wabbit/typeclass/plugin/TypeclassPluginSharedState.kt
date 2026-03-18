@@ -9,6 +9,9 @@ import one.wabbit.typeclass.plugin.model.InstanceRule
 import one.wabbit.typeclass.plugin.model.TcType
 import one.wabbit.typeclass.plugin.model.TcTypeParameter
 import one.wabbit.typeclass.plugin.model.containsStarProjection
+import one.wabbit.typeclass.plugin.model.isExactTypeIdentity
+import one.wabbit.typeclass.plugin.model.isProvablyNotNullable
+import one.wabbit.typeclass.plugin.model.isProvablyNullable
 import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.render
 import org.jetbrains.kotlin.descriptors.ClassKind
@@ -307,6 +310,15 @@ private data class ResolutionIndex(
             .filter { rule ->
                 rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, session)
             }
+            .filter { rule ->
+                rule.id != "builtin:nullable" || supportsBuiltinNullableGoal(goal)
+            }
+            .filter { rule ->
+                rule.id != "builtin:not-nullable" || supportsBuiltinNotNullableGoal(goal)
+            }
+            .filter { rule ->
+                rule.id != "builtin:type-id" || supportsBuiltinTypeIdGoal(goal)
+            }
             .distinctBy(InstanceRule::id)
             .toList()
     }
@@ -379,8 +391,11 @@ private fun TypeclassConfiguration.builtinRules(): List<InstanceRule> =
         add(builtinNotSameRule())
         add(builtinSubtypeRule())
         add(builtinStrictSubtypeRule())
+        add(builtinNullableRule())
+        add(builtinNotNullableRule())
         add(builtinIsTypeclassInstanceRule())
         add(builtinKnownTypeRule())
+        add(builtinTypeIdRule())
         add(builtinSameTypeConstructorRule())
         if (builtinKClassTypeclass == TypeclassBuiltinMode.ENABLED) {
             add(builtinKClassRule())
@@ -487,6 +502,34 @@ private fun builtinStrictSubtypeRule(): InstanceRule {
     )
 }
 
+private fun builtinNullableRule(): InstanceRule {
+    val parameter = TcTypeParameter(id = "builtin:nullable:T", displayName = "T")
+    return InstanceRule(
+        id = "builtin:nullable",
+        typeParameters = listOf(parameter),
+        providedType =
+            TcType.Constructor(
+                classifierId = NULLABLE_CLASS_ID.asString(),
+                arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinNotNullableRule(): InstanceRule {
+    val parameter = TcTypeParameter(id = "builtin:not-nullable:T", displayName = "T")
+    return InstanceRule(
+        id = "builtin:not-nullable",
+        typeParameters = listOf(parameter),
+        providedType =
+            TcType.Constructor(
+                classifierId = NOT_NULLABLE_CLASS_ID.asString(),
+                arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
 private fun builtinIsTypeclassInstanceRule(): InstanceRule {
     val parameter = TcTypeParameter(id = "builtin:is-typeclass-instance:TC", displayName = "TC")
     return InstanceRule(
@@ -509,6 +552,20 @@ private fun builtinKnownTypeRule(): InstanceRule {
         providedType =
             TcType.Constructor(
                 classifierId = KNOWN_TYPE_CLASS_ID.asString(),
+                arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinTypeIdRule(): InstanceRule {
+    val parameter = TcTypeParameter(id = "builtin:type-id:T", displayName = "T")
+    return InstanceRule(
+        id = "builtin:type-id",
+        typeParameters = listOf(parameter),
+        providedType =
+            TcType.Constructor(
+                classifierId = TYPE_ID_CLASS_ID.asString(),
                 arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
             ),
         prerequisiteTypes = emptyList(),
@@ -565,6 +622,33 @@ private fun supportsBuiltinKSerializerGoal(
         session = session,
         visiting = linkedSetOf(),
     )
+}
+
+private fun supportsBuiltinNullableGoal(goal: TcType): Boolean {
+    val constructor = goal as? TcType.Constructor ?: return true
+    if (constructor.classifierId != NULLABLE_CLASS_ID.asString()) {
+        return true
+    }
+    val targetType = constructor.arguments.singleOrNull() ?: return false
+    return targetType.isProvablyNullable()
+}
+
+private fun supportsBuiltinNotNullableGoal(goal: TcType): Boolean {
+    val constructor = goal as? TcType.Constructor ?: return true
+    if (constructor.classifierId != NOT_NULLABLE_CLASS_ID.asString()) {
+        return true
+    }
+    val targetType = constructor.arguments.singleOrNull() ?: return false
+    return targetType.isProvablyNotNullable()
+}
+
+private fun supportsBuiltinTypeIdGoal(goal: TcType): Boolean {
+    val constructor = goal as? TcType.Constructor ?: return true
+    if (constructor.classifierId != TYPE_ID_CLASS_ID.asString()) {
+        return true
+    }
+    val targetType = constructor.arguments.singleOrNull() ?: return false
+    return targetType.isExactTypeIdentity()
 }
 
 private fun isPotentiallySerializableType(

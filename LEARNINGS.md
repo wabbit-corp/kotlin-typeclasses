@@ -1,5 +1,7 @@
 # Learnings
 
+- `Nullable`, `NotNullable`, and `TypeId` fit the same builtin-proof pattern as the earlier utility proofs: planner-visible synthetic rules plus a final IR validity check. The opt-in-only carrier objects can stay internal as long as the public proof interfaces remain opt-in-free and the compiler materializes the carrier singletons on behalf of user code.
+- Marking the singleton proof carriers with `@InternalTypeclassApi` is fine as long as the public proof interfaces and helper methods stay unannotated. End users can summon `Same`, `Subtype`, `KnownType`, and the other builtin proofs without opting in because their source never references the carrier singletons directly.
 - Some third-party interop failures are just invalid fixtures, not compiler-plugin conflicts. AtomicFU's `updateAndGet` is a top-level extension in `kotlinx.atomicfu`, so tests need to import it explicitly instead of assuming it is a member on `AtomicInt`.
 - AtomicFU interoperability tests also need to respect AtomicFU's own IR constraints: atomic operations must target direct atomic properties, not atomics leaked through parameters or locals. A failing `updateAndGet` on a function parameter is an AtomicFU misuse, not evidence that contextual rewriting broke.
 - Some interoperability tests need compile-time platform stubs rather than published runtime dependencies. Parcelize is the first concrete example: the harness needs the compiler plugin and parcelize runtime jar, but `android.os.Parcelable` itself can be satisfied by tiny synthetic test sources.
