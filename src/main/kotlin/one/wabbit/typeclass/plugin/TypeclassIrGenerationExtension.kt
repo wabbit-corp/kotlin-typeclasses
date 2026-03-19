@@ -1896,8 +1896,8 @@ private class IrModuleScanner(
                 }
             }
         }
-        return expandedPairs.mapNotNull { (classId, typeclassId) ->
-            classesById[classId]?.toDerivedRule(typeclassId, subclassesBySuper)
+        return expandedPairs.flatMap { (classId, typeclassId) ->
+            classesById[classId]?.toDerivedRules(typeclassId, subclassesBySuper).orEmpty()
         }
     }
 
@@ -2089,19 +2089,19 @@ private class IrModuleScanner(
         }
     }
 
-    private fun IrClass.toDerivedRule(
+    private fun IrClass.toDerivedRules(
         typeclassId: ClassId,
         subclassesBySuper: Map<String, Set<String>>,
-    ): ResolvedRule? {
-        val targetClassId = classId ?: return null
-        val typeclassInterface = pluginContext.referenceClass(typeclassId)?.owner ?: return null
+    ): List<ResolvedRule> {
+        val targetClassId = classId ?: return emptyList()
+        val typeclassInterface = pluginContext.referenceClass(typeclassId)?.owner ?: return emptyList()
         if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID)) {
-            return null
+            return emptyList()
         }
         if (typeclassInterface.typeParameters.size != 1) {
-            return null
+            return emptyList()
         }
-        val deriverCompanion = typeclassInterface.findDeriverCompanion() ?: return null
+        val deriverCompanion = typeclassInterface.findDeriverCompanion() ?: return emptyList()
         val ruleTypeParameters =
             typeParameters.mapIndexed { index, typeParameter ->
                 TcTypeParameter(
@@ -2122,31 +2122,40 @@ private class IrModuleScanner(
                 buildDerivedSumShape(targetType, subclassesBySuper)
             } else {
                 buildDerivedProductShape(typeParameterBySymbol)
-            } ?: return null
+            } ?: return emptyList()
         val prerequisiteTypes =
             when (shape) {
                 is DerivedShape.Product -> shape.fields.map { field -> typeclassGoal(typeclassId, field.type) }
                 is DerivedShape.Sum -> shape.cases.map { case -> typeclassGoal(typeclassId, case.type) }
             }
-        val rule =
-            InstanceRule(
-                id = "derived:${typeclassId.asString()}:${targetClassId.asString()}",
-                typeParameters = ruleTypeParameters,
-                providedType = typeclassGoal(typeclassId, targetType),
-                prerequisiteTypes = prerequisiteTypes,
-                supportsRecursiveResolution = true,
+        val providedTypes = expandDerivedProvidedTypes(typeclassId, targetType)
+        return providedTypes.map { providedType ->
+            ResolvedRule(
+                rule =
+                    InstanceRule(
+                        id =
+                            directRuleId(
+                                prefix = "derived",
+                                declarationKey = "${typeclassId.asString()}:${targetClassId.asString()}",
+                                providedType = providedType,
+                                prerequisiteTypes = prerequisiteTypes,
+                                typeParameters = ruleTypeParameters,
+                            ),
+                        typeParameters = ruleTypeParameters,
+                        providedType = providedType,
+                        prerequisiteTypes = prerequisiteTypes,
+                        supportsRecursiveResolution = true,
+                    ),
+                reference =
+                    RuleReference.Derived(
+                        targetClass = this,
+                        deriverCompanion = deriverCompanion,
+                        shape = shape,
+                        ruleTypeParameters = ruleTypeParameters,
+                    ),
+                associatedOwner = targetClassId,
             )
-        return ResolvedRule(
-            rule = rule,
-            reference =
-                RuleReference.Derived(
-                    targetClass = this,
-                    deriverCompanion = deriverCompanion,
-                    shape = shape,
-                    ruleTypeParameters = ruleTypeParameters,
-                ),
-            associatedOwner = targetClassId,
-        )
+        }
     }
 
     private fun IrClass.buildDerivedProductShape(
@@ -2281,6 +2290,46 @@ private class IrModuleScanner(
         typeclassId: ClassId,
         targetType: TcType,
     ): TcType = TcType.Constructor(typeclassId.asString(), listOf(targetType))
+
+    private fun expandDerivedProvidedTypes(
+        typeclassId: ClassId,
+        targetType: TcType,
+    ): List<TcType> =
+        expandDerivedTypeclassIds(
+            typeclassId = typeclassId,
+            previousWereTypeclass = true,
+            visited = linkedSetOf(),
+        ).map { inheritedTypeclassId ->
+            typeclassGoal(inheritedTypeclassId, targetType)
+        }
+
+    private fun expandDerivedTypeclassIds(
+        typeclassId: ClassId,
+        previousWereTypeclass: Boolean,
+        visited: MutableSet<String>,
+    ): Set<ClassId> {
+        val visitKey = typeclassId.asString()
+        if (!visited.add(visitKey)) {
+            return emptySet()
+        }
+        val typeclassInterface = pluginContext.referenceClass(typeclassId)?.owner ?: return emptySet()
+        val currentIsTypeclass = typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID)
+        val expanded = linkedSetOf<ClassId>()
+        if (currentIsTypeclass && previousWereTypeclass) {
+            expanded += typeclassId
+        }
+        val nextPreviousWereTypeclass = previousWereTypeclass && currentIsTypeclass
+        typeclassInterface.superTypes.forEach { superType ->
+            val superTypeId = superType.classOrNull?.owner?.classId ?: return@forEach
+            expanded +=
+                expandDerivedTypeclassIds(
+                    typeclassId = superTypeId,
+                    previousWereTypeclass = nextPreviousWereTypeclass,
+                    visited = visited,
+                )
+        }
+        return expanded
+    }
 }
 
 private fun builtinKClassRule(): InstanceRule {

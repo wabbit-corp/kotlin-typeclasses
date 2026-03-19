@@ -239,7 +239,7 @@ private class FirResolutionScanner(
                             isSealed = declaration.status.modality == Modality.SEALED,
                             typeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.symbol.fir.variance },
                         )
-                    val derivedTypeclassIds = declaration.derivedTypeclassIds(session)
+                    val derivedTypeclassIds = declaration.derivedTypeclassIds(session).expandedDerivedTypeclassIds(session, configuration)
                     if (derivedTypeclassIds.isNotEmpty()) {
                         derivableTypeclassIdsByOwner.getOrPut(classId.asString(), ::linkedSetOf) += derivedTypeclassIds
                     }
@@ -501,6 +501,58 @@ private fun FirRegularClass.derivedTypeclassIds(session: FirSession): Set<String
         .flatMap(::flattenDerivedTypeclassArgumentExpressions)
         .mapNotNull { expression -> expression.derivedTypeclassId(session) }
         .toCollection(linkedSetOf())
+}
+
+private fun Iterable<String>.expandedDerivedTypeclassIds(
+    session: FirSession,
+    configuration: TypeclassConfiguration,
+): Set<String> =
+    flatMapTo(linkedSetOf()) { typeclassId ->
+        expandDerivedTypeclassIds(
+            typeclassId = typeclassId,
+            session = session,
+            configuration = configuration,
+            previousWereTypeclass = true,
+            visited = linkedSetOf(),
+        )
+    }
+
+private fun expandDerivedTypeclassIds(
+    typeclassId: String,
+    session: FirSession,
+    configuration: TypeclassConfiguration,
+    previousWereTypeclass: Boolean,
+    visited: MutableSet<String>,
+): Set<String> {
+    if (!visited.add(typeclassId)) {
+        return emptySet()
+    }
+    val classId = runCatching { ClassId.fromString(typeclassId) }.getOrNull() ?: return emptySet()
+    val classSymbol =
+        try {
+            session.symbolProvider.getClassLikeSymbolByClassId(classId) as? FirRegularClassSymbol
+        } catch (_: IllegalArgumentException) {
+            null
+        } ?: return emptySet()
+    val currentIsTypeclass =
+        configuration.isBuiltinTypeclass(classId) || classSymbol.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)
+    val expanded = linkedSetOf<String>()
+    if (currentIsTypeclass && previousWereTypeclass) {
+        expanded += typeclassId
+    }
+    val nextPreviousWereTypeclass = previousWereTypeclass && currentIsTypeclass
+    classSymbol.fir.declaredOrResolvedSuperTypes().forEach { superType ->
+        val superTypeId = superType.lowerBoundIfFlexible().classId?.asString() ?: return@forEach
+        expanded +=
+            expandDerivedTypeclassIds(
+                typeclassId = superTypeId,
+                session = session,
+                configuration = configuration,
+                previousWereTypeclass = nextPreviousWereTypeclass,
+                visited = visited,
+            )
+    }
+    return expanded
 }
 
 private fun flattenDerivedTypeclassArgumentExpressions(expression: FirExpression): Sequence<FirExpression> =
