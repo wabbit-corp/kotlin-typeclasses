@@ -5,6 +5,36 @@ import kotlin.test.Test
 class KSerializerBuiltinTest : IntegrationTestSupport() {
     private val serializationPlugins = listOf(CompilerHarnessPlugin.Serialization)
 
+    @Test fun doesNotTreatKSerializerAsBuiltinTypeclassWhenFlagDisabled() {
+        val source =
+            """
+            package demo
+
+            import kotlinx.serialization.KSerializer
+            import kotlinx.serialization.Serializable
+            import one.wabbit.typeclass.summon
+
+            @Serializable
+            data class User(val name: String)
+
+            fun main() {
+                println(summon<KSerializer<User>>().descriptor.serialName)
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = emptyList(),
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(
+                        messageRegex = "(?i)no context argument",
+                    ),
+                ),
+            requiredPlugins = serializationPlugins,
+        )
+    }
+
     @Test fun treatsKSerializerAsBuiltinTypeclassWhenFlagEnabled() {
         val source =
             """
@@ -29,6 +59,39 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             expectedStdout = "demo.User",
             requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
+        )
+    }
+
+    @Test fun doesNotRecognizeKSerializerAsTypeclassForIsTypeclassInstanceWhenFlagDisabled() {
+        val source =
+            """
+            package demo
+
+            import kotlinx.serialization.KSerializer
+            import kotlinx.serialization.Serializable
+            import one.wabbit.typeclass.IsTypeclassInstance
+
+            @Serializable
+            data class User(val name: String)
+
+            context(_: IsTypeclassInstance<KSerializer<User>>)
+            fun proof(): String = "serializer-typeclass"
+
+            fun main() {
+                println(proof())
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = emptyList(),
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(
+                        messageRegex = "(?i)(typeclass application|no context argument)",
+                    ),
+                ),
+            requiredPlugins = serializationPlugins,
         )
     }
 

@@ -3,7 +3,7 @@ package one.wabbit.typeclass.plugin.integration
 import org.junit.Ignore
 import kotlin.test.Test
 
-class PropertyTest : IntegrationTestSupport() {
+class ContextualPropertyTest : IntegrationTestSupport() {
     @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no property-access refinement hook for contextual getter resolution")
     @Test
     fun resolvesContextualPropertyGetter() {

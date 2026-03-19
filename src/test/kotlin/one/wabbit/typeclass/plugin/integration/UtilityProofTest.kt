@@ -56,6 +56,7 @@ class UtilityProofTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("same", "int", "string"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "same")),
         )
     }
 
@@ -108,6 +109,7 @@ class UtilityProofTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("notsame", "int"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "notsame")),
         )
     }
 
@@ -129,6 +131,7 @@ class UtilityProofTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("notsame", "int"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "notsame")),
         )
     }
 
@@ -149,6 +152,7 @@ class UtilityProofTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("notsame", "prove"),
+            expectedDiagnostics = listOf(expectedErrorContaining("notsame")),
         )
     }
 
@@ -228,6 +232,7 @@ class UtilityProofTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("no context argument", "Subtype"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "subtype")),
         )
     }
 
@@ -249,6 +254,7 @@ class UtilityProofTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("typeclass", "list"),
+            expectedDiagnostics = listOf(ExpectedDiagnostic.Error(messageRegex = "(?i)typeclass application")),
         )
     }
 
@@ -349,6 +355,7 @@ class UtilityProofTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("knowntype", "exact", "ktype"),
+            expectedDiagnostics = listOf(expectedErrorContaining("knowntype")),
         )
     }
 
@@ -391,6 +398,8 @@ class UtilityProofTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("sametypeconstructor", "list", "set"),
+            expectedDiagnostics =
+                listOf(expectedErrorContaining("no context argument", "sametypeconstructor")),
         )
     }
 
@@ -797,6 +806,7 @@ class UtilityProofTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("no context argument", "StrictSubtype"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "strictsubtype")),
         )
     }
 
@@ -988,6 +998,11 @@ class UtilityProofTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("nullable", "notnullable", "string"),
+            expectedDiagnostics =
+                listOf(
+                    expectedErrorContaining("nullable"),
+                    expectedErrorContaining("notnullable"),
+                ),
         )
     }
 
@@ -1489,6 +1504,7 @@ class UtilityProofTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("TypeId"),
+            expectedDiagnostics = listOf(expectedErrorContaining("typeid")),
         )
     }
 

@@ -3,6 +3,31 @@ package one.wabbit.typeclass.plugin.integration
 import kotlin.test.Test
 
 class KClassBuiltinTest : IntegrationTestSupport() {
+    @Test fun doesNotTreatKClassAsBuiltinTypeclassWhenFlagDisabled() {
+        val source =
+            """
+            package demo
+
+            import kotlin.reflect.KClass
+            import one.wabbit.typeclass.summon
+
+            fun main() {
+                println(summon<KClass<Int>>())
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = emptyList(),
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(
+                        messageRegex = "(?i)no context argument",
+                    ),
+                ),
+        )
+    }
+
     @Test fun treatsKClassAsBuiltinTypeclassWhenFlagEnabled() {
         val source =
             """
@@ -22,6 +47,34 @@ class KClassBuiltinTest : IntegrationTestSupport() {
             source = source,
             expectedStdout = "true",
             pluginOptions = listOf("builtinKClassTypeclass=enabled"),
+        )
+    }
+
+    @Test fun doesNotRecognizeKClassAsTypeclassForIsTypeclassInstanceWhenFlagDisabled() {
+        val source =
+            """
+            package demo
+
+            import kotlin.reflect.KClass
+            import one.wabbit.typeclass.IsTypeclassInstance
+
+            context(_: IsTypeclassInstance<KClass<Int>>)
+            fun proof(): String = "kclass-typeclass"
+
+            fun main() {
+                println(proof())
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = emptyList(),
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(
+                        messageRegex = "(?i)(typeclass application|no context argument)",
+                    ),
+                ),
         )
     }
 

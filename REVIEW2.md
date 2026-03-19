@@ -30,7 +30,7 @@ The harness now has a structured diagnostic path, but a lot of callers still use
 
 That means some tests still prove only that a compile error happened somewhere near words already present in the file, which is softer than it should be.
 
-The main remaining offenders are many negative cases in `UtilityProofTest` and a fair number of declaration-site rejection tests in `DerivationTest`.
+The main remaining offenders are many negative cases in `UtilityProofTest` and a fair number of declaration-site rejection tests in `InstanceDeclarationTest`.
 
 That also means the suite does **not** yet reliably catch the FIR/IR phase split I pointed out earlier. A builtin proof can be “accepted” too early in FIR, fail later in IR, and some legacy assertions can still go green because a backend message happened to contain the right token soup.
 
@@ -73,7 +73,7 @@ The more serious case is `GADTDerivationTest`. That whole class is ignored, but 
 
 Because the whole class is ignored, **none of it is guarding anything**. If you care about the current conservative derivation boundary, split those into an active suite and leave the speculative stuff ignored elsewhere.
 
-Same story for the ignored import-visibility tests. Since your implementation currently scans too much, the tests that would catch that are parked in the attic.
+The dedicated import-visibility suite is a better home for that coverage, but most of it is still ignored because the implementation still scans too broadly.
 
 ## Unit coverage is too thin in the pure logic layer
 
@@ -92,8 +92,7 @@ You also have a lot of pure logic that deserves direct tests instead of being re
 
 * associated-owner computation
 * builtin admissibility filters
-* derivation admissibility for sum cases
-* type-argument mapping / explicit-context preservation
+* some derivation and type-mapping logic that currently only has integration-level coverage or placeholders
 
 Those are exactly the places where the current implementation is shaky.
 
@@ -103,12 +102,5 @@ If you only fix one thing next in the tests, make it this:
 
 1. **Finish migrating negative assertions to structured diagnostics.**
    The harness support is there now. Use it broadly enough that failing tests stop depending on raw stdout substring soup.
-
-## The next tests I would add
-
-* A test that `@Derive(Show::class)` does **not** make `Eq<T>` look derivable.
-* A test where an explicit wrong typeclass argument is supplied and must **not** be rebound to a different context parameter.
-* A test where a builtin inapplicable proof candidate must not create false ambiguity.
-* A test that import visibility actually controls instance visibility, once that feature is meant to exist.
 
 So: **good suite, weak truthiness**. The broad semantic positives are valuable. The remaining legacy negative tests are still too easy to satisfy for the wrong reason. Finish migrating those, and the suite will stop flattering bugs.

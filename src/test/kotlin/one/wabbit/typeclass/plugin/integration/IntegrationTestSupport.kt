@@ -129,6 +129,21 @@ abstract class IntegrationTestSupport {
         }
     }
 
+    protected fun expectedErrorContaining(
+        vararg fragments: String,
+        file: String? = null,
+        line: Int? = null,
+    ): ExpectedDiagnostic.Error =
+        ExpectedDiagnostic.Error(
+            file = file,
+            line = line,
+            description = "message containing ${fragments.joinToString()}",
+            messagePredicate = { message ->
+                val normalized = message.lowercase()
+                fragments.all { normalized.contains(it.lowercase()) }
+            },
+        )
+
     protected fun assertCompilesAndRuns(
         source: String,
         expectedStdout: String,

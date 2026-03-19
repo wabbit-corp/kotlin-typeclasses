@@ -988,13 +988,10 @@ class ResolutionTest : IntegrationTestSupport() {
             """
             package demo
 
-            import one.wabbit.typeclass.Instance
-
             interface Eq<A> {
                 fun eq(left: A, right: A): Boolean
             }
 
-            @Instance
             object IntEq : Eq<Int> {
                 override fun eq(left: Int, right: Int): Boolean = left == right
             }
@@ -1012,8 +1009,9 @@ class ResolutionTest : IntegrationTestSupport() {
             expectedMessages =
                 listOf(
                     "No context argument",
-                    "same(1)",
+                    "Eq",
                 ),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "eq")),
         )
     }
 
@@ -1053,6 +1051,7 @@ class ResolutionTest : IntegrationTestSupport() {
                     "No context argument",
                     "SomeItemComponent",
                 ),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "itemcomponenttype")),
         )
     }
 
@@ -1362,6 +1361,10 @@ class ResolutionTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("no context argument", "show"),
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(messageRegex = "(?i)no context argument.*show"),
+                ),
         )
     }
 
@@ -1408,6 +1411,7 @@ class ResolutionTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("ambiguous", "int"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
         )
     }
 
@@ -1452,6 +1456,417 @@ class ResolutionTest : IntegrationTestSupport() {
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "curse:Curse(soulbound=true)",
+        )
+    }
+
+    @Test fun resolvesInlineReifiedHelpersAroundSummon() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(): String = "int"
+            }
+
+            context(_: Show<A>)
+            inline fun <reified A> render(): String = summon<Show<A>>().show()
+
+            fun main() {
+                println(render<Int>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int",
+        )
+    }
+
+    @Ignore("NEW: review before enabling")
+    @Test fun resolvesOverloadsThatDifferOnlyByTypeclassContexts() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Eq<A> {
+                fun label(): String
+            }
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object IntEq : Eq<Int> {
+                override fun label(): String = "eq"
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun label(): String = "show"
+            }
+
+            context(_: Eq<Int>)
+            fun parse(value: String): String = "eq:${'$'}value"
+
+            context(_: Show<Int>)
+            fun parse(value: String): String = "show:${'$'}value"
+
+            fun main() {
+                context(IntEq) {
+                    println(parse("x"))
+                }
+                context(IntShow) {
+                    println(parse("y"))
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                eq:x
+                show:y
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun resolvesDefinitelyNonNullTypeclassGoals() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object StringShow : Show<String> {
+                override fun show(value: String): String = "string:${'$'}value"
+            }
+
+            context(show: Show<T & Any>)
+            fun <T> render(value: T & Any): String = show.show(value)
+
+            fun main() {
+                println(render<String>("x"))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "string:x",
+        )
+    }
+
+    @Test fun keepsIntegerLiteralInferenceStableAcrossFirAndIr() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            @Instance
+            object LongShow : Show<Long> {
+                override fun show(value: Long): String = "long:${'$'}value"
+            }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(1))
+                println(render(1L))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                int:1
+                long:1
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun resolvesApparentlyAmbiguousApisFromExpectedTypeReceiverTypeAndOuterContext() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Factory<A> {
+                fun make(): A
+            }
+
+            @Typeclass
+            interface Describe<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object IntFactory : Factory<Int> {
+                override fun make(): Int = 1
+            }
+
+            @Instance
+            object StringDescribe : Describe<String> {
+                override fun label(): String = "string"
+            }
+
+            context(_: Factory<A>)
+            fun <A> make(): A = summon<Factory<A>>().make()
+
+            context(_: Describe<A>)
+            fun <A> A.describe(): String = summon<Describe<A>>().label()
+
+            context(_: Factory<A>)
+            fun <A> outer(): A = make()
+
+            fun main() {
+                val fromExpected: Int = make()
+                val fromReceiver = "x".describe()
+                val fromOuter: Int = outer()
+                println(fromExpected)
+                println(fromReceiver)
+                println(fromOuter)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                1
+                string
+                1
+                """.trimIndent(),
+        )
+    }
+
+    @Ignore("NEW: review before enabling")
+    @Test fun purelyLocalEvidenceSelectsOverloads() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Eq<A>
+
+            @Typeclass
+            interface Show<A>
+
+            context(_: Eq<Int>)
+            fun choose(value: Int): String = "eq"
+
+            context(_: Show<Int>)
+            fun choose(value: Int): String = "show"
+
+            fun main() {
+                val localEq = object : Eq<Int> {}
+                val localShow = object : Show<Int> {}
+
+                context(localEq) {
+                    println(choose(1))
+                }
+                context(localShow) {
+                    println(choose(1))
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                eq
+                show
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun reportsNestedAmbiguityFromPrerequisiteResolution() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface JsonWriter<A> {
+                fun write(value: A): String
+            }
+
+            @Typeclass
+            interface BodySerializer<A> {
+                fun serialize(value: A): String
+            }
+
+            @Instance
+            object IntJsonWriterOne : JsonWriter<Int> {
+                override fun write(value: Int): String = "one:${'$'}value"
+            }
+
+            @Instance
+            object IntJsonWriterTwo : JsonWriter<Int> { // ERROR duplicate prerequisite evidence
+                override fun write(value: Int): String = "two:${'$'}value"
+            }
+
+            @Instance
+            context(writer: JsonWriter<A>)
+            fun <A> jsonBodySerializer(): BodySerializer<A> =
+                object : BodySerializer<A> {
+                    override fun serialize(value: A): String = writer.write(value)
+                }
+
+            context(serializer: BodySerializer<A>)
+            fun <A> send(value: A): String = serializer.serialize(value)
+
+            fun main() {
+                println(send(1)) // ERROR should report ambiguous JsonWriter<Int>, not missing BodySerializer<Int>
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("ambiguous", "jsonwriter"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "bodyserializer")),
+        )
+    }
+
+    @Test fun preservesValueClassSpecificityWhenSolvingPrerequisites() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @JvmInline
+            value class UserId(val value: Int)
+
+            data class Box<A>(val value: A)
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun label(): String = "int"
+            }
+
+            @Instance
+            object UserIdShow : Show<UserId> {
+                override fun label(): String = "user-id"
+            }
+
+            @Instance
+            context(show: Show<A>)
+            fun <A> boxShow(): Show<Box<A>> =
+                object : Show<Box<A>> {
+                    override fun label(): String = "box-" + show.label()
+                }
+
+            context(_: Show<A>)
+            fun <A> which(): String = summon<Show<A>>().label()
+
+            fun main() {
+                println(which<Box<UserId>>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "box-user-id",
+        )
+    }
+
+    @Test fun preservesProjectionSpecificityWhenSolvingPrerequisites() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            data class Box<A>(val value: A)
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object OutStringArrayShow : Show<Array<out String>> {
+                override fun label(): String = "out-string-array"
+            }
+
+            @Instance
+            object InStringArrayShow : Show<Array<in String>> {
+                override fun label(): String = "in-string-array"
+            }
+
+            @Instance
+            context(show: Show<A>)
+            fun <A> boxShow(): Show<Box<A>> =
+                object : Show<Box<A>> {
+                    override fun label(): String = "box-" + show.label()
+                }
+
+            context(_: Show<A>)
+            fun <A> which(): String = summon<Show<A>>().label()
+
+            fun main() {
+                println(which<Box<Array<out String>>>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "box-out-string-array",
         )
     }
 
@@ -1526,6 +1941,7 @@ class ResolutionTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("missing", "big"),
+            expectedDiagnostics = listOf(expectedErrorContaining("missing", "show", "big")),
         )
     }
 

@@ -3,8 +3,7 @@ package one.wabbit.typeclass.plugin.integration
 import org.junit.Ignore
 import kotlin.test.Test
 
-class BuiltinsTest : IntegrationTestSupport() {
-    // NEW
+class ImportVisibilityTest : IntegrationTestSupport() {
     @Ignore("NEW: review before enabling")
     @Test
     fun associatedOwnerLookupShouldRespectImportedInstanceVisibility() {
@@ -84,6 +83,84 @@ class BuiltinsTest : IntegrationTestSupport() {
             sources = sources,
             expectedStdout = "box-alpha-id",
             mainClass = "demo.MainKt",
+        )
+    }
+
+    @Ignore("NEW: review before enabling")
+    @Test fun importsControlWhichInstancesAreVisibleAcrossPackages() {
+        val sources =
+            mapOf(
+                "shared/Api.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Typeclass
+
+                    @Typeclass
+                    interface Show<A> {
+                        fun show(value: A): String
+                    }
+
+                    context(show: Show<A>)
+                    fun <A> render(value: A): String = show.show(value)
+                    """.trimIndent(),
+                "alpha/Instances.kt" to
+                    """
+                    package alpha
+
+                    import one.wabbit.typeclass.Instance
+                    import shared.Show
+
+                    @Instance
+                    object IntShow : Show<Int> {
+                        override fun show(value: Int): String = "alpha:${'$'}value"
+                    }
+                    """.trimIndent(),
+                "beta/Instances.kt" to
+                    """
+                    package beta
+
+                    import one.wabbit.typeclass.Instance
+                    import shared.Show
+
+                    @Instance
+                    object IntShow : Show<Int> {
+                        override fun show(value: Int): String = "beta:${'$'}value"
+                    }
+                    """.trimIndent(),
+                "demo/UseAlpha.kt" to
+                    """
+                    package demo
+
+                    import alpha.IntShow
+                    import shared.render
+
+                    fun main() {
+                        println(render(1))
+                    }
+                    """.trimIndent(),
+                "demo/UseBeta.kt" to
+                    """
+                    package demo
+
+                    import beta.IntShow
+                    import shared.render
+
+                    fun main() {
+                        println(render(1))
+                    }
+                    """.trimIndent(),
+            )
+
+        assertCompilesAndRuns(
+            sources = sources,
+            expectedStdout = "alpha:1",
+            mainClass = "demo.UseAlphaKt",
+        )
+        assertCompilesAndRuns(
+            sources = sources,
+            expectedStdout = "beta:1",
+            mainClass = "demo.UseBetaKt",
         )
     }
 }

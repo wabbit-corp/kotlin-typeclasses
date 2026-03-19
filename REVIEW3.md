@@ -19,7 +19,7 @@ The harness now has a structured diagnostic path, but a lot of `assertDoesNotCom
 Examples of weak ones:
 
 * many cases in `UtilityProofTest`
-* several negative cases in `DerivationTest` and `ResolutionTest`
+* several negative cases in `InstanceDeclarationTest`, `DerivationTest`, and `ResolutionTest`
 
 What you want instead:
 
@@ -34,10 +34,9 @@ The tests are good, but the file organization is not.
 
 Examples:
 
-* `DerivationTest` contains a lot of general resolution/lowering tests that have nothing to do with derivation.
+* `DerivationTest` is better after extracting `InstanceDeclarationTest`, but it still contains a lot of general resolution/lowering tests that have nothing to do with derivation.
 * `SurfaceTest` and `ResolutionTest` overlap heavily.
-* `PropertyTest` sounds like property-based testing, but it is about Kotlin properties.
-* `BuiltinsTest` is basically one ignored future-idea test and feels stranded.
+* `ContextualPropertyTest` and `ImportVisibilityTest` are much clearer names than before, but the overall file boundaries are still uneven.
 * You mix `org.junit.Ignore` and `kotlin.test.Ignore`. Pick one and stop collecting annotation dialects like Victorian spoons.
 
 This does not break correctness, but it does make the suite harder to navigate and maintain.
@@ -51,9 +50,6 @@ Specific callouts:
 
 * `SurfaceTest.rewritesContextualContainsOperatorCalls`
   The original private-property bug in the fixture is gone, but the test is still ignored because the operator rewrite currently trips a runtime `ClassCastException`. That is at least a real bug now, not just a broken fixture.
-
-* `DerivationTest.rewritesContextualCallsInContextClassPropertyInitializers`
-  “ContextClass” looks accidental. It is just a class property initializer.
 
 * `SessionScopedCacheTest`
   Fine as a smoke test, but it tests per-key caching, not anything recognizably “session-scoped”. If the type really has session semantics, the name is ahead of the evidence.
@@ -103,7 +99,7 @@ The bad:
 
 `DerivationTest.additionalUnrelatedFilesCanChangeResolutionOutcome` is an honest test, but it documents the main philosophical wart: adding an unrelated file can change resolution. That is bad for local reasoning, modularity, and general typeclass hygiene.
 
-Your ignored visibility/import tests suggest you already know this. If “functional programming goodness” matters beyond mere convenience, import-scoped visibility or associated-only discovery is the cleaner direction.
+The dedicated import-visibility suite suggests you already know this. If “functional programming goodness” matters beyond mere convenience, import-scoped visibility or associated-only discovery is the cleaner direction.
 
 ### 7. The suite is mostly about plumbing, not lawfulness
 
@@ -118,20 +114,6 @@ A couple of useful additions:
 
 `UtilityProofTest` is already the most FP-looking file. The derivation side could borrow some of that seriousness.
 
-### 8. Missing “flag-off” tests for builtins
-
-`KClassBuiltinTest` and `KSerializerBuiltinTest` cover the enabled cases well.
-
-What is missing:
-
-* `KClass` should fail when `builtinKClassTypeclass=enabled` is absent
-* `KSerializer` should fail when `builtinKSerializerTypeclass=enabled` is absent
-* same story for `IsTypeclassInstance<KClass<...>>` and `IsTypeclassInstance<KSerializer<...>>`
-
-Without those, you only verify the accelerator pedal, not the brake.
-
----
-
 ## Net judgment
 
 I would keep most of this suite.
@@ -142,6 +124,6 @@ But I would not call the suite “tight” yet. The three things I would fix fir
 
 1. finish migrating negative tests to structured diagnostics
 2. make the coherence story less global and less orphan-happy, or at least admit that it is a deliberate tradeoff
-3. clean up suite boundaries, naming, and a few misleading tests
+3. keep collapsing the remaining `SurfaceTest` / `ResolutionTest` / `DerivationTest` overlap and clean up a few misleading tests
 
 So: sane overall, strong on compiler plumbing, mixed on consistency, and only partly “FP-good” because the coherence story is still a bit too global and magical. A respectable suite with a few bad habits, like most institutions and nearly every programmer.

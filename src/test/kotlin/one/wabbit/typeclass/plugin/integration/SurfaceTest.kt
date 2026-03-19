@@ -1648,6 +1648,262 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun rewritesVarargCallsWithTrailingLambdas() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            context(show: Show<Int>)
+            fun renderInt(value: Int): String = show.show(value)
+
+            class Logger {
+                context(_: Show<Int>)
+                fun collect(vararg values: Int, block: (String) -> String): String =
+                    block(values.joinToString("|") { value -> renderInt(value) })
+            }
+
+            fun main() {
+                println(Logger().collect(1, 2, 3) { rendered -> "[${'$'}rendered]" })
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "[int:1|int:2|int:3]",
+        )
+    }
+
+    @Test fun resolvesContextualCallsThroughInterfaceOverrides() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            interface Renderer {
+                context(show: Show<Int>)
+                fun render(value: Int): String
+            }
+
+            class Impl : Renderer {
+                context(show: Show<Int>)
+                override fun render(value: Int): String = show.show(value)
+            }
+
+            fun use(renderer: Renderer): String = renderer.render(1)
+
+            fun main() {
+                println(use(Impl()))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int:1",
+        )
+    }
+
+    @Test fun rewritesContextualCallsInClassPropertyInitializers() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            context(show: Show<Int>)
+            fun renderInt(value: Int): String = show.show(value)
+
+            class Holder {
+                val rendered = renderInt(1)
+            }
+
+            fun main() {
+                println(Holder().rendered)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int:1",
+        )
+    }
+
+    @Test fun rewritesContextualCallsInsideSecondaryConstructorDelegation() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            context(show: Show<Int>)
+            fun renderInt(value: Int): String = show.show(value)
+
+            class Holder(val rendered: String) {
+                constructor() : this(renderInt(1))
+            }
+
+            fun main() {
+                println(Holder().rendered)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int:1",
+        )
+    }
+
+    @Test fun usesExtensionReceiverAsTheOnlyAvailableEvidence() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            context(show: Show<Int>)
+            fun renderInt(value: Int): String = show.show(value)
+
+            fun Show<Int>.callViaReceiver(): String = renderInt(1)
+
+            fun main() {
+                println(IntShow.callViaReceiver())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int:1",
+        )
+    }
+
+    @Test fun capturesDefinitionSiteEvidenceForReturnedLambdasObjectsAndBoundReferences() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object GlobalIntShow : Show<Int> {
+                override fun show(value: Int): String = "global:${'$'}value"
+            }
+
+            context(show: Show<Int>)
+            fun makeLambda(): () -> String = { show.show(1) }
+
+            interface Renderer {
+                fun render(): String
+            }
+
+            context(show: Show<Int>)
+            fun makeRenderer(): Renderer =
+                object : Renderer {
+                    override fun render(): String = show.show(2)
+                }
+
+            fun main() {
+                val localShow =
+                    object : Show<Int> {
+                        override fun show(value: Int): String = "local:${'$'}value"
+                    }
+
+                val globalLambda = makeLambda()
+                val localLambda = context(localShow) { makeLambda() }
+                val globalRenderer = makeRenderer()
+                val localRenderer = context(localShow) { makeRenderer() }
+                val globalBound = makeRenderer()::render
+                val localBound = context(localShow) { makeRenderer()::render }
+
+                println(globalLambda())
+                context(localShow) {
+                    println(globalLambda())
+                }
+                println(localLambda())
+                println(globalRenderer.render())
+                println(localRenderer.render())
+                println(globalBound())
+                println(localBound())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                global:1
+                global:1
+                local:1
+                global:2
+                local:2
+                global:2
+                local:2
+                """.trimIndent(),
+        )
+    }
+
     @Test fun derivesEnumClasses() {
         val source =
             """

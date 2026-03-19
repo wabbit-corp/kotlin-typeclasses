@@ -1,5 +1,6 @@
 package one.wabbit.typeclass.plugin.integration
 
+import org.junit.Ignore
 import kotlin.test.Test
 
 class ReviewRegressionTest : IntegrationTestSupport() {
@@ -452,6 +453,173 @@ class ReviewRegressionTest : IntegrationTestSupport() {
             source = source,
             expectedStdout = "dep:1",
             dependencies = listOf(dependency),
+        )
+    }
+
+    @Ignore("Pending explicit context-argument preservation coverage")
+    @Test
+    fun explicitWrongTypeclassArgumentsAreNotReboundToDifferentGoals() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun label(): String = "int"
+            }
+
+            @Instance
+            object NullableIntShow : Show<Int?> {
+                override fun label(): String = "nullable"
+            }
+
+            context(show: Show<A>)
+            fun <A> render(): String = show.label()
+
+            fun main() {
+                context(NullableIntShow) {
+                    println(render<Int>()) // ERROR explicit type arguments must not let the wrong explicit context be rebound
+                }
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("show", "int"),
+        )
+    }
+
+    @Ignore("Pending builtin admissibility coverage")
+    @Test
+    fun inapplicableBuiltinCandidatesDoNotCreateFalseAmbiguity() {
+        val source =
+            """
+            package demo
+
+            import kotlin.reflect.KClass
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun label(): String = "instance"
+            }
+
+            @Instance
+            context(_: KClass<A>)
+            fun <A> builtinBackedShow(): Show<A> =
+                object : Show<A> {
+                    override fun label(): String = "builtin"
+                }
+
+            context(_: Show<Int>)
+            fun render(): String = summon<Show<Int>>().label()
+
+            fun main() {
+                println(render())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "instance",
+            pluginOptions = listOf("builtinKClassTypeclass=enabled"),
+        )
+    }
+
+    @Ignore("Pending derivation admissibility work")
+    @Test
+    fun derivesOnlyAdmissibleSumCasesForRequestedTypeclasses() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+
+            @Typeclass
+            interface Codec<A> {
+                fun encode(value: A): String
+                fun decode(value: String): A
+
+                companion object : TypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        error("placeholder")
+
+                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                        error("placeholder")
+                }
+            }
+
+            @Derive(Codec::class)
+            sealed interface Expr<A>
+
+            data class Lit(val value: Int) : Expr<Int>
+
+            data class Name(val value: String) : Expr<String>
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("derive", "expr"),
+        )
+    }
+
+    @Ignore("Pending type-argument and explicit-context preservation coverage")
+    @Test
+    fun preservesExplicitContextArgumentsAndTypeArgumentsThroughRewrites() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            @Instance
+            object NullableIntShow : Show<Int?> {
+                override fun show(value: Int?): String = "nullable:${'$'}value"
+            }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                context(NullableIntShow) {
+                    println(render<Int?>(1))
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "nullable:1",
         )
     }
 }
