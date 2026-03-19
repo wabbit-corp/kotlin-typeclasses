@@ -75,7 +75,8 @@ internal class TypeclassPluginSharedState(
     fun rulesForGoal(
         session: FirSession,
         goal: TcType,
-    ): List<InstanceRule> = resolutionIndex(session).rulesForGoal(goal, session)
+        canMaterializeVariable: (String) -> Boolean = { true },
+    ): List<InstanceRule> = resolutionIndex(session).rulesForGoal(goal, session, canMaterializeVariable)
 
     fun canDeriveGoal(
         session: FirSession,
@@ -316,6 +317,7 @@ private data class ResolutionIndex(
     fun rulesForGoal(
         goal: TcType,
         session: FirSession,
+        canMaterializeVariable: (String) -> Boolean,
     ): List<InstanceRule> {
         val owners = allowedAssociatedOwnersForGoal(goal)
         val associated =
@@ -325,7 +327,7 @@ private data class ResolutionIndex(
         return (topLevelRules + associated)
             .asSequence()
             .filter { visibleRule ->
-                visibleRule.rule.id != "builtin:kclass" || supportsBuiltinKClassGoal(goal)
+                visibleRule.rule.id != "builtin:kclass" || supportsBuiltinKClassGoal(goal, canMaterializeVariable)
             }
             .filter { visibleRule ->
                 visibleRule.rule.id != "builtin:subtype" || supportsBuiltinSubtypeGoal(goal, classInfoById)
@@ -334,7 +336,7 @@ private data class ResolutionIndex(
                 visibleRule.rule.id != "builtin:strict-subtype" || supportsBuiltinStrictSubtypeGoal(goal, classInfoById)
             }
             .filter { visibleRule ->
-                visibleRule.rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, session)
+                visibleRule.rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, session, canMaterializeVariable)
             }
             .filter { visibleRule ->
                 visibleRule.rule.id != "builtin:notsame" || supportsBuiltinNotSameGoal(goal)
@@ -351,7 +353,10 @@ private data class ResolutionIndex(
                 }
             }
             .filter { visibleRule ->
-                visibleRule.rule.id != "builtin:type-id" || supportsBuiltinTypeIdGoal(goal)
+                visibleRule.rule.id != "builtin:known-type" || supportsBuiltinKnownTypeGoal(goal, canMaterializeVariable)
+            }
+            .filter { visibleRule ->
+                visibleRule.rule.id != "builtin:type-id" || supportsBuiltinTypeIdGoal(goal, canMaterializeVariable)
             }
             .filter { visibleRule ->
                 visibleRule.rule.id != "builtin:same-type-constructor" || supportsBuiltinSameTypeConstructorGoal(goal)
@@ -739,6 +744,7 @@ private fun builtinKSerializerRule(): InstanceRule {
 private fun supportsBuiltinKSerializerGoal(
     goal: TcType,
     session: FirSession,
+    canMaterializeVariable: (String) -> Boolean = { true },
 ): Boolean {
     val constructor = goal as? TcType.Constructor ?: return true
     if (constructor.classifierId != KSERIALIZER_CLASS_ID.asString()) {
@@ -746,6 +752,9 @@ private fun supportsBuiltinKSerializerGoal(
     }
     val targetType = constructor.arguments.singleOrNull() ?: return false
     if (targetType.containsStarProjection()) {
+        return false
+    }
+    if (!supportsRuntimeTypeMaterialization(targetType, canMaterializeVariable)) {
         return false
     }
     return isPotentiallySerializableType(
@@ -771,14 +780,6 @@ private fun supportsBuiltinNotNullableGoal(goal: TcType): Boolean {
     }
     val targetType = constructor.arguments.singleOrNull() ?: return false
     return targetType.isProvablyNotNullable()
-}
-
-private fun supportsBuiltinTypeIdGoal(goal: TcType): Boolean {
-    val constructor = goal as? TcType.Constructor ?: return true
-    if (constructor.classifierId != TYPE_ID_CLASS_ID.asString()) {
-        return true
-    }
-    return constructor.arguments.singleOrNull() != null
 }
 
 private fun isPotentiallySerializableType(

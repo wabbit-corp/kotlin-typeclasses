@@ -121,7 +121,13 @@ internal class TypeclassFirFunctionCallRefinementExtension(
         val inferredTypeArguments = inferFunctionTypeArguments(callInfo, symbol, typeContext)
         val planner =
             TypeclassResolutionPlanner(
-                ruleProvider = { goal -> sharedState.rulesForGoal(session, goal) },
+                ruleProvider = { goal ->
+                    sharedState.rulesForGoal(
+                        session = session,
+                        goal = goal,
+                        canMaterializeVariable = typeContext.runtimeMaterializableVariableIds::contains,
+                    )
+                },
                 bindableDesiredVariableIds = typeContext.bindableVariableIds,
             )
 
@@ -244,11 +250,16 @@ internal class TypeclassFirFunctionCallRefinementExtension(
             directlyAvailableContextTypes
                 .expandProvidedTypes(session = session, typeParameterBySymbol = typeParameterModels)
                 .validTypes
+        val runtimeMaterializableVariableIds =
+            typeParameterModels.mapNotNullTo(linkedSetOf()) { (symbol, parameter) ->
+                parameter.id.takeIf { symbol.fir.isReified }
+            }
         return FirTypeContext(
             typeParameterModels = typeParameterModels,
             bindableVariableIds = bindableVariableIds,
             directlyAvailableContextTypes = directlyAvailableContextTypes,
             directlyAvailableContextModels = directlyAvailableContextModels,
+            runtimeMaterializableVariableIds = runtimeMaterializableVariableIds,
         )
     }
 
@@ -431,4 +442,5 @@ private data class FirTypeContext(
     val bindableVariableIds: Set<String>,
     val directlyAvailableContextTypes: List<org.jetbrains.kotlin.fir.types.ConeKotlinType>,
     val directlyAvailableContextModels: List<one.wabbit.typeclass.plugin.model.TcType>,
+    val runtimeMaterializableVariableIds: Set<String>,
 )

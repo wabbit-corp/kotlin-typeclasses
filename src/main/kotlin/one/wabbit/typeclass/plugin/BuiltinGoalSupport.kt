@@ -7,12 +7,19 @@ import one.wabbit.typeclass.plugin.model.referencedVariableIds
 import org.jetbrains.kotlin.types.Variance
 
 internal fun supportsBuiltinKClassGoal(goal: TcType): Boolean {
+    return supportsBuiltinKClassGoal(goal) { true }
+}
+
+internal fun supportsBuiltinKClassGoal(
+    goal: TcType,
+    canMaterializeVariable: (String) -> Boolean,
+): Boolean {
     val constructor = goal as? TcType.Constructor ?: return true
     if (constructor.classifierId != KCLASS_CLASS_ID.asString()) {
         return true
     }
     val targetType = constructor.arguments.singleOrNull() ?: return false
-    return !targetType.isProvablyNullable()
+    return !targetType.isProvablyNullable() && supportsRuntimeTypeMaterialization(targetType, canMaterializeVariable)
 }
 
 internal fun supportsBuiltinNotSameGoal(goal: TcType): Boolean {
@@ -73,6 +80,38 @@ internal fun supportsBuiltinIsTypeclassInstanceGoal(
     return target.isPotentialTypeclassApplication(isTypeclassClassifier)
 }
 
+internal fun supportsBuiltinKnownTypeGoal(goal: TcType): Boolean {
+    return supportsBuiltinKnownTypeGoal(goal) { true }
+}
+
+internal fun supportsBuiltinKnownTypeGoal(
+    goal: TcType,
+    canMaterializeVariable: (String) -> Boolean,
+): Boolean {
+    val constructor = goal as? TcType.Constructor ?: return true
+    if (constructor.classifierId != KNOWN_TYPE_CLASS_ID.asString()) {
+        return true
+    }
+    val target = constructor.arguments.singleOrNull() ?: return false
+    return supportsRuntimeTypeMaterialization(target, canMaterializeVariable)
+}
+
+internal fun supportsBuiltinTypeIdGoal(goal: TcType): Boolean {
+    return supportsBuiltinTypeIdGoal(goal) { true }
+}
+
+internal fun supportsBuiltinTypeIdGoal(
+    goal: TcType,
+    canMaterializeVariable: (String) -> Boolean,
+): Boolean {
+    val constructor = goal as? TcType.Constructor ?: return true
+    if (constructor.classifierId != TYPE_ID_CLASS_ID.asString()) {
+        return true
+    }
+    val target = constructor.arguments.singleOrNull() ?: return false
+    return supportsRuntimeTypeMaterialization(target, canMaterializeVariable)
+}
+
 private fun TcType.isPotentialTypeclassApplication(
     isTypeclassClassifier: (String) -> Boolean,
 ): Boolean =
@@ -81,6 +120,19 @@ private fun TcType.isPotentialTypeclassApplication(
         is TcType.Variable -> true
         is TcType.Projected -> type.isPotentialTypeclassApplication(isTypeclassClassifier)
         is TcType.Constructor -> isTypeclassClassifier(classifierId)
+    }
+
+internal fun supportsRuntimeTypeMaterialization(
+    type: TcType,
+    canMaterializeVariable: (String) -> Boolean,
+): Boolean =
+    when (type) {
+        TcType.StarProjection -> true
+        is TcType.Projected -> supportsRuntimeTypeMaterialization(type.type, canMaterializeVariable)
+        is TcType.Variable -> canMaterializeVariable(type.id)
+        is TcType.Constructor -> type.arguments.all { argument ->
+            supportsRuntimeTypeMaterialization(argument, canMaterializeVariable)
+        }
     }
 
 internal fun canProveNotSame(

@@ -249,7 +249,7 @@ private class TypeclassIrCallTransformer(
         val planner =
             TypeclassResolutionPlanner(
                 ruleProvider = { goal: TcType ->
-                    ruleIndex.rulesForGoal(goal)
+                    ruleIndex.rulesForGoal(goal, visibleTypeParameters::canMaterializeRuntimeType)
                 },
             )
 
@@ -1342,7 +1342,10 @@ private class IrRuleIndex private constructor(
             .map { it.owner }
             .singleOrNull()
 
-    fun rulesForGoal(goal: TcType): List<InstanceRule> {
+    fun rulesForGoal(
+        goal: TcType,
+        canMaterializeVariable: (String) -> Boolean = { true },
+    ): List<InstanceRule> {
         val owners = associatedOwnersForGoal(goal)
         val associated =
             owners.flatMapTo(linkedSetOf()) { owner ->
@@ -1351,7 +1354,7 @@ private class IrRuleIndex private constructor(
         return (topLevelRules + associated)
             .asSequence()
             .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:kclass" || supportsBuiltinKClassGoal(goal)
+                resolvedRule.rule.id != "builtin:kclass" || supportsBuiltinKClassGoal(goal, canMaterializeVariable)
             }
             .filter { resolvedRule ->
                 resolvedRule.rule.id != "builtin:subtype" || supportsBuiltinSubtypeGoal(goal, classInfoById)
@@ -1360,7 +1363,7 @@ private class IrRuleIndex private constructor(
                 resolvedRule.rule.id != "builtin:strict-subtype" || supportsBuiltinStrictSubtypeGoal(goal, classInfoById)
             }
             .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, pluginContext)
+                resolvedRule.rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, pluginContext, canMaterializeVariable)
             }
             .filter { resolvedRule ->
                 resolvedRule.rule.id != "builtin:notsame" || supportsBuiltinNotSameGoal(goal)
@@ -1377,7 +1380,10 @@ private class IrRuleIndex private constructor(
                 }
             }
             .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:type-id" || supportsBuiltinTypeIdGoal(goal)
+                resolvedRule.rule.id != "builtin:known-type" || supportsBuiltinKnownTypeGoal(goal, canMaterializeVariable)
+            }
+            .filter { resolvedRule ->
+                resolvedRule.rule.id != "builtin:type-id" || supportsBuiltinTypeIdGoal(goal, canMaterializeVariable)
             }
             .filter { resolvedRule ->
                 resolvedRule.rule.id != "builtin:same-type-constructor" || supportsBuiltinSameTypeConstructorGoal(goal)
@@ -2326,6 +2332,7 @@ private fun builtinKSerializerRule(): InstanceRule {
 private fun supportsBuiltinKSerializerGoal(
     goal: TcType,
     pluginContext: IrPluginContext,
+    canMaterializeVariable: (String) -> Boolean = { true },
 ): Boolean {
     val constructor = goal as? TcType.Constructor ?: return true
     if (constructor.classifierId != KSERIALIZER_CLASS_ID.asString()) {
@@ -2333,6 +2340,9 @@ private fun supportsBuiltinKSerializerGoal(
     }
     val targetType = constructor.arguments.singleOrNull() ?: return false
     if (targetType.containsStarProjection()) {
+        return false
+    }
+    if (!supportsRuntimeTypeMaterialization(targetType, canMaterializeVariable)) {
         return false
     }
     return isPotentiallySerializableType(
@@ -2358,14 +2368,6 @@ private fun supportsBuiltinNotNullableGoal(goal: TcType): Boolean {
     }
     val targetType = constructor.arguments.singleOrNull() ?: return false
     return targetType.isProvablyNotNullable()
-}
-
-private fun supportsBuiltinTypeIdGoal(goal: TcType): Boolean {
-    val constructor = goal as? TcType.Constructor ?: return true
-    if (constructor.classifierId != TYPE_ID_CLASS_ID.asString()) {
-        return true
-    }
-    return constructor.arguments.singleOrNull() != null
 }
 
 private fun isPotentiallySerializableType(
@@ -2543,7 +2545,10 @@ private data class WrapperResolutionShape(
 private data class VisibleTypeParameters(
     val bySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
     val byId: Map<String, org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol>,
-)
+) {
+    fun canMaterializeRuntimeType(variableId: String): Boolean =
+        byId[variableId]?.owner?.isReified == true
+}
 
 private data class LocalTypeclassContext(
     val expression: IrBuilderWithScope.() -> IrExpression,

@@ -354,8 +354,9 @@ class UtilityProofTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("knowntype", "exact", "ktype"),
-            expectedDiagnostics = listOf(expectedErrorContaining("knowntype")),
+            expectedMessages = listOf("no context argument", "value"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "value")),
+            unexpectedMessages = listOf("exact known ktype"),
         )
     }
 
@@ -1503,8 +1504,9 @@ class UtilityProofTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("TypeId"),
-            expectedDiagnostics = listOf(expectedErrorContaining("typeid")),
+            expectedMessages = listOf("no context argument", "value"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "value")),
+            unexpectedMessages = listOf("exact semantic type"),
         )
     }
 

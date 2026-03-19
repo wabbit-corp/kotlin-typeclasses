@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Filter `KnownType<T>`, `TypeId<T>`, `KClass<T>`, and builtin `KSerializer<T>` candidates using call-site runtime materializability, so nested non-reified shapes like `KnownType<List<T>>` stop compiling through FIR/IR planning and now fail earlier as ordinary missing-context errors.
+- Add focused regressions proving nested non-reified `KnownType`, `TypeId`, and builtin `KSerializer` prerequisites fail early, while the same nested prerequisites still participate in ordinary rule search from inline reified call sites.
 - Reject direct self-recursive `@Instance` function rules against every expanded provided type, so wrapper-returning or inherited-`@Typeclass` heads like `WrappedShow<Box<A>> : Show<Box<A>>` can no longer dodge declaration-site recursion validation.
 - Add focused regressions for wrapper-returning instance rules, proving recursive expanded heads are rejected while nonrecursive wrapper-returning rules still compile and run.
 - Filter impossible `IsTypeclassInstance<TC>` builtin goals before planning when `TC` is visibly not a typeclass application, so those fake candidates cannot create spurious ambiguity or survive until IR-only failure.

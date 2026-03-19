@@ -487,13 +487,9 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("reified", "serializer"),
-            expectedDiagnostics =
-                listOf(
-                    ExpectedDiagnostic.Error(
-                        messageRegex = "(?i)(reified|serializer|runtime|type argument)",
-                    ),
-                ),
+            expectedMessages = listOf("no context argument", "value"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "value")),
+            unexpectedMessages = listOf("reified target type", "builtin kserializer"),
             requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )

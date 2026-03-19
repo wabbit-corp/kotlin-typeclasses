@@ -1,5 +1,6 @@
 # Learnings
 
+- Runtime-type builtins need call-site-aware filtering, not only global goal-shape checks. `KnownType<List<T>>`, `TypeId<List<T>>`, `KClass<List<T>>`, and `KSerializer<List<T>>` are valid from inline reified sites but must stay unavailable from ordinary generic `T`, so FIR and IR planner providers both need access to the visible reified type-parameter set.
 - Direct-recursion validation has to compare prerequisites against every expanded provided head, not only the syntactic return type. A rule returning `WrappedShow<Box<A>>` where `WrappedShow<A> : Show<A>` is still declaration-site recursive if it requires `Show<Box<A>>`.
 - `IsTypeclassInstance<TC>` is a good example of a builtin that should be filtered at planning time, not only validated in IR. If the requested `TC` is visibly not a typeclass application, leaving the builtin candidate alive just manufactures fake ambiguity and then fails too late.
 - FIR instance scanning cannot assume an `@Instance` callable's syntax-level `returnTypeRef` is already resolved. Companion properties like `@Instance val codec = PhiCodec.fromSerializable<Foo>()` are still seen with `FirImplicitTypeRef` during body resolve, so scanner code has to ask the callable symbol for its resolved return type instead of touching `returnTypeRef.coneType` directly.
