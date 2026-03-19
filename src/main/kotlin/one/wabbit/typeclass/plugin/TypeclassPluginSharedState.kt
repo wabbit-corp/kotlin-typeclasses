@@ -918,7 +918,11 @@ private fun FirRegularClass.toObjectRules(
         VisibleInstanceRule(
             rule =
                 InstanceRule(
-                    id = "fir-object:${symbol.classId.asString()}:${providedType.render()}",
+                    id = directRuleId(
+                        prefix = "fir-object",
+                        declarationKey = symbol.classId.asString(),
+                        providedType = providedType,
+                    ),
                     typeParameters = emptyList(),
                     providedType = providedType,
                     prerequisiteTypes = emptyList(),
@@ -971,7 +975,13 @@ private fun FirSimpleFunction.toFunctionRules(
         VisibleInstanceRule(
             rule =
                 InstanceRule(
-                    id = "fir-function:${symbol.callableId}:${providedType.render()}",
+                    id = directRuleId(
+                        prefix = "fir-function",
+                        declarationKey = symbol.callableId.toString(),
+                        providedType = providedType,
+                        prerequisiteTypes = prerequisites,
+                        typeParameters = typeParameters,
+                    ),
                     typeParameters = typeParameters,
                     providedType = providedType,
                     prerequisiteTypes = prerequisites,
@@ -1003,7 +1013,11 @@ private fun FirProperty.toPropertyRules(
         VisibleInstanceRule(
             rule =
                 InstanceRule(
-                    id = "fir-property:${symbol.callableId}:${providedType.render()}",
+                    id = directRuleId(
+                        prefix = "fir-property",
+                        declarationKey = symbol.callableId.toString(),
+                        providedType = providedType,
+                    ),
                     typeParameters = emptyList(),
                     providedType = providedType,
                     prerequisiteTypes = emptyList(),

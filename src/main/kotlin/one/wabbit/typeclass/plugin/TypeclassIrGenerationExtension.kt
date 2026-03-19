@@ -1306,7 +1306,6 @@ private class TypeclassIrCallTransformer(
 private class IrRuleIndex private constructor(
     private val pluginContext: IrPluginContext,
     val configuration: TypeclassConfiguration,
-    private val wrapperToOriginal: Map<IrSimpleFunction, IrSimpleFunction>,
     private val originalsByCallableId: Map<CallableId, List<IrSimpleFunction>>,
     private val rulesById: Map<String, ResolvedRule>,
     private val topLevelRules: List<ResolvedRule>,
@@ -1315,8 +1314,6 @@ private class IrRuleIndex private constructor(
 ) {
     private val lazilyDiscoveredAssociatedRulesByOwner: MutableMap<ClassId, List<ResolvedRule>> = linkedMapOf()
     private val lazilyDiscoveredRulesById: MutableMap<String, ResolvedRule> = linkedMapOf()
-
-    fun originalForWrapper(wrapper: IrSimpleFunction): IrSimpleFunction? = wrapperToOriginal[wrapper]
 
     fun originalForWrapperLikeFunction(wrapperLikeFunction: IrSimpleFunction): IrSimpleFunction? {
         val callableId = wrapperLikeFunction.safeCallableIdOrNull() ?: return null
@@ -1333,8 +1330,7 @@ private class IrRuleIndex private constructor(
         pluginContext.referenceFunctions(reference.callableId)
             .map { it.owner }
             .singleOrNull { function ->
-                !function.isGeneratedTypeclassWrapper() &&
-                    lookupFunctionShape(function, dropTypeclassContexts = false, configuration = configuration) == reference.shape
+                lookupFunctionShape(function, dropTypeclassContexts = false, configuration = configuration) == reference.shape
             }
 
     fun resolveLookupProperty(reference: RuleReference.LookupProperty): IrProperty? =
@@ -1463,7 +1459,11 @@ private class IrRuleIndex private constructor(
             ResolvedRule(
                 rule =
                     InstanceRule(
-                        id = "$idPrefix:${classIdOrFail.asString()}:${providedType.render()}",
+                        id = directRuleId(
+                            prefix = idPrefix,
+                            declarationKey = classIdOrFail.asString(),
+                            providedType = providedType,
+                        ),
                         typeParameters = emptyList(),
                         providedType = providedType,
                         prerequisiteTypes = emptyList(),
@@ -1505,7 +1505,13 @@ private class IrRuleIndex private constructor(
             ResolvedRule(
                 rule =
                     InstanceRule(
-                        id = "$idPrefix:${callableId}:${providedType.render()}",
+                        id = directRuleId(
+                            prefix = idPrefix,
+                            declarationKey = callableId.toString(),
+                            providedType = providedType,
+                            prerequisiteTypes = prerequisites,
+                            typeParameters = typeParameters,
+                        ),
                         typeParameters = typeParameters,
                         providedType = providedType,
                         prerequisiteTypes = prerequisites,
@@ -1531,7 +1537,11 @@ private class IrRuleIndex private constructor(
             ResolvedRule(
                 rule =
                     InstanceRule(
-                        id = "$idPrefix:${callableId}:${providedType.render()}",
+                        id = directRuleId(
+                            prefix = idPrefix,
+                            declarationKey = callableId.toString(),
+                            providedType = providedType,
+                        ),
                         typeParameters = emptyList(),
                         providedType = providedType,
                         prerequisiteTypes = emptyList(),
@@ -1587,7 +1597,6 @@ private class IrRuleIndex private constructor(
             val scanner = IrModuleScanner(pluginContext, sharedState.configuration)
             moduleFragment.files.forEach(scanner::scanFile)
 
-            val wrapperToOriginal = scanner.buildWrapperMapping()
             val directCompanionRules = scanner.buildCompanionRules()
             val directTopLevelRules = scanner.buildTopLevelRules()
             val builtinRules = scanner.buildBuiltinRules()
@@ -1601,7 +1610,6 @@ private class IrRuleIndex private constructor(
             return IrRuleIndex(
                 pluginContext = pluginContext,
                 configuration = sharedState.configuration,
-                wrapperToOriginal = wrapperToOriginal,
                 originalsByCallableId = scanner.buildOriginalIndex(),
                 rulesById = allRules.associateBy { it.rule.id },
                 topLevelRules = topLevelRules,
@@ -1620,7 +1628,6 @@ private class IrModuleScanner(
 
     private val classesById = linkedMapOf<String, IrClass>()
     private val declaredDerivationsByClassId = linkedMapOf<String, Set<ClassId>>()
-    private val wrappers = mutableListOf<IrSimpleFunction>()
     private val originalsByCallableId = linkedMapOf<CallableId, MutableList<IrSimpleFunction>>()
     private val topLevelRules = mutableListOf<ResolvedRule>()
     private val companionRules = mutableListOf<ResolvedRule>()
@@ -1630,15 +1637,6 @@ private class IrModuleScanner(
             scanDeclaration(declaration, associatedOwner = null)
         }
     }
-
-    fun buildWrapperMapping(): Map<IrSimpleFunction, IrSimpleFunction> =
-        wrappers.associateWith { wrapper ->
-            val candidates = originalsByCallableId[wrapper.callableId].orEmpty()
-            candidates.singleOrNull { candidate ->
-                wrapperResolutionShape(candidate, dropTypeclassContexts = true, configuration = configuration) ==
-                    wrapperResolutionShape(wrapper, dropTypeclassContexts = false, configuration = configuration)
-            } ?: error("Could not match generated wrapper ${wrapper.callableId} to an original declaration")
-        }
 
     fun buildOriginalIndex(): Map<CallableId, List<IrSimpleFunction>> =
         originalsByCallableId.mapValues { (_, functions) -> functions.toList() }
@@ -1799,7 +1797,6 @@ private class IrModuleScanner(
                     }
 
                 when {
-                    declaration.isGeneratedTypeclassWrapperClass() -> Unit
                     declaration.isInstanceObject() && associatedOwner == null -> {
                         topLevelRules += declaration.toObjectRules(idPrefix = "top-level-object", associatedOwner = null)
                     }
@@ -1814,11 +1811,7 @@ private class IrModuleScanner(
             }
 
             is IrSimpleFunction -> {
-                if (declaration.isGeneratedTypeclassWrapper()) {
-                    wrappers += declaration
-                } else {
-                    originalsByCallableId.getOrPut(declaration.callableId, ::mutableListOf) += declaration
-                }
+                originalsByCallableId.getOrPut(declaration.callableId, ::mutableListOf) += declaration
 
                 if (associatedOwner == null) {
                     topLevelRules += declaration.toFunctionRules(idPrefix = "top-level-function", associatedOwner = null)
@@ -1851,7 +1844,11 @@ private class IrModuleScanner(
             ResolvedRule(
                 rule =
                     InstanceRule(
-                        id = "$idPrefix:${classIdOrFail.asString()}:${providedType.render()}",
+                        id = directRuleId(
+                            prefix = idPrefix,
+                            declarationKey = classIdOrFail.asString(),
+                            providedType = providedType,
+                        ),
                         typeParameters = emptyList(),
                         providedType = providedType,
                         prerequisiteTypes = emptyList(),
@@ -1899,7 +1896,13 @@ private class IrModuleScanner(
             ResolvedRule(
                 rule =
                     InstanceRule(
-                        id = "$idPrefix:${callableId}:${providedType.render()}",
+                        id = directRuleId(
+                            prefix = idPrefix,
+                            declarationKey = callableId.toString(),
+                            providedType = providedType,
+                            prerequisiteTypes = prerequisites,
+                            typeParameters = typeParameters,
+                        ),
                         typeParameters = typeParameters,
                         providedType = providedType,
                         prerequisiteTypes = prerequisites,
@@ -1928,7 +1931,11 @@ private class IrModuleScanner(
             ResolvedRule(
                 rule =
                     InstanceRule(
-                        id = "$idPrefix:${callableId}:${providedType.render()}",
+                        id = directRuleId(
+                            prefix = idPrefix,
+                            declarationKey = callableId.toString(),
+                            providedType = providedType,
+                        ),
                         typeParameters = emptyList(),
                         providedType = providedType,
                         prerequisiteTypes = emptyList(),
@@ -2584,11 +2591,6 @@ private sealed interface ExplicitArgument {
         val expression: IrExpression,
     ) : ExplicitArgument
 }
-
-private fun IrSimpleFunction.isGeneratedTypeclassWrapper(): Boolean =
-    (origin as? IrDeclarationOrigin.GeneratedByPlugin)?.pluginKey == TypeclassWrapperKey
-
-private fun IrClass.isGeneratedTypeclassWrapperClass(): Boolean = false
 
 private fun IrType.isTypeclassType(configuration: TypeclassConfiguration): Boolean {
     val classId = classOrNull?.owner?.classId

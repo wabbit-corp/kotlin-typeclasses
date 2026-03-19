@@ -6,7 +6,6 @@
 package one.wabbit.typeclass.plugin
 
 import org.jetbrains.kotlin.fir.FirSession
-import org.jetbrains.kotlin.fir.extensions.FirDeclarationGenerationExtension
 import org.jetbrains.kotlin.fir.extensions.FirExtensionRegistrar
 import org.jetbrains.kotlin.fir.symbols.impl.FirNamedFunctionSymbol
 import org.jetbrains.kotlin.fir.types.coneType
@@ -17,17 +16,11 @@ internal class TypeclassFirExtensionRegistrar(
     private val sharedState: TypeclassPluginSharedState,
 ) : FirExtensionRegistrar() {
     override fun ExtensionRegistrarContext.configurePlugin() {
-        +{ session: FirSession -> TypeclassFirGenerationExtension(session, sharedState) }
         +{ session: FirSession -> TypeclassFirCheckersExtension(session, sharedState) }
         +{ session: FirSession -> TypeclassFirExpressionResolutionExtension(session, sharedState) }
         +{ session: FirSession -> TypeclassFirFunctionCallRefinementExtension(session, sharedState) }
     }
 }
-
-internal class TypeclassFirGenerationExtension(
-    session: FirSession,
-    sharedState: TypeclassPluginSharedState,
-) : FirDeclarationGenerationExtension(session)
 
 internal fun FirNamedFunctionSymbol.wrapperVisibleTypeParameterNames(
     session: FirSession,

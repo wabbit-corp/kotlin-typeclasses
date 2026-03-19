@@ -1,5 +1,7 @@
 # Learnings
 
+- The FIR `symbolNamesProvider.getPackageNames()` call in Kotlin 2.3.10’s `FirProviderImpl` is sourced from the provider’s recorded current-module `FirFile`s, not an arbitrary dependency-classpath package crawl. The remaining risk there is linear work over current-module packages, not “scan every package on the classpath”.
+- Dead FIR extension shells are worse than no extension at all. An unregistered status transformer and an empty declaration-generation extension make the plugin surface look more magical than it is, so once a FIR extension stops owning behavior it should be deleted rather than left around as a hint.
 - Runtime-type builtins need call-site-aware filtering, not only global goal-shape checks. `KnownType<List<T>>`, `TypeId<List<T>>`, `KClass<List<T>>`, and `KSerializer<List<T>>` are valid from inline reified sites but must stay unavailable from ordinary generic `T`, so FIR and IR planner providers both need access to the visible reified type-parameter set.
 - Direct-recursion validation has to compare prerequisites against every expanded provided head, not only the syntactic return type. A rule returning `WrappedShow<Box<A>>` where `WrappedShow<A> : Show<A>` is still declaration-site recursive if it requires `Show<Box<A>>`.
 - `IsTypeclassInstance<TC>` is a good example of a builtin that should be filtered at planning time, not only validated in IR. If the requested `TC` is visibly not a typeclass application, leaving the builtin candidate alive just manufactures fake ambiguity and then fails too late.

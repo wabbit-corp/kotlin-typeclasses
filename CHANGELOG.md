@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Make direct instance-rule ids include prerequisite and type-parameter shape so overloaded `@Instance` functions with the same `callableId` and provided head no longer collapse into missing evidence or lost ambiguity.
+- Add focused regressions proving overloaded instance rules with the same name and provided head still resolve the applicable candidate and still report ambiguity when both prerequisites are available.
+- Remove the dead `TypeclassWrapperKey` / hidden-wrapper FIR-IR bookkeeping path after auditing that it had no remaining producer, and keep the wrapper marker parameter handling only where it is still live in IR rewriting.
+- Remove the dead FIR status-transformer shell and the empty FIR generation extension shell, leaving only the registered FIR registrar and the live wrapper-signature helper so the extension surface matches the actual implementation.
 - Filter `KnownType<T>`, `TypeId<T>`, `KClass<T>`, and builtin `KSerializer<T>` candidates using call-site runtime materializability, so nested non-reified shapes like `KnownType<List<T>>` stop compiling through FIR/IR planning and now fail earlier as ordinary missing-context errors.
 - Add focused regressions proving nested non-reified `KnownType`, `TypeId`, and builtin `KSerializer` prerequisites fail early, while the same nested prerequisites still participate in ordinary rule search from inline reified call sites.
 - Reject direct self-recursive `@Instance` function rules against every expanded provided type, so wrapper-returning or inherited-`@Typeclass` heads like `WrappedShow<Box<A>> : Show<Box<A>>` can no longer dodge declaration-site recursion validation.
