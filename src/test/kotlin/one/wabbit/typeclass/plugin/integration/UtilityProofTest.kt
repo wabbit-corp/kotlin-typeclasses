@@ -796,7 +796,7 @@ class UtilityProofTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("strict", "subtype", "int", "string"),
+            expectedMessages = listOf("no context argument", "StrictSubtype"),
         )
     }
 

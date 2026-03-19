@@ -1350,7 +1350,13 @@ private class IrRuleIndex private constructor(
         return (topLevelRules + associated)
             .asSequence()
             .filter { resolvedRule ->
+                resolvedRule.rule.id != "builtin:kclass" || supportsBuiltinKClassGoal(goal)
+            }
+            .filter { resolvedRule ->
                 resolvedRule.rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, pluginContext)
+            }
+            .filter { resolvedRule ->
+                resolvedRule.rule.id != "builtin:notsame" || supportsBuiltinNotSameGoal(goal)
             }
             .filter { resolvedRule ->
                 resolvedRule.rule.id != "builtin:nullable" || supportsBuiltinNullableGoal(goal)
@@ -1360,6 +1366,9 @@ private class IrRuleIndex private constructor(
             }
             .filter { resolvedRule ->
                 resolvedRule.rule.id != "builtin:type-id" || supportsBuiltinTypeIdGoal(goal)
+            }
+            .filter { resolvedRule ->
+                resolvedRule.rule.id != "builtin:same-type-constructor" || supportsBuiltinSameTypeConstructorGoal(goal)
             }
             .distinctBy { resolvedRule -> resolvedRule.rule.id }
             .map(ResolvedRule::rule)
@@ -2378,30 +2387,6 @@ private fun isPotentiallySerializableType(
                     isPotentiallySerializableType(argument, pluginContext, visiting)
                 }
         }
-    }
-}
-
-private fun canProveNotSame(
-    left: TcType,
-    right: TcType,
-): Boolean {
-    if (left.normalizedKey() == right.normalizedKey()) {
-        return false
-    }
-    return when {
-        left === TcType.StarProjection || right === TcType.StarProjection -> false
-        left is TcType.Projected && right is TcType.Projected ->
-            left.variance != right.variance || canProveNotSame(left.type, right.type)
-        left is TcType.Constructor && right is TcType.Constructor -> {
-            left.classifierId != right.classifierId ||
-                left.isNullable != right.isNullable ||
-                left.arguments.size != right.arguments.size ||
-                left.arguments.zip(right.arguments).any { (leftArgument, rightArgument) ->
-                    canProveNotSame(leftArgument, rightArgument)
-                }
-        }
-
-        else -> false
     }
 }
 

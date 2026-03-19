@@ -274,6 +274,48 @@ class ReviewRegressionTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun impossibleBuiltinPrerequisitesDoNotCreateSpuriousAmbiguity() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.NotSame
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun label(): String = "int"
+            }
+
+            @Instance
+            context(_: NotSame<A, A>)
+            fun <A> impossibleShow(): Show<A> =
+                object : Show<A> {
+                    override fun label(): String = "impossible"
+                }
+
+            context(_: Show<Int>)
+            fun render(): String = summon<Show<Int>>().label()
+
+            fun main() {
+                println(render())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int",
+        )
+    }
+
+    @Test
     fun resolvesDependencyModuleInstancesInIrAsWellAsFir() {
         val dependency =
             HarnessDependency(

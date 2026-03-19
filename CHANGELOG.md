@@ -57,3 +57,4 @@
 - Tighten IR explicit-context preservation so an existing argument must still satisfy the expected contextual type before it can be rebound to a typeclass slot during wrapper rewriting.
 - Reject sealed derivation for non-generic roots whose generic subclasses introduce free type variables that are not quantified by the sealed root, and cover that failure mode in `ReviewRegressionTest`.
 - Fix contextual `in` / `contains` operator rewriting by swapping Kotlin's lowered `IrStatementOrigin.IN` receiver/value layout back into the original extension-call shape, and enable the `rewritesContextualContainsOperatorCalls` integration test.
+- Filter obviously impossible model-only builtin proof rules such as `NotSame<A, A>`, nullable `KClass<T?>`, and mismatched `SameTypeConstructor<F<_>, G<_>>` before planning so they cannot create spurious ambiguity or disappear only at IR materialization time.

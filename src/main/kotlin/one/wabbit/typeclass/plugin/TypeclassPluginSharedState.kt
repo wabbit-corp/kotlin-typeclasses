@@ -324,7 +324,13 @@ private data class ResolutionIndex(
         return (topLevelRules + associated)
             .asSequence()
             .filter { visibleRule ->
+                visibleRule.rule.id != "builtin:kclass" || supportsBuiltinKClassGoal(goal)
+            }
+            .filter { visibleRule ->
                 visibleRule.rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, session)
+            }
+            .filter { visibleRule ->
+                visibleRule.rule.id != "builtin:notsame" || supportsBuiltinNotSameGoal(goal)
             }
             .filter { visibleRule ->
                 visibleRule.rule.id != "builtin:nullable" || supportsBuiltinNullableGoal(goal)
@@ -334,6 +340,9 @@ private data class ResolutionIndex(
             }
             .filter { visibleRule ->
                 visibleRule.rule.id != "builtin:type-id" || supportsBuiltinTypeIdGoal(goal)
+            }
+            .filter { visibleRule ->
+                visibleRule.rule.id != "builtin:same-type-constructor" || supportsBuiltinSameTypeConstructorGoal(goal)
             }
             .distinctBy { visibleRule -> visibleRule.rule.id }
             .map(VisibleInstanceRule::rule)
@@ -907,7 +916,7 @@ private fun FirSimpleFunction.toFunctionRules(
     if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
         return emptyList()
     }
-    val callableId = symbol.callableId ?: return emptyList()
+    val callableId = symbol.callableId
     if (!firInstanceOwnerContext(session, symbol.callableId).isIndexableScope) {
         return emptyList()
     }
