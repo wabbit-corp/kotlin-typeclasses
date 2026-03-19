@@ -399,6 +399,7 @@ class DerivationTest : IntegrationTestSupport() {
             package demo
 
             import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.EnumTypeclassMetadata
             import one.wabbit.typeclass.ProductTypeclassMetadata
             import one.wabbit.typeclass.SumTypeclassMetadata
             import one.wabbit.typeclass.Typeclass
@@ -417,6 +418,11 @@ class DerivationTest : IntegrationTestSupport() {
                     override fun deriveSum(metadata: SumTypeclassMetadata): Any =
                         object : Show<Any?> {
                             override fun show(value: Any?): String = value.toString()
+                        }
+
+                    override fun deriveEnum(metadata: EnumTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.entryOf(value).name
                         }
                 }
             }

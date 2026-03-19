@@ -91,6 +91,101 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun deriveEnumMustReturnTheRequestedTypeclassConstructorWhenStaticallyKnown() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.EnumTypeclassMetadata
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+
+            @Typeclass
+            interface Eq<A> {
+                fun eqv(left: A, right: A): Boolean
+            }
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : TypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+
+                    override fun deriveSum(metadata: one.wabbit.typeclass.SumTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+
+                    override fun deriveEnum(metadata: EnumTypeclassMetadata): Any { // E:TC_CANNOT_DERIVE
+                        return object : Eq<Any?> {
+                            override fun eqv(left: Any?, right: Any?): Boolean = true
+                        }
+                    }
+                }
+            }
+
+            @Derive(Show::class)
+            enum class Priority {
+                LOW,
+                HIGH,
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("deriveEnum", "Show", "Eq"),
+        )
+    }
+
+    @Test
+    fun enumDerivationRequiresExplicitDeriveEnumOverride() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : TypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+
+                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+                }
+            }
+
+            @Derive(Show::class) // E:TC_CANNOT_DERIVE
+            enum class Priority {
+                LOW,
+                HIGH,
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("deriveEnum", "enum classes"),
+        )
+    }
+
+    @Test
     fun productOnlyDeriversCannotDeriveSealedSums() {
         val source =
             """

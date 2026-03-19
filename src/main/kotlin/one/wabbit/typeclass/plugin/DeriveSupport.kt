@@ -12,6 +12,7 @@ import org.jetbrains.kotlin.fir.declarations.getAnnotationsByClassId
 import org.jetbrains.kotlin.fir.declarations.getStringArgument
 import org.jetbrains.kotlin.fir.expressions.FirAnnotationCall
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
+import org.jetbrains.kotlin.fir.declarations.FirSimpleFunction
 import org.jetbrains.kotlin.fir.declarations.hasAnnotation
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
@@ -42,19 +43,27 @@ internal fun FirRegularClass.supportsDeriveShape(): Boolean =
         else -> false
     }
 
+internal fun FirRegularClass.requiredDeriverInterfaceForDeriveShape(): ClassId =
+    when {
+        classKind == ClassKind.ENUM_CLASS -> TYPECLASS_DERIVER_CLASS_ID
+        status.modality == Modality.SEALED -> TYPECLASS_DERIVER_CLASS_ID
+        else -> PRODUCT_TYPECLASS_DERIVER_CLASS_ID
+    }
+
 internal fun FirRegularClass.supportsDerivationForTypeclass(
     typeclassId: String,
     session: FirSession,
 ): Boolean {
     val classId = runCatching { ClassId.fromString(typeclassId) }.getOrNull() ?: return false
-    val requiredDeriverInterface =
-        if (status.modality == Modality.SEALED) {
-            TYPECLASS_DERIVER_CLASS_ID
-        } else {
-            PRODUCT_TYPECLASS_DERIVER_CLASS_ID
-        }
+    val requiredDeriverInterface = requiredDeriverInterfaceForDeriveShape()
     return typeclassSupportsDeriveShape(classId, requiredDeriverInterface, session)
 }
+
+internal fun FirRegularClass.requiredDeriveMethodNameForDeriveShape(): String? =
+    when {
+        classKind == ClassKind.ENUM_CLASS -> "deriveEnum"
+        else -> null
+    }
 
 internal fun FirRegularClass.generatedDerivedTypeclassIds(session: FirSession): Set<String> {
     val ownerId = symbol.classId.asString()
@@ -81,27 +90,43 @@ internal fun typeclassSupportsDeriveShape(
     requiredDeriverInterface: ClassId,
     session: FirSession,
 ): Boolean {
+    val companionSymbol = typeclassCompanionSymbol(typeclassId, session) ?: return false
+    return companionSymbol.implementsInterface(requiredDeriverInterface, session, linkedSetOf())
+}
+
+internal fun typeclassCompanionDeclaresDeriveMethod(
+    typeclassId: ClassId,
+    deriveMethodName: String,
+    session: FirSession,
+): Boolean {
+    val companionSymbol = typeclassCompanionSymbol(typeclassId, session) ?: return false
+    return companionSymbol.fir.declarations
+        .filterIsInstance<FirSimpleFunction>()
+        .any { function -> function.name.asString() == deriveMethodName }
+}
+
+private fun typeclassCompanionSymbol(
+    typeclassId: ClassId,
+    session: FirSession,
+): FirRegularClassSymbol? {
     val typeclassSymbol =
         try {
             session.symbolProvider.getClassLikeSymbolByClassId(typeclassId) as? FirRegularClassSymbol
         } catch (_: IllegalArgumentException) {
             null
-        } ?: return false
-    val companionSymbol =
-        typeclassSymbol.fir.declarations
-            .filterIsInstance<FirRegularClass>()
-            .singleOrNull { declaration ->
-                declaration.symbol.classId.shortClassName == SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT
-            }?.symbol
-            ?: try {
-                session.symbolProvider.getClassLikeSymbolByClassId(
-                    typeclassId.createNestedClassId(SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT),
-                ) as? FirRegularClassSymbol
-            } catch (_: IllegalArgumentException) {
-                null
-            }
-            ?: return false
-    return companionSymbol.implementsInterface(requiredDeriverInterface, session, linkedSetOf())
+        } ?: return null
+    return typeclassSymbol.fir.declarations
+        .filterIsInstance<FirRegularClass>()
+        .singleOrNull { declaration ->
+            declaration.symbol.classId.shortClassName == SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT
+        }?.symbol
+        ?: try {
+            session.symbolProvider.getClassLikeSymbolByClassId(
+                typeclassId.createNestedClassId(SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT),
+            ) as? FirRegularClassSymbol
+        } catch (_: IllegalArgumentException) {
+            null
+        }
 }
 
 internal fun FirRegularClassSymbol.implementsInterface(

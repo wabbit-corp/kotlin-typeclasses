@@ -279,6 +279,62 @@ class DerivationLawTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun derivesJsonCodecForEnumsLikeKSerializer() {
+        val source =
+            jsonCodecSource(
+                definitions =
+                    """
+                    @Serializable
+                    @Derive(JsonCodec::class)
+                    enum class Priority {
+                        LOW,
+                        HIGH,
+                    }
+
+                    @Serializable
+                    @JvmInline
+                    @Derive(JsonCodec::class)
+                    value class TicketId(val value: Int)
+
+                    @Serializable
+                    @Derive(JsonCodec::class)
+                    data class Ticket(val id: TicketId, val priority: Priority, val title: String)
+                    """,
+                mainBody =
+                    """
+                    val enumCodec = summon<JsonCodec<Priority>>()
+                    println(enumCodec.encode(Priority.HIGH))
+                    println(enumCodec.decode(JsonPrimitive("LOW")))
+                    println(enumCodec.encode(Priority.HIGH) == Json.encodeToJsonElement(serializer<Priority>(), Priority.HIGH))
+
+                    val ticketCodec = summon<JsonCodec<Ticket>>()
+                    val ticket = Ticket(TicketId(7), Priority.HIGH, "ops")
+                    val encoded = ticketCodec.encode(ticket)
+                    val serializerEncoded = Json.encodeToJsonElement(serializer<Ticket>(), ticket)
+                    println(encoded)
+                    println(serializerEncoded)
+                    println(encoded == serializerEncoded)
+                    println(ticketCodec.decode(encoded))
+                    """,
+            )
+
+        assertCompilesAndRuns(
+            source = source,
+            requiredPlugins = serializationPlugins,
+            expectedStdout =
+                """
+                "HIGH"
+                LOW
+                true
+                {"id":7,"priority":"HIGH","title":"ops"}
+                {"id":7,"priority":"HIGH","title":"ops"}
+                true
+                Ticket(id=TicketId(value=7), priority=HIGH, title=ops)
+                """.trimIndent(),
+        )
+    }
+
+    @Test
     fun derivesJsonCodecForRecursiveAdtsValueClassesAndGenericProducts() {
         val source =
             jsonCodecSource(
@@ -438,11 +494,15 @@ class DerivationLawTest : IntegrationTestSupport() {
         import kotlinx.serialization.json.JsonElement
         import kotlinx.serialization.json.JsonObject
         import kotlinx.serialization.json.JsonPrimitive
+        import kotlinx.serialization.json.Json
         import kotlinx.serialization.json.buildJsonObject
         import kotlinx.serialization.json.int
         import kotlinx.serialization.json.jsonObject
         import kotlinx.serialization.json.jsonPrimitive
+        import kotlinx.serialization.Serializable
+        import kotlinx.serialization.serializer
         import one.wabbit.typeclass.Derive
+        import one.wabbit.typeclass.EnumTypeclassMetadata
         import one.wabbit.typeclass.Instance
         import one.wabbit.typeclass.ProductTypeclassMetadata
         import one.wabbit.typeclass.Typeclass
@@ -528,6 +588,16 @@ class DerivationLawTest : IntegrationTestSupport() {
                                 }
                             return caseCodec.decode(payload)
                         }
+                    }
+
+                override fun deriveEnum(metadata: EnumTypeclassMetadata): Any =
+                    object : JsonCodec<Any?> {
+                        override fun encode(value: Any?): JsonElement {
+                            require(value != null)
+                            return JsonPrimitive(metadata.entryOf(value).name)
+                        }
+
+                        override fun decode(element: JsonElement): Any? = metadata.construct(element.jsonPrimitive.content)
                     }
             }
         }

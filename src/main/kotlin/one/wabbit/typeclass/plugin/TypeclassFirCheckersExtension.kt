@@ -261,6 +261,7 @@ internal class TypeclassFirCheckersExtension(
         }
         if (
             declaration.classKind != ClassKind.OBJECT &&
+            declaration.classKind != ClassKind.ENUM_CLASS &&
             declaration.status.modality != Modality.SEALED &&
             declaration.declarations
                 .filterIsInstance<FirConstructor>()
@@ -275,17 +276,14 @@ internal class TypeclassFirCheckersExtension(
 
         declaration.derivedTypeclassIds(session).forEach { typeclassIdString ->
             val typeclassId = runCatching { ClassId.fromString(typeclassIdString) }.getOrNull() ?: return@forEach
-            val requiredDeriverInterface =
-                if (declaration.status.modality == Modality.SEALED) {
-                    TYPECLASS_DERIVER_CLASS_ID
-                } else {
-                    PRODUCT_TYPECLASS_DERIVER_CLASS_ID
-                }
+            val requiredDeriverInterface = declaration.requiredDeriverInterfaceForDeriveShape()
             if (!typeclassSupportsDeriveShape(typeclassId, requiredDeriverInterface, session)) {
                 val requiredName = requiredDeriverInterface.shortClassName.asString()
                 val targetName = typeclassId.shortClassName.asString()
                 val message =
-                    if (requiredDeriverInterface == TYPECLASS_DERIVER_CLASS_ID) {
+                    if (declaration.classKind == ClassKind.ENUM_CLASS) {
+                        "$targetName companion must implement $requiredName; ProductTypeclassDeriver only supports products, not enums"
+                    } else if (requiredDeriverInterface == TYPECLASS_DERIVER_CLASS_ID) {
                         "$targetName companion must implement $requiredName; ProductTypeclassDeriver only supports products, not sealed sums"
                     } else {
                         "$targetName companion must implement $requiredName to derive products"
@@ -294,6 +292,15 @@ internal class TypeclassFirCheckersExtension(
                     declaration,
                     message,
                 )
+                return@forEach
+            }
+            declaration.requiredDeriveMethodNameForDeriveShape()?.let { deriveMethodName ->
+                if (!typeclassCompanionDeclaresDeriveMethod(typeclassId, deriveMethodName, session)) {
+                    reportCannotDerive(
+                        declaration,
+                        "${typeclassId.shortClassName.asString()} companion must override $deriveMethodName to derive enum classes",
+                    )
+                }
             }
         }
     }
@@ -312,7 +319,7 @@ internal class TypeclassFirCheckersExtension(
             .filterIsInstance<FirSimpleFunction>()
             .forEach { function ->
                 val deriveMethodName = function.name.asString()
-                if (deriveMethodName != "deriveProduct" && deriveMethodName != "deriveSum") {
+                if (deriveMethodName != "deriveProduct" && deriveMethodName != "deriveSum" && deriveMethodName != "deriveEnum") {
                     return@forEach
                 }
                 function.knownDeriverReturnExpressions().forEach { expression ->

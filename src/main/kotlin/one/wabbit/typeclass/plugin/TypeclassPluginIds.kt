@@ -17,6 +17,8 @@ internal const val PRODUCT_FIELD_METADATA_FQ_NAME: String = "one.wabbit.typeclas
 internal const val PRODUCT_TYPECLASS_METADATA_FQ_NAME: String = "one.wabbit.typeclass.ProductTypeclassMetadata"
 internal const val SUM_CASE_METADATA_FQ_NAME: String = "one.wabbit.typeclass.SumCaseMetadata"
 internal const val SUM_TYPECLASS_METADATA_FQ_NAME: String = "one.wabbit.typeclass.SumTypeclassMetadata"
+internal const val ENUM_ENTRY_METADATA_FQ_NAME: String = "one.wabbit.typeclass.EnumEntryMetadata"
+internal const val ENUM_TYPECLASS_METADATA_FQ_NAME: String = "one.wabbit.typeclass.EnumTypeclassMetadata"
 internal const val RECURSIVE_TYPECLASS_INSTANCE_CELL_FQ_NAME: String = "one.wabbit.typeclass.RecursiveTypeclassInstanceCell"
 internal const val SAME_FQ_NAME: String = "one.wabbit.typeclass.Same"
 internal const val SAME_PROOF_FQ_NAME: String = "one.wabbit.typeclass.UnsafeAssertSame"
@@ -54,6 +56,8 @@ internal val PRODUCT_FIELD_METADATA_CLASS_ID: ClassId = ClassId.topLevel(FqName(
 internal val PRODUCT_TYPECLASS_METADATA_CLASS_ID: ClassId = ClassId.topLevel(FqName(PRODUCT_TYPECLASS_METADATA_FQ_NAME))
 internal val SUM_CASE_METADATA_CLASS_ID: ClassId = ClassId.topLevel(FqName(SUM_CASE_METADATA_FQ_NAME))
 internal val SUM_TYPECLASS_METADATA_CLASS_ID: ClassId = ClassId.topLevel(FqName(SUM_TYPECLASS_METADATA_FQ_NAME))
+internal val ENUM_ENTRY_METADATA_CLASS_ID: ClassId = ClassId.topLevel(FqName(ENUM_ENTRY_METADATA_FQ_NAME))
+internal val ENUM_TYPECLASS_METADATA_CLASS_ID: ClassId = ClassId.topLevel(FqName(ENUM_TYPECLASS_METADATA_FQ_NAME))
 internal val RECURSIVE_TYPECLASS_INSTANCE_CELL_CLASS_ID: ClassId =
     ClassId.topLevel(FqName(RECURSIVE_TYPECLASS_INSTANCE_CELL_FQ_NAME))
 internal val SAME_CLASS_ID: ClassId = ClassId.topLevel(FqName(SAME_FQ_NAME))

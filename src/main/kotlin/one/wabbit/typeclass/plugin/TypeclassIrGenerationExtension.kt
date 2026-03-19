@@ -61,6 +61,7 @@ import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationBase
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationParent
+import org.jetbrains.kotlin.ir.declarations.IrEnumEntry
 import org.jetbrains.kotlin.ir.declarations.IrField
 import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrFunction
@@ -81,6 +82,7 @@ import org.jetbrains.kotlin.ir.expressions.IrSpreadElement
 import org.jetbrains.kotlin.ir.expressions.IrTypeOperatorCall
 import org.jetbrains.kotlin.ir.expressions.IrVararg
 import org.jetbrains.kotlin.ir.expressions.impl.IrFunctionExpressionImpl
+import org.jetbrains.kotlin.ir.expressions.impl.IrGetEnumValueImpl
 import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.IrStarProjection
 import org.jetbrains.kotlin.ir.types.IrTypeArgument
@@ -1152,11 +1154,19 @@ private class TypeclassIrCallTransformer(
                         lambdaParent = metadataLambdaParent,
                         visibleTypeParameters = visibleTypeParameters,
                     )
+
+                is DerivedShape.Enum ->
+                    buildEnumMetadata(
+                        reference = reference,
+                        shape = shape,
+                        lambdaParent = metadataLambdaParent,
+                    )
             }
         val deriveMethodName =
             when (reference.shape) {
                 is DerivedShape.Product -> "deriveProduct"
                 is DerivedShape.Sum -> "deriveSum"
+                is DerivedShape.Enum -> "deriveEnum"
             }
         val deriveMethod =
             reference.deriverCompanion.declarations
@@ -1471,6 +1481,156 @@ private class TypeclassIrCallTransformer(
         }
     }
 
+    private fun IrStatementsBuilder<*>.buildEnumMetadata(
+        reference: RuleReference.Derived,
+        shape: DerivedShape.Enum,
+        lambdaParent: IrDeclarationParent,
+    ): IrExpression {
+        val entryClass =
+            pluginContext.referenceClass(ENUM_ENTRY_METADATA_CLASS_ID)?.owner
+                ?: error("Could not resolve $ENUM_ENTRY_METADATA_FQ_NAME")
+        val metadataClass =
+            pluginContext.referenceClass(ENUM_TYPECLASS_METADATA_CLASS_ID)?.owner
+                ?: error("Could not resolve $ENUM_TYPECLASS_METADATA_FQ_NAME")
+        val entryElements =
+            shape.entries.map { entry ->
+                irCallConstructor(entryClass.primaryConstructorSymbol(), emptyList()).apply {
+                    putValueArgument(0, irString(entry.name))
+                }
+            }
+        return irCallConstructor(metadataClass.primaryConstructorSymbol(), emptyList()).apply {
+            putValueArgument(0, irString(reference.targetClass.renderClassName()))
+            putValueArgument(1, irListOf(entryElements, entryClass.symbol.defaultType))
+            putValueArgument(
+                2,
+                buildEnumOrdinalResolver(
+                    reference = reference,
+                    shape = shape,
+                    lambdaParent = lambdaParent,
+                ),
+            )
+            putValueArgument(
+                3,
+                buildEnumValueResolver(
+                    reference = reference,
+                    shape = shape,
+                    lambdaParent = lambdaParent,
+                ),
+            )
+        }
+    }
+
+    private fun IrBuilderWithScope.buildEnumOrdinalResolver(
+        reference: RuleReference.Derived,
+        shape: DerivedShape.Enum,
+        lambdaParent: IrDeclarationParent,
+    ): IrExpression {
+        val anyType = pluginContext.irBuiltIns.anyNType
+        val intType = pluginContext.irBuiltIns.intType
+        val lambdaType =
+            pluginContext.irBuiltIns.functionN(1).typeWith(
+                anyType,
+                intType,
+            )
+        val resolver =
+            context.irFactory.buildFun {
+                name = Name.special("<typeclass-enum-ordinal>")
+                origin = IrDeclarationOrigin.LOCAL_FUNCTION
+                visibility = DescriptorVisibilities.LOCAL
+                returnType = intType
+            }.apply {
+                parent = lambdaParent
+            }
+        val valueParameter = resolver.addValueParameter("value", anyType)
+        resolver.body =
+            DeclarationIrBuilder(pluginContext, resolver.symbol, startOffset, endOffset).irBlockBody {
+                var result: IrExpression = irInt(-1)
+                for (index in shape.entries.indices.reversed()) {
+                    val entry = shape.entries[index]
+                    result =
+                        irIfThenElse(
+                            type = intType,
+                            condition =
+                                irCall(pluginContext.irBuiltIns.eqeqSymbol).apply {
+                                    putValueArgument(0, irGet(valueParameter))
+                                    putValueArgument(1, irEnumEntryValue(reference.targetClass, entry.entry))
+                                },
+                            thenPart = irInt(index),
+                            elsePart = result,
+                        )
+                }
+                +irReturn(result)
+            }
+        return IrFunctionExpressionImpl(
+            startOffset = startOffset,
+            endOffset = endOffset,
+            type = lambdaType,
+            function = resolver,
+            origin = IrStatementOrigin.LAMBDA,
+        )
+    }
+
+    private fun IrBuilderWithScope.buildEnumValueResolver(
+        reference: RuleReference.Derived,
+        shape: DerivedShape.Enum,
+        lambdaParent: IrDeclarationParent,
+    ): IrExpression {
+        val intType = pluginContext.irBuiltIns.intType
+        val anyType = pluginContext.irBuiltIns.anyNType
+        val lambdaType =
+            pluginContext.irBuiltIns.functionN(1).typeWith(
+                intType,
+                anyType,
+            )
+        val resolver =
+            context.irFactory.buildFun {
+                name = Name.special("<typeclass-enum-value>")
+                origin = IrDeclarationOrigin.LOCAL_FUNCTION
+                visibility = DescriptorVisibilities.LOCAL
+                returnType = anyType
+            }.apply {
+                parent = lambdaParent
+            }
+        val indexParameter = resolver.addValueParameter("index", intType)
+        resolver.body =
+            DeclarationIrBuilder(pluginContext, resolver.symbol, startOffset, endOffset).irBlockBody {
+                var result: IrExpression = irNull()
+                for (index in shape.entries.indices.reversed()) {
+                    val entry = shape.entries[index]
+                    result =
+                        irIfThenElse(
+                            type = anyType,
+                            condition =
+                                irCall(pluginContext.irBuiltIns.eqeqSymbol).apply {
+                                    putValueArgument(0, irGet(indexParameter))
+                                    putValueArgument(1, irInt(index))
+                                },
+                            thenPart = irEnumEntryValue(reference.targetClass, entry.entry),
+                            elsePart = result,
+                        )
+                }
+                +irReturn(result)
+            }
+        return IrFunctionExpressionImpl(
+            startOffset = startOffset,
+            endOffset = endOffset,
+            type = lambdaType,
+            function = resolver,
+            origin = IrStatementOrigin.LAMBDA,
+        )
+    }
+
+    private fun IrBuilderWithScope.irEnumEntryValue(
+        enumClass: IrClass,
+        entry: IrEnumEntry,
+    ): IrExpression =
+        IrGetEnumValueImpl(
+            startOffset,
+            endOffset,
+            enumClass.symbol.defaultType,
+            entry.symbol,
+        )
+
     private fun IrBuilderWithScope.buildSumCaseMatcher(
         case: DerivedCase,
         appliedBindings: Map<String, TcType>,
@@ -1545,7 +1705,7 @@ private fun IrPluginContext.reportTypeclassError(
     location: CompilerMessageSourceLocation? = null,
 ) {
     val renderedMessage =
-        diagnosticId?.let { id -> TypeclassDiagnosticIds.format(id, message) } ?: message
+        diagnosticId?.let { id -> "[$id] $message" } ?: message
     messageCollector.report(CompilerMessageSeverity.ERROR, renderedMessage, location)
 }
 
@@ -2420,23 +2580,24 @@ private class IrModuleScanner(
                 ruleTypeParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) },
             )
         val shape =
-            if (modality == Modality.SEALED) {
-                buildDerivedSumShape(targetType, subclassesBySuper)
-            } else {
-                buildDerivedProductShape(typeParameterBySymbol)
+            when {
+                kind == ClassKind.ENUM_CLASS -> buildDerivedEnumShape()
+                modality == Modality.SEALED -> buildDerivedSumShape(targetType, subclassesBySuper)
+                else -> buildDerivedProductShape(typeParameterBySymbol)
             } ?: return emptyList()
         val requiredDeriverInterface =
-            if (shape is DerivedShape.Sum) {
-                TYPECLASS_DERIVER_CLASS_ID
-            } else {
-                PRODUCT_TYPECLASS_DERIVER_CLASS_ID
+            when (shape) {
+                is DerivedShape.Product -> PRODUCT_TYPECLASS_DERIVER_CLASS_ID
+                is DerivedShape.Sum, is DerivedShape.Enum -> TYPECLASS_DERIVER_CLASS_ID
             }
         val deriverCompanion =
             typeclassInterface.findDeriverCompanion(requiredDeriverInterface)
                 ?: run {
                     val requiredName = requiredDeriverInterface.shortClassName.asString()
                     val message =
-                        if (shape is DerivedShape.Sum) {
+                        if (shape is DerivedShape.Enum) {
+                            "${typeclassId.shortClassName.asString()} companion must implement $requiredName; ProductTypeclassDeriver only supports products, not enums"
+                        } else if (shape is DerivedShape.Sum) {
                             "${typeclassId.shortClassName.asString()} companion must implement $requiredName; ProductTypeclassDeriver only supports products, not sealed sums"
                         } else {
                             "${typeclassId.shortClassName.asString()} companion must implement $requiredName to derive products"
@@ -2448,10 +2609,31 @@ private class IrModuleScanner(
                     )
                     return emptyList()
                 }
+        val deriveMethodName =
+            when (shape) {
+                is DerivedShape.Product -> "deriveProduct"
+                is DerivedShape.Sum -> "deriveSum"
+                is DerivedShape.Enum -> "deriveEnum"
+            }
+        if (deriverCompanion.declarations.filterIsInstance<IrSimpleFunction>().none { function -> function.name.asString() == deriveMethodName }) {
+            val message =
+                if (shape is DerivedShape.Enum) {
+                    "${typeclassId.shortClassName.asString()} companion must override deriveEnum to derive enum classes"
+                } else {
+                    "Typeclass deriver ${deriverCompanion.classIdOrFail.asString()} is missing $deriveMethodName"
+                }
+            pluginContext.reportTypeclassError(
+                message = message,
+                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                location = compilerMessageLocation(),
+            )
+            return emptyList()
+        }
         val prerequisiteTypes =
             when (shape) {
                 is DerivedShape.Product -> shape.fields.map { field -> typeclassGoal(typeclassId, field.type) }
                 is DerivedShape.Sum -> shape.cases.map { case -> typeclassGoal(typeclassId, case.type) }
+                is DerivedShape.Enum -> emptyList()
             }
         val providedTypes = expandDerivedProvidedTypes(typeclassId, targetType)
         return providedTypes.map { providedType ->
@@ -2561,6 +2743,25 @@ private class IrModuleScanner(
             return null
         }
         return DerivedShape.Sum(cases)
+    }
+
+    private fun IrClass.buildDerivedEnumShape(): DerivedShape.Enum? {
+        val entries =
+            declarations.filterIsInstance<IrEnumEntry>().map { entry ->
+                DerivedEnumEntry(
+                    name = entry.name.asString(),
+                    entry = entry,
+                )
+            }
+        if (entries.isEmpty()) {
+            pluginContext.reportTypeclassError(
+                message = "Cannot derive ${classIdOrFail.asString()} because enum derivation requires at least one enum entry",
+                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                location = compilerMessageLocation(),
+            )
+            return null
+        }
+        return DerivedShape.Enum(entries)
     }
 
     private fun IrClass.caseTypeForSealedBase(
@@ -3108,6 +3309,10 @@ private sealed interface DerivedShape {
     data class Sum(
         val cases: List<DerivedCase>,
     ) : DerivedShape
+
+    data class Enum(
+        val entries: List<DerivedEnumEntry>,
+    ) : DerivedShape
 }
 
 private data class DerivedField(
@@ -3120,6 +3325,11 @@ private data class DerivedCase(
     val name: String,
     val klass: IrClass,
     val type: TcType,
+)
+
+private data class DerivedEnumEntry(
+    val name: String,
+    val entry: IrEnumEntry,
 )
 
 private data class WrapperResolutionShape(
