@@ -71,9 +71,13 @@ import org.jetbrains.kotlin.ir.declarations.IrTypeParameter
 import org.jetbrains.kotlin.ir.declarations.IrValueParameter
 import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.expressions.IrClassReference
+import org.jetbrains.kotlin.ir.expressions.IrComposite
 import org.jetbrains.kotlin.ir.expressions.IrExpression
+import org.jetbrains.kotlin.ir.expressions.IrExpressionBody
+import org.jetbrains.kotlin.ir.expressions.IrReturn
 import org.jetbrains.kotlin.ir.expressions.IrStatementOrigin
 import org.jetbrains.kotlin.ir.expressions.IrSpreadElement
+import org.jetbrains.kotlin.ir.expressions.IrTypeOperatorCall
 import org.jetbrains.kotlin.ir.expressions.IrVararg
 import org.jetbrains.kotlin.ir.expressions.impl.IrFunctionExpressionImpl
 import org.jetbrains.kotlin.ir.types.IrSimpleType
@@ -98,6 +102,8 @@ import org.jetbrains.kotlin.ir.util.parentAsClass
 import org.jetbrains.kotlin.ir.util.render
 import org.jetbrains.kotlin.ir.util.substitute
 import org.jetbrains.kotlin.ir.visitors.IrElementTransformerVoid
+import org.jetbrains.kotlin.ir.visitors.IrVisitorVoid
+import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
 import org.jetbrains.kotlin.ir.visitors.transformChildrenVoid
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
@@ -123,6 +129,7 @@ private class TypeclassIrCallTransformer(
     private val ruleIndex: IrRuleIndex,
 ) : IrElementTransformerVoid() {
     private val configuration: TypeclassConfiguration = ruleIndex.configuration
+    private val deriverReturnValidationCache: MutableMap<IrSimpleFunction, Boolean> = linkedMapOf()
     private val declarationStack = ArrayDeque<IrDeclarationBase>()
     private val functionStack = ArrayDeque<IrFunction>()
 
@@ -1155,6 +1162,9 @@ private class TypeclassIrCallTransformer(
                 .filterIsInstance<IrSimpleFunction>()
                 .singleOrNull { function -> function.name.asString() == deriveMethodName }
                 ?: error("Typeclass deriver ${reference.deriverCompanion.classIdOrFail} is missing $deriveMethodName")
+        if (!validateKnownDeriverReturnTypeclass(reference.deriverCompanion.parentAsClass, deriveMethod)) {
+            return irAs(irNull(), resultType)
+        }
 
         return irIfThenElse(
             type = resultType,
@@ -1198,6 +1208,36 @@ private class TypeclassIrCallTransformer(
                 },
         )
     }
+
+    private fun validateKnownDeriverReturnTypeclass(
+        typeclassInterface: IrClass,
+        deriveMethod: IrSimpleFunction,
+    ): Boolean =
+        deriverReturnValidationCache.getOrPut(deriveMethod) {
+            val expectedTypeclassId = typeclassInterface.classIdOrFail.asString()
+            deriveMethod.knownDeriverReturnTypes().forEach { returnType ->
+                val knownTypeclassConstructors =
+                    listOf(returnType)
+                        .providedTypeExpansion(emptyMap(), configuration)
+                        .validTypes
+                        .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
+                        .distinct()
+                if (knownTypeclassConstructors.isEmpty()) {
+                    return@forEach
+                }
+                if (expectedTypeclassId in knownTypeclassConstructors) {
+                    return@forEach
+                }
+                pluginContext.reportTypeclassError(
+                    message =
+                        "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>; found ${knownTypeclassConstructors.joinToString { classifierId -> classifierId.shortClassNameOrSelf() }}",
+                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                    location = deriveMethod.compilerMessageLocation(),
+                )
+                return@getOrPut false
+            }
+            true
+        }
 
     private fun IrStatementsBuilder<*>.buildProductMetadata(
         reference: RuleReference.Derived,
@@ -1541,6 +1581,59 @@ private fun IrFile.compilerMessageLocation(offset: Int): CompilerMessageSourceLo
     }
 }
 
+private fun IrSimpleFunction.knownDeriverReturnTypes(): List<IrType> {
+    val body = body ?: return emptyList()
+    val returnTypes = linkedSetOf<IrType>()
+
+    fun record(expression: IrExpression?) {
+        expression?.knownReturnedTypeOrNull()?.let(returnTypes::add)
+    }
+
+    when (body) {
+        is IrExpressionBody -> record(body.expression)
+        is org.jetbrains.kotlin.ir.expressions.IrBlockBody ->
+            (body.statements.lastOrNull() as? IrExpression)?.let(::record)
+        else -> Unit
+    }
+
+    body.acceptChildrenVoid(
+        object : IrVisitorVoid() {
+            override fun visitElement(element: IrElement) {
+                element.acceptChildrenVoid(this)
+            }
+
+            override fun visitFunction(declaration: IrFunction) {
+                return
+            }
+
+            override fun visitClass(declaration: IrClass) {
+                return
+            }
+
+            override fun visitReturn(expression: IrReturn) {
+                if (expression.returnTargetSymbol == this@knownDeriverReturnTypes.symbol) {
+                    record(expression.value)
+                    return
+                }
+                super.visitReturn(expression)
+            }
+        },
+    )
+    return returnTypes.toList()
+}
+
+private fun IrExpression.knownReturnedTypeOrNull(): IrType? =
+    when (this) {
+        is IrTypeOperatorCall -> argument.knownReturnedTypeOrNull()
+        is IrComposite -> (statements.lastOrNull() as? IrExpression)?.knownReturnedTypeOrNull() ?: type
+        is org.jetbrains.kotlin.ir.expressions.IrBlock ->
+            (statements.lastOrNull() as? IrExpression)?.knownReturnedTypeOrNull() ?: type
+        else -> type
+    }
+
+private fun String.shortClassNameOrSelf(): String =
+    runCatching { ClassId.fromString(this).shortClassName.asString() }.getOrDefault(this)
+
 private class IrRuleIndex private constructor(
     private val pluginContext: IrPluginContext,
     val configuration: TypeclassConfiguration,
@@ -1552,6 +1645,7 @@ private class IrRuleIndex private constructor(
 ) {
     private val lazilyDiscoveredAssociatedRulesByOwner: MutableMap<ClassId, List<ResolvedRule>> = linkedMapOf()
     private val lazilyDiscoveredRulesById: MutableMap<String, ResolvedRule> = linkedMapOf()
+    private val deriverReturnValidationCache: MutableMap<IrSimpleFunction, Boolean> = linkedMapOf()
 
     fun originalForWrapperLikeFunction(wrapperLikeFunction: IrSimpleFunction): IrSimpleFunction? {
         val callableId = wrapperLikeFunction.safeCallableIdOrNull() ?: return null

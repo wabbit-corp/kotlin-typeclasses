@@ -1,6 +1,7 @@
 @file:OptIn(
     org.jetbrains.kotlin.fir.declarations.DirectDeclarationsAccess::class,
     org.jetbrains.kotlin.fir.symbols.SymbolInternals::class,
+    org.jetbrains.kotlin.fir.expressions.UnresolvedExpressionTypeAccess::class,
 )
 
 package one.wabbit.typeclass.plugin
@@ -21,11 +22,17 @@ import org.jetbrains.kotlin.fir.analysis.checkers.declaration.FirPropertyChecker
 import org.jetbrains.kotlin.fir.analysis.checkers.declaration.FirRegularClassChecker
 import org.jetbrains.kotlin.fir.analysis.checkers.declaration.FirSimpleFunctionChecker
 import org.jetbrains.kotlin.fir.analysis.extensions.FirAdditionalCheckersExtension
+import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.declarations.FirConstructor
+import org.jetbrains.kotlin.fir.declarations.FirFunction
 import org.jetbrains.kotlin.fir.declarations.FirProperty
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 import org.jetbrains.kotlin.fir.declarations.FirSimpleFunction
 import org.jetbrains.kotlin.fir.declarations.hasAnnotation
+import org.jetbrains.kotlin.fir.expressions.FirAnonymousFunctionExpression
+import org.jetbrains.kotlin.fir.expressions.FirAnonymousObjectExpression
+import org.jetbrains.kotlin.fir.expressions.FirExpression
+import org.jetbrains.kotlin.fir.expressions.FirReturnExpression
 import org.jetbrains.kotlin.fir.types.coneType
 import org.jetbrains.kotlin.fir.types.ConeClassLikeType
 import org.jetbrains.kotlin.fir.types.ConeDefinitelyNotNullType
@@ -34,8 +41,10 @@ import org.jetbrains.kotlin.fir.types.ConeKotlinType
 import org.jetbrains.kotlin.fir.types.ConeStarProjection
 import org.jetbrains.kotlin.fir.types.lowerBoundIfFlexible
 import org.jetbrains.kotlin.fir.types.type
+import org.jetbrains.kotlin.fir.visitors.FirDefaultVisitorVoid
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.name.SpecialNames
 
 internal class TypeclassFirCheckersExtension(
     session: FirSession,
@@ -45,6 +54,9 @@ internal class TypeclassFirCheckersExtension(
         object : FirRegularClassChecker(MppCheckerKind.Common) {
             context(context: CheckerContext, reporter: DiagnosticReporter)
             override fun check(declaration: FirRegularClass) {
+                if (declaration.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)) {
+                    validateTypeclassDeriverCompanionContracts(declaration)
+                }
                 if (declaration.hasAnnotation(DERIVE_ANNOTATION_CLASS_ID, session)) {
                     validateDeriveDeclaration(declaration)
                 }
@@ -287,6 +299,41 @@ internal class TypeclassFirCheckersExtension(
     }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun validateTypeclassDeriverCompanionContracts(
+        declaration: FirRegularClass,
+    ) {
+        val companion =
+            declaration.declarations
+                .filterIsInstance<FirRegularClass>()
+                .singleOrNull { nested -> nested.symbol.classId.shortClassName == SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT }
+                ?: return
+        val typeclassId = declaration.symbol.classId
+        companion.declarations
+            .filterIsInstance<FirSimpleFunction>()
+            .forEach { function ->
+                val deriveMethodName = function.name.asString()
+                if (deriveMethodName != "deriveProduct" && deriveMethodName != "deriveSum") {
+                    return@forEach
+                }
+                function.knownDeriverReturnExpressions().forEach { expression ->
+                    val knownTypeclassConstructors =
+                        expression.knownReturnedTypeclassConstructors(session, sharedState.configuration)
+                    if (knownTypeclassConstructors.isEmpty()) {
+                        return@forEach
+                    }
+                    if (typeclassId.asString() in knownTypeclassConstructors) {
+                        return@forEach
+                    }
+                    reportCannotDerive(
+                        function,
+                        "$deriveMethodName must return ${typeclassId.shortClassName.asString()}<...>; found ${knownTypeclassConstructors.joinToString { classifierId -> classifierId.shortClassNameOrSelf() }}",
+                    )
+                    return
+                }
+            }
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
     private fun reportInvalid(
         declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
         message: String,
@@ -319,6 +366,63 @@ internal class TypeclassFirCheckersExtension(
         }
 
 }
+
+private fun FirSimpleFunction.knownDeriverReturnExpressions(): List<FirExpression> {
+    val expressions = linkedSetOf<FirExpression>()
+    val body = body ?: return emptyList()
+    body.statements.lastOrNull()?.let { statement ->
+        when (statement) {
+            is FirReturnExpression -> expressions += statement.result
+            is FirExpression -> expressions += statement
+        }
+    }
+    body.acceptChildren(
+        object : FirDefaultVisitorVoid() {
+            override fun visitElement(element: FirElement) {
+                element.acceptChildren(this)
+            }
+
+            override fun visitFunction(function: FirFunction) {
+                return
+            }
+
+            override fun visitAnonymousFunctionExpression(anonymousFunctionExpression: FirAnonymousFunctionExpression) {
+                return
+            }
+
+            override fun visitRegularClass(regularClass: FirRegularClass) {
+                return
+            }
+
+            override fun visitReturnExpression(returnExpression: FirReturnExpression) {
+                if (returnExpression.target.labeledElement === this@knownDeriverReturnExpressions) {
+                    expressions += returnExpression.result
+                }
+                returnExpression.result.acceptChildren(this)
+            }
+        },
+    )
+    return expressions.toList()
+}
+
+private fun FirExpression.knownReturnedTypeclassConstructors(
+    session: FirSession,
+    configuration: TypeclassConfiguration,
+): List<String> =
+    when (this) {
+        is FirAnonymousObjectExpression ->
+            anonymousObject.superTypeRefs
+                .map { typeRef -> typeRef.coneType }
+                .expandProvidedTypes(session, emptyMap(), configuration)
+                .validTypes
+                .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
+                .distinct()
+
+        else -> emptyList()
+    }
+
+private fun String.shortClassNameOrSelf(): String =
+    runCatching { ClassId.fromString(this).shortClassName.asString() }.getOrDefault(this)
 
 private fun containsStarProjection(type: ConeKotlinType): Boolean {
     val lowerBound = type.lowerBoundIfFlexible()

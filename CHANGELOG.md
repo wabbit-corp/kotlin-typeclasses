@@ -86,3 +86,4 @@
 - Fix contextual `in` / `contains` operator rewriting by swapping Kotlin's lowered `IrStatementOrigin.IN` receiver/value layout back into the original extension-call shape, and enable the `rewritesContextualContainsOperatorCalls` integration test.
 - Filter obviously impossible model-only builtin proof rules such as `NotSame<A, A>`, nullable `KClass<T?>`, and mismatched `SameTypeConstructor<F<_>, G<_>>` before planning so they cannot create spurious ambiguity or disappear only at IR materialization time.
 - Filter obviously impossible `Subtype` and `StrictSubtype` proof goals before planning when the plugin can prove they fail from source-visible variance and hierarchy metadata, and add review regressions so impossible builtin prerequisites no longer interfere with ordinary instance search.
+- Reject `deriveProduct` and `deriveSum` implementations when FIR can statically see they return the wrong typeclass constructor for their enclosing `@Typeclass`.
