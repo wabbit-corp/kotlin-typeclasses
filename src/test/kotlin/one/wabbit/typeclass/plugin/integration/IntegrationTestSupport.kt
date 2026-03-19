@@ -39,12 +39,18 @@ abstract class IntegrationTestSupport {
         requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
         dependencies: List<HarnessDependency> = emptyList(),
+        useTypeclassPlugin: Boolean = true,
+        enableContextParameters: Boolean = true,
+        compilerArguments: List<String> = emptyList(),
     ) {
         compileSource(
             source = source,
             requiredPlugins = requiredPlugins,
             pluginOptions = pluginOptions,
             dependencies = dependencies,
+            useTypeclassPlugin = useTypeclassPlugin,
+            enableContextParameters = enableContextParameters,
+            compilerArguments = compilerArguments,
         )
     }
 
@@ -56,6 +62,9 @@ abstract class IntegrationTestSupport {
         requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
         dependencies: List<HarnessDependency> = emptyList(),
+        useTypeclassPlugin: Boolean = true,
+        enableContextParameters: Boolean = true,
+        compilerArguments: List<String> = emptyList(),
     ) {
         assertDoesNotCompile(
             sources = mapOf("Sample.kt" to source),
@@ -65,6 +74,9 @@ abstract class IntegrationTestSupport {
             requiredPlugins = requiredPlugins,
             pluginOptions = pluginOptions,
             dependencies = dependencies,
+            useTypeclassPlugin = useTypeclassPlugin,
+            enableContextParameters = enableContextParameters,
+            compilerArguments = compilerArguments,
         )
     }
 
@@ -76,8 +88,20 @@ abstract class IntegrationTestSupport {
         requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
         dependencies: List<HarnessDependency> = emptyList(),
+        useTypeclassPlugin: Boolean = true,
+        enableContextParameters: Boolean = true,
+        compilerArguments: List<String> = emptyList(),
     ) {
-        val result = compileSourceInternal(sources, requiredPlugins, pluginOptions, dependencies)
+        val result =
+            compileSourceInternal(
+                sources = sources,
+                requiredPlugins = requiredPlugins,
+                pluginOptions = pluginOptions,
+                dependencies = dependencies,
+                useTypeclassPlugin = useTypeclassPlugin,
+                enableContextParameters = enableContextParameters,
+                compilerArguments = compilerArguments,
+            )
         assertEquals(
             ExitCode.COMPILATION_ERROR,
             result.exitCode,
@@ -112,6 +136,9 @@ abstract class IntegrationTestSupport {
         requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
         dependencies: List<HarnessDependency> = emptyList(),
+        useTypeclassPlugin: Boolean = true,
+        enableContextParameters: Boolean = true,
+        compilerArguments: List<String> = emptyList(),
     ) {
         assertCompilesAndRuns(
             sources = mapOf("Sample.kt" to source),
@@ -120,6 +147,9 @@ abstract class IntegrationTestSupport {
             requiredPlugins = requiredPlugins,
             pluginOptions = pluginOptions,
             dependencies = dependencies,
+            useTypeclassPlugin = useTypeclassPlugin,
+            enableContextParameters = enableContextParameters,
+            compilerArguments = compilerArguments,
         )
     }
 
@@ -130,8 +160,20 @@ abstract class IntegrationTestSupport {
         requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
         dependencies: List<HarnessDependency> = emptyList(),
+        useTypeclassPlugin: Boolean = true,
+        enableContextParameters: Boolean = true,
+        compilerArguments: List<String> = emptyList(),
     ) {
-        val artifacts = compileSource(sources, requiredPlugins, pluginOptions, dependencies)
+        val artifacts =
+            compileSource(
+                sources = sources,
+                requiredPlugins = requiredPlugins,
+                pluginOptions = pluginOptions,
+                dependencies = dependencies,
+                useTypeclassPlugin = useTypeclassPlugin,
+                enableContextParameters = enableContextParameters,
+                compilerArguments = compilerArguments,
+            )
         val javaExecutable = Path.of(System.getProperty("java.home"), "bin", "java").toAbsolutePath().toString()
         val process =
             ProcessBuilder(
@@ -153,8 +195,20 @@ abstract class IntegrationTestSupport {
         requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
         dependencies: List<HarnessDependency> = emptyList(),
+        useTypeclassPlugin: Boolean = true,
+        enableContextParameters: Boolean = true,
+        compilerArguments: List<String> = emptyList(),
     ): CompilationArtifacts {
-        val result = compileSourceInternal(sources, requiredPlugins, pluginOptions, dependencies)
+        val result =
+            compileSourceInternal(
+                sources = sources,
+                requiredPlugins = requiredPlugins,
+                pluginOptions = pluginOptions,
+                dependencies = dependencies,
+                useTypeclassPlugin = useTypeclassPlugin,
+                enableContextParameters = enableContextParameters,
+                compilerArguments = compilerArguments,
+            )
         assertEquals(
             ExitCode.OK,
             result.exitCode,
@@ -168,12 +222,18 @@ abstract class IntegrationTestSupport {
         requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
         dependencies: List<HarnessDependency> = emptyList(),
+        useTypeclassPlugin: Boolean = true,
+        enableContextParameters: Boolean = true,
+        compilerArguments: List<String> = emptyList(),
     ): CompilationArtifacts {
         return compileSource(
             sources = mapOf("Sample.kt" to source),
             requiredPlugins = requiredPlugins,
             pluginOptions = pluginOptions,
             dependencies = dependencies,
+            useTypeclassPlugin = useTypeclassPlugin,
+            enableContextParameters = enableContextParameters,
+            compilerArguments = compilerArguments,
         )
     }
 
@@ -182,12 +242,18 @@ abstract class IntegrationTestSupport {
         requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
         dependencies: List<HarnessDependency> = emptyList(),
+        useTypeclassPlugin: Boolean = true,
+        enableContextParameters: Boolean = true,
+        compilerArguments: List<String> = emptyList(),
     ): CompilationResult {
         return compileSourceInternal(
             sources = mapOf("Sample.kt" to source),
             requiredPlugins = requiredPlugins,
             pluginOptions = pluginOptions,
             dependencies = dependencies,
+            useTypeclassPlugin = useTypeclassPlugin,
+            enableContextParameters = enableContextParameters,
+            compilerArguments = compilerArguments,
         )
     }
 
@@ -196,33 +262,123 @@ abstract class IntegrationTestSupport {
         requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
         pluginOptions: List<String> = emptyList(),
         dependencies: List<HarnessDependency> = emptyList(),
+        useTypeclassPlugin: Boolean = true,
+        enableContextParameters: Boolean = true,
+        compilerArguments: List<String> = emptyList(),
     ): CompilationResult {
-        val dependencyArtifacts =
-            dependencies.map { dependency ->
-                val dependencyResult =
-                    compileSourceInternal(
-                        sources = dependency.sources,
-                        requiredPlugins = dependency.requiredPlugins,
-                        pluginOptions = dependency.pluginOptions,
-                        dependencies = dependency.dependencies,
+        val plan =
+            buildCompilationPlan(
+                sources = sources,
+                settings =
+                    HarnessCompilationSettings(
+                        requiredPlugins = requiredPlugins,
+                        pluginOptions = pluginOptions,
+                        useTypeclassPlugin = useTypeclassPlugin,
+                        enableContextParameters = enableContextParameters,
+                        compilerArguments = compilerArguments,
+                    ),
+                dependencies = dependencies,
+            )
+        return executeCompilationPlan(plan)
+    }
+
+    private fun buildCompilationPlan(
+        sources: Map<String, String>,
+        settings: HarnessCompilationSettings,
+        dependencies: List<HarnessDependency>,
+    ): HarnessCompilationPlan {
+        var nextStepId = 0
+
+        fun createStep(
+            preferredName: String?,
+            stepSources: Map<String, String>,
+            stepSettings: HarnessCompilationSettings,
+            stepDependencies: List<HarnessDependency>,
+        ): HarnessCompilationStep {
+            val stepId = nextStepId++
+            val stepName = preferredName ?: if (stepId == 0) "main" else "step-$stepId"
+            return HarnessCompilationStep(
+                id = stepId,
+                name = stepName,
+                sources = stepSources,
+                settings = stepSettings,
+                dependencies =
+                    stepDependencies.map { dependency ->
+                        createStep(
+                            preferredName = dependency.name,
+                            stepSources = dependency.sources,
+                            stepSettings = dependency.toSettings(),
+                            stepDependencies = dependency.dependencies,
+                        )
+                    },
+            )
+        }
+
+        val root =
+            createStep(
+                preferredName = "main",
+                stepSources = sources,
+                stepSettings = settings,
+                stepDependencies = dependencies,
+            )
+        return HarnessCompilationPlan(
+            root = root,
+            orderedSteps = buildCompilationOrder(root),
+        )
+    }
+
+    private fun buildCompilationOrder(root: HarnessCompilationStep): List<HarnessCompilationStep> {
+        val ordered = mutableListOf<HarnessCompilationStep>()
+
+        fun visit(step: HarnessCompilationStep) {
+            step.dependencies.forEach(::visit)
+            ordered += step
+        }
+
+        visit(root)
+        return ordered
+    }
+
+    private fun executeCompilationPlan(plan: HarnessCompilationPlan): CompilationResult {
+        val resultsByStepId = linkedMapOf<Int, CompilationResult>()
+        plan.orderedSteps.forEach { step ->
+            val dependencyArtifacts =
+                step.dependencies.map { dependency ->
+                    val dependencyResult =
+                        requireNotNull(resultsByStepId[dependency.id]) {
+                            "Missing compilation result for dependency step ${dependency.name}"
+                        }
+                    assertEquals(
+                        ExitCode.OK,
+                        dependencyResult.exitCode,
+                        dependencyResult.stdout,
                     )
-                assertEquals(
-                    ExitCode.OK,
-                    dependencyResult.exitCode,
-                    dependencyResult.stdout,
-                )
-                dependencyResult.artifacts
-            }
-        val workingDir = createTempDirectory(prefix = "typeclass-compile-")
+                    dependencyResult.artifacts
+                }
+            resultsByStepId[step.id] = compileSingleStep(step, dependencyArtifacts)
+        }
+        return requireNotNull(resultsByStepId[plan.root.id]) {
+            "Missing compilation result for root step ${plan.root.name}"
+        }
+    }
+
+    private fun compileSingleStep(
+        step: HarnessCompilationStep,
+        dependencyArtifacts: List<CompilationArtifacts>,
+    ): CompilationResult {
+        require(step.settings.useTypeclassPlugin || step.settings.pluginOptions.isEmpty()) {
+            "Typeclass plugin options require the typeclass plugin for step ${step.name}"
+        }
+        val workingDir = createTempDirectory(prefix = "typeclass-${step.id}-${sanitizeStepName(step.name)}-")
         val outputDir = workingDir.resolve("out")
         outputDir.createDirectories()
         val supportSources =
             buildMap<String, String> {
-                requiredPlugins.forEach { plugin ->
+                step.settings.requiredPlugins.forEach { plugin ->
                     putAll(plugin.supportSources)
                 }
             }
-        val effectiveSources = supportSources + sources
+        val effectiveSources = supportSources + step.sources
         val sourceFiles =
             effectiveSources.map { (relativePath, contents) ->
                 workingDir.resolve(relativePath).also { sourceFile ->
@@ -234,18 +390,24 @@ abstract class IntegrationTestSupport {
         val pluginProjectRoot = locateProjectRoot()
         val runtimeProjectRoot = pluginProjectRoot.parent.resolve("kotlin-typeclasses")
         val pluginJar =
-            locateBuiltJar(pluginProjectRoot.resolve("build/libs"), "kotlin-typeclasses-plugin")
-                .let { builtJar ->
-                    val isolatedPluginJar = workingDir.resolve("plugin").resolve(builtJar.fileName.toString())
-                    isolatedPluginJar.parent.createDirectories()
-                    Files.copy(builtJar, isolatedPluginJar)
-                    isolatedPluginJar
-                }
+            if (step.settings.useTypeclassPlugin) {
+                locateBuiltJar(pluginProjectRoot.resolve("build/libs"), "kotlin-typeclasses-plugin")
+                    .let { builtJar ->
+                        val isolatedPluginJar = workingDir.resolve("plugin").resolve(builtJar.fileName.toString())
+                        isolatedPluginJar.parent.createDirectories()
+                        Files.copy(builtJar, isolatedPluginJar)
+                        isolatedPluginJar
+                    }
+            } else {
+                null
+            }
         val runtimeClasspathEntry = locateRuntimeClasspathEntry(runtimeProjectRoot)
         val stdlibJar = locateStdlibJar()
-        val resolvedSupport = resolveHarnessSupport(requiredPlugins)
+        val resolvedSupport = resolveHarnessSupport(step.settings.requiredPlugins)
 
-        assertTrue(pluginJar.toFile().isFile, "Plugin jar is missing at $pluginJar")
+        pluginJar?.let { isolatedPluginJar ->
+            assertTrue(isolatedPluginJar.toFile().isFile, "Plugin jar is missing at $isolatedPluginJar")
+        }
         assertTrue(runtimeClasspathEntry.toFile().exists(), "Runtime classpath entry is missing at $runtimeClasspathEntry")
         assertTrue(stdlibJar.toFile().isFile, "Kotlin stdlib jar is missing at $stdlibJar")
         resolvedSupport.runtimeClasspathEntries.forEach { runtimeJar ->
@@ -270,24 +432,29 @@ abstract class IntegrationTestSupport {
 
         val stdout = ByteArrayOutputStream()
         val jvmTarget =
-            requiredPlugins.fold(DEFAULT_HARNESS_JVM_TARGET) { current, plugin ->
+            step.settings.requiredPlugins.fold(DEFAULT_HARNESS_JVM_TARGET) { current, plugin ->
                 maxJvmTarget(current, plugin.minimumJvmTarget)
             }
         val compilerArguments =
             buildList {
-                add("-Xcontext-parameters")
+                if (step.settings.enableContextParameters) {
+                    add("-Xcontext-parameters")
+                }
                 add("-no-stdlib")
                 add("-no-reflect")
                 add("-jvm-target")
                 add(jvmTarget)
-                add("-Xplugin=${pluginJar.toAbsolutePath()}")
+                pluginJar?.let { isolatedPluginJar ->
+                    add("-Xplugin=${isolatedPluginJar.toAbsolutePath()}")
+                }
                 resolvedSupport.compilerPluginJars.forEach { compilerPluginJar ->
                     add("-Xplugin=${compilerPluginJar.toAbsolutePath()}")
                 }
                 addAll(resolvedSupport.compilerArguments)
+                addAll(step.settings.compilerArguments)
                 add("-classpath")
                 add(runtimeClasspathEntries.joinToString(separator = java.io.File.pathSeparator) { it.toAbsolutePath().toString() })
-                pluginOptions.forEach { option ->
+                step.settings.pluginOptions.forEach { option ->
                     add("-P")
                     add("plugin:$TYPECLASS_PLUGIN_ID:$option")
                 }
@@ -311,6 +478,9 @@ abstract class IntegrationTestSupport {
                 ),
         )
     }
+
+    private fun sanitizeStepName(name: String): String =
+        name.replace(Regex("[^A-Za-z0-9]+"), "-").trim('-').ifEmpty { "step" }
 
     private fun locateProjectRoot(): Path {
         val candidates =
@@ -565,10 +735,14 @@ data class CompilationArtifacts(
 )
 
 data class HarnessDependency(
+    val name: String? = null,
     val sources: Map<String, String>,
     val requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
     val pluginOptions: List<String> = emptyList(),
     val dependencies: List<HarnessDependency> = emptyList(),
+    val useTypeclassPlugin: Boolean = true,
+    val enableContextParameters: Boolean = true,
+    val compilerArguments: List<String> = emptyList(),
 )
 
 data class CompilationResult(
@@ -576,6 +750,36 @@ data class CompilationResult(
     val stdout: String,
     val artifacts: CompilationArtifacts,
 )
+
+private data class HarnessCompilationSettings(
+    val requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
+    val pluginOptions: List<String> = emptyList(),
+    val useTypeclassPlugin: Boolean = true,
+    val enableContextParameters: Boolean = true,
+    val compilerArguments: List<String> = emptyList(),
+)
+
+private data class HarnessCompilationStep(
+    val id: Int,
+    val name: String,
+    val sources: Map<String, String>,
+    val settings: HarnessCompilationSettings,
+    val dependencies: List<HarnessCompilationStep>,
+)
+
+private data class HarnessCompilationPlan(
+    val root: HarnessCompilationStep,
+    val orderedSteps: List<HarnessCompilationStep>,
+)
+
+private fun HarnessDependency.toSettings(): HarnessCompilationSettings =
+    HarnessCompilationSettings(
+        requiredPlugins = requiredPlugins,
+        pluginOptions = pluginOptions,
+        useTypeclassPlugin = useTypeclassPlugin,
+        enableContextParameters = enableContextParameters,
+        compilerArguments = compilerArguments,
+    )
 
 enum class DiagnosticSeverity {
     ERROR,
