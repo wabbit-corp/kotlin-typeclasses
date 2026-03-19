@@ -327,7 +327,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("ambiguous typeclass instance"),
-            expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("show")),
+            expectedDiagnostics = listOf(expectedAmbiguousInstance("show")),
         )
     }
 

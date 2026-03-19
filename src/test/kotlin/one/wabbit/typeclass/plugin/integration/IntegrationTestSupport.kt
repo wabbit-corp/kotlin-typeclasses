@@ -1,6 +1,7 @@
 package one.wabbit.typeclass.plugin.integration
 
 import one.wabbit.typeclass.plugin.TYPECLASS_PLUGIN_ID
+import one.wabbit.typeclass.plugin.TypeclassDiagnosticIds
 import org.jetbrains.kotlin.cli.common.ExitCode
 import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
 import kotlin.io.path.createDirectories
@@ -22,6 +23,7 @@ abstract class IntegrationTestSupport {
         private val locatedSupportJars = ConcurrentHashMap<String, Path>()
         private val locatedDiagnosticRegex = Regex("""^(.+):(\d+):(\d+):\s+(error|warning):\s+(.*)$""")
         private val globalDiagnosticRegex = Regex("""^(e|w|error|warning):\s+(.*)$""")
+        private val prefixedDiagnosticIdRegex = Regex("""^\[(TC_[A-Z_]+)]\s*(.*)$""")
 
         private fun maxJvmTarget(left: String, right: String): String =
             if (normalizeJvmTarget(left) >= normalizeJvmTarget(right)) {
@@ -134,18 +136,98 @@ abstract class IntegrationTestSupport {
         file: String? = null,
         line: Int? = null,
     ): ExpectedDiagnostic.Error =
-        ExpectedDiagnostic.Error(
+        inferDiagnosticIdsFromFragments(fragments.asList()).let { diagnosticIds ->
+            ExpectedDiagnostic.Error(
+                diagnosticIds = diagnosticIds,
             file = file,
             line = line,
-            description = "message containing ${fragments.joinToString()}",
+                description =
+                    buildString {
+                        diagnosticIds?.joinToString(prefix = "ids ", separator = " or ")?.let(::append)
+                        if (isNotEmpty()) {
+                            append(", ")
+                        }
+                        append("message containing ${fragments.joinToString()}")
+                    },
+                messagePredicate = { message ->
+                    val normalized = message.lowercase()
+                    fragments.all { normalized.contains(it.lowercase()) }
+                },
+            )
+        }
+
+    protected fun expectedDiagnosticId(
+        diagnosticId: String,
+        vararg fragments: String,
+        file: String? = null,
+        line: Int? = null,
+    ): ExpectedDiagnostic.Error =
+        ExpectedDiagnostic.Error(
+            diagnosticIds = setOf(diagnosticId),
+            file = file,
+            line = line,
+            description = "$diagnosticId containing ${fragments.joinToString()}",
             messagePredicate = { message ->
                 val normalized = message.lowercase()
                 fragments.all { normalized.contains(it.lowercase()) }
             },
         )
 
+    protected fun expectedNoContextArgument(
+        vararg fragments: String,
+        file: String? = null,
+        line: Int? = null,
+    ): ExpectedDiagnostic.Error =
+        expectedDiagnosticId(
+            TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT,
+            *fragments,
+            file = file,
+            line = line,
+        )
+
+    protected fun expectedAmbiguousInstance(
+        vararg fragments: String,
+        file: String? = null,
+        line: Int? = null,
+    ): ExpectedDiagnostic.Error =
+        expectedDiagnosticId(
+            TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE,
+            *fragments,
+            file = file,
+            line = line,
+        )
+
+    protected fun expectedInvalidInstanceDecl(
+        vararg fragments: String,
+        file: String? = null,
+        line: Int? = null,
+    ): ExpectedDiagnostic.Error =
+        expectedDiagnosticId(
+            TypeclassDiagnosticIds.INVALID_INSTANCE_DECL,
+            *fragments,
+            file = file,
+            line = line,
+        )
+
+    protected fun expectedCannotDerive(
+        vararg fragments: String,
+        file: String? = null,
+        line: Int? = null,
+    ): ExpectedDiagnostic.Error =
+        expectedDiagnosticId(
+            TypeclassDiagnosticIds.CANNOT_DERIVE,
+            *fragments,
+            file = file,
+            line = line,
+        )
+
     protected fun expectedAmbiguousOrNoContext(vararg fragments: String): ExpectedDiagnostic.Error =
         ExpectedDiagnostic.Error(
+            diagnosticIds =
+                setOf(
+                    TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE,
+                    TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT,
+                ),
             description = "ambiguous or missing-context diagnostic containing ${fragments.joinToString()}",
             messagePredicate = { message ->
                 val normalized = message.lowercase()
@@ -668,26 +750,75 @@ abstract class IntegrationTestSupport {
 
     private fun parseLocatedDiagnostic(line: String): ReportedDiagnostic? {
         val match = locatedDiagnosticRegex.matchEntire(line) ?: return null
+        val parsedMessage = parseDiagnosticMessage(match.groupValues[5])
         return ReportedDiagnostic(
             file = match.groupValues[1],
             line = match.groupValues[2].toInt(),
             column = match.groupValues[3].toInt(),
             severity = parseDiagnosticSeverity(match.groupValues[4]),
-            message = match.groupValues[5],
+            message = parsedMessage.message,
+            diagnosticId = parsedMessage.diagnosticId,
             rawLine = line,
         )
     }
 
     private fun parseGlobalDiagnostic(line: String): ReportedDiagnostic? {
         val match = globalDiagnosticRegex.matchEntire(line) ?: return null
+        val parsedMessage = parseDiagnosticMessage(match.groupValues[2])
         return ReportedDiagnostic(
             file = null,
             line = null,
             column = null,
             severity = parseDiagnosticSeverity(match.groupValues[1]),
-            message = match.groupValues[2],
+            message = parsedMessage.message,
+            diagnosticId = parsedMessage.diagnosticId,
             rawLine = line,
         )
+    }
+
+    private fun parseDiagnosticMessage(message: String): ParsedDiagnosticMessage {
+        val trimmed = message.trim()
+        val explicitMatch = prefixedDiagnosticIdRegex.matchEntire(trimmed)
+        if (explicitMatch != null) {
+            return ParsedDiagnosticMessage(
+                message = explicitMatch.groupValues[2],
+                diagnosticId = explicitMatch.groupValues[1],
+            )
+        }
+        return ParsedDiagnosticMessage(
+            message = trimmed,
+            diagnosticId = inferDiagnosticIdFromMessage(trimmed),
+        )
+    }
+
+    private fun inferDiagnosticIdsFromFragments(fragments: List<String>): Set<String>? {
+        val normalizedFragments = fragments.map(String::lowercase)
+        return when {
+            normalizedFragments.any { it == "no context argument" } ->
+                setOf(TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT)
+            normalizedFragments.any { it == "ambiguous typeclass instance" } ->
+                setOf(TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE)
+            normalizedFragments.any { it == "invalid @instance declaration" } ->
+                setOf(TypeclassDiagnosticIds.INVALID_INSTANCE_DECL)
+            normalizedFragments.any { it == "cannot derive" } ->
+                setOf(TypeclassDiagnosticIds.CANNOT_DERIVE)
+            else -> null
+        }
+    }
+
+    private fun inferDiagnosticIdFromMessage(message: String): String? {
+        val normalized = message.lowercase()
+        return when {
+            normalized.startsWith("no context argument for ") ->
+                TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT
+            normalized.startsWith("ambiguous typeclass instance for ") ->
+                TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE
+            normalized.startsWith("invalid @instance declaration:") ->
+                TypeclassDiagnosticIds.INVALID_INSTANCE_DECL
+            normalized.startsWith("cannot derive ") ->
+                TypeclassDiagnosticIds.CANNOT_DERIVE
+            else -> null
+        }
     }
 
     private fun parseDiagnosticSeverity(token: String): DiagnosticSeverity =
@@ -817,6 +948,7 @@ data class ReportedDiagnostic(
     val column: Int?,
     val severity: DiagnosticSeverity,
     val message: String,
+    val diagnosticId: String?,
     val rawLine: String,
 ) {
     override fun toString(): String {
@@ -843,13 +975,23 @@ data class ReportedDiagnostic(
             }
             append(severity.name.lowercase())
             append(": ")
+            diagnosticId?.let { id ->
+                append(TypeclassDiagnosticIds.prefix(id))
+                append(' ')
+            }
             append(message)
         }
     }
 }
 
+private data class ParsedDiagnosticMessage(
+    val message: String,
+    val diagnosticId: String?,
+)
+
 sealed class ExpectedDiagnostic private constructor(
     private val severity: DiagnosticSeverity,
+    private val diagnosticIds: Set<String>?,
     private val file: String?,
     private val line: Int?,
     private val description: String,
@@ -857,9 +999,13 @@ sealed class ExpectedDiagnostic private constructor(
 ) {
     fun matches(actual: ReportedDiagnostic): Boolean =
         actual.severity == severity &&
+            matchesDiagnosticId(actual.diagnosticId) &&
             matchesFile(actual.file) &&
             (line == null || actual.line == line) &&
             messagePredicate(actual.message)
+
+    private fun matchesDiagnosticId(actualDiagnosticId: String?): Boolean =
+        diagnosticIds == null || actualDiagnosticId in diagnosticIds
 
     private fun matchesFile(actualFile: String?): Boolean {
         if (file == null) {
@@ -881,6 +1027,7 @@ sealed class ExpectedDiagnostic private constructor(
             append(':')
             append(line ?: "*")
             append(", ")
+            diagnosticIds?.joinToString(prefix = "[", postfix = "] ")?.let(::append)
             append(description)
             append(')')
         }
@@ -888,11 +1035,13 @@ sealed class ExpectedDiagnostic private constructor(
     class Error(
         file: String? = null,
         line: Int? = null,
+        diagnosticIds: Set<String>? = null,
         messageRegex: String? = null,
         description: String? = null,
         messagePredicate: ((String) -> Boolean)? = null,
     ) : ExpectedDiagnostic(
             severity = DiagnosticSeverity.ERROR,
+            diagnosticIds = diagnosticIds,
             file = file,
             line = line,
             description = diagnosticDescription(messageRegex, description, messagePredicate),
@@ -902,11 +1051,13 @@ sealed class ExpectedDiagnostic private constructor(
     class Warning(
         file: String? = null,
         line: Int? = null,
+        diagnosticIds: Set<String>? = null,
         messageRegex: String? = null,
         description: String? = null,
         messagePredicate: ((String) -> Boolean)? = null,
     ) : ExpectedDiagnostic(
             severity = DiagnosticSeverity.WARNING,
+            diagnosticIds = diagnosticIds,
             file = file,
             line = line,
             description = diagnosticDescription(messageRegex, description, messagePredicate),

@@ -29,7 +29,7 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             expectedMessages = listOf("scope"),
             expectedDiagnostics =
                 listOf(
-                    ExpectedDiagnostic.Error(messageRegex = "(?i)(invalid @instance declaration|scope|top-level|associated)"),
+                    expectedInvalidInstanceDecl("top-level", "associated owners"),
                 ),
         )
     }
@@ -105,7 +105,7 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             expectedMessages = listOf("companion"),
             expectedDiagnostics =
                 listOf(
-                    ExpectedDiagnostic.Error(messageRegex = "(?i)(invalid @instance declaration|companion|top-level)"),
+                    expectedInvalidInstanceDecl("companion", "top-level"),
                 ),
         )
     }

@@ -482,7 +482,7 @@ class DerivationTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("cannot derive", "lit"),
-            expectedDiagnostics = listOf(expectedErrorContaining("derive")),
+            expectedDiagnostics = listOf(expectedCannotDerive("lit")),
         )
     }
 

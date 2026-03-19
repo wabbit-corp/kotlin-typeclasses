@@ -12,7 +12,7 @@ import org.jetbrains.kotlin.diagnostics.rendering.CommonRenderers
 internal object TypeclassErrors : KtDiagnosticsContainer() {
     val INVALID_INSTANCE_DECLARATION =
         KtDiagnosticFactory1<String>(
-            "INVALID_INSTANCE_DECLARATION",
+            TypeclassDiagnosticIds.INVALID_INSTANCE_DECL,
             Severity.ERROR,
             SourceElementPositioningStrategies.DEFAULT,
             PsiElement::class,
@@ -26,7 +26,7 @@ internal object TypeclassErrorMessages : BaseDiagnosticRendererFactory() {
     override val MAP by KtDiagnosticFactoryToRendererMap("TypeclassErrors") { map ->
         map.put(
             TypeclassErrors.INVALID_INSTANCE_DECLARATION,
-            "Invalid @Instance declaration: {0}",
+            "${TypeclassDiagnosticIds.prefix(TypeclassDiagnosticIds.INVALID_INSTANCE_DECL)} Invalid @Instance declaration: {0}",
             CommonRenderers.STRING,
         )
     }

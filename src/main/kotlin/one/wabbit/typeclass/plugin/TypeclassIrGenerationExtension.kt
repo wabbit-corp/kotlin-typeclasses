@@ -221,8 +221,13 @@ private class TypeclassIrCallTransformer(
             )
         }
 
-    private fun reportTypeclassResolutionFailure(message: String) {
-        pluginContext.messageCollector.report(CompilerMessageSeverity.ERROR, message)
+    private fun reportTypeclassResolutionFailure(
+        message: String,
+        diagnosticId: String? = null,
+    ) {
+        val renderedMessage =
+            diagnosticId?.let { id -> TypeclassDiagnosticIds.format(id, message) } ?: message
+        pluginContext.messageCollector.report(CompilerMessageSeverity.ERROR, renderedMessage)
     }
 
     private fun ResolutionPlan.renderForDiagnostic(): String =
@@ -296,7 +301,10 @@ private class TypeclassIrCallTransformer(
                             val message =
                                 "Ambiguous typeclass instance for ${goal.render()} in $currentScopeIdentity." +
                                     " Candidates: ${result.matchingPlans.joinToString { it.renderForDiagnostic() }}"
-                            reportTypeclassResolutionFailure(message)
+                            reportTypeclassResolutionFailure(
+                                message = message,
+                                diagnosticId = TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE,
+                            )
                             return fallbackCall
                         }
 
@@ -2038,7 +2046,10 @@ private class IrModuleScanner(
                 if (!caseType.referencedVariableIds().all(allowedVariableIds::contains)) {
                     pluginContext.messageCollector.report(
                         CompilerMessageSeverity.ERROR,
-                        "Cannot derive ${classIdOrFail.asString()} because sealed subclass ${subclass.classIdOrFail.asString()} introduces type parameters that are not quantified by the sealed root",
+                        TypeclassDiagnosticIds.format(
+                            TypeclassDiagnosticIds.CANNOT_DERIVE,
+                            "Cannot derive ${classIdOrFail.asString()} because sealed subclass ${subclass.classIdOrFail.asString()} introduces type parameters that are not quantified by the sealed root",
+                        ),
                     )
                     return null
                 }
@@ -2051,7 +2062,10 @@ private class IrModuleScanner(
         if (cases.size != directSubclasses.size) {
             pluginContext.messageCollector.report(
                 CompilerMessageSeverity.ERROR,
-                "Cannot derive ${classIdOrFail.asString()} because one or more sealed subclasses cannot be expressed from the sealed root's type parameters",
+                TypeclassDiagnosticIds.format(
+                    TypeclassDiagnosticIds.CANNOT_DERIVE,
+                    "Cannot derive ${classIdOrFail.asString()} because one or more sealed subclasses cannot be expressed from the sealed root's type parameters",
+                ),
             )
             return null
         }

@@ -144,7 +144,7 @@ class SurfaceTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("no context argument", "foo"),
-            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "foo")),
+            expectedDiagnostics = listOf(expectedNoContextArgument("foo")),
         )
     }
 
