@@ -3,6 +3,7 @@ package one.wabbit.typeclass.plugin
 import one.wabbit.typeclass.plugin.model.InstanceRule
 import one.wabbit.typeclass.plugin.model.TcType
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.types.Variance
 
 internal data class LookupFunctionShape(
     val dispatchReceiver: Boolean,
@@ -20,4 +21,5 @@ internal data class VisibleInstanceRule(
 internal data class VisibleClassHierarchyInfo(
     val superClassifiers: Set<String>,
     val isSealed: Boolean,
+    val typeParameterVariances: List<Variance>,
 )

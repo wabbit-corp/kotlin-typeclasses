@@ -1310,7 +1310,7 @@ private class IrRuleIndex private constructor(
     private val rulesById: Map<String, ResolvedRule>,
     private val topLevelRules: List<ResolvedRule>,
     private val associatedRulesByOwner: Map<ClassId, List<ResolvedRule>>,
-    private val classInfoById: Map<String, ClassHierarchyInfo>,
+    private val classInfoById: Map<String, VisibleClassHierarchyInfo>,
 ) {
     private val lazilyDiscoveredAssociatedRulesByOwner: MutableMap<ClassId, List<ResolvedRule>> = linkedMapOf()
     private val lazilyDiscoveredRulesById: MutableMap<String, ResolvedRule> = linkedMapOf()
@@ -1351,6 +1351,12 @@ private class IrRuleIndex private constructor(
             .asSequence()
             .filter { resolvedRule ->
                 resolvedRule.rule.id != "builtin:kclass" || supportsBuiltinKClassGoal(goal)
+            }
+            .filter { resolvedRule ->
+                resolvedRule.rule.id != "builtin:subtype" || supportsBuiltinSubtypeGoal(goal, classInfoById)
+            }
+            .filter { resolvedRule ->
+                resolvedRule.rule.id != "builtin:strict-subtype" || supportsBuiltinStrictSubtypeGoal(goal, classInfoById)
             }
             .filter { resolvedRule ->
                 resolvedRule.rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, pluginContext)
@@ -1598,7 +1604,7 @@ private class IrModuleScanner(
     private val pluginContext: IrPluginContext,
     private val configuration: TypeclassConfiguration,
 ) {
-    val classInfoById: MutableMap<String, ClassHierarchyInfo> = linkedMapOf()
+    val classInfoById: MutableMap<String, VisibleClassHierarchyInfo> = linkedMapOf()
 
     private val classesById = linkedMapOf<String, IrClass>()
     private val declaredDerivationsByClassId = linkedMapOf<String, Set<ClassId>>()
@@ -1763,12 +1769,13 @@ private class IrModuleScanner(
                     classesById[classId.asString()] = declaration
                     declaredDerivationsByClassId[classId.asString()] = declaration.derivedTypeclassIds()
                     classInfoById[classId.asString()] =
-                        ClassHierarchyInfo(
+                        VisibleClassHierarchyInfo(
                             superClassifiers =
                                 declaration.superTypes.mapNotNull { superType ->
                                     superType.classOrNull?.owner?.classId?.asString()
-                                },
+                                }.toSet(),
                             isSealed = declaration.modality == Modality.SEALED,
+                            typeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.variance },
                         )
                 }
 
@@ -2109,11 +2116,6 @@ private class IrModuleScanner(
         targetType: TcType,
     ): TcType = TcType.Constructor(typeclassId.asString(), listOf(targetType))
 }
-
-private data class ClassHierarchyInfo(
-    val superClassifiers: List<String>,
-    val isSealed: Boolean,
-)
 
 private fun builtinKClassRule(): InstanceRule {
     val parameter = TcTypeParameter(id = "builtin:kclass:T", displayName = "T")

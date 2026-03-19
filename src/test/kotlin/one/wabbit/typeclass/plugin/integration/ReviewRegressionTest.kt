@@ -316,6 +316,94 @@ class ReviewRegressionTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun impossibleSubtypePrerequisitesDoNotCreateSpuriousAmbiguity() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Subtype
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            class Box<T>
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun label(): String = "int"
+            }
+
+            @Instance
+            context(_: Subtype<Box<String>, Box<Int>>)
+            fun impossibleShow(): Show<Int> =
+                object : Show<Int> {
+                    override fun label(): String = "impossible"
+                }
+
+            context(_: Show<Int>)
+            fun render(): String = summon<Show<Int>>().label()
+
+            fun main() {
+                println(render())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int",
+        )
+    }
+
+    @Test
+    fun impossibleStrictSubtypePrerequisitesDoNotCreateSpuriousAmbiguity() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.StrictSubtype
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            class Marker
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun label(): String = "int"
+            }
+
+            @Instance
+            context(_: StrictSubtype<Marker, Marker>)
+            fun impossibleShow(): Show<Int> =
+                object : Show<Int> {
+                    override fun label(): String = "impossible"
+                }
+
+            context(_: Show<Int>)
+            fun render(): String = summon<Show<Int>>().label()
+
+            fun main() {
+                println(render())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int",
+        )
+    }
+
+    @Test
     fun resolvesDependencyModuleInstancesInIrAsWellAsFir() {
         val dependency =
             HarnessDependency(

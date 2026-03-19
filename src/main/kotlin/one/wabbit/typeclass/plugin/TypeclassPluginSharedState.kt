@@ -236,6 +236,7 @@ private class FirResolutionScanner(
                                     superTypeRef.coneType.classId?.asString()
                                 }.toSet(),
                             isSealed = declaration.status.modality == Modality.SEALED,
+                            typeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.symbol.fir.variance },
                         )
                     val derivedTypeclassIds = declaration.derivedTypeclassIds(session)
                     if (derivedTypeclassIds.isNotEmpty()) {
@@ -325,6 +326,12 @@ private data class ResolutionIndex(
             .asSequence()
             .filter { visibleRule ->
                 visibleRule.rule.id != "builtin:kclass" || supportsBuiltinKClassGoal(goal)
+            }
+            .filter { visibleRule ->
+                visibleRule.rule.id != "builtin:subtype" || supportsBuiltinSubtypeGoal(goal, classInfoById)
+            }
+            .filter { visibleRule ->
+                visibleRule.rule.id != "builtin:strict-subtype" || supportsBuiltinStrictSubtypeGoal(goal, classInfoById)
             }
             .filter { visibleRule ->
                 visibleRule.rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, session)

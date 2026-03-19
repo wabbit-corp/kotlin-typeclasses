@@ -227,7 +227,7 @@ class UtilityProofTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("subtype", "invariant", "contravariant", "string"),
+            expectedMessages = listOf("no context argument", "Subtype"),
         )
     }
 
