@@ -75,6 +75,7 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-power-assert-compiler-plugin-embeddable:2.3.10")
     testImplementation("org.jetbrains.kotlinx:atomicfu:0.30.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.9.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.9.0")
     testImplementation("androidx.compose.runtime:runtime:1.9.3")
     testImplementation("androidx.compose.runtime:runtime-annotation-jvm:1.9.3")
     testImplementation("androidx.collection:collection-jvm:1.5.0")

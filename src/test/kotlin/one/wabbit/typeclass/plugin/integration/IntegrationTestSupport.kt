@@ -1217,6 +1217,7 @@ sealed interface CompilerHarnessPlugin {
         override val runtimeClasspathJarMarkers: List<String> =
             listOf(
                 "kotlinx-serialization-core-jvm",
+                "kotlinx-serialization-json-jvm",
             )
         override val compilerPluginJarMarkers: List<String> =
             listOf("kotlin-serialization-compiler-plugin-embeddable")

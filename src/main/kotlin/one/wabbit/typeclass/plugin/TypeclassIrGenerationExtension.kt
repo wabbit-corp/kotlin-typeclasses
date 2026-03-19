@@ -35,6 +35,7 @@ import org.jetbrains.kotlin.ir.builders.IrBlockBodyBuilder
 import org.jetbrains.kotlin.ir.builders.IrBuilderWithScope
 import org.jetbrains.kotlin.ir.builders.IrStatementsBuilder
 import org.jetbrains.kotlin.ir.builders.irAs
+import org.jetbrains.kotlin.ir.builders.irBoolean
 import org.jetbrains.kotlin.ir.builders.irBlock
 import org.jetbrains.kotlin.ir.builders.irCall
 import org.jetbrains.kotlin.ir.builders.irCallConstructor
@@ -1121,6 +1122,7 @@ private class TypeclassIrCallTransformer(
         val appliedBindings =
             reference.ruleTypeParameters.zip(plan.appliedTypeArguments)
                 .associate { (parameter, appliedType) -> parameter.id to appliedType }
+        val metadataLambdaParent = metadataLambdaParent(currentDeclaration, currentFunction)
         val metadata =
             when (val shape = reference.shape) {
                 is DerivedShape.Product ->
@@ -1129,7 +1131,7 @@ private class TypeclassIrCallTransformer(
                         shape = shape,
                         prerequisiteInstanceSlots = prerequisiteInstanceSlots,
                         appliedBindings = appliedBindings,
-                        currentDeclaration = currentDeclaration,
+                        lambdaParent = metadataLambdaParent,
                         visibleTypeParameters = visibleTypeParameters,
                     )
 
@@ -1139,7 +1141,7 @@ private class TypeclassIrCallTransformer(
                         shape = shape,
                         prerequisiteInstanceSlots = prerequisiteInstanceSlots,
                         appliedBindings = appliedBindings,
-                        currentDeclaration = currentDeclaration,
+                        lambdaParent = metadataLambdaParent,
                         visibleTypeParameters = visibleTypeParameters,
                     )
             }
@@ -1202,7 +1204,7 @@ private class TypeclassIrCallTransformer(
         shape: DerivedShape.Product,
         prerequisiteInstanceSlots: List<IrExpression>,
         appliedBindings: Map<String, TcType>,
-        currentDeclaration: IrDeclarationBase,
+        lambdaParent: IrDeclarationParent,
         visibleTypeParameters: VisibleTypeParameters,
     ): IrExpression {
         val fieldClass =
@@ -1228,7 +1230,7 @@ private class TypeclassIrCallTransformer(
                             reference = reference,
                             field = field,
                             appliedBindings = appliedBindings,
-                            currentDeclaration = currentDeclaration,
+                            lambdaParent = lambdaParent,
                             visibleTypeParameters = visibleTypeParameters,
                         ),
                     )
@@ -1237,13 +1239,14 @@ private class TypeclassIrCallTransformer(
         return irCallConstructor(metadataClass.primaryConstructorSymbol(), emptyList()).apply {
             putValueArgument(0, irString(reference.targetClass.renderClassName()))
             putValueArgument(1, irListOf(fieldElements, fieldClass.symbol.defaultType))
+            putValueArgument(2, irBoolean(reference.targetClass.isValue))
             putValueArgument(
-                2,
+                3,
                 buildProductConstructor(
                     reference = reference,
                     shape = shape,
                     appliedBindings = appliedBindings,
-                    currentDeclaration = currentDeclaration,
+                    lambdaParent = lambdaParent,
                     visibleTypeParameters = visibleTypeParameters,
                 ),
             )
@@ -1254,7 +1257,7 @@ private class TypeclassIrCallTransformer(
         reference: RuleReference.Derived,
         shape: DerivedShape.Product,
         appliedBindings: Map<String, TcType>,
-        currentDeclaration: IrDeclarationBase,
+        lambdaParent: IrDeclarationParent,
         visibleTypeParameters: VisibleTypeParameters,
     ): IrExpression {
         val anyType = pluginContext.irBuiltIns.anyNType
@@ -1280,7 +1283,7 @@ private class TypeclassIrCallTransformer(
                 visibility = DescriptorVisibilities.LOCAL
                 returnType = anyType
             }.apply {
-                parent = currentDeclaration as IrDeclarationParent
+                parent = lambdaParent
             }
         val argumentsParameter = constructorLambda.addValueParameter("arguments", listType)
         val appliedIrTypesByRuleId =
@@ -1334,7 +1337,7 @@ private class TypeclassIrCallTransformer(
         reference: RuleReference.Derived,
         field: DerivedField,
         appliedBindings: Map<String, TcType>,
-        currentDeclaration: IrDeclarationBase,
+        lambdaParent: IrDeclarationParent,
         visibleTypeParameters: VisibleTypeParameters,
     ): IrExpression {
         val anyType = pluginContext.irBuiltIns.anyNType
@@ -1361,7 +1364,7 @@ private class TypeclassIrCallTransformer(
                 visibility = DescriptorVisibilities.LOCAL
                 returnType = anyType
             }.apply {
-                parent = currentDeclaration as IrDeclarationParent
+                parent = lambdaParent
             }
         val valueParameter = accessor.addValueParameter("value", anyType)
         accessor.body =
@@ -1386,7 +1389,7 @@ private class TypeclassIrCallTransformer(
         shape: DerivedShape.Sum,
         prerequisiteInstanceSlots: List<IrExpression>,
         appliedBindings: Map<String, TcType>,
-        currentDeclaration: IrDeclarationBase,
+        lambdaParent: IrDeclarationParent,
         visibleTypeParameters: VisibleTypeParameters,
     ): IrExpression {
         val caseClass =
@@ -1405,13 +1408,17 @@ private class TypeclassIrCallTransformer(
                 irCallConstructor(caseClass.primaryConstructorSymbol(), emptyList()).apply {
                     putValueArgument(0, irString(case.name))
                     putValueArgument(1, irString(case.klass.renderClassName()))
-                    putValueArgument(2, irGet(instanceSlot))
+                    putValueArgument(2, irBoolean(case.klass.isValue))
                     putValueArgument(
                         3,
+                        irGet(instanceSlot),
+                    )
+                    putValueArgument(
+                        4,
                         buildSumCaseMatcher(
                             case = case,
                             appliedBindings = appliedBindings,
-                            currentDeclaration = currentDeclaration,
+                            lambdaParent = lambdaParent,
                             visibleTypeParameters = visibleTypeParameters,
                         ),
                     )
@@ -1426,7 +1433,7 @@ private class TypeclassIrCallTransformer(
     private fun IrBuilderWithScope.buildSumCaseMatcher(
         case: DerivedCase,
         appliedBindings: Map<String, TcType>,
-        currentDeclaration: IrDeclarationBase,
+        lambdaParent: IrDeclarationParent,
         visibleTypeParameters: VisibleTypeParameters,
     ): IrExpression {
         val anyType = pluginContext.irBuiltIns.anyNType
@@ -1449,7 +1456,7 @@ private class TypeclassIrCallTransformer(
                 visibility = DescriptorVisibilities.LOCAL
                 returnType = booleanType
             }.apply {
-                parent = currentDeclaration as IrDeclarationParent
+                parent = lambdaParent
             }
         val valueParameter = matcher.addValueParameter("value", anyType)
         matcher.body =
@@ -1464,6 +1471,14 @@ private class TypeclassIrCallTransformer(
             origin = IrStatementOrigin.LAMBDA,
         )
     }
+
+    private fun metadataLambdaParent(
+        currentDeclaration: IrDeclarationBase,
+        currentFunction: IrFunction?,
+    ): IrDeclarationParent =
+        currentFunction
+            ?: (currentDeclaration as? IrDeclarationParent)
+            ?: currentDeclaration.parent
 
     private fun IrBuilderWithScope.irListOf(
         elements: List<IrExpression>,
