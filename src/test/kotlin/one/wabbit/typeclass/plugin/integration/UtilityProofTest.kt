@@ -254,7 +254,7 @@ class UtilityProofTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("typeclass", "list"),
-            expectedDiagnostics = listOf(ExpectedDiagnostic.Error(messageRegex = "(?i)typeclass application")),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "istypeclassinstance")),
         )
     }
 

@@ -1372,6 +1372,11 @@ private class IrRuleIndex private constructor(
                 resolvedRule.rule.id != "builtin:not-nullable" || supportsBuiltinNotNullableGoal(goal)
             }
             .filter { resolvedRule ->
+                resolvedRule.rule.id != "builtin:is-typeclass-instance" || supportsBuiltinIsTypeclassInstanceGoal(goal) { classifierId ->
+                    pluginContext.supportsTypeclassClassifierId(classifierId, configuration)
+                }
+            }
+            .filter { resolvedRule ->
                 resolvedRule.rule.id != "builtin:type-id" || supportsBuiltinTypeIdGoal(goal)
             }
             .filter { resolvedRule ->
@@ -2424,6 +2429,21 @@ private fun canMaterializeTypeIdViaTypeOf(targetType: IrType): Boolean {
 
         else -> false
     }
+}
+
+private fun IrPluginContext.supportsTypeclassClassifierId(
+    classifierId: String,
+    configuration: TypeclassConfiguration,
+): Boolean {
+    val classId = runCatching { ClassId.fromString(classifierId) }.getOrNull() ?: return false
+    if (classId.isLocal) {
+        return false
+    }
+    if (configuration.isBuiltinTypeclass(classId)) {
+        return true
+    }
+    val klass = referenceClass(classId)?.owner ?: return false
+    return klass.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID)
 }
 
 private data class ResolvedRule(

@@ -1,5 +1,6 @@
 # Learnings
 
+- `IsTypeclassInstance<TC>` is a good example of a builtin that should be filtered at planning time, not only validated in IR. If the requested `TC` is visibly not a typeclass application, leaving the builtin candidate alive just manufactures fake ambiguity and then fails too late.
 - FIR instance scanning cannot assume an `@Instance` callable's syntax-level `returnTypeRef` is already resolved. Companion properties like `@Instance val codec = PhiCodec.fromSerializable<Foo>()` are still seen with `FirImplicitTypeRef` during body resolve, so scanner code has to ask the callable symbol for its resolved return type instead of touching `returnTypeRef.coneType` directly.
 - All-open and no-arg are a good fit for the current raw compiler harness. Unlike KSP/KAPT, they only need extra compiler plugin jars plus repeated annotation options, not a generated-sources pipeline.
 - `TypeId` needs more than star-projection preservation. Use-site variance (`in`/`out`) has to survive FIR capture, planner unification, IR reconstruction, and canonical-name rendering, otherwise `TypeId<Array<Int>>` and `TypeId<Array<out Int>>` collapse incorrectly.

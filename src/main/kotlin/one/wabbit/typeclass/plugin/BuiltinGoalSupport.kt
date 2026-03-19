@@ -61,6 +61,28 @@ internal fun supportsBuiltinSameTypeConstructorGoal(goal: TcType): Boolean {
     return left.classifierId == right.classifierId
 }
 
+internal fun supportsBuiltinIsTypeclassInstanceGoal(
+    goal: TcType,
+    isTypeclassClassifier: (String) -> Boolean,
+): Boolean {
+    val constructor = goal as? TcType.Constructor ?: return true
+    if (constructor.classifierId != IS_TYPECLASS_INSTANCE_CLASS_ID.asString()) {
+        return true
+    }
+    val target = constructor.arguments.singleOrNull() ?: return false
+    return target.isPotentialTypeclassApplication(isTypeclassClassifier)
+}
+
+private fun TcType.isPotentialTypeclassApplication(
+    isTypeclassClassifier: (String) -> Boolean,
+): Boolean =
+    when (this) {
+        TcType.StarProjection -> false
+        is TcType.Variable -> true
+        is TcType.Projected -> type.isPotentialTypeclassApplication(isTypeclassClassifier)
+        is TcType.Constructor -> isTypeclassClassifier(classifierId)
+    }
+
 internal fun canProveNotSame(
     left: TcType,
     right: TcType,

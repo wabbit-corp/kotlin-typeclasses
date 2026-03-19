@@ -346,6 +346,11 @@ private data class ResolutionIndex(
                 visibleRule.rule.id != "builtin:not-nullable" || supportsBuiltinNotNullableGoal(goal)
             }
             .filter { visibleRule ->
+                visibleRule.rule.id != "builtin:is-typeclass-instance" || supportsBuiltinIsTypeclassInstanceGoal(goal) { classifierId ->
+                    configuration.supportsTypeclassClassifierId(classifierId, session)
+                }
+            }
+            .filter { visibleRule ->
                 visibleRule.rule.id != "builtin:type-id" || supportsBuiltinTypeIdGoal(goal)
             }
             .filter { visibleRule ->
@@ -1039,6 +1044,26 @@ internal fun isTypeclassType(
         return false
     }
     if (configuration.isBuiltinTypeclass(classId)) {
+        return true
+    }
+    val classSymbol =
+        try {
+            session.symbolProvider.getClassLikeSymbolByClassId(classId) as? FirRegularClassSymbol
+        } catch (_: IllegalArgumentException) {
+            null
+        } ?: return false
+    return classSymbol.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)
+}
+
+private fun TypeclassConfiguration.supportsTypeclassClassifierId(
+    classifierId: String,
+    session: FirSession,
+): Boolean {
+    val classId = runCatching { ClassId.fromString(classifierId) }.getOrNull() ?: return false
+    if (classId.isLocal) {
+        return false
+    }
+    if (isBuiltinTypeclass(classId)) {
         return true
     }
     val classSymbol =

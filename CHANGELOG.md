@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Filter impossible `IsTypeclassInstance<TC>` builtin goals before planning when `TC` is visibly not a typeclass application, so those fake candidates cannot create spurious ambiguity or survive until IR-only failure.
+- Add focused regressions proving that an impossible `IsTypeclassInstance<List<Int>>` prerequisite no longer distorts ordinary rule search while a valid `IsTypeclassInstance<Show<Int>>` prerequisite still works.
 - Fix a FIR scanner crash on `@Instance` functions and properties with implicit return types by using the callable symbol's resolved return type instead of assuming the raw `returnTypeRef` is already a `FirResolvedTypeRef`.
 - Add a focused FIR regression covering Brewing-shaped companion `@Instance val ... = ...` declarations with implicit types plus a downstream contextual `updateComponent<T>(...)` call.
 - Enable a small batch of low-risk core regressions covering fun-interface typeclasses, use-site variance in ordinary typeclass goals, non-discovery of local `@Instance` declarations, definitely-non-null typeclass goals, and filtering of inapplicable associated sealed-supertype candidates.
