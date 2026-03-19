@@ -4,6 +4,7 @@
 
 - Add constructive product-derivation support via `ProductTypeclassMetadata.construct(...)`, require `ProductTypeclassDeriver` for product-only typeclasses, and require full `TypeclassDeriver` only for sealed-sum derivation.
 - Add value-class metadata to constructive derivation for both products and sealed-sum cases, and cover a recursive `JsonElement` codec that mirrors sealed `KSerializer`-style output for products, sums, objects, and value classes without JVM reflection.
+- Expand constructive-derivation coverage for generic value classes, empty products, and sealed sums whose cases share field names, and add declaration-site rejection for product derivation without a primary constructor.
 - Reject `@Derive` on open roots and on non-constructible product shapes whose stored properties cannot be rebuilt from the primary constructor, and cover the new capability contract with dedicated integration tests.
 - Replace legacy `// ERROR` integration-test assertions with line-scoped `// E:TC_*` / `// W:TC_*` markers, and teach the harness to merge those source markers with the older message-fragment expectations.
 - Add `TC_INVALID_BUILTIN_EVIDENCE` plus source-located IR reporting for builtin proof/materialization failures, and tag IR missing/recursive resolution failures with `TC_NO_CONTEXT_ARGUMENT` so negative tests can assert stable ids across both FIR and IR.

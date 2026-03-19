@@ -106,4 +106,43 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             expectedMessages = listOf("constructor parameters", "stored properties"),
         )
     }
+
+    @Test
+    fun constructiveProductDerivationRequiresPrimaryConstructor() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : ProductTypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+                }
+            }
+
+            @Derive(Show::class) // E:TC_CANNOT_DERIVE
+            class Stats {
+                val total: Int
+
+                constructor(total: Int) {
+                    this.total = total
+                }
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("primary constructor"),
+        )
+    }
 }

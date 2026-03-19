@@ -21,6 +21,7 @@ import org.jetbrains.kotlin.fir.analysis.checkers.declaration.FirPropertyChecker
 import org.jetbrains.kotlin.fir.analysis.checkers.declaration.FirRegularClassChecker
 import org.jetbrains.kotlin.fir.analysis.checkers.declaration.FirSimpleFunctionChecker
 import org.jetbrains.kotlin.fir.analysis.extensions.FirAdditionalCheckersExtension
+import org.jetbrains.kotlin.fir.declarations.FirConstructor
 import org.jetbrains.kotlin.fir.declarations.FirProperty
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 import org.jetbrains.kotlin.fir.declarations.FirSimpleFunction
@@ -243,6 +244,19 @@ internal class TypeclassFirCheckersExtension(
             reportCannotDerive(
                 declaration,
                 "@Derive is only supported on sealed or final classes and objects",
+            )
+            return
+        }
+        if (
+            declaration.classKind != ClassKind.OBJECT &&
+            declaration.status.modality != Modality.SEALED &&
+            declaration.declarations
+                .filterIsInstance<FirConstructor>()
+                .none { constructor -> constructor.isPrimary }
+        ) {
+            reportCannotDerive(
+                declaration,
+                "constructive product derivation requires a primary constructor",
             )
             return
         }

@@ -3,6 +3,8 @@ package one.wabbit.typeclass.plugin.integration
 import kotlin.test.Test
 
 class DerivationLawTest : IntegrationTestSupport() {
+    private val serializationPlugins = listOf(CompilerHarnessPlugin.Serialization)
+
     @Test
     fun derivesProductMonoidsSemantically() {
         val source =
@@ -279,161 +281,51 @@ class DerivationLawTest : IntegrationTestSupport() {
     @Test
     fun derivesJsonCodecForRecursiveAdtsValueClassesAndGenericProducts() {
         val source =
-            """
-            package demo
+            jsonCodecSource(
+                definitions =
+                    """
+                    @JvmInline
+                    @Derive(JsonCodec::class)
+                    value class Name(val value: String)
 
-            import kotlinx.serialization.json.JsonElement
-            import kotlinx.serialization.json.JsonObject
-            import kotlinx.serialization.json.JsonPrimitive
-            import kotlinx.serialization.json.buildJsonObject
-            import kotlinx.serialization.json.int
-            import kotlinx.serialization.json.jsonObject
-            import kotlinx.serialization.json.jsonPrimitive
-            import one.wabbit.typeclass.Derive
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.ProductTypeclassMetadata
-            import one.wabbit.typeclass.Typeclass
-            import one.wabbit.typeclass.TypeclassDeriver
-            import one.wabbit.typeclass.get
-            import one.wabbit.typeclass.matches
-            import one.wabbit.typeclass.summon
+                    @Derive(JsonCodec::class)
+                    data class Box<A>(val value: A)
 
-            @Typeclass
-            interface JsonCodec<A> {
-                fun encode(value: A): JsonElement
+                    @Derive(JsonCodec::class)
+                    sealed interface Expr
 
-                fun decode(element: JsonElement): A
+                    @Derive(JsonCodec::class)
+                    data class Lit(val value: Int) : Expr
 
-                companion object : TypeclassDeriver {
-                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
-                        object : JsonCodec<Any?> {
-                            override fun encode(value: Any?): JsonElement {
-                                require(value != null)
-                                if (metadata.isValueClass) {
-                                    val field = metadata.fields.single()
-                                    val fieldCodec = field.instance as JsonCodec<Any?>
-                                    return fieldCodec.encode(field.get(value))
-                                }
-                                return buildJsonObject {
-                                    metadata.fields.forEach { field ->
-                                        val fieldCodec = field.instance as JsonCodec<Any?>
-                                        put(field.name, fieldCodec.encode(field.get(value)))
-                                    }
-                                }
-                            }
+                    @Derive(JsonCodec::class)
+                    data class Var(val name: Name) : Expr
 
-                            override fun decode(element: JsonElement): Any? {
-                                if (metadata.isValueClass) {
-                                    val field = metadata.fields.single()
-                                    val fieldCodec = field.instance as JsonCodec<Any?>
-                                    return metadata.construct(fieldCodec.decode(element))
-                                }
-                                val jsonObject = element.jsonObject
-                                val arguments =
-                                    metadata.fields.map { field ->
-                                        val fieldCodec = field.instance as JsonCodec<Any?>
-                                        fieldCodec.decode(jsonObject.getValue(field.name))
-                                    }
-                                return metadata.construct(arguments)
-                            }
-                        }
+                    @Derive(JsonCodec::class)
+                    data class Add(val left: Expr, val right: Expr) : Expr
 
-                    override fun deriveSum(metadata: one.wabbit.typeclass.SumTypeclassMetadata): Any =
-                        object : JsonCodec<Any?> {
-                            override fun encode(value: Any?): JsonElement {
-                                require(value != null)
-                                val selected = metadata.cases.single { candidate -> candidate.matches(value) }
-                                val caseCodec = selected.instance as JsonCodec<Any?>
-                                val encoded = caseCodec.encode(value)
-                                return when (encoded) {
-                                    is JsonObject ->
-                                        buildJsonObject {
-                                            put("type", JsonPrimitive(selected.typeName))
-                                            encoded.forEach { (key, fieldValue) -> put(key, fieldValue) }
-                                        }
+                    @Derive(JsonCodec::class)
+                    object End : Expr {
+                        override fun toString(): String = "End"
+                    }
+                    """,
+                mainBody =
+                    """
+                    val exprCodec = summon<JsonCodec<Expr>>()
+                    val tree: Expr = Add(Var(Name("x")), Add(Lit(1), End))
+                    val encodedTree = exprCodec.encode(tree)
+                    println(encodedTree)
+                    println(exprCodec.decode(encodedTree))
 
-                                    else ->
-                                        buildJsonObject {
-                                            put("type", JsonPrimitive(selected.typeName))
-                                            put("value", encoded)
-                                        }
-                                }
-                            }
-
-                            override fun decode(element: JsonElement): Any? {
-                                val jsonObject = element.jsonObject
-                                val selected =
-                                    metadata.cases.single { candidate ->
-                                        candidate.typeName == jsonObject.getValue("type").jsonPrimitive.content
-                                    }
-                                val caseCodec = selected.instance as JsonCodec<Any?>
-                                val payload =
-                                    if (selected.isValueClass) {
-                                        jsonObject.getValue("value")
-                                    } else {
-                                        JsonObject(jsonObject.filterKeys { key -> key != "type" })
-                                    }
-                                return caseCodec.decode(payload)
-                            }
-                        }
-                }
-            }
-
-            @Instance
-            object IntJsonCodec : JsonCodec<Int> {
-                override fun encode(value: Int): JsonElement = JsonPrimitive(value)
-
-                override fun decode(element: JsonElement): Int = element.jsonPrimitive.int
-            }
-
-            @Instance
-            object StringJsonCodec : JsonCodec<String> {
-                override fun encode(value: String): JsonElement = JsonPrimitive(value)
-
-                override fun decode(element: JsonElement): String = element.jsonPrimitive.content
-            }
-
-            @JvmInline
-            @Derive(JsonCodec::class)
-            value class Name(val value: String)
-
-            @Derive(JsonCodec::class)
-            data class Box<A>(val value: A)
-
-            @Derive(JsonCodec::class)
-            sealed interface Expr
-
-            @Derive(JsonCodec::class)
-            data class Lit(val value: Int) : Expr
-
-            @Derive(JsonCodec::class)
-            data class Var(val name: Name) : Expr
-
-            @Derive(JsonCodec::class)
-            data class Add(val left: Expr, val right: Expr) : Expr
-
-            @Derive(JsonCodec::class)
-            object End : Expr {
-                override fun toString(): String = "End"
-            }
-
-            fun main() {
-                val exprCodec = summon<JsonCodec<Expr>>()
-                val tree: Expr = Add(Var(Name("x")), Add(Lit(1), End))
-                val encodedTree = exprCodec.encode(tree)
-                println(encodedTree)
-                println(exprCodec.decode(encodedTree))
-
-                val boxCodec = summon<JsonCodec<Box<Name>>>()
-                val encodedBox = boxCodec.encode(Box(Name("y")))
-                println(encodedBox)
-                println(boxCodec.decode(encodedBox))
-            }
-            """.trimIndent()
+                    val boxCodec = summon<JsonCodec<Box<Name>>>()
+                    val encodedBox = boxCodec.encode(Box(Name("y")))
+                    println(encodedBox)
+                    println(boxCodec.decode(encodedBox))
+                    """,
+            )
 
         assertCompilesAndRuns(
             source = source,
-            requiredPlugins = listOf(CompilerHarnessPlugin.Serialization),
+            requiredPlugins = serializationPlugins,
             expectedStdout =
                 """
                 {"type":"demo.Add","left":{"type":"demo.Var","name":"x"},"right":{"type":"demo.Add","left":{"type":"demo.Lit","value":1},"right":{"type":"demo.End"}}}
@@ -443,4 +335,221 @@ class DerivationLawTest : IntegrationTestSupport() {
                 """.trimIndent(),
         )
     }
+
+    @Test
+    fun derivesJsonCodecForGenericValueClassesAndEmptyProducts() {
+        val source =
+            jsonCodecSource(
+                definitions =
+                    """
+                    @JvmInline
+                    @Derive(JsonCodec::class)
+                    value class Token<A>(val value: A)
+
+                    @Derive(JsonCodec::class)
+                    class Marker() {
+                        override fun toString(): String = "Marker()"
+                    }
+                    """,
+                mainBody =
+                    """
+                    val tokenCodec = summon<JsonCodec<Token<String>>>()
+                    println(tokenCodec.encode(Token("abc")))
+                    println(tokenCodec.decode(JsonPrimitive("abc")))
+
+                    val markerCodec = summon<JsonCodec<Marker>>()
+                    val encodedMarker = markerCodec.encode(Marker())
+                    println(encodedMarker)
+                    println(markerCodec.decode(encodedMarker))
+                    """,
+            )
+
+        assertCompilesAndRuns(
+            source = source,
+            requiredPlugins = serializationPlugins,
+            expectedStdout =
+                """
+                "abc"
+                Token(value=abc)
+                {}
+                Marker()
+                """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun derivesJsonCodecForSumsWhoseCasesShareFieldNames() {
+        val source =
+            jsonCodecSource(
+                definitions =
+                    """
+                    @Derive(JsonCodec::class)
+                    sealed interface Payload
+
+                    @Derive(JsonCodec::class)
+                    data class Text(val value: String) : Payload
+
+                    @Derive(JsonCodec::class)
+                    data class Count(val value: Int) : Payload
+
+                    @Derive(JsonCodec::class)
+                    data class Envelope(val payload: Payload)
+                    """,
+                mainBody =
+                    """
+                    val payloadCodec = summon<JsonCodec<Payload>>()
+                    val textJson = payloadCodec.encode(Text("hi"))
+                    println(textJson)
+                    println(payloadCodec.decode(textJson))
+
+                    val countJson = payloadCodec.encode(Count(7))
+                    println(countJson)
+                    println(payloadCodec.decode(countJson))
+
+                    val envelopeCodec = summon<JsonCodec<Envelope>>()
+                    val envelopeJson = envelopeCodec.encode(Envelope(Count(9)))
+                    println(envelopeJson)
+                    println(envelopeCodec.decode(envelopeJson))
+                    """,
+            )
+
+        assertCompilesAndRuns(
+            source = source,
+            requiredPlugins = serializationPlugins,
+            expectedStdout =
+                """
+                {"type":"demo.Text","value":"hi"}
+                Text(value=hi)
+                {"type":"demo.Count","value":7}
+                Count(value=7)
+                {"payload":{"type":"demo.Count","value":9}}
+                Envelope(payload=Count(value=9))
+                """.trimIndent(),
+        )
+    }
+
+    private fun jsonCodecSource(
+        definitions: String,
+        mainBody: String,
+    ): String =
+        """
+        package demo
+
+        import kotlinx.serialization.json.JsonElement
+        import kotlinx.serialization.json.JsonObject
+        import kotlinx.serialization.json.JsonPrimitive
+        import kotlinx.serialization.json.buildJsonObject
+        import kotlinx.serialization.json.int
+        import kotlinx.serialization.json.jsonObject
+        import kotlinx.serialization.json.jsonPrimitive
+        import one.wabbit.typeclass.Derive
+        import one.wabbit.typeclass.Instance
+        import one.wabbit.typeclass.ProductTypeclassMetadata
+        import one.wabbit.typeclass.Typeclass
+        import one.wabbit.typeclass.TypeclassDeriver
+        import one.wabbit.typeclass.get
+        import one.wabbit.typeclass.matches
+        import one.wabbit.typeclass.summon
+
+        @Typeclass
+        interface JsonCodec<A> {
+            fun encode(value: A): JsonElement
+
+            fun decode(element: JsonElement): A
+
+            companion object : TypeclassDeriver {
+                override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                    object : JsonCodec<Any?> {
+                        override fun encode(value: Any?): JsonElement {
+                            require(value != null)
+                            if (metadata.isValueClass) {
+                                val field = metadata.fields.single()
+                                val fieldCodec = field.instance as JsonCodec<Any?>
+                                return fieldCodec.encode(field.get(value))
+                            }
+                            return buildJsonObject {
+                                metadata.fields.forEach { field ->
+                                    val fieldCodec = field.instance as JsonCodec<Any?>
+                                    put(field.name, fieldCodec.encode(field.get(value)))
+                                }
+                            }
+                        }
+
+                        override fun decode(element: JsonElement): Any? {
+                            if (metadata.isValueClass) {
+                                val field = metadata.fields.single()
+                                val fieldCodec = field.instance as JsonCodec<Any?>
+                                return metadata.construct(fieldCodec.decode(element))
+                            }
+                            val jsonObject = element.jsonObject
+                            val arguments =
+                                metadata.fields.map { field ->
+                                    val fieldCodec = field.instance as JsonCodec<Any?>
+                                    fieldCodec.decode(jsonObject.getValue(field.name))
+                                }
+                            return metadata.construct(arguments)
+                        }
+                    }
+
+                override fun deriveSum(metadata: one.wabbit.typeclass.SumTypeclassMetadata): Any =
+                    object : JsonCodec<Any?> {
+                        override fun encode(value: Any?): JsonElement {
+                            require(value != null)
+                            val selected = metadata.cases.single { candidate -> candidate.matches(value) }
+                            val caseCodec = selected.instance as JsonCodec<Any?>
+                            val encoded = caseCodec.encode(value)
+                            return when (encoded) {
+                                is JsonObject ->
+                                    buildJsonObject {
+                                        put("type", JsonPrimitive(selected.typeName))
+                                        encoded.forEach { (key, fieldValue) -> put(key, fieldValue) }
+                                    }
+
+                                else ->
+                                    buildJsonObject {
+                                        put("type", JsonPrimitive(selected.typeName))
+                                        put("value", encoded)
+                                    }
+                            }
+                        }
+
+                        override fun decode(element: JsonElement): Any? {
+                            val jsonObject = element.jsonObject
+                            val selected =
+                                metadata.cases.single { candidate ->
+                                    candidate.typeName == jsonObject.getValue("type").jsonPrimitive.content
+                                }
+                            val caseCodec = selected.instance as JsonCodec<Any?>
+                            val payload =
+                                if (selected.isValueClass) {
+                                    jsonObject.getValue("value")
+                                } else {
+                                    JsonObject(jsonObject.filterKeys { key -> key != "type" })
+                                }
+                            return caseCodec.decode(payload)
+                        }
+                    }
+            }
+        }
+
+        @Instance
+        object IntJsonCodec : JsonCodec<Int> {
+            override fun encode(value: Int): JsonElement = JsonPrimitive(value)
+
+            override fun decode(element: JsonElement): Int = element.jsonPrimitive.int
+        }
+
+        @Instance
+        object StringJsonCodec : JsonCodec<String> {
+            override fun encode(value: String): JsonElement = JsonPrimitive(value)
+
+            override fun decode(element: JsonElement): String = element.jsonPrimitive.content
+        }
+
+        ${definitions.trimIndent()}
+
+        fun main() {
+        ${mainBody.trimIndent().prependIndent("    ")}
+        }
+        """.trimIndent()
 }
