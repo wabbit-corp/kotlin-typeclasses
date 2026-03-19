@@ -161,9 +161,11 @@ abstract class IntegrationTestSupport {
         vararg fragments: String,
         file: String? = null,
         line: Int? = null,
+        phase: DiagnosticPhase? = null,
     ): ExpectedDiagnostic.Error =
         ExpectedDiagnostic.Error(
             diagnosticIds = setOf(diagnosticId),
+            phase = phase,
             file = file,
             line = line,
             description = "$diagnosticId containing ${fragments.joinToString()}",
@@ -177,48 +179,56 @@ abstract class IntegrationTestSupport {
         vararg fragments: String,
         file: String? = null,
         line: Int? = null,
+        phase: DiagnosticPhase? = DiagnosticPhase.FIR,
     ): ExpectedDiagnostic.Error =
         expectedDiagnosticId(
             TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT,
             *fragments,
             file = file,
             line = line,
+            phase = phase,
         )
 
     protected fun expectedAmbiguousInstance(
         vararg fragments: String,
         file: String? = null,
         line: Int? = null,
+        phase: DiagnosticPhase? = DiagnosticPhase.IR,
     ): ExpectedDiagnostic.Error =
         expectedDiagnosticId(
             TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE,
             *fragments,
             file = file,
             line = line,
+            phase = phase,
         )
 
     protected fun expectedInvalidInstanceDecl(
         vararg fragments: String,
         file: String? = null,
         line: Int? = null,
+        phase: DiagnosticPhase? = DiagnosticPhase.FIR,
     ): ExpectedDiagnostic.Error =
         expectedDiagnosticId(
             TypeclassDiagnosticIds.INVALID_INSTANCE_DECL,
             *fragments,
             file = file,
             line = line,
+            phase = phase,
         )
 
     protected fun expectedCannotDerive(
         vararg fragments: String,
         file: String? = null,
         line: Int? = null,
+        phase: DiagnosticPhase? = DiagnosticPhase.IR,
     ): ExpectedDiagnostic.Error =
         expectedDiagnosticId(
             TypeclassDiagnosticIds.CANNOT_DERIVE,
             *fragments,
             file = file,
             line = line,
+            phase = phase,
         )
 
     protected fun expectedAmbiguousOrNoContext(vararg fragments: String): ExpectedDiagnostic.Error =
@@ -758,6 +768,7 @@ abstract class IntegrationTestSupport {
             severity = parseDiagnosticSeverity(match.groupValues[4]),
             message = parsedMessage.message,
             diagnosticId = parsedMessage.diagnosticId,
+            phase = DiagnosticPhase.FIR,
             rawLine = line,
         )
     }
@@ -772,6 +783,7 @@ abstract class IntegrationTestSupport {
             severity = parseDiagnosticSeverity(match.groupValues[1]),
             message = parsedMessage.message,
             diagnosticId = parsedMessage.diagnosticId,
+            phase = inferGlobalDiagnosticPhase(parsedMessage),
             rawLine = line,
         )
     }
@@ -820,6 +832,14 @@ abstract class IntegrationTestSupport {
             else -> null
         }
     }
+
+    private fun inferGlobalDiagnosticPhase(parsedMessage: ParsedDiagnosticMessage): DiagnosticPhase =
+        when {
+            parsedMessage.diagnosticId != null -> DiagnosticPhase.IR
+            parsedMessage.message.lowercase().startsWith("missing typeclass instance for ") -> DiagnosticPhase.IR
+            parsedMessage.message.lowercase().startsWith("recursive typeclass resolution for ") -> DiagnosticPhase.IR
+            else -> DiagnosticPhase.UNKNOWN
+        }
 
     private fun parseDiagnosticSeverity(token: String): DiagnosticSeverity =
         when (token.lowercase()) {
@@ -942,6 +962,12 @@ enum class DiagnosticSeverity {
     WARNING,
 }
 
+enum class DiagnosticPhase {
+    FIR,
+    IR,
+    UNKNOWN,
+}
+
 data class ReportedDiagnostic(
     val file: String?,
     val line: Int?,
@@ -949,6 +975,7 @@ data class ReportedDiagnostic(
     val severity: DiagnosticSeverity,
     val message: String,
     val diagnosticId: String?,
+    val phase: DiagnosticPhase,
     val rawLine: String,
 ) {
     override fun toString(): String {
@@ -979,6 +1006,11 @@ data class ReportedDiagnostic(
                 append(TypeclassDiagnosticIds.prefix(id))
                 append(' ')
             }
+            if (phase != DiagnosticPhase.UNKNOWN) {
+                append('(')
+                append(phase.name)
+                append(") ")
+            }
             append(message)
         }
     }
@@ -992,6 +1024,7 @@ private data class ParsedDiagnosticMessage(
 sealed class ExpectedDiagnostic private constructor(
     private val severity: DiagnosticSeverity,
     private val diagnosticIds: Set<String>?,
+    private val phase: DiagnosticPhase?,
     private val file: String?,
     private val line: Int?,
     private val description: String,
@@ -1000,12 +1033,16 @@ sealed class ExpectedDiagnostic private constructor(
     fun matches(actual: ReportedDiagnostic): Boolean =
         actual.severity == severity &&
             matchesDiagnosticId(actual.diagnosticId) &&
+            matchesPhase(actual.phase) &&
             matchesFile(actual.file) &&
             (line == null || actual.line == line) &&
             messagePredicate(actual.message)
 
     private fun matchesDiagnosticId(actualDiagnosticId: String?): Boolean =
         diagnosticIds == null || actualDiagnosticId in diagnosticIds
+
+    private fun matchesPhase(actualPhase: DiagnosticPhase): Boolean =
+        phase == null || phase == actualPhase
 
     private fun matchesFile(actualFile: String?): Boolean {
         if (file == null) {
@@ -1028,6 +1065,11 @@ sealed class ExpectedDiagnostic private constructor(
             append(line ?: "*")
             append(", ")
             diagnosticIds?.joinToString(prefix = "[", postfix = "] ")?.let(::append)
+            phase?.let { expectedPhase ->
+                append('(')
+                append(expectedPhase.name)
+                append(") ")
+            }
             append(description)
             append(')')
         }
@@ -1036,12 +1078,14 @@ sealed class ExpectedDiagnostic private constructor(
         file: String? = null,
         line: Int? = null,
         diagnosticIds: Set<String>? = null,
+        phase: DiagnosticPhase? = null,
         messageRegex: String? = null,
         description: String? = null,
         messagePredicate: ((String) -> Boolean)? = null,
     ) : ExpectedDiagnostic(
             severity = DiagnosticSeverity.ERROR,
             diagnosticIds = diagnosticIds,
+            phase = phase,
             file = file,
             line = line,
             description = diagnosticDescription(messageRegex, description, messagePredicate),
@@ -1052,12 +1096,14 @@ sealed class ExpectedDiagnostic private constructor(
         file: String? = null,
         line: Int? = null,
         diagnosticIds: Set<String>? = null,
+        phase: DiagnosticPhase? = null,
         messageRegex: String? = null,
         description: String? = null,
         messagePredicate: ((String) -> Boolean)? = null,
     ) : ExpectedDiagnostic(
             severity = DiagnosticSeverity.WARNING,
             diagnosticIds = diagnosticIds,
+            phase = phase,
             file = file,
             line = line,
             description = diagnosticDescription(messageRegex, description, messagePredicate),

@@ -4,6 +4,7 @@
 
 - Add stable `TC_*` diagnostic ids for invalid `@Instance` declarations, ambiguous instance resolution, derivation failures, and harness-classified missing-context failures, and make the integration harness parse and prefer those ids before matching message text.
 - Strip explicit `TC_*` prefixes back out of parsed diagnostic messages in the harness so existing fragment assertions stay readable while still matching ids first.
+- Tag parsed diagnostics in the integration harness as FIR- or IR-originated so negative tests can distinguish frontend declaration/call failures from backend plugin reports without relying on message wording.
 - Make direct instance-rule ids include prerequisite and type-parameter shape so overloaded `@Instance` functions with the same `callableId` and provided head no longer collapse into missing evidence or lost ambiguity.
 - Add focused regressions proving overloaded instance rules with the same name and provided head still resolve the applicable candidate and still report ambiguity when both prerequisites are available.
 - Remove the dead `TypeclassWrapperKey` / hidden-wrapper FIR-IR bookkeeping path after auditing that it had no remaining producer, and keep the wrapper marker parameter handling only where it is still live in IR rewriting.
