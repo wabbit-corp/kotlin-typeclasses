@@ -27,8 +27,10 @@ import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
+import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSourceLocation
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.Modality
+import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.builders.IrBlockBodyBuilder
 import org.jetbrains.kotlin.ir.builders.IrBuilderWithScope
 import org.jetbrains.kotlin.ir.builders.IrStatementsBuilder
@@ -224,10 +226,9 @@ private class TypeclassIrCallTransformer(
     private fun reportTypeclassResolutionFailure(
         message: String,
         diagnosticId: String? = null,
+        location: CompilerMessageSourceLocation? = null,
     ) {
-        val renderedMessage =
-            diagnosticId?.let { id -> TypeclassDiagnosticIds.format(id, message) } ?: message
-        pluginContext.messageCollector.report(CompilerMessageSeverity.ERROR, renderedMessage)
+        pluginContext.reportTypeclassError(message, diagnosticId, location)
     }
 
     private fun ResolutionPlan.renderForDiagnostic(): String =
@@ -294,6 +295,7 @@ private class TypeclassIrCallTransformer(
                                     localContexts = localContexts,
                                     visibleTypeParameters = visibleTypeParameters,
                                     recursiveDerivedResolvers = linkedMapOf(),
+                                    diagnosticLocation = currentDeclaration.compilerMessageLocation(fallbackCall),
                                 )
                             }
 
@@ -304,6 +306,7 @@ private class TypeclassIrCallTransformer(
                             reportTypeclassResolutionFailure(
                                 message = message,
                                 diagnosticId = TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE,
+                                location = currentDeclaration.compilerMessageLocation(fallbackCall),
                             )
                             return fallbackCall
                         }
@@ -311,13 +314,21 @@ private class TypeclassIrCallTransformer(
                         is ResolutionSearchResult.Missing -> {
                             val message =
                                 "Missing typeclass instance for ${goal.render()} in $currentScopeIdentity"
-                            reportTypeclassResolutionFailure(message)
+                            reportTypeclassResolutionFailure(
+                                message = message,
+                                diagnosticId = TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT,
+                                location = currentDeclaration.compilerMessageLocation(fallbackCall),
+                            )
                             return fallbackCall
                         }
 
                         is ResolutionSearchResult.Recursive -> {
                             val message = "Recursive typeclass resolution for ${goal.render()} in $currentScopeIdentity"
-                            reportTypeclassResolutionFailure(message)
+                            reportTypeclassResolutionFailure(
+                                message = message,
+                                diagnosticId = TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT,
+                                location = currentDeclaration.compilerMessageLocation(fallbackCall),
+                            )
                             return fallbackCall
                         }
                     }
@@ -338,30 +349,35 @@ private class TypeclassIrCallTransformer(
     private fun IrStatementsBuilder<*>.buildBuiltinKClassExpression(
         plan: ResolutionPlan.ApplyRule,
         visibleTypeParameters: VisibleTypeParameters,
+        diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
         val targetModel = plan.appliedTypeArguments.singleOrNull()
             ?: return invalidBuiltinKClassExpression(
                 expressionType = expressionType,
                 message = "Builtin KClass typeclass resolution requires exactly one target type argument.",
+                diagnosticLocation = diagnosticLocation,
             )
         val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
         if (targetType.isNullable()) {
             return invalidBuiltinKClassExpression(
                 expressionType = expressionType,
                 message = "Builtin KClass typeclass resolution requires a non-null concrete runtime type, but found ${targetType.render()}.",
+                diagnosticLocation = diagnosticLocation,
             )
         }
         val targetSimpleType = targetType as? IrSimpleType
             ?: return invalidBuiltinKClassExpression(
                 expressionType = expressionType,
                 message = "Builtin KClass typeclass resolution requires a concrete runtime type, but found ${targetType.render()}.",
+                diagnosticLocation = diagnosticLocation,
             )
         val classifier = targetSimpleType.classifier
         if (classifier is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol && !classifier.owner.isReified) {
             return invalidBuiltinKClassExpression(
                 expressionType = expressionType,
                 message = "Builtin KClass typeclass resolution requires a concrete runtime type or a reified type parameter, but found ${targetType.render()}.",
+                diagnosticLocation = diagnosticLocation,
             )
         }
         return org.jetbrains.kotlin.ir.expressions.impl.IrClassReferenceImpl(
@@ -376,32 +392,41 @@ private class TypeclassIrCallTransformer(
     private fun IrStatementsBuilder<*>.invalidBuiltinKClassExpression(
         expressionType: IrType,
         message: String,
+        diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
-        reportTypeclassResolutionFailure(message)
+        reportTypeclassResolutionFailure(
+            message = message,
+            diagnosticId = TypeclassDiagnosticIds.INVALID_BUILTIN_EVIDENCE,
+            location = diagnosticLocation,
+        )
         return irAs(irNull(), expressionType)
     }
 
     private fun IrStatementsBuilder<*>.buildBuiltinKSerializerExpression(
         plan: ResolutionPlan.ApplyRule,
         visibleTypeParameters: VisibleTypeParameters,
+        diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
         val targetModel = plan.appliedTypeArguments.singleOrNull()
             ?: return invalidBuiltinKSerializerExpression(
                 expressionType = expressionType,
                 message = "Builtin KSerializer typeclass resolution requires exactly one target type argument.",
+                diagnosticLocation = diagnosticLocation,
             )
         val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
         val targetSimpleType = targetType as? IrSimpleType
             ?: return invalidBuiltinKSerializerExpression(
                 expressionType = expressionType,
                 message = "Builtin KSerializer typeclass resolution requires a concrete or reified target type, but found ${targetType.render()}.",
+                diagnosticLocation = diagnosticLocation,
             )
         val classifier = targetSimpleType.classifier
         if (classifier is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol && !classifier.owner.isReified) {
             return invalidBuiltinKSerializerExpression(
                 expressionType = expressionType,
                 message = "Builtin KSerializer typeclass resolution requires a concrete target type or a reified type parameter, but found ${targetType.render()}.",
+                diagnosticLocation = diagnosticLocation,
             )
         }
         val serializerFunction =
@@ -416,6 +441,7 @@ private class TypeclassIrCallTransformer(
                 ?: return invalidBuiltinKSerializerExpression(
                     expressionType = expressionType,
                     message = "Could not resolve kotlinx.serialization.serializer<T>() on the compilation classpath.",
+                    diagnosticLocation = diagnosticLocation,
                 )
         return irCall(serializerFunction.symbol, expressionType).apply {
             putTypeArgument(0, targetType)
@@ -425,19 +451,26 @@ private class TypeclassIrCallTransformer(
     private fun IrStatementsBuilder<*>.invalidBuiltinKSerializerExpression(
         expressionType: IrType,
         message: String,
+        diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
-        reportTypeclassResolutionFailure(message)
+        reportTypeclassResolutionFailure(
+            message = message,
+            diagnosticId = TypeclassDiagnosticIds.INVALID_BUILTIN_EVIDENCE,
+            location = diagnosticLocation,
+        )
         return irAs(irNull(), expressionType)
     }
 
     private fun IrStatementsBuilder<*>.buildBuiltinProofSingletonExpression(
         expressionType: IrType,
         proofClassId: ClassId,
+        diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val proofClass = pluginContext.referenceClass(proofClassId)?.owner
             ?: return invalidBuiltinProofExpression(
                 expressionType = expressionType,
                 message = "Could not resolve builtin proof carrier $proofClassId on the compilation classpath.",
+                diagnosticLocation = diagnosticLocation,
             )
         return irAs(irGetObject(proofClass.symbol), expressionType)
     }
@@ -445,50 +478,55 @@ private class TypeclassIrCallTransformer(
     private fun IrStatementsBuilder<*>.buildBuiltinNotSameExpression(
         plan: ResolutionPlan.ApplyRule,
         visibleTypeParameters: VisibleTypeParameters,
+        diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
         val left = plan.appliedTypeArguments.getOrNull(0)
-            ?: return invalidBuiltinProofExpression(expressionType, "NotSame proof requires two type arguments.")
+            ?: return invalidBuiltinProofExpression(expressionType, "NotSame proof requires two type arguments.", diagnosticLocation)
         val right = plan.appliedTypeArguments.getOrNull(1)
-            ?: return invalidBuiltinProofExpression(expressionType, "NotSame proof requires two type arguments.")
+            ?: return invalidBuiltinProofExpression(expressionType, "NotSame proof requires two type arguments.", diagnosticLocation)
         if (!canProveNotSame(left, right)) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
                 message = "NotSame proof could not prove ${left.render()} and ${right.render()} differ.",
+                diagnosticLocation = diagnosticLocation,
             )
         }
-        return buildBuiltinProofSingletonExpression(expressionType, NOT_SAME_PROOF_CLASS_ID)
+        return buildBuiltinProofSingletonExpression(expressionType, NOT_SAME_PROOF_CLASS_ID, diagnosticLocation)
     }
 
     private fun IrStatementsBuilder<*>.buildBuiltinSubtypeExpression(
         plan: ResolutionPlan.ApplyRule,
         visibleTypeParameters: VisibleTypeParameters,
+        diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
         val subModel = plan.appliedTypeArguments.getOrNull(0)
-            ?: return invalidBuiltinProofExpression(expressionType, "Subtype proof requires two type arguments.")
+            ?: return invalidBuiltinProofExpression(expressionType, "Subtype proof requires two type arguments.", diagnosticLocation)
         val superModel = plan.appliedTypeArguments.getOrNull(1)
-            ?: return invalidBuiltinProofExpression(expressionType, "Subtype proof requires two type arguments.")
+            ?: return invalidBuiltinProofExpression(expressionType, "Subtype proof requires two type arguments.", diagnosticLocation)
         val subType = modelToIrType(subModel, visibleTypeParameters, pluginContext)
         val superType = modelToIrType(superModel, visibleTypeParameters, pluginContext)
         if (!canProveSubtype(subType, superType, pluginContext)) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
                 message = "Subtype proof could not prove ${subModel.render()} is a subtype of ${superModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
             )
         }
-        return buildBuiltinProofSingletonExpression(expressionType, SUBTYPE_PROOF_CLASS_ID)
+        return buildBuiltinProofSingletonExpression(expressionType, SUBTYPE_PROOF_CLASS_ID, diagnosticLocation)
     }
 
     private fun IrStatementsBuilder<*>.buildBuiltinStrictSubtypeExpression(
         plan: ResolutionPlan.ApplyRule,
         visibleTypeParameters: VisibleTypeParameters,
+        diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
         val subModel = plan.appliedTypeArguments.getOrNull(0)
-            ?: return invalidBuiltinProofExpression(expressionType, "StrictSubtype proof requires two type arguments.")
+            ?: return invalidBuiltinProofExpression(expressionType, "StrictSubtype proof requires two type arguments.", diagnosticLocation)
         val superModel = plan.appliedTypeArguments.getOrNull(1)
-            ?: return invalidBuiltinProofExpression(expressionType, "StrictSubtype proof requires two type arguments.")
+            ?: return invalidBuiltinProofExpression(expressionType, "StrictSubtype proof requires two type arguments.", diagnosticLocation)
         val subType = modelToIrType(subModel, visibleTypeParameters, pluginContext)
         val superType = modelToIrType(superModel, visibleTypeParameters, pluginContext)
         if (!canProveSubtype(subType, superType, pluginContext) || !canProveNotSame(subModel, superModel)) {
@@ -496,83 +534,94 @@ private class TypeclassIrCallTransformer(
                 expressionType = expressionType,
                 message =
                     "StrictSubtype proof could not prove ${subModel.render()} is a proper subtype of ${superModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
             )
         }
-        return buildBuiltinProofSingletonExpression(expressionType, STRICT_SUBTYPE_PROOF_CLASS_ID)
+        return buildBuiltinProofSingletonExpression(expressionType, STRICT_SUBTYPE_PROOF_CLASS_ID, diagnosticLocation)
     }
 
     private fun IrStatementsBuilder<*>.buildBuiltinNullableExpression(
         plan: ResolutionPlan.ApplyRule,
         visibleTypeParameters: VisibleTypeParameters,
+        diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
         val targetModel = plan.appliedTypeArguments.singleOrNull()
-            ?: return invalidBuiltinProofExpression(expressionType, "Nullable proof requires exactly one type argument.")
+            ?: return invalidBuiltinProofExpression(expressionType, "Nullable proof requires exactly one type argument.", diagnosticLocation)
         val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
         if (!canProveNullable(targetType, pluginContext)) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
                 message = "Nullable proof could not prove null is a valid inhabitant of ${targetModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
             )
         }
-        return buildBuiltinProofSingletonExpression(expressionType, NULLABLE_PROOF_CLASS_ID)
+        return buildBuiltinProofSingletonExpression(expressionType, NULLABLE_PROOF_CLASS_ID, diagnosticLocation)
     }
 
     private fun IrStatementsBuilder<*>.buildBuiltinNotNullableExpression(
         plan: ResolutionPlan.ApplyRule,
         visibleTypeParameters: VisibleTypeParameters,
+        diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
         val targetModel = plan.appliedTypeArguments.singleOrNull()
-            ?: return invalidBuiltinProofExpression(expressionType, "NotNullable proof requires exactly one type argument.")
+            ?: return invalidBuiltinProofExpression(expressionType, "NotNullable proof requires exactly one type argument.", diagnosticLocation)
         val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
         if (!canProveNotNullable(targetType, pluginContext)) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
                 message = "NotNullable proof could not prove ${targetModel.render()} excludes null.",
+                diagnosticLocation = diagnosticLocation,
             )
         }
-        return buildBuiltinProofSingletonExpression(expressionType, NOT_NULLABLE_PROOF_CLASS_ID)
+        return buildBuiltinProofSingletonExpression(expressionType, NOT_NULLABLE_PROOF_CLASS_ID, diagnosticLocation)
     }
 
     private fun IrStatementsBuilder<*>.buildBuiltinIsTypeclassInstanceExpression(
         plan: ResolutionPlan.ApplyRule,
         visibleTypeParameters: VisibleTypeParameters,
+        diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
         val targetModel = plan.appliedTypeArguments.singleOrNull()
             ?: return invalidBuiltinProofExpression(
                 expressionType,
                 "IsTypeclassInstance proof requires exactly one type argument.",
+                diagnosticLocation,
             )
         val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
         if (!targetType.isTypeclassType(configuration)) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
                 message = "IsTypeclassInstance proof requires a typeclass application, but found ${targetModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
             )
         }
-        return buildBuiltinProofSingletonExpression(expressionType, IS_TYPECLASS_INSTANCE_PROOF_CLASS_ID)
+        return buildBuiltinProofSingletonExpression(expressionType, IS_TYPECLASS_INSTANCE_PROOF_CLASS_ID, diagnosticLocation)
     }
 
     private fun IrStatementsBuilder<*>.buildBuiltinKnownTypeExpression(
         plan: ResolutionPlan.ApplyRule,
         visibleTypeParameters: VisibleTypeParameters,
+        diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
         val targetModel = plan.appliedTypeArguments.singleOrNull()
-            ?: return invalidBuiltinProofExpression(expressionType, "KnownType proof requires exactly one type argument.")
+            ?: return invalidBuiltinProofExpression(expressionType, "KnownType proof requires exactly one type argument.", diagnosticLocation)
         val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
         val targetSimpleType = targetType as? IrSimpleType
             ?: return invalidBuiltinProofExpression(
                 expressionType = expressionType,
                 message = "KnownType proof requires an exact known KType, but found ${targetModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
             )
         val classifier = targetSimpleType.classifier
         if (classifier is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol && !classifier.owner.isReified) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
                 message = "KnownType proof requires an exact known KType, but found ${targetModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
             )
         }
         val typeOfFunction =
@@ -585,6 +634,7 @@ private class TypeclassIrCallTransformer(
                 ?: return invalidBuiltinProofExpression(
                     expressionType = expressionType,
                     message = "Could not resolve kotlin.reflect.typeOf<T>() on the compilation classpath.",
+                    diagnosticLocation = diagnosticLocation,
                 )
         val knownTypeFactory =
             pluginContext.referenceFunctions(KNOWN_TYPE_FACTORY_CALLABLE_ID)
@@ -593,6 +643,7 @@ private class TypeclassIrCallTransformer(
                 ?: return invalidBuiltinProofExpression(
                     expressionType = expressionType,
                     message = "Could not resolve one.wabbit.typeclass.knownType(...) on the compilation classpath.",
+                    diagnosticLocation = diagnosticLocation,
                 )
         val typeOfCall =
             irCall(typeOfFunction.symbol).apply {
@@ -608,15 +659,17 @@ private class TypeclassIrCallTransformer(
     private fun IrStatementsBuilder<*>.buildBuiltinTypeIdExpression(
         plan: ResolutionPlan.ApplyRule,
         visibleTypeParameters: VisibleTypeParameters,
+        diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
         val targetModel = plan.appliedTypeArguments.singleOrNull()
-            ?: return invalidBuiltinProofExpression(expressionType, "TypeId proof requires exactly one type argument.")
+            ?: return invalidBuiltinProofExpression(expressionType, "TypeId proof requires exactly one type argument.", diagnosticLocation)
         val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
         val targetSimpleType = targetType as? IrSimpleType
             ?: return invalidBuiltinProofExpression(
                 expressionType = expressionType,
                 message = "TypeId proof requires an exact semantic type, but found ${targetModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
             )
         if (targetModel.isExactTypeIdentity()) {
             val stringTypeIdFactory =
@@ -628,6 +681,7 @@ private class TypeclassIrCallTransformer(
                     ?: return invalidBuiltinProofExpression(
                         expressionType = expressionType,
                         message = "Could not resolve one.wabbit.typeclass.typeId(String) on the compilation classpath.",
+                        diagnosticLocation = diagnosticLocation,
                     )
             val typeIdCall =
                 irCall(stringTypeIdFactory.symbol).apply {
@@ -640,6 +694,7 @@ private class TypeclassIrCallTransformer(
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
                 message = "TypeId proof requires an exact semantic type, but found ${targetModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
             )
         }
 
@@ -653,6 +708,7 @@ private class TypeclassIrCallTransformer(
                 ?: return invalidBuiltinProofExpression(
                     expressionType = expressionType,
                     message = "Could not resolve kotlin.reflect.typeOf<T>() on the compilation classpath.",
+                    diagnosticLocation = diagnosticLocation,
                 )
         val kTypeIdFactory =
             pluginContext.referenceFunctions(TYPE_ID_FACTORY_CALLABLE_ID)
@@ -663,6 +719,7 @@ private class TypeclassIrCallTransformer(
                 ?: return invalidBuiltinProofExpression(
                     expressionType = expressionType,
                     message = "Could not resolve one.wabbit.typeclass.typeId(KType) on the compilation classpath.",
+                    diagnosticLocation = diagnosticLocation,
                 )
         val typeOfCall =
             irCall(typeOfFunction.symbol).apply {
@@ -678,12 +735,13 @@ private class TypeclassIrCallTransformer(
     private fun IrStatementsBuilder<*>.buildBuiltinSameTypeConstructorExpression(
         plan: ResolutionPlan.ApplyRule,
         visibleTypeParameters: VisibleTypeParameters,
+        diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
         val left = plan.appliedTypeArguments.getOrNull(0)
-            ?: return invalidBuiltinProofExpression(expressionType, "SameTypeConstructor proof requires two type arguments.")
+            ?: return invalidBuiltinProofExpression(expressionType, "SameTypeConstructor proof requires two type arguments.", diagnosticLocation)
         val right = plan.appliedTypeArguments.getOrNull(1)
-            ?: return invalidBuiltinProofExpression(expressionType, "SameTypeConstructor proof requires two type arguments.")
+            ?: return invalidBuiltinProofExpression(expressionType, "SameTypeConstructor proof requires two type arguments.", diagnosticLocation)
         val valid =
             left is TcType.Constructor &&
                 right is TcType.Constructor &&
@@ -693,16 +751,22 @@ private class TypeclassIrCallTransformer(
                 expressionType = expressionType,
                 message =
                     "SameTypeConstructor proof requires matching outer type constructors, but found ${left.render()} and ${right.render()}.",
+                diagnosticLocation = diagnosticLocation,
             )
         }
-        return buildBuiltinProofSingletonExpression(expressionType, SAME_TYPE_CONSTRUCTOR_PROOF_CLASS_ID)
+        return buildBuiltinProofSingletonExpression(expressionType, SAME_TYPE_CONSTRUCTOR_PROOF_CLASS_ID, diagnosticLocation)
     }
 
     private fun IrStatementsBuilder<*>.invalidBuiltinProofExpression(
         expressionType: IrType,
         message: String,
+        diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
-        reportTypeclassResolutionFailure(message)
+        reportTypeclassResolutionFailure(
+            message = message,
+            diagnosticId = TypeclassDiagnosticIds.INVALID_BUILTIN_EVIDENCE,
+            location = diagnosticLocation,
+        )
         return irAs(irNull(), expressionType)
     }
 
@@ -713,6 +777,7 @@ private class TypeclassIrCallTransformer(
         localContexts: List<LocalTypeclassContext>,
         visibleTypeParameters: VisibleTypeParameters,
         recursiveDerivedResolvers: MutableMap<String, RecursiveDerivedResolver>,
+        diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression =
         when (plan) {
             is ResolutionPlan.LocalContext -> localContexts[plan.index].expression.invoke(this)
@@ -736,6 +801,7 @@ private class TypeclassIrCallTransformer(
                                     localContexts = localContexts,
                                     visibleTypeParameters = visibleTypeParameters,
                                     recursiveDerivedResolvers = recursiveDerivedResolvers,
+                                    diagnosticLocation = diagnosticLocation,
                                 )
                             }
                         buildInstanceFunctionCall(
@@ -760,6 +826,7 @@ private class TypeclassIrCallTransformer(
                                     localContexts = localContexts,
                                     visibleTypeParameters = visibleTypeParameters,
                                     recursiveDerivedResolvers = recursiveDerivedResolvers,
+                                    diagnosticLocation = diagnosticLocation,
                                 )
                             }
                         buildInstanceFunctionCall(
@@ -793,72 +860,84 @@ private class TypeclassIrCallTransformer(
                         buildBuiltinProofSingletonExpression(
                             expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext),
                             proofClassId = SAME_PROOF_CLASS_ID,
+                            diagnosticLocation = diagnosticLocation,
                         )
 
                     RuleReference.BuiltinNotSame ->
                         buildBuiltinNotSameExpression(
                             plan = plan,
                             visibleTypeParameters = visibleTypeParameters,
+                            diagnosticLocation = diagnosticLocation,
                         )
 
                     RuleReference.BuiltinSubtype ->
                         buildBuiltinSubtypeExpression(
                             plan = plan,
                             visibleTypeParameters = visibleTypeParameters,
+                            diagnosticLocation = diagnosticLocation,
                         )
 
                     RuleReference.BuiltinStrictSubtype ->
                         buildBuiltinStrictSubtypeExpression(
                             plan = plan,
                             visibleTypeParameters = visibleTypeParameters,
+                            diagnosticLocation = diagnosticLocation,
                         )
 
                     RuleReference.BuiltinNullable ->
                         buildBuiltinNullableExpression(
                             plan = plan,
                             visibleTypeParameters = visibleTypeParameters,
+                            diagnosticLocation = diagnosticLocation,
                         )
 
                     RuleReference.BuiltinNotNullable ->
                         buildBuiltinNotNullableExpression(
                             plan = plan,
                             visibleTypeParameters = visibleTypeParameters,
+                            diagnosticLocation = diagnosticLocation,
                         )
 
                     RuleReference.BuiltinIsTypeclassInstance ->
                         buildBuiltinIsTypeclassInstanceExpression(
                             plan = plan,
                             visibleTypeParameters = visibleTypeParameters,
+                            diagnosticLocation = diagnosticLocation,
                         )
 
                     RuleReference.BuiltinKnownType ->
                         buildBuiltinKnownTypeExpression(
                             plan = plan,
                             visibleTypeParameters = visibleTypeParameters,
+                            diagnosticLocation = diagnosticLocation,
                         )
 
                     RuleReference.BuiltinTypeId ->
                         buildBuiltinTypeIdExpression(
                             plan = plan,
                             visibleTypeParameters = visibleTypeParameters,
+                            diagnosticLocation = diagnosticLocation,
                         )
 
                     RuleReference.BuiltinSameTypeConstructor ->
                         buildBuiltinSameTypeConstructorExpression(
                             plan = plan,
                             visibleTypeParameters = visibleTypeParameters,
+                            diagnosticLocation = diagnosticLocation,
                         )
 
                     RuleReference.BuiltinKClass ->
                         buildBuiltinKClassExpression(
                             plan = plan,
                             visibleTypeParameters = visibleTypeParameters,
+                            diagnosticLocation = diagnosticLocation,
                         )
 
                     RuleReference.BuiltinKSerializer ->
                         buildBuiltinKSerializerExpression(
                             plan = plan,
                             visibleTypeParameters = visibleTypeParameters,
+                            diagnosticLocation = diagnosticLocation,
                         )
 
                     is RuleReference.Derived ->
@@ -901,6 +980,7 @@ private class TypeclassIrCallTransformer(
                         localContexts = localContexts,
                         visibleTypeParameters = visibleTypeParameters,
                         recursiveDerivedResolvers = recursiveDerivedResolvers,
+                        diagnosticLocation = currentDeclaration.compilerMessageLocation(),
                     )
                 val slot = irTemporary(expression, nameHint = "typeclassMetadataInstanceSlot")
                 irGet(slot)
@@ -931,6 +1011,7 @@ private class TypeclassIrCallTransformer(
                                 localContexts = localContexts,
                                 visibleTypeParameters = visibleTypeParameters,
                                 recursiveDerivedResolvers = recursiveDerivedResolvers,
+                                diagnosticLocation = currentDeclaration.compilerMessageLocation(),
                             )
                         val slot = irTemporary(expression, nameHint = "typeclassMetadataInstanceSlot")
                         irGet(slot)
@@ -1308,6 +1389,49 @@ private class TypeclassIrCallTransformer(
             putTypeArgument(0, elementType)
             putValueArgument(0, irVararg(elementType, elements))
         }
+    }
+}
+
+private fun IrPluginContext.reportTypeclassError(
+    message: String,
+    diagnosticId: String? = null,
+    location: CompilerMessageSourceLocation? = null,
+) {
+    val renderedMessage =
+        diagnosticId?.let { id -> TypeclassDiagnosticIds.format(id, message) } ?: message
+    messageCollector.report(CompilerMessageSeverity.ERROR, renderedMessage, location)
+}
+
+private fun IrDeclarationBase.compilerMessageLocation(element: IrElement? = null): CompilerMessageSourceLocation? {
+    val file = containingFile() ?: return null
+    val offset = element?.startOffset ?: startOffset
+    return file.compilerMessageLocation(offset)
+}
+
+private fun IrDeclarationBase.containingFile(): IrFile? {
+    var current: IrDeclarationParent = parent
+    while (true) {
+        current =
+            when (current) {
+                is IrFile -> return current
+                is IrDeclaration -> current.parent
+                else -> return null
+            }
+    }
+}
+
+private fun IrFile.compilerMessageLocation(offset: Int): CompilerMessageSourceLocation {
+    val clampedOffset = offset.coerceIn(0, fileEntry.maxOffset)
+    val line = fileEntry.getLineNumber(clampedOffset) + 1
+    val column = fileEntry.getColumnNumber(clampedOffset) + 1
+    return object : CompilerMessageSourceLocation {
+        override val path: String = fileEntry.name
+
+        override val line: Int = line
+
+        override val column: Int = column
+
+        override val lineContent: String? = null
     }
 }
 
@@ -2044,12 +2168,11 @@ private class IrModuleScanner(
                 val subclass = classesById[subclassId] ?: return@mapNotNull null
                 val caseType = subclass.caseTypeForSealedBase(this, targetType) ?: return@mapNotNull null
                 if (!caseType.referencedVariableIds().all(allowedVariableIds::contains)) {
-                    pluginContext.messageCollector.report(
-                        CompilerMessageSeverity.ERROR,
-                        TypeclassDiagnosticIds.format(
-                            TypeclassDiagnosticIds.CANNOT_DERIVE,
+                    pluginContext.reportTypeclassError(
+                        message =
                             "Cannot derive ${classIdOrFail.asString()} because sealed subclass ${subclass.classIdOrFail.asString()} introduces type parameters that are not quantified by the sealed root",
-                        ),
+                        diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                        location = subclass.compilerMessageLocation(),
                     )
                     return null
                 }
@@ -2060,12 +2183,11 @@ private class IrModuleScanner(
                 )
             }
         if (cases.size != directSubclasses.size) {
-            pluginContext.messageCollector.report(
-                CompilerMessageSeverity.ERROR,
-                TypeclassDiagnosticIds.format(
-                    TypeclassDiagnosticIds.CANNOT_DERIVE,
+            pluginContext.reportTypeclassError(
+                message =
                     "Cannot derive ${classIdOrFail.asString()} because one or more sealed subclasses cannot be expressed from the sealed root's type parameters",
-                ),
+                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                location = compilerMessageLocation(),
             )
             return null
         }

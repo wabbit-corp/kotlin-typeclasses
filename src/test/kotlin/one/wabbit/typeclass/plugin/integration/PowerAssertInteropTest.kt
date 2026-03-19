@@ -93,7 +93,7 @@ class PowerAssertInteropTest : IntegrationTestSupport() {
             fun renderInt(value: Int): String = show.show(value)
 
             fun main() {
-                assert(renderInt(1) == "int:1") // ERROR missing Show<Int> should be reported normally inside assert
+                assert(renderInt(1) == "int:1") // E:TC_NO_CONTEXT_ARGUMENT missing Show<Int> should be reported normally inside assert
             }
             """.trimIndent()
 

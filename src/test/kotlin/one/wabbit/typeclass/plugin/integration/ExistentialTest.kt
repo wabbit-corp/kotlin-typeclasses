@@ -19,7 +19,7 @@ class ExistentialTest : IntegrationTestSupport() {
             fun <A> render(): String = "ok"
 
             fun main() {
-                println(render<List<*>>()) // ERROR no Show<List<*>> instance exists; this should fail cleanly
+                println(render<List<*>>()) // E:TC_NO_CONTEXT_ARGUMENT no Show<List<*>> instance exists; this should fail cleanly
             }
             """.trimIndent()
 
@@ -164,7 +164,7 @@ class ExistentialTest : IntegrationTestSupport() {
             fun baz(): String = foo.label()
 
             fun main() {
-                println(baz()) // ERROR both Foo<Int> and Foo<String> satisfy Foo<*>
+                println(baz()) // E:TC_AMBIGUOUS_INSTANCE both Foo<Int> and Foo<String> satisfy Foo<*>
             }
             """.trimIndent()
 

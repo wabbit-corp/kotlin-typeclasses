@@ -29,7 +29,7 @@ class BuiltinMaterializationRegressionTest : IntegrationTestSupport() {
             fun <A> render(): String = witness.label()
 
             fun <T> generic(): String =
-                render<T>() // ERROR KnownType<List<T>> is not materializable for a non-reified T
+                render<T>() // E:TC_NO_CONTEXT_ARGUMENT KnownType<List<T>> is not materializable for a non-reified T
             """.trimIndent()
 
         assertDoesNotCompile(
@@ -104,7 +104,7 @@ class BuiltinMaterializationRegressionTest : IntegrationTestSupport() {
             fun <A> render(): String = witness.label()
 
             fun <T> generic(): String =
-                render<T>() // ERROR TypeId<List<T>> is not materializable for a non-reified T
+                render<T>() // E:TC_NO_CONTEXT_ARGUMENT TypeId<List<T>> is not materializable for a non-reified T
             """.trimIndent()
 
         assertDoesNotCompile(
@@ -179,7 +179,7 @@ class BuiltinMaterializationRegressionTest : IntegrationTestSupport() {
             fun <A> render(): String = witness.label()
 
             fun <T> generic(): String =
-                render<T>() // ERROR KSerializer<List<T>> is not materializable for a non-reified T
+                render<T>() // E:TC_NO_CONTEXT_ARGUMENT KSerializer<List<T>> is not materializable for a non-reified T
             """.trimIndent()
 
         assertDoesNotCompile(

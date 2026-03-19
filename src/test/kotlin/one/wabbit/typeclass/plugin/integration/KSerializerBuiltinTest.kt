@@ -144,7 +144,7 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             fun <T> serialName(): String = serializer.descriptor.serialName
 
             fun main() {
-                println(serialName<User>()) // ERROR no generated serializer exists for User
+                println(serialName<User>()) // E:TC_NO_CONTEXT_ARGUMENT no generated serializer exists for User
             }
             """.trimIndent()
 
@@ -455,7 +455,7 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             import one.wabbit.typeclass.summon
 
             fun main() {
-                println(summon<KSerializer<List<*>>>().descriptor.serialName) // ERROR star-projected serializers are not materializable
+                println(summon<KSerializer<List<*>>>().descriptor.serialName) // E:TC_NO_CONTEXT_ARGUMENT star-projected serializers are not materializable
             }
             """.trimIndent()
 
@@ -478,7 +478,7 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             import one.wabbit.typeclass.summon
 
             fun <T> impossible(): String =
-                summon<KSerializer<T>>().descriptor.serialName // ERROR T is not reified/runtime-available
+                summon<KSerializer<T>>().descriptor.serialName // E:TC_NO_CONTEXT_ARGUMENT T is not reified/runtime-available
 
             fun main() {
                 println("unused")

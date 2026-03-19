@@ -49,7 +49,7 @@ class UtilityProofTest : IntegrationTestSupport() {
             fun <A, B> provenSame(): String = "same"
 
             fun main() {
-                println(provenSame<Int, String>()) // ERROR Int and String are not the same type
+                println(provenSame<Int, String>()) // E:TC_NO_CONTEXT_ARGUMENT Int and String are not the same type
             }
             """.trimIndent()
 
@@ -102,7 +102,7 @@ class UtilityProofTest : IntegrationTestSupport() {
             fun <A, B> provenDifferent(): String = "different"
 
             fun main() {
-                println(provenDifferent<Int, Age>()) // ERROR Age is exactly Int
+                println(provenDifferent<Int, Age>()) // E:TC_NO_CONTEXT_ARGUMENT Age is exactly Int
             }
             """.trimIndent()
 
@@ -146,7 +146,7 @@ class UtilityProofTest : IntegrationTestSupport() {
             fun <A, B> provenDifferent(): String = "different"
 
             fun <A, B> impossible(): String =
-                provenDifferent<A, B>() // ERROR the compiler cannot prove that A and B differ
+                provenDifferent<A, B>() // E:TC_NO_CONTEXT_ARGUMENT the compiler cannot prove that A and B differ
             """.trimIndent()
 
         assertDoesNotCompile(
@@ -210,29 +210,49 @@ class UtilityProofTest : IntegrationTestSupport() {
     }
 
     @Test fun rejectsSubtypeProofForInvariantOrUnrelatedTypes() {
-        val source =
-            """
-            package demo
+        fun assertSubtypeFailure(
+            callSite: String,
+            expectedMessageFragments: List<String>,
+            expectedDiagnostic: ExpectedDiagnostic,
+        ) {
+            val source =
+                """
+                package demo
 
-            import one.wabbit.typeclass.Subtype
+                import one.wabbit.typeclass.Subtype
 
-            context(_: Subtype<A, B>)
-            fun <A, B> provenSubtype(): String = "subtype"
+                context(_: Subtype<A, B>)
+                fun <A, B> provenSubtype(): String = "subtype"
 
-            class Invariant<A>(val value: A)
-            class Contravariant<in A>
+                class Invariant<A>(val value: A)
+                class Contravariant<in A>
 
-            fun main() {
-                println(provenSubtype<Invariant<String>, Invariant<Any>>()) // ERROR Invariant is invariant
-                println(provenSubtype<Contravariant<Int>, Contravariant<Any>>()) // ERROR contravariance reverses the direction
-                println(provenSubtype<String, Int>()) // ERROR unrelated types
-            }
-            """.trimIndent()
+                fun fail() {
+                    $callSite
+                }
+                """.trimIndent()
 
-        assertDoesNotCompile(
-            source = source,
-            expectedMessages = listOf("no context argument", "Subtype"),
-            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "subtype")),
+            assertDoesNotCompile(
+                source = source,
+                expectedMessages = expectedMessageFragments,
+                expectedDiagnostics = listOf(expectedDiagnostic),
+            )
+        }
+
+        assertSubtypeFailure(
+            """println(provenSubtype<Invariant<String>, Invariant<Any>>()) // E:TC_NO_CONTEXT_ARGUMENT Invariant is invariant""",
+            expectedMessageFragments = listOf("no context argument", "Subtype"),
+            expectedDiagnostic = expectedErrorContaining("no context argument", "subtype"),
+        )
+        assertSubtypeFailure(
+            """println(provenSubtype<Contravariant<Int>, Contravariant<Any>>()) // E:TC_INVALID_BUILTIN_EVIDENCE contravariance reverses the direction""",
+            expectedMessageFragments = listOf("Subtype proof could not prove"),
+            expectedDiagnostic = expectedErrorContaining("subtype proof could not prove"),
+        )
+        assertSubtypeFailure(
+            """println(provenSubtype<String, Int>()) // E:TC_INVALID_BUILTIN_EVIDENCE unrelated types""",
+            expectedMessageFragments = listOf("Subtype proof could not prove"),
+            expectedDiagnostic = expectedErrorContaining("subtype proof could not prove"),
         )
     }
 
@@ -247,7 +267,7 @@ class UtilityProofTest : IntegrationTestSupport() {
             fun <TC> proof(): String = "typeclass"
 
             fun main() {
-                println(proof<List<Int>>()) // ERROR List<Int> is not a typeclass application
+                println(proof<List<Int>>()) // E:TC_NO_CONTEXT_ARGUMENT List<Int> is not a typeclass application
             }
             """.trimIndent()
 
@@ -349,7 +369,7 @@ class UtilityProofTest : IntegrationTestSupport() {
             import one.wabbit.typeclass.summon
 
             fun <T> impossible(): KnownType<T> =
-                summon<KnownType<T>>() // ERROR the compiler does not know the exact KType for an unfixed T
+                summon<KnownType<T>>() // E:TC_NO_CONTEXT_ARGUMENT the compiler does not know the exact KType for an unfixed T
             """.trimIndent()
 
         assertDoesNotCompile(
@@ -392,7 +412,7 @@ class UtilityProofTest : IntegrationTestSupport() {
             fun <A, B> sameOuter(): String = "same-outer"
 
             fun main() {
-                println(sameOuter<List<Int>, Set<Int>>()) // ERROR List and Set have different outer constructors
+                println(sameOuter<List<Int>, Set<Int>>()) // E:TC_NO_CONTEXT_ARGUMENT List and Set have different outer constructors
             }
             """.trimIndent()
 
@@ -787,27 +807,43 @@ class UtilityProofTest : IntegrationTestSupport() {
     }
 
     @Test fun rejectsStrictSubtypeProofForEqualAliasAndUnrelatedTypes() {
-        val source =
-            """
-            package demo
+        fun assertStrictSubtypeFailure(
+            callSite: String,
+            expectedMessageFragments: List<String>,
+            expectedDiagnostic: ExpectedDiagnostic,
+        ) {
+            val source =
+                """
+                package demo
 
-            import one.wabbit.typeclass.StrictSubtype
+                import one.wabbit.typeclass.StrictSubtype
 
-            typealias Age = Int
+                typealias Age = Int
 
-            context(_: StrictSubtype<A, B>)
-            fun <A, B> provenStrictSubtype(): String = "strict-subtype"
+                context(_: StrictSubtype<A, B>)
+                fun <A, B> provenStrictSubtype(): String = "strict-subtype"
 
-            fun main() {
-                println(provenStrictSubtype<Int, Age>()) // ERROR aliases are equal, not a proper subtype
-                println(provenStrictSubtype<String, Int>()) // ERROR unrelated types
-            }
-            """.trimIndent()
+                fun fail() {
+                    $callSite
+                }
+                """.trimIndent()
 
-        assertDoesNotCompile(
-            source = source,
-            expectedMessages = listOf("no context argument", "StrictSubtype"),
-            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "strictsubtype")),
+            assertDoesNotCompile(
+                source = source,
+                expectedMessages = expectedMessageFragments,
+                expectedDiagnostics = listOf(expectedDiagnostic),
+            )
+        }
+
+        assertStrictSubtypeFailure(
+            """println(provenStrictSubtype<Int, Age>()) // E:TC_NO_CONTEXT_ARGUMENT aliases are equal, not a proper subtype""",
+            expectedMessageFragments = listOf("no context argument", "StrictSubtype"),
+            expectedDiagnostic = expectedErrorContaining("no context argument", "strictsubtype"),
+        )
+        assertStrictSubtypeFailure(
+            """println(provenStrictSubtype<String, Int>()) // E:TC_INVALID_BUILTIN_EVIDENCE unrelated types""",
+            expectedMessageFragments = listOf("StrictSubtype proof could not prove"),
+            expectedDiagnostic = expectedErrorContaining("strictsubtype proof could not prove"),
         )
     }
 
@@ -971,39 +1007,65 @@ class UtilityProofTest : IntegrationTestSupport() {
     }
 
     @Test fun rejectsNullableAndNotNullableProofsWhenNullabilityIsUnknownOrWrong() {
-        val source =
+        fun assertNullabilityFailure(
+            declaration: String,
+            expectedMessageFragments: List<String>,
+        ) {
+            val source =
+                """
+                package demo
+
+                import one.wabbit.typeclass.NotNullable
+                import one.wabbit.typeclass.Nullable
+
+                context(_: Nullable<T>)
+                fun <T> needsNullable(): String = "nullable"
+
+                context(_: NotNullable<T>)
+                fun <T> needsNotNullable(): String = "not-nullable"
+
+                $declaration
+                """.trimIndent()
+
+            assertDoesNotCompile(
+                source = source,
+                expectedMessages = expectedMessageFragments,
+                expectedDiagnostics =
+                    listOf(
+                        ExpectedDiagnostic.Error(messageRegex = "(?i)(nullable|notnullable)"),
+                    ),
+            )
+        }
+
+        assertNullabilityFailure(
             """
-            package demo
-
-            import one.wabbit.typeclass.NotNullable
-            import one.wabbit.typeclass.Nullable
-
-            context(_: Nullable<T>)
-            fun <T> needsNullable(): String = "nullable"
-
-            context(_: NotNullable<T>)
-            fun <T> needsNotNullable(): String = "not-nullable"
-
             fun <T> impossibleNullable(): String =
-                needsNullable<T>() // ERROR the compiler cannot prove that T admits null
-
+                needsNullable<T>() // E:TC_NO_CONTEXT_ARGUMENT the compiler cannot prove that T admits null
+            """.trimIndent(),
+            expectedMessageFragments = listOf("Nullable"),
+        )
+        assertNullabilityFailure(
+            """
             fun <T> impossibleNotNullable(): String =
-                needsNotNullable<T>() // ERROR the compiler cannot prove that T excludes null
-
-            fun main() {
-                println(needsNullable<String>()) // ERROR String is not nullable
-                println(needsNotNullable<String?>()) // ERROR String? is nullable
+                needsNotNullable<T>() // E:TC_NO_CONTEXT_ARGUMENT the compiler cannot prove that T excludes null
+            """.trimIndent(),
+            expectedMessageFragments = listOf("NotNullable"),
+        )
+        assertNullabilityFailure(
+            """
+            fun wrongNullableCall() {
+                println(needsNullable<String>()) // E:TC_NO_CONTEXT_ARGUMENT String is not nullable
             }
-            """.trimIndent()
-
-        assertDoesNotCompile(
-            source = source,
-            expectedMessages = listOf("nullable", "notnullable", "string"),
-            expectedDiagnostics =
-                listOf(
-                    expectedErrorContaining("nullable"),
-                    expectedErrorContaining("notnullable"),
-                ),
+            """.trimIndent(),
+            expectedMessageFragments = listOf("Nullable", "String"),
+        )
+        assertNullabilityFailure(
+            """
+            fun wrongNotNullableCall() {
+                println(needsNotNullable<String?>()) // E:TC_NO_CONTEXT_ARGUMENT String? is nullable
+            }
+            """.trimIndent(),
+            expectedMessageFragments = listOf("missing typeclass instance", "NotNullable", "String"),
         )
     }
 
@@ -1499,7 +1561,7 @@ class UtilityProofTest : IntegrationTestSupport() {
             import one.wabbit.typeclass.summon
 
             fun <T> impossible(): TypeId<T> =
-                summon<TypeId<T>>() // ERROR TypeId requires an exact known semantic type
+                summon<TypeId<T>>() // E:TC_NO_CONTEXT_ARGUMENT TypeId requires an exact known semantic type
             """.trimIndent()
 
         assertDoesNotCompile(

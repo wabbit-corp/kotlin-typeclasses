@@ -101,7 +101,7 @@ class RuleIdentityRegressionTest : IntegrationTestSupport() {
             fun render(): String = show.label()
 
             context(_: Alpha<Int>, _: Beta<Int>)
-            fun useBoth(): String = render() // ERROR ambiguous Show<Int> resolution
+            fun useBoth(): String = render() // E:TC_NO_CONTEXT_ARGUMENT ambiguous Show<Int> resolution
             """.trimIndent()
 
         assertDoesNotCompile(

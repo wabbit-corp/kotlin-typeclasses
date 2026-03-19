@@ -145,7 +145,7 @@ class KClassBuiltinTest : IntegrationTestSupport() {
             import one.wabbit.typeclass.summon
 
             fun <T : Any> impossible(): KClass<T> =
-                summon<KClass<T>>() // ERROR generic T has no concrete KClass proof here
+                summon<KClass<T>>() // E:TC_NO_CONTEXT_ARGUMENT generic T has no concrete KClass proof here
             """.trimIndent()
 
         assertDoesNotCompile(
@@ -170,7 +170,7 @@ class KClassBuiltinTest : IntegrationTestSupport() {
             import one.wabbit.typeclass.summon
 
             inline fun <reified T> impossible(): KClass<T> =
-                summon<KClass<T>>() // ERROR KClass proofs only exist for non-nullable runtime-available types
+                summon<KClass<T>>() // KClass proofs only exist for non-nullable runtime-available types
 
             fun main() {
                 println(impossible<String?>())

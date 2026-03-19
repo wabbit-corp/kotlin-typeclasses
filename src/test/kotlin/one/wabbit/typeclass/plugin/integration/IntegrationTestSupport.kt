@@ -24,6 +24,7 @@ abstract class IntegrationTestSupport {
         private val locatedDiagnosticRegex = Regex("""^(.+):(\d+):(\d+):\s+(error|warning):\s+(.*)$""")
         private val globalDiagnosticRegex = Regex("""^(e|w|error|warning):\s+(.*)$""")
         private val prefixedDiagnosticIdRegex = Regex("""^\[(TC_[A-Z_]+)]\s*(.*)$""")
+        private val sourceDiagnosticMarkerRegex = Regex("""\b([EW]):(TC_[A-Z_]+)\b""")
 
         private fun maxJvmTarget(left: String, right: String): String =
             if (normalizeJvmTarget(left) >= normalizeJvmTarget(right)) {
@@ -111,13 +112,18 @@ abstract class IntegrationTestSupport {
         )
         val lowercaseOutput = result.stdout.lowercase()
         val diagnostics = parseCompilerDiagnostics(result.stdout)
-        expectedDiagnostics.forEach { expectedDiagnostic ->
+        val commentDiagnostics = expectedDiagnosticsFromSourceMarkers(sources)
+        (expectedDiagnostics + commentDiagnostics).forEach { expectedDiagnostic ->
             assertTrue(
                 diagnostics.any(expectedDiagnostic::matches),
                 buildString {
                     appendLine("Expected diagnostic not found: $expectedDiagnostic")
                     appendLine("Parsed diagnostics:")
                     appendLine(formatDiagnostics(diagnostics))
+                    if (commentDiagnostics.isNotEmpty()) {
+                        appendLine("Source marker diagnostics:")
+                        appendLine(commentDiagnostics.joinToString(separator = "\n"))
+                    }
                     appendLine("Full compiler output:")
                     append(result.stdout)
                 },
@@ -139,8 +145,8 @@ abstract class IntegrationTestSupport {
         inferDiagnosticIdsFromFragments(fragments.asList()).let { diagnosticIds ->
             ExpectedDiagnostic.Error(
                 diagnosticIds = diagnosticIds,
-            file = file,
-            line = line,
+                file = file,
+                line = line,
                 description =
                     buildString {
                         diagnosticIds?.joinToString(prefix = "ids ", separator = " or ")?.let(::append)
@@ -768,7 +774,7 @@ abstract class IntegrationTestSupport {
             severity = parseDiagnosticSeverity(match.groupValues[4]),
             message = parsedMessage.message,
             diagnosticId = parsedMessage.diagnosticId,
-            phase = DiagnosticPhase.FIR,
+            phase = inferDiagnosticPhase(parsedMessage, hasLocation = true),
             rawLine = line,
         )
     }
@@ -783,7 +789,7 @@ abstract class IntegrationTestSupport {
             severity = parseDiagnosticSeverity(match.groupValues[1]),
             message = parsedMessage.message,
             diagnosticId = parsedMessage.diagnosticId,
-            phase = inferGlobalDiagnosticPhase(parsedMessage),
+            phase = inferDiagnosticPhase(parsedMessage, hasLocation = false),
             rawLine = line,
         )
     }
@@ -833,12 +839,67 @@ abstract class IntegrationTestSupport {
         }
     }
 
-    private fun inferGlobalDiagnosticPhase(parsedMessage: ParsedDiagnosticMessage): DiagnosticPhase =
-        when {
-            parsedMessage.diagnosticId != null -> DiagnosticPhase.IR
-            parsedMessage.message.lowercase().startsWith("missing typeclass instance for ") -> DiagnosticPhase.IR
-            parsedMessage.message.lowercase().startsWith("recursive typeclass resolution for ") -> DiagnosticPhase.IR
-            else -> DiagnosticPhase.UNKNOWN
+    private fun inferDiagnosticPhase(
+        parsedMessage: ParsedDiagnosticMessage,
+        hasLocation: Boolean,
+    ): DiagnosticPhase =
+        when (parsedMessage.diagnosticId) {
+            TypeclassDiagnosticIds.INVALID_INSTANCE_DECL -> DiagnosticPhase.FIR
+            TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE -> DiagnosticPhase.IR
+            TypeclassDiagnosticIds.CANNOT_DERIVE -> DiagnosticPhase.IR
+            TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT ->
+                when {
+                    parsedMessage.message.lowercase().startsWith("missing typeclass instance for ") ||
+                        parsedMessage.message.lowercase().startsWith("recursive typeclass resolution for ") -> DiagnosticPhase.IR
+                    else -> DiagnosticPhase.FIR
+                }
+            TypeclassDiagnosticIds.INVALID_BUILTIN_EVIDENCE -> DiagnosticPhase.IR
+            else ->
+                when {
+                    !hasLocation &&
+                        (
+                            parsedMessage.message.lowercase().startsWith("missing typeclass instance for ") ||
+                                parsedMessage.message.lowercase().startsWith("recursive typeclass resolution for ")
+                        ) -> DiagnosticPhase.IR
+                    hasLocation -> DiagnosticPhase.FIR
+                    else -> DiagnosticPhase.UNKNOWN
+                }
+        }
+
+    private fun expectedDiagnosticsFromSourceMarkers(sources: Map<String, String>): List<ExpectedDiagnostic> =
+        sources.entries.flatMap { (file, source) ->
+            source.lineSequence().mapIndexedNotNull { index, line ->
+                val commentStart = line.indexOf("//")
+                if (commentStart < 0) {
+                    return@mapIndexedNotNull null
+                }
+                val comment = line.substring(commentStart + 2)
+                val markers = sourceDiagnosticMarkerRegex.findAll(comment).toList()
+                if (markers.isEmpty()) {
+                    return@mapIndexedNotNull null
+                }
+                markers.map { marker ->
+                    when (marker.groupValues[1]) {
+                        "E" ->
+                            ExpectedDiagnostic.Error(
+                                file = file,
+                                line = index + 1,
+                                diagnosticIds = setOf(marker.groupValues[2]),
+                                description = "source marker ${marker.groupValues[1]}:${marker.groupValues[2]}",
+                            )
+
+                        "W" ->
+                            ExpectedDiagnostic.Warning(
+                                file = file,
+                                line = index + 1,
+                                diagnosticIds = setOf(marker.groupValues[2]),
+                                description = "source marker ${marker.groupValues[1]}:${marker.groupValues[2]}",
+                            )
+
+                        else -> error("Unsupported source diagnostic marker: ${marker.value}")
+                    }
+                }
+            }.flatten().toList()
         }
 
     private fun parseDiagnosticSeverity(token: String): DiagnosticSeverity =

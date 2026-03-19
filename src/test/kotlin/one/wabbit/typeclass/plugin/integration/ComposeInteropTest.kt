@@ -216,7 +216,7 @@ class ComposeInteropTest : IntegrationTestSupport() {
 
             @Composable
             fun Screen() {
-                renderInt(1) // ERROR missing Show<Int> should be reported normally inside composable bodies
+                renderInt(1) // E:TC_NO_CONTEXT_ARGUMENT missing Show<Int> should be reported normally inside composable bodies
             }
             """.trimIndent()
 

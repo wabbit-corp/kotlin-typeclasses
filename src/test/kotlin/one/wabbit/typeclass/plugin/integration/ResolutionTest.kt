@@ -1354,7 +1354,7 @@ class ResolutionTest : IntegrationTestSupport() {
             fun <A> render(): String = summon<Show<A>>().show()
 
             fun main() {
-                println(render<Box<Int>>()) // ERROR generic and specific instances both match
+                println(render<Box<Int>>()) // E:TC_NO_CONTEXT_ARGUMENT generic and specific instances both match
             }
             """.trimIndent()
 
@@ -1387,7 +1387,7 @@ class ResolutionTest : IntegrationTestSupport() {
             }
 
             @Instance
-            object IntShowTwo : Show<Int> { // ERROR: ambiguous instance declaration
+            object IntShowTwo : Show<Int> { // ambiguous instance declaration
                 override fun show(value: Int): String = "two"
             }
 
@@ -1404,7 +1404,7 @@ class ResolutionTest : IntegrationTestSupport() {
             fun <A> render(value: A): String = show.show(value)
 
             fun main() {
-                println(render(Box(1))) // ERROR prerequisite Show<Int> is ambiguous
+                println(render(Box(1))) // E:TC_NO_CONTEXT_ARGUMENT prerequisite Show<Int> is ambiguous
             }
             """.trimIndent()
 
@@ -1747,7 +1747,7 @@ class ResolutionTest : IntegrationTestSupport() {
             }
 
             @Instance
-            object IntJsonWriterTwo : JsonWriter<Int> { // ERROR duplicate prerequisite evidence
+            object IntJsonWriterTwo : JsonWriter<Int> { // duplicate prerequisite evidence
                 override fun write(value: Int): String = "two:${'$'}value"
             }
 
@@ -1762,7 +1762,7 @@ class ResolutionTest : IntegrationTestSupport() {
             fun <A> send(value: A): String = serializer.serialize(value)
 
             fun main() {
-                println(send(1)) // ERROR should report ambiguous JsonWriter<Int>, not missing BodySerializer<Int>
+                println(send(1)) // E:TC_NO_CONTEXT_ARGUMENT should report ambiguous JsonWriter<Int>, not missing BodySerializer<Int>
             }
             """.trimIndent()
 
@@ -1934,7 +1934,7 @@ class ResolutionTest : IntegrationTestSupport() {
             fun <A> render(value: A): String = show.show(value)
 
             fun main() {
-                println(render(Big(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, Payload("x")))) // ERROR missing Show<Payload>
+                println(render(Big(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, Payload("x")))) // E:TC_NO_CONTEXT_ARGUMENT missing Show<Payload>
             }
             """.trimIndent()
 

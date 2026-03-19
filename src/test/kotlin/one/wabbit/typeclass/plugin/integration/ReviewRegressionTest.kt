@@ -446,7 +446,7 @@ class ReviewRegressionTest : IntegrationTestSupport() {
 
             fun main() {
                 context(NullableIntShow) {
-                    println(render<Int>()) // ERROR explicit type arguments must not let the wrong explicit context be rebound
+                    println(render<Int>()) // E:TC_NO_CONTEXT_ARGUMENT explicit type arguments must not let the wrong explicit context be rebound
                 }
             }
             """.trimIndent()

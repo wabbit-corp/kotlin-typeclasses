@@ -274,7 +274,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     package demo
 
                     fun main() {
-                        println(render(Box(1))) // ERROR private companion @Instance declarations should not leak across files
+                        println(render(Box(1))) // E:TC_NO_CONTEXT_ARGUMENT private companion @Instance declarations should not leak across files
                     }
                     """.trimIndent(),
             )
@@ -320,7 +320,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun <A> render(value: A): String = show.label()
 
             fun main() {
-                println(render<String?>(null)) // ERROR ambiguous Show<String?> resolution
+                println(render<String?>(null)) // E:TC_AMBIGUOUS_INSTANCE ambiguous Show<String?> resolution
             }
             """.trimIndent()
 
@@ -344,10 +344,10 @@ class TypeclassContractTest : IntegrationTestSupport() {
                 fun show(value: A): String
             }
 
-            abstract class IntShowBase : Show<Int> // ERROR non-typeclass intermediate supertypes should not extend typeclasses
+            abstract class IntShowBase : Show<Int> // non-typeclass intermediate supertypes should not extend typeclasses
 
             @Instance
-            object IntShow : IntShowBase() {
+            object IntShow : IntShowBase() { // E:TC_INVALID_INSTANCE_DECL non-typeclass intermediate supertypes should not extend typeclasses
                 override fun show(value: Int): String = "int:${'$'}value"
             }
             """.trimIndent()
@@ -579,9 +579,9 @@ class TypeclassContractTest : IntegrationTestSupport() {
                 fun show(value: A): String
             }
 
-            @Instance
+            @Instance // E:TC_INVALID_INSTANCE_DECL instance type parameter B only appears in prerequisites
             context(_: Show<B>)
-            fun <A, B> bad(): Show<List<A>> = // ERROR instance type parameter B only appears in prerequisites
+            fun <A, B> bad(): Show<List<A>> =
                 object : Show<List<A>> {
                     override fun show(value: List<A>): String = value.toString()
                 }
@@ -609,9 +609,9 @@ class TypeclassContractTest : IntegrationTestSupport() {
                 fun label(): String
             }
 
-            @Instance
+            @Instance // E:TC_INVALID_INSTANCE_DECL direct self-recursive instance rule Show<Box<A>> => Show<Box<A>>
             context(_: Show<Box<A>>)
-            fun <A> recursiveBoxShow(): Show<Box<A>> = // ERROR direct self-recursive instance rule Show<Box<A>> => Show<Box<A>>
+            fun <A> recursiveBoxShow(): Show<Box<A>> =
                 object : Show<Box<A>> {
                     override fun label(): String = "recursive"
                 }
@@ -733,7 +733,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     import one.wabbit.typeclass.Instance
 
                     @Instance
-                    object AnotherEnabledFlag : FeatureFlag { // ERROR duplicate nullary instance declaration
+                    object AnotherEnabledFlag : FeatureFlag { // duplicate nullary instance declaration
                         override fun enabled(): Boolean = false
                     }
                     """.trimIndent(),
@@ -742,7 +742,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     package demo
 
                     fun main() {
-                        println(check()) // ERROR ambiguous FeatureFlag resolution
+                        println(check()) // E:TC_NO_CONTEXT_ARGUMENT ambiguous FeatureFlag resolution
                     }
                     """.trimIndent(),
             )
@@ -815,7 +815,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
             }
 
             @Instance
-            object IntShowTwo : Show<Int> { // ERROR duplicate evidence for Debug<Int>.debug
+            object IntShowTwo : Show<Int> { // duplicate evidence for Debug<Int>.debug
                 override fun show(value: Int): String = "two"
             }
 
@@ -823,7 +823,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
             object IntDebug : Debug<Int>
 
             fun main() {
-                println(summon<Debug<Int>>().debug(1)) // ERROR ambiguous Show<Int> inside default method body
+                println(summon<Debug<Int>>().debug(1)) // E:TC_NO_CONTEXT_ARGUMENT ambiguous Show<Int> inside default method body
             }
             """.trimIndent()
 
@@ -875,7 +875,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
                         import one.wabbit.typeclass.Instance
 
                         @Instance
-                        object OtherIntShow : Show<Int> { // ERROR unrelated file changes stable instance resolution
+                        object OtherIntShow : Show<Int> { // unrelated file changes stable instance resolution
                             override fun show(value: Int): String = "other:${'$'}value"
                         }
                         """.trimIndent()
@@ -925,7 +925,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun <A> which(): String = summon<Show<A>>().label()
 
             fun main() {
-                println(which<UserIds>()) // ERROR alias-specific and generic list instances both satisfy Show<UserIds>
+                println(which<UserIds>()) // E:TC_AMBIGUOUS_INSTANCE alias-specific and generic list instances both satisfy Show<UserIds>
             }
             """.trimIndent()
 

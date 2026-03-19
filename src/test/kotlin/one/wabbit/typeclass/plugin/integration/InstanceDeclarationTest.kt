@@ -18,7 +18,7 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
             object Instances {
                 @Instance
-                object IntShow : Show<Int> { // ERROR invalid scope: namespace objects are neither top-level nor associated owners
+                object IntShow : Show<Int> { // E:TC_INVALID_INSTANCE_DECL invalid scope: namespace objects are neither top-level nor associated owners
                     override fun show(): String = "namespace-object"
                 }
             }
@@ -57,7 +57,7 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             }
 
             @Instance
-            object TopLevelBoxShow : Show<Box> { // ERROR duplicate instance declaration for Box
+            object TopLevelBoxShow : Show<Box> { // duplicate instance declaration for Box
                 override fun show(value: Box): String = "top:${'$'}{value.value}"
             }
 
@@ -65,7 +65,7 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             fun <A> render(value: A): String = show.show(value)
 
             fun main() {
-                println(render(Box(1))) // ERROR ambiguous Show<Box> resolution
+                println(render(Box(1))) // E:TC_NO_CONTEXT_ARGUMENT ambiguous Show<Box> resolution
             }
             """.trimIndent()
 
@@ -94,7 +94,7 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
             class Holder {
                 @Instance
-                object IntShow : Show<Int> { // ERROR invalid scope: neither companion nor top-level nor Int's companion
+                object IntShow : Show<Int> { // E:TC_INVALID_INSTANCE_DECL invalid scope: neither companion nor top-level nor Int's companion
                     override fun show(value: Int): String = "int:${'$'}value"
                 }
             }
@@ -123,8 +123,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 fun show(value: A): String
             }
 
-            @Instance
-            fun String.badInstance(): Show<String> = // ERROR extension @Instance functions should be rejected
+            @Instance // E:TC_INVALID_INSTANCE_DECL extension @Instance functions should be rejected
+            fun String.badInstance(): Show<String> =
                 object : Show<String> {
                     override fun show(value: String): String = value
                 }
@@ -150,8 +150,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 fun show(value: A): String
             }
 
-            @Instance
-            fun bad(value: Int): Show<Int> = // ERROR @Instance functions with regular parameters should be rejected
+            @Instance // E:TC_INVALID_INSTANCE_DECL @Instance functions with regular parameters should be rejected
+            fun bad(value: Int): Show<Int> =
                 object : Show<Int> {
                     override fun show(value: Int): String = value.toString()
                 }
@@ -188,9 +188,9 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 override fun show(value: Int): String = value.toString()
             }
 
-            @Instance
+            @Instance // E:TC_INVALID_INSTANCE_DECL @Instance functions must not depend on non-typeclass contexts
             context(prefix: Prefix, show: Show<Int>)
-            fun boxShow(): Show<Box> = // ERROR @Instance functions must not depend on non-typeclass contexts
+            fun boxShow(): Show<Box> =
                 object : Show<Box> {
                     override fun show(value: Box): String = prefix.value + show.show(value.value)
                 }
@@ -316,7 +316,7 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             data class Box(val value: Int) {
                 companion object {
                     @Instance
-                    object StringShow : Show<String> { // ERROR associated instance owners must match the provided type
+                    object StringShow : Show<String> { // E:TC_INVALID_INSTANCE_DECL associated instance owners must match the provided type
                         override fun show(value: String): String = value
                     }
                 }
@@ -343,8 +343,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 fun show(value: A): String
             }
 
-            @Instance
-            class IntShow : Show<Int> { // ERROR class-based @Instance declarations are not allowed for now
+            @Instance // E:TC_INVALID_INSTANCE_DECL class-based @Instance declarations are not allowed for now
+            class IntShow : Show<Int> {
                 override fun show(value: Int): String = value.toString()
             }
             """.trimIndent()
@@ -369,8 +369,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 fun show(value: A): String
             }
 
-            @Instance
-            var intShow: Show<Int> = // ERROR mutable instance properties are not allowed
+            @Instance // E:TC_INVALID_INSTANCE_DECL mutable instance properties are not allowed
+            var intShow: Show<Int> =
                 object : Show<Int> {
                     override fun show(value: Int): String = value.toString()
                 }
@@ -396,8 +396,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 fun show(value: A): String
             }
 
-            @Instance
-            lateinit var intShow: Show<Int> // ERROR lateinit instance properties are not allowed
+            @Instance // E:TC_INVALID_INSTANCE_DECL lateinit instance properties are not allowed
+            lateinit var intShow: Show<Int>
             """.trimIndent()
 
         assertDoesNotCompile(
@@ -420,8 +420,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 fun show(value: A): String
             }
 
-            @Instance
-            val intShow: Show<Int> // ERROR custom getter instance properties are not allowed
+            @Instance // E:TC_INVALID_INSTANCE_DECL custom getter instance properties are not allowed
+            val intShow: Show<Int>
                 get() =
                     object : Show<Int> {
                         override fun show(value: Int): String = value.toString()
@@ -448,8 +448,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 fun show(value: A): String
             }
 
-            @Instance
-            suspend fun intShow(): Show<Int> = // ERROR suspend @Instance functions are not allowed for now
+            @Instance // E:TC_INVALID_INSTANCE_DECL suspend @Instance functions are not allowed for now
+            suspend fun intShow(): Show<Int> =
                 object : Show<Int> {
                     override fun show(value: Int): String = value.toString()
                 }

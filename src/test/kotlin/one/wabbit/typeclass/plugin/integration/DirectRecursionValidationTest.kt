@@ -22,9 +22,9 @@ class DirectRecursionValidationTest : IntegrationTestSupport() {
             @Typeclass
             interface WrappedShow<A> : Show<A>
 
-            @Instance
+            @Instance // E:TC_INVALID_INSTANCE_DECL expands to Show<Box<A>> => Show<Box<A>>
             context(_: Show<Box<A>>)
-            fun <A> recursiveWrappedBoxShow(): WrappedShow<Box<A>> = // ERROR expands to Show<Box<A>> => Show<Box<A>>
+            fun <A> recursiveWrappedBoxShow(): WrappedShow<Box<A>> =
                 object : WrappedShow<Box<A>> {
                     override fun label(): String = "recursive"
                 }

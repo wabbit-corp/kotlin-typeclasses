@@ -137,7 +137,7 @@ class SurfaceTest : IntegrationTestSupport() {
             fun <A> use(): String = "ok"
 
             fun main() {
-                println(use<Int>()) // ERROR Foo<Int> depends on Bar<Int> which depends on Foo<Int>
+                println(use<Int>()) // E:TC_NO_CONTEXT_ARGUMENT Foo<Int> depends on Bar<Int> which depends on Foo<Int>
             }
             """.trimIndent()
 
@@ -303,7 +303,7 @@ class SurfaceTest : IntegrationTestSupport() {
             fun which(): String = summon<Show<Nothing>>().label()
 
             fun main() {
-                println(which()) // ERROR multiple broader contravariant instances match Show<Nothing>
+                println(which()) // multiple broader contravariant instances match Show<Nothing>
             }
             """.trimIndent()
 
@@ -330,7 +330,7 @@ class SurfaceTest : IntegrationTestSupport() {
                     }
 
                     @Instance
-                    object IntShowOne : Show<Int> { // ERROR: ambiguous instance declaration
+                    object IntShowOne : Show<Int> { // ambiguous instance declaration
                         override fun show(): String = "one"
                     }
                     """.trimIndent(),
@@ -341,7 +341,7 @@ class SurfaceTest : IntegrationTestSupport() {
                     import one.wabbit.typeclass.Instance
 
                     @Instance
-                    object IntShowTwo : Show<Int> { // ERROR: ambiguous instance declaration
+                    object IntShowTwo : Show<Int> { // ambiguous instance declaration
                         override fun show(): String = "two"
                     }
                     """.trimIndent(),
@@ -353,7 +353,7 @@ class SurfaceTest : IntegrationTestSupport() {
                     fun <A> render(): String = show.show()
 
                     fun main() {
-                        println(render<Int>()) // ERROR duplicate instances across files
+                        println(render<Int>()) // E:TC_NO_CONTEXT_ARGUMENT duplicate instances across files
                     }
                     """.trimIndent(),
             )
@@ -478,7 +478,7 @@ class SurfaceTest : IntegrationTestSupport() {
             fun main() {
                 context(IntShow) {
                     context(StringListShow) {
-                        println(choose()) // ERROR A is inferred as both Int and String
+                        println(choose()) // A is inferred as both Int and String
                     }
                 }
             }
@@ -531,7 +531,7 @@ class SurfaceTest : IntegrationTestSupport() {
             fun <A> which(): String = summon<Eq<A>>().label()
 
             fun main() {
-                println(which<List<Int?>>()) // ERROR decide whether specific or generic nullable rule should win
+                println(which<List<Int?>>()) // E:TC_NO_CONTEXT_ARGUMENT decide whether specific or generic nullable rule should win
             }
             """.trimIndent()
 
@@ -846,7 +846,7 @@ class SurfaceTest : IntegrationTestSupport() {
                     override fun show(value: Int): String = "int:${'$'}value"
                 }
 
-                println(render(1)) // ERROR local @Instance declarations should not be auto-discovered
+                println(render(1)) // E:TC_NO_CONTEXT_ARGUMENT local @Instance declarations should not be auto-discovered
             }
             """.trimIndent()
 
@@ -919,7 +919,7 @@ class SurfaceTest : IntegrationTestSupport() {
                     package demo
 
                     fun main() {
-                        println(render<Int>()) // ERROR private @Instance declarations should not leak across files
+                        println(render<Int>()) // E:TC_NO_CONTEXT_ARGUMENT private @Instance declarations should not leak across files
                     }
                     """.trimIndent(),
             )

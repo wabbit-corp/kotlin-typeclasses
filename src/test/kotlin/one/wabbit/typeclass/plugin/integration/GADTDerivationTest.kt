@@ -771,7 +771,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             sealed interface Packed<A>
 
             @Derive(Show::class)
-            data class Hidden<A, B>(val value: B) : Packed<A> // ERROR B is hidden from Packed<A>
+            data class Hidden<A, B>(val value: B) : Packed<A> // B is hidden from Packed<A>
             """.trimIndent()
 
         assertDoesNotCompile(
@@ -798,7 +798,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             data class Leak<A, B>(
                 val left: Weird<A>,
                 val right: Weird<B>,
-            ) : Weird<A> // ERROR B is hidden from Weird<A>
+            ) : Weird<A> // B is hidden from Weird<A>
             """.trimIndent()
 
         assertDoesNotCompile(
