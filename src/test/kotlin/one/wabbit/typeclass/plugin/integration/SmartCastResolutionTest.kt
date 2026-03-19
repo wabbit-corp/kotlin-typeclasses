@@ -113,4 +113,92 @@ class SmartCastResolutionTest : IntegrationTestSupport() {
             expectedStdout = "string:hello",
         )
     }
+
+    @Test
+    fun resolvesInsideSafeCallLetAndScopingHelpers() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            @Instance
+            object StringShow : Show<String> {
+                override fun show(value: String): String = "string:${'$'}value"
+            }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                val text: String? = "hi"
+                text?.let { println(render(it)) }
+
+                val value: Any = 3
+                if (value is Int) {
+                    value.also { println(render(it)) }
+                    println(run { render(value) })
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                string:hi
+                int:3
+                int:3
+                """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun doesNotUseRefinedEvidenceOutsideSmartCastScope() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                val value: Any = 1
+                if (value is Int) {
+                    println(render(value))
+                }
+                println(render(value)) // E:TC_NO_CONTEXT_ARGUMENT smart-cast evidence must not leak outside the branch
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("no context argument", "render(value)"),
+            expectedDiagnostics = listOf(expectedNoContextArgument("show")),
+        )
+    }
 }
