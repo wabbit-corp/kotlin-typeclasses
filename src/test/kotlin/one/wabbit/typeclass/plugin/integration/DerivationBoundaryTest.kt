@@ -266,6 +266,92 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
             dependencies = listOf(dependency),
         )
     }
+
+    @Test
+    fun consumerModuleCanUseDeriversDefinedInAnUpstreamDependencyModule() {
+        val typeclassDependency =
+            HarnessDependency(
+                name = "dep-shared-show",
+                sources =
+                    mapOf(
+                        "dep/Show.kt" to showTypeclassSource(packageName = "dep"),
+                    ),
+            )
+        val modelDependency =
+            HarnessDependency(
+                name = "dep-split-derived-sealed",
+                dependencies = listOf(typeclassDependency),
+                sources =
+                    mapOf(
+                        "model/ShownString.kt" to
+                            """
+                            package model
+
+                            import dep.Show
+                            import one.wabbit.typeclass.Instance
+
+                            data class ShownString(val value: String) {
+                                companion object {
+                                    @Instance
+                                    val show: Show<ShownString> =
+                                        object : Show<ShownString> {
+                                            override fun show(value: ShownString): String = value.value
+                                        }
+                                }
+                            }
+                            """.trimIndent(),
+                        "model/Token.kt" to
+                            """
+                            package model
+
+                            import dep.Show
+                            import one.wabbit.typeclass.Derive
+
+                            @Derive(Show::class)
+                            sealed interface Token
+                            """.trimIndent(),
+                        "model/Word.kt" to
+                            """
+                            package model
+
+                            data class Word(val value: ShownString) : Token
+                            """.trimIndent(),
+                        "model/End.kt" to
+                            """
+                            package model
+
+                            object End : Token
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.render
+            import model.End
+            import model.ShownString
+            import model.Token
+            import model.Word
+
+            fun main() {
+                val word: Token = Word(ShownString("split"))
+                val end: Token = End
+                println(render(word))
+                println(render(end))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                Word(value=split)
+                End()
+                """.trimIndent(),
+            dependencies = listOf(modelDependency),
+        )
+    }
 }
 
 private fun showTypeclassSource(

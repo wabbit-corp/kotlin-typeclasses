@@ -88,5 +88,6 @@
 - Filter obviously impossible `Subtype` and `StrictSubtype` proof goals before planning when the plugin can prove they fail from source-visible variance and hierarchy metadata, and add review regressions so impossible builtin prerequisites no longer interfere with ordinary instance search.
 - Read generated derive metadata for dependency classes from FIR resolved annotations instead of source-only annotation lists, which restores cross-module sealed derivation for dependency roots split across files and modules.
 - Add `DerivationBoundaryTest` coverage for cross-file and dependency-module sealed derivation, including generic sealed roots and a control case proving ordinary dependency companion instances already worked.
+- Add chained multi-module derivation coverage where module A owns the typeclass deriver, module B owns the derived sealed ADT, and the consumer module only sees the transitive dependency graph.
 - Align impossible `Subtype` and `StrictSubtype` negative tests with the earlier FIR `TC_NO_CONTEXT_ARGUMENT` failure mode now that impossible builtin proof candidates are filtered before later materialization.
 - Reject `deriveProduct` and `deriveSum` implementations when FIR can statically see they return the wrong typeclass constructor for their enclosing `@Typeclass`.
