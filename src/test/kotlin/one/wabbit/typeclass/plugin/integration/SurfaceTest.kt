@@ -314,7 +314,7 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun reportsDuplicateInstancesAcrossFiles() {
+    @Test fun rejectsTopLevelDuplicateInstancesAcrossUnrelatedFiles() {
         val sources =
             mapOf(
                 "demo/InstancesOne.kt" to
@@ -341,7 +341,7 @@ class SurfaceTest : IntegrationTestSupport() {
                     import one.wabbit.typeclass.Instance
 
                     @Instance
-                    object IntShowTwo : Show<Int> { // ambiguous instance declaration
+                    object IntShowTwo : Show<Int> { // E:TC_INVALID_INSTANCE_DECL unrelated-file duplicate instance should be rejected at declaration site
                         override fun show(): String = "two"
                     }
                     """.trimIndent(),
@@ -353,15 +353,15 @@ class SurfaceTest : IntegrationTestSupport() {
                     fun <A> render(): String = show.show()
 
                     fun main() {
-                        println(render<Int>()) // E:TC_NO_CONTEXT_ARGUMENT duplicate instances across files
+                        println(render<Int>())
                     }
                     """.trimIndent(),
             )
 
         assertDoesNotCompile(
             sources = sources,
-            expectedMessages = listOf("no context argument", "show"),
-            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
+            expectedMessages = listOf("invalid @instance declaration", "same file", "show"),
+            expectedDiagnostics = listOf(expectedInvalidInstanceDecl("same file", "show")),
         )
     }
 

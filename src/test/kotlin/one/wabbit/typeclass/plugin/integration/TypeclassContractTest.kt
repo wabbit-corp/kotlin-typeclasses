@@ -703,7 +703,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun reportsDuplicateNullaryTypeclassInstancesAcrossFiles() {
+    @Test fun rejectsDuplicateNullaryTypeclassInstancesAcrossUnrelatedFiles() {
         val sources =
             mapOf(
                 "Flag.kt" to
@@ -733,7 +733,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     import one.wabbit.typeclass.Instance
 
                     @Instance
-                    object AnotherEnabledFlag : FeatureFlag { // duplicate nullary instance declaration
+                    object AnotherEnabledFlag : FeatureFlag { // E:TC_INVALID_INSTANCE_DECL unrelated-file duplicate nullary instance should be rejected
                         override fun enabled(): Boolean = false
                     }
                     """.trimIndent(),
@@ -742,15 +742,15 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     package demo
 
                     fun main() {
-                        println(check()) // E:TC_NO_CONTEXT_ARGUMENT ambiguous FeatureFlag resolution
+                        println(check())
                     }
                     """.trimIndent(),
             )
 
         assertDoesNotCompile(
             sources = sources,
-            expectedMessages = listOf("ambiguous", "featureflag"),
-            expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("featureflag")),
+            expectedMessages = listOf("invalid @instance declaration", "same file", "featureflag"),
+            expectedDiagnostics = listOf(expectedInvalidInstanceDecl("same file", "featureflag")),
         )
     }
 
@@ -834,7 +834,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun additionalUnrelatedFilesCanChangeResolutionOutcome() {
+    @Test fun rejectsAdditionalUnrelatedOrphanFilesInsteadOfChangingResolutionOutcome() {
         val stableSources =
             mapOf(
                 "Main.kt" to
@@ -875,7 +875,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
                         import one.wabbit.typeclass.Instance
 
                         @Instance
-                        object OtherIntShow : Show<Int> { // unrelated file changes stable instance resolution
+                        object OtherIntShow : Show<Int> { // E:TC_INVALID_INSTANCE_DECL unrelated orphan file must not affect stable resolution
                             override fun show(value: Int): String = "other:${'$'}value"
                         }
                         """.trimIndent()
@@ -883,8 +883,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             sources = unstableSources,
-            expectedMessages = listOf("no context argument", "show"),
-            expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("show")),
+            expectedMessages = listOf("invalid @instance declaration", "same file", "show"),
+            expectedDiagnostics = listOf(expectedInvalidInstanceDecl("same file", "show")),
         )
     }
 

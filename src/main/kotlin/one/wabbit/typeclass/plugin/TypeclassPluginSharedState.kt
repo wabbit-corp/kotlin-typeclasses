@@ -913,8 +913,13 @@ private fun FirRegularClass.toObjectRules(
     if (status.visibility == Visibilities.Private) {
         return emptyList()
     }
+    val ownerContext = firInstanceOwnerContext(session, symbol.classId)
+    val providedTypes = instanceProvidedTypes(session, configuration)
+    if (ownerContext.isTopLevel && !isLegalTopLevelInstanceLocation(session, providedTypes)) {
+        return emptyList()
+    }
 
-    return instanceProvidedTypes(session, configuration).validTypes.map { providedType ->
+    return providedTypes.validTypes.map { providedType ->
         VisibleInstanceRule(
             rule =
                 InstanceRule(
@@ -940,13 +945,18 @@ private fun FirSimpleFunction.toFunctionRules(
         return emptyList()
     }
     val callableId = symbol.callableId
-    if (!firInstanceOwnerContext(session, symbol.callableId).isIndexableScope) {
+    val ownerContext = firInstanceOwnerContext(session, symbol.callableId)
+    if (!ownerContext.isIndexableScope) {
         return emptyList()
     }
     if (status.visibility == Visibilities.Private) {
         return emptyList()
     }
     if (receiverParameter != null || valueParameters.isNotEmpty()) {
+        return emptyList()
+    }
+    val providedTypes = instanceProvidedTypes(session, configuration)
+    if (ownerContext.isTopLevel && !isLegalTopLevelInstanceLocation(session, providedTypes)) {
         return emptyList()
     }
 
@@ -971,7 +981,7 @@ private fun FirSimpleFunction.toFunctionRules(
         return emptyList()
     }
 
-    return instanceProvidedTypes(session, configuration).validTypes.map { providedType ->
+    return providedTypes.validTypes.map { providedType ->
         VisibleInstanceRule(
             rule =
                 InstanceRule(
@@ -999,7 +1009,8 @@ private fun FirProperty.toPropertyRules(
         return emptyList()
     }
     val callableId = symbol.callableId ?: return emptyList()
-    if (!firInstanceOwnerContext(session, symbol.callableId).isIndexableScope) {
+    val ownerContext = firInstanceOwnerContext(session, symbol.callableId)
+    if (!ownerContext.isIndexableScope) {
         return emptyList()
     }
     if (status.visibility == Visibilities.Private) {
@@ -1008,8 +1019,12 @@ private fun FirProperty.toPropertyRules(
     if (receiverParameter != null) {
         return emptyList()
     }
+    val providedTypes = instanceProvidedTypes(session, configuration)
+    if (ownerContext.isTopLevel && !isLegalTopLevelInstanceLocation(session, providedTypes)) {
+        return emptyList()
+    }
 
-    return instanceProvidedTypes(session, configuration).validTypes.map { providedType ->
+    return providedTypes.validTypes.map { providedType ->
         VisibleInstanceRule(
             rule =
                 InstanceRule(

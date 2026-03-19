@@ -91,6 +91,11 @@ internal fun TcType.referencedVariableIds(): Set<String> =
         collectReferencedVariableIds(this@referencedVariableIds, this)
     }
 
+internal fun TcType.referencedClassifierIds(): Set<String> =
+    buildSet {
+        collectReferencedClassifierIds(this@referencedClassifierIds, this)
+    }
+
 private fun collectReferencedVariableIds(
     type: TcType,
     sink: MutableSet<String>,
@@ -100,6 +105,21 @@ private fun collectReferencedVariableIds(
         is TcType.Projected -> collectReferencedVariableIds(type.type, sink)
         is TcType.Constructor -> type.arguments.forEach { argument -> collectReferencedVariableIds(argument, sink) }
         is TcType.Variable -> sink += type.id
+    }
+}
+
+private fun collectReferencedClassifierIds(
+    type: TcType,
+    sink: MutableSet<String>,
+) {
+    when (type) {
+        TcType.StarProjection -> Unit
+        is TcType.Projected -> collectReferencedClassifierIds(type.type, sink)
+        is TcType.Constructor -> {
+            sink += type.classifierId
+            type.arguments.forEach { argument -> collectReferencedClassifierIds(argument, sink) }
+        }
+        is TcType.Variable -> Unit
     }
 }
 

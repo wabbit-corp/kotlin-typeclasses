@@ -4,6 +4,8 @@
 
 - Replace legacy `// ERROR` integration-test assertions with line-scoped `// E:TC_*` / `// W:TC_*` markers, and teach the harness to merge those source markers with the older message-fragment expectations.
 - Add `TC_INVALID_BUILTIN_EVIDENCE` plus source-located IR reporting for builtin proof/materialization failures, and tag IR missing/recursive resolution failures with `TC_NO_CONTEXT_ARGUMENT` so negative tests can assert stable ids across both FIR and IR.
+- Rewrite `ImportVisibilityTest` around the stricter orphan policy: same-file top-level and companion-associated instances stay covered, unrelated-file top-level orphan cases are now declaration-site specs, and dependency-boundary visibility stays covered for `internal` and private/public companion instances.
+- Enforce the stricter orphan policy in FIR and IR: unrelated-file top-level `@Instance` declarations now fail at declaration site and are no longer indexed into resolution, and the old “extra file changes resolution” tests were rewritten around that policy.
 - Add stable `TC_*` diagnostic ids for invalid `@Instance` declarations, ambiguous instance resolution, derivation failures, and harness-classified missing-context failures, and make the integration harness parse and prefer those ids before matching message text.
 - Strip explicit `TC_*` prefixes back out of parsed diagnostic messages in the harness so existing fragment assertions stay readable while still matching ids first.
 - Tag parsed diagnostics in the integration harness as FIR- or IR-originated so negative tests can distinguish frontend declaration/call failures from backend plugin reports without relying on message wording.

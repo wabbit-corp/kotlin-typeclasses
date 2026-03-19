@@ -164,7 +164,14 @@ internal class TypeclassFirCheckersExtension(
         }
 
         when {
-            ownerContext.isTopLevel -> Unit
+            ownerContext.isTopLevel -> {
+                if (!declaration.isLegalTopLevelInstanceLocation(session, providedTypes)) {
+                    reportInvalid(
+                        declaration,
+                        "top-level orphan instance declarations must be declared in the same file as one of: ${providedTypes.topLevelInstanceHostDisplayNames().joinToString()}",
+                    )
+                }
+            }
             !ownerContext.isCompanionScope -> {
                 reportInvalid(
                     declaration,

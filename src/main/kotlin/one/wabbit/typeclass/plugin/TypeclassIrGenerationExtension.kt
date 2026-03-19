@@ -1972,7 +1972,11 @@ private class IrModuleScanner(
         if (!irInstanceOwnerContext(this).isIndexableScope) {
             return emptyList()
         }
-        return superTypes.providedTypeExpansion(emptyMap(), configuration).validTypes.map { providedType ->
+        val providedTypes = superTypes.providedTypeExpansion(emptyMap(), configuration).validTypes
+        if (associatedOwner == null && !isLegalTopLevelInstanceLocation(providedTypes, classesById)) {
+            return emptyList()
+        }
+        return providedTypes.map { providedType ->
             ResolvedRule(
                 rule =
                     InstanceRule(
@@ -2024,6 +2028,9 @@ private class IrModuleScanner(
         }
 
         val providedTypes = listOf(returnType).providedTypeExpansion(typeParameterBySymbol, configuration).validTypes
+        if (associatedOwner == null && !isLegalTopLevelInstanceLocation(providedTypes, classesById)) {
+            return emptyList()
+        }
         return providedTypes.map { providedType ->
             ResolvedRule(
                 rule =
@@ -2059,7 +2066,11 @@ private class IrModuleScanner(
         if (getter.extensionReceiverParameter != null) {
             return emptyList()
         }
-        return listOf(backingFieldOrGetterType()).providedTypeExpansion(emptyMap(), configuration).validTypes.map { providedType ->
+        val providedTypes = listOf(backingFieldOrGetterType()).providedTypeExpansion(emptyMap(), configuration).validTypes
+        if (associatedOwner == null && !isLegalTopLevelInstanceLocation(providedTypes, classesById)) {
+            return emptyList()
+        }
+        return providedTypes.map { providedType ->
             ResolvedRule(
                 rule =
                     InstanceRule(
