@@ -204,6 +204,7 @@ private class TypeclassIrCallTransformer(
                     original = original,
                     normalizedValueArguments = normalizedCall.valueArguments,
                     substitutionBySymbol = inferredOriginalTypeArguments.substitutionBySymbol,
+                    visibleTypeParameters = visibleTypeParameters,
                     configuration = configuration,
                 )
             buildOriginalCall(
@@ -268,7 +269,7 @@ private class TypeclassIrCallTransformer(
             val substitutedGoalType = parameter.type.substitute(typeArgumentMap)
             if (parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context && substitutedGoalType.isTypeclassType(configuration)) {
                 explicitArguments.preservedTypeclassArguments[valueArgumentIndex]?.let { preservedExpression ->
-                    originalCall.putValueArgument(valueArgumentIndex, preservedExpression)
+                    originalCall.putValueArgument(valueArgumentIndex, irAs(preservedExpression, substitutedGoalType))
                     return@forEachIndexed
                 }
                 val goal =
@@ -3171,6 +3172,7 @@ private fun extractExplicitArguments(
     original: IrSimpleFunction,
     normalizedValueArguments: List<IrExpression?>,
     substitutionBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, IrType>,
+    visibleTypeParameters: VisibleTypeParameters,
     configuration: TypeclassConfiguration,
 ): ExtractedExplicitArguments {
     val originalParameters = original.regularAndContextParameters()
@@ -3179,8 +3181,20 @@ private fun extractExplicitArguments(
             originalParameters = originalParameters,
             currentArguments = normalizedValueArguments,
             typeArgumentMap = substitutionBySymbol,
-            visibleTypeParameters = null,
+            visibleTypeParameters = visibleTypeParameters,
             configuration = configuration,
+        )
+
+    fun missingArgumentError(parameterIndex: Int? = null): Nothing =
+        error(
+            buildString {
+                append("Missing explicit argument for ")
+                append(original.callableId)
+                parameterIndex?.let {
+                    append(" at parameter ")
+                    append(it)
+                }
+            },
         )
 
     val explicitByOriginalIndex = linkedMapOf<Int, ExplicitArgument>()
@@ -3201,7 +3215,7 @@ private fun extractExplicitArguments(
                 argument != null -> ExplicitArgument.PassThrough(argument)
                 parameter.defaultValue != null -> ExplicitArgument.Omitted
                 parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context -> ExplicitArgument.Omitted
-                else -> error("Missing explicit argument for ${original.callableId}")
+                else -> missingArgumentError(originalIndex)
             }
     }
 
@@ -3223,7 +3237,7 @@ private fun extractExplicitArguments(
                 when {
                     argument != null -> ExplicitArgument.PassThrough(argument)
                     originalParameters[parameterIndex].defaultValue != null -> ExplicitArgument.Omitted
-                    else -> error("Missing explicit argument for ${original.callableId}")
+                    else -> missingArgumentError(parameterIndex)
                 }
         }
     }
@@ -3237,7 +3251,7 @@ private fun extractExplicitArguments(
             explicitByOriginalIndex[index] ?: when {
                 parameter.defaultValue != null -> ExplicitArgument.Omitted
                 parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context -> ExplicitArgument.Omitted
-                else -> error("Missing explicit argument for ${original.callableId}")
+                else -> missingArgumentError(index)
             }
         }
 
@@ -3275,6 +3289,37 @@ private fun IrType.satisfiesExpectedContextType(
             superType.satisfiesExpectedContextType(expected, visibleTypeParameters, visited)
     }
 }
+
+private fun IrType.matchesProjectedExplicitContextType(
+    expected: IrType,
+    visibleTypeParameters: VisibleTypeParameters? = null,
+): Boolean {
+    val actualModel = irTypeToModel(this, visibleTypeParameters?.bySymbol.orEmpty()) ?: return false
+    val expectedModel = irTypeToModel(expected, visibleTypeParameters?.bySymbol.orEmpty()) ?: return false
+    return actualModel.matchesProjectedExplicitContextType(expectedModel)
+}
+
+private fun TcType.matchesProjectedExplicitContextType(expected: TcType): Boolean =
+    when {
+        this == expected -> true
+        this is TcType.Projected &&
+            this.variance == org.jetbrains.kotlin.types.Variance.OUT_VARIANCE &&
+            this.type == expected -> true
+
+        this is TcType.Constructor && expected is TcType.Constructor ->
+            this.classifierId == expected.classifierId &&
+                this.isNullable == expected.isNullable &&
+                this.arguments.size == expected.arguments.size &&
+                this.arguments.zip(expected.arguments).all { (actualArgument, expectedArgument) ->
+                    actualArgument.matchesProjectedExplicitContextType(expectedArgument)
+                }
+
+        this is TcType.Projected && expected is TcType.Projected ->
+            this.variance == expected.variance &&
+                this.type.matchesProjectedExplicitContextType(expected.type)
+
+        else -> false
+    }
 
 private fun IrValueParameter.isTypeclassWrapperMarkerParameter(): Boolean =
     name.asString() == TYPECLASS_WRAPPER_MARKER_PARAMETER_NAME
@@ -3591,7 +3636,10 @@ private fun mapCurrentArgumentsToOriginalParameters(
                 argument.type.isTypeclassType(configuration) ||
                     argument.type.localEvidenceTypes(visibleTypeParameterSymbols, configuration).isNotEmpty()
             ) &&
-            argument.type.satisfiesExpectedContextType(expectedType, visibleTypeParameters)
+            (
+                argument.type.satisfiesExpectedContextType(expectedType, visibleTypeParameters) ||
+                    argument.type.matchesProjectedExplicitContextType(expectedType, visibleTypeParameters)
+            )
 
     fun argumentMatchesRegularParameter(
         argument: IrExpression?,
