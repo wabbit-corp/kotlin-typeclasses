@@ -1,0 +1,353 @@
+package one.wabbit.typeclass.plugin.integration
+
+import kotlin.test.Test
+
+class DerivationBoundaryTest : IntegrationTestSupport() {
+    @Test
+    fun consumerModuleCanUseDependencyCompanionInstancesForContextualFunctions() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-companion-show",
+                sources =
+                    mapOf(
+                        "dep/Show.kt" to showTypeclassSource(packageName = "dep"),
+                        "dep/ShownString.kt" to shownStringSource("dep"),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.ShownString
+            import dep.render
+
+            fun main() {
+                println(render(ShownString("dep")))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "dep",
+            dependencies = listOf(dependency),
+        )
+    }
+
+    @Test
+    fun derivesSealedHierarchiesSplitAcrossFiles() {
+        val sources =
+            mapOf(
+                "shared/Show.kt" to showTypeclassSource(packageName = "shared"),
+                "shared/ShownString.kt" to shownStringSource("shared"),
+                "shared/Token.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Derive
+
+                    @Derive(Show::class)
+                    sealed interface Token
+                    """.trimIndent(),
+                "shared/Word.kt" to
+                    """
+                    package shared
+
+                    data class Word(val value: ShownString) : Token
+                    """.trimIndent(),
+                "shared/End.kt" to
+                    """
+                    package shared
+
+                    object End : Token
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import shared.End
+                    import shared.ShownString
+                    import shared.Token
+                    import shared.Word
+                    import shared.render
+
+                    fun main() {
+                        val word: Token = Word(ShownString("hi"))
+                        val end: Token = End
+                        println(render(word))
+                        println(render(end))
+                    }
+                    """.trimIndent(),
+            )
+
+        assertCompilesAndRuns(
+            sources = sources,
+            expectedStdout =
+                """
+                Word(value=hi)
+                End()
+                """.trimIndent(),
+            mainClass = "demo.MainKt",
+        )
+    }
+
+    @Test
+    fun derivesGenericSealedHierarchiesSplitAcrossFiles() {
+        val sources =
+            mapOf(
+                "shared/Show.kt" to showTypeclassSource(packageName = "shared"),
+                "shared/ShownInt.kt" to shownIntSource("shared"),
+                "shared/Envelope.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Derive
+
+                    @Derive(Show::class)
+                    sealed class Envelope<out A>
+                    """.trimIndent(),
+                "shared/Value.kt" to
+                    """
+                    package shared
+
+                    data class Value<A>(val value: A) : Envelope<A>()
+                    """.trimIndent(),
+                "shared/Missing.kt" to
+                    """
+                    package shared
+
+                    object Missing : Envelope<Nothing>()
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import shared.Envelope
+                    import shared.Missing
+                    import shared.ShownInt
+                    import shared.Value
+                    import shared.render
+
+                    fun main() {
+                        val missing: Envelope<ShownInt> = Missing
+                        println(render(Value(ShownInt(1))))
+                        println(render(missing))
+                    }
+                    """.trimIndent(),
+            )
+
+        assertCompilesAndRuns(
+            sources = sources,
+            expectedStdout =
+                """
+                Value(value=1)
+                Missing()
+                """.trimIndent(),
+            mainClass = "demo.MainKt",
+        )
+    }
+
+    @Test
+    fun consumerModuleCanUseDerivedSealedInstancesFromDependencyModules() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-derived-sealed",
+                sources =
+                    mapOf(
+                        "dep/Show.kt" to showTypeclassSource(packageName = "dep"),
+                        "dep/ShownString.kt" to shownStringSource("dep"),
+                        "dep/Token.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.Derive
+
+                            @Derive(Show::class)
+                            sealed interface Token
+                            """.trimIndent(),
+                        "dep/Word.kt" to
+                            """
+                            package dep
+
+                            data class Word(val value: ShownString) : Token
+                            """.trimIndent(),
+                        "dep/End.kt" to
+                            """
+                            package dep
+
+                            object End : Token
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.End
+            import dep.ShownString
+            import dep.Token
+            import dep.Word
+            import dep.render
+
+            fun main() {
+                val word: Token = Word(ShownString("dep"))
+                val end: Token = End
+                println(render(word))
+                println(render(end))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                Word(value=dep)
+                End()
+                """.trimIndent(),
+            dependencies = listOf(dependency),
+        )
+    }
+
+    @Test
+    fun consumerModuleCanUseDerivedGenericSealedInstancesFromDependencyModules() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-derived-generic-sealed",
+                sources =
+                    mapOf(
+                        "dep/Show.kt" to showTypeclassSource(packageName = "dep"),
+                        "dep/ShownInt.kt" to shownIntSource("dep"),
+                        "dep/Envelope.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.Derive
+
+                            @Derive(Show::class)
+                            sealed class Envelope<out A>
+                            """.trimIndent(),
+                        "dep/Value.kt" to
+                            """
+                            package dep
+
+                            data class Value<A>(val value: A) : Envelope<A>()
+                            """.trimIndent(),
+                        "dep/Missing.kt" to
+                            """
+                            package dep
+
+                            object Missing : Envelope<Nothing>()
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.Envelope
+            import dep.Missing
+            import dep.ShownInt
+            import dep.Value
+            import dep.render
+
+            fun main() {
+                val missing: Envelope<ShownInt> = Missing
+                println(render(Value(ShownInt(2))))
+                println(render(missing))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                Value(value=2)
+                Missing()
+                """.trimIndent(),
+            dependencies = listOf(dependency),
+        )
+    }
+}
+
+private fun showTypeclassSource(
+    packageName: String,
+): String =
+    """
+    package $packageName
+
+    import one.wabbit.typeclass.Instance
+    import one.wabbit.typeclass.ProductTypeclassMetadata
+    import one.wabbit.typeclass.SumTypeclassMetadata
+    import one.wabbit.typeclass.Typeclass
+    import one.wabbit.typeclass.TypeclassDeriver
+    import one.wabbit.typeclass.get
+    import one.wabbit.typeclass.matches
+
+    @Typeclass
+    interface Show<A> {
+        fun show(value: A): String
+
+        companion object : TypeclassDeriver {
+            override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                object : Show<Any?> {
+                    override fun show(value: Any?): String {
+                        require(value != null)
+                        val renderedFields =
+                            metadata.fields.joinToString(", ") { field ->
+                                val fieldValue = field.get(value)
+                                val fieldShow = field.instance as Show<Any?>
+                                "${'$'}{field.name}=${'$'}{fieldShow.show(fieldValue)}"
+                            }
+                        val typeName = metadata.typeName.substringAfterLast('.')
+                        return "${'$'}typeName(${'$'}renderedFields)"
+                    }
+                }
+
+            override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                object : Show<Any?> {
+                    override fun show(value: Any?): String {
+                        require(value != null)
+                        val matchingCase = metadata.cases.single { candidate -> candidate.matches(value) }
+                        val caseShow = matchingCase.instance as Show<Any?>
+                        return caseShow.show(value)
+                    }
+                }
+        }
+    }
+
+    context(show: Show<A>)
+    fun <A> render(value: A): String = show.show(value)
+    """.trimIndent()
+
+private fun shownStringSource(packageName: String): String =
+    """
+    package $packageName
+
+    import one.wabbit.typeclass.Instance
+
+    data class ShownString(val value: String) {
+        companion object {
+            @Instance
+            val show: Show<ShownString> =
+                object : Show<ShownString> {
+                    override fun show(value: ShownString): String = value.value
+                }
+        }
+    }
+    """.trimIndent()
+
+private fun shownIntSource(packageName: String): String =
+    """
+    package $packageName
+
+    import one.wabbit.typeclass.Instance
+
+    data class ShownInt(val value: Int) {
+        companion object {
+            @Instance
+            val show: Show<ShownInt> =
+                object : Show<ShownInt> {
+                    override fun show(value: ShownInt): String = value.value.toString()
+                }
+        }
+    }
+    """.trimIndent()

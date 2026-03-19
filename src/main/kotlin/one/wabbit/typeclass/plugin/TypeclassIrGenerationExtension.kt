@@ -72,6 +72,7 @@ import org.jetbrains.kotlin.ir.declarations.IrValueParameter
 import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.expressions.IrClassReference
 import org.jetbrains.kotlin.ir.expressions.IrComposite
+import org.jetbrains.kotlin.ir.expressions.IrConst
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrExpressionBody
 import org.jetbrains.kotlin.ir.expressions.IrReturn
@@ -1637,11 +1638,12 @@ private fun String.shortClassNameOrSelf(): String =
 private class IrRuleIndex private constructor(
     private val pluginContext: IrPluginContext,
     val configuration: TypeclassConfiguration,
+    private val scanner: IrModuleScanner,
     private val originalsByCallableId: Map<CallableId, List<IrSimpleFunction>>,
     private val rulesById: Map<String, ResolvedRule>,
     private val topLevelRules: List<ResolvedRule>,
     private val associatedRulesByOwner: Map<ClassId, List<ResolvedRule>>,
-    private val classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    private val classInfoById: MutableMap<String, VisibleClassHierarchyInfo>,
 ) {
     private val lazilyDiscoveredAssociatedRulesByOwner: MutableMap<ClassId, List<ResolvedRule>> = linkedMapOf()
     private val lazilyDiscoveredRulesById: MutableMap<String, ResolvedRule> = linkedMapOf()
@@ -1735,22 +1737,46 @@ private class IrRuleIndex private constructor(
         if (associatedRulesByOwner.containsKey(owner)) {
             emptyList()
         } else lazilyDiscoveredAssociatedRulesByOwner.getOrPut(owner) {
-            val ownerClass = pluginContext.referenceClass(owner)?.owner ?: return@getOrPut emptyList()
-            val companion =
+            val ownerClass = discoverReferencedClass(owner) ?: return@getOrPut emptyList()
+            val companionRules =
                 ownerClass.declarations
                     .filterIsInstance<IrClass>()
-                    .firstOrNull(IrClass::isCompanion) ?: return@getOrPut emptyList()
+                    .firstOrNull(IrClass::isCompanion)
+                    ?.let { companion ->
+                        buildList {
+                            collectAssociatedRules(
+                                declaration = companion,
+                                associatedOwner = owner,
+                                sink = this,
+                            )
+                        }
+                    }.orEmpty()
+            val derivedRules = discoverDerivedRules(owner, ownerClass)
             buildList {
-                collectAssociatedRules(
-                    declaration = companion,
-                    associatedOwner = owner,
-                    sink = this,
-                )
+                addAll(companionRules)
+                addAll(derivedRules)
             }.also { rules ->
                 rules.forEach { rule ->
                     lazilyDiscoveredRulesById[rule.rule.id] = rule
                 }
             }
+        }
+
+    private fun discoverReferencedClass(owner: ClassId): IrClass? {
+        val ownerKey = owner.asString()
+        scanner.classesById[ownerKey]?.let { return it }
+        val referencedClass = pluginContext.referenceClass(owner)?.owner ?: return null
+        scanner.registerDiscoveredClass(referencedClass)
+        return scanner.classesById[ownerKey] ?: referencedClass
+    }
+
+    private fun discoverDerivedRules(
+        owner: ClassId,
+        ownerClass: IrClass,
+    ): List<ResolvedRule> =
+        scanner.derivedRulesForOwner(owner.asString()).ifEmpty {
+            scanner.registerDiscoveredClass(ownerClass)
+            scanner.derivedRulesForOwner(owner.asString())
         }
 
     private fun collectAssociatedRules(
@@ -1910,7 +1936,9 @@ private class IrRuleIndex private constructor(
             if (!visited.add(current)) {
                 continue
             }
+            discoverReferencedClass(ClassId.fromString(current))
             classInfoById[current]?.superClassifiers.orEmpty().forEach { superClassifier ->
+                discoverReferencedClass(ClassId.fromString(superClassifier))
                 if (classInfoById[superClassifier]?.isSealed == true) {
                     result += superClassifier
                 }
@@ -1942,6 +1970,7 @@ private class IrRuleIndex private constructor(
             return IrRuleIndex(
                 pluginContext = pluginContext,
                 configuration = sharedState.configuration,
+                scanner = scanner,
                 originalsByCallableId = scanner.buildOriginalIndex(),
                 rulesById = allRules.associateBy { it.rule.id },
                 topLevelRules = topLevelRules,
@@ -1958,8 +1987,8 @@ private class IrModuleScanner(
 ) {
     val classInfoById: MutableMap<String, VisibleClassHierarchyInfo> = linkedMapOf()
 
-    private val classesById = linkedMapOf<String, IrClass>()
-    private val declaredDerivationsByClassId = linkedMapOf<String, Set<ClassId>>()
+    val classesById = linkedMapOf<String, IrClass>()
+    val declaredDerivationsByClassId = linkedMapOf<String, Set<ClassId>>()
     private val originalsByCallableId = linkedMapOf<CallableId, MutableList<IrSimpleFunction>>()
     private val topLevelRules = mutableListOf<ResolvedRule>()
     private val companionRules = mutableListOf<ResolvedRule>()
@@ -2070,13 +2099,7 @@ private class IrModuleScanner(
         }
 
     fun buildDerivedRules(): List<ResolvedRule> {
-        val subclassesBySuper =
-            classInfoById.entries.fold(linkedMapOf<String, MutableSet<String>>()) { acc, (classId, info) ->
-                info.superClassifiers.forEach { superClassifier ->
-                    acc.getOrPut(superClassifier, ::linkedSetOf) += classId
-                }
-                acc
-            }
+        val subclassesBySuper = subclassesBySuper()
         val expandedPairs = linkedSetOf<Pair<String, ClassId>>()
         val queue = ArrayDeque<Pair<String, ClassId>>()
         declaredDerivationsByClassId.forEach { (classId, typeclassIds) ->
@@ -2101,6 +2124,74 @@ private class IrModuleScanner(
         }
     }
 
+    fun registerDiscoveredClass(declaration: IrClass) {
+        val classId = declaration.classId ?: return
+        val classKey = classId.asString()
+        if (classesById.containsKey(classKey) && classInfoById.containsKey(classKey)) {
+            return
+        }
+        classesById[classKey] = declaration
+        declaredDerivationsByClassId.putIfAbsent(classKey, declaration.supportedDerivedTypeclassIds())
+        classInfoById[classKey] =
+            VisibleClassHierarchyInfo(
+                superClassifiers =
+                    declaration.superTypes.mapNotNull { superType ->
+                        superType.classOrNull?.owner?.classId?.asString()
+                    }.toSet(),
+                isSealed = declaration.modality == Modality.SEALED,
+                typeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.variance },
+            )
+        declaration.superTypes.mapNotNull { superType ->
+            superType.classOrNull?.owner
+        }.forEach(::registerDiscoveredClass)
+        if (declaration.modality == Modality.SEALED) {
+            declaration.sealedSubclasses.mapNotNull { subclassSymbol ->
+                runCatching { subclassSymbol.owner }.getOrNull()
+            }.forEach(::registerDiscoveredClass)
+        }
+    }
+
+    fun derivedRulesForOwner(classifierId: String): List<ResolvedRule> {
+        val ownerClass = classesById[classifierId] ?: return emptyList()
+        val subclassesBySuper = subclassesBySuper()
+        return applicableDerivedTypeclassIdsForOwner(classifierId).flatMap { typeclassId ->
+            ownerClass.toDerivedRules(typeclassId, subclassesBySuper)
+        }
+    }
+
+    private fun applicableDerivedTypeclassIdsForOwner(classifierId: String): Set<ClassId> =
+        sealedOwnerChain(classifierId).flatMapTo(linkedSetOf()) { ownerId ->
+            declaredDerivationsByClassId[ownerId].orEmpty()
+        }
+
+    private fun subclassesBySuper(): Map<String, Set<String>> =
+        classInfoById.entries.fold(linkedMapOf<String, MutableSet<String>>()) { acc, (classId, info) ->
+            info.superClassifiers.forEach { superClassifier ->
+                acc.getOrPut(superClassifier, ::linkedSetOf) += classId
+            }
+            acc
+        }
+
+    private fun sealedOwnerChain(classifierId: String): Set<String> {
+        val result = linkedSetOf(classifierId)
+        val queue = ArrayDeque<String>()
+        queue += classifierId
+        val visited = linkedSetOf<String>()
+        while (queue.isNotEmpty()) {
+            val current = queue.removeFirst()
+            if (!visited.add(current)) {
+                continue
+            }
+            classInfoById[current]?.superClassifiers.orEmpty().forEach { superClassifier ->
+                if (classInfoById[superClassifier]?.isSealed == true) {
+                    result += superClassifier
+                }
+                queue += superClassifier
+            }
+        }
+        return result
+    }
+
     private fun scanDeclaration(
         declaration: IrDeclaration,
         associatedOwner: ClassId?,
@@ -2108,8 +2199,9 @@ private class IrModuleScanner(
         when (declaration) {
             is IrClass -> {
                 declaration.classId?.let { classId ->
+                    val supportedDerivedTypeclassIds = declaration.supportedDerivedTypeclassIds()
                     classesById[classId.asString()] = declaration
-                    declaredDerivationsByClassId[classId.asString()] = declaration.derivedTypeclassIds()
+                    declaredDerivationsByClassId[classId.asString()] = supportedDerivedTypeclassIds
                     classInfoById[classId.asString()] =
                         VisibleClassHierarchyInfo(
                             superClassifiers =
@@ -2119,6 +2211,9 @@ private class IrModuleScanner(
                             isSealed = declaration.modality == Modality.SEALED,
                             typeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.variance },
                         )
+                    if (supportedDerivedTypeclassIds.isNotEmpty()) {
+                        declaration.recordGeneratedDerivedTypeclassMetadata(supportedDerivedTypeclassIds)
+                    }
                 }
 
                 val nextAssociatedOwner =
@@ -2537,6 +2632,49 @@ private class IrModuleScanner(
             declaration.isCompanion &&
                 declaration.implementsInterface(requiredInterface, linkedSetOf())
         }
+
+    private fun IrClass.supportedDerivedTypeclassIds(): Set<ClassId> =
+        generatedDerivedTypeclassIds().ifEmpty { derivedTypeclassIds() }
+
+    private fun IrClass.generatedDerivedTypeclassIds(): Set<ClassId> =
+        annotations
+            .filter { constructorCall ->
+                constructorCall.symbol.owner.parentAsClass.classId == GENERATED_INSTANCE_ANNOTATION_CLASS_ID
+            }.mapNotNullTo(linkedSetOf()) { annotation ->
+                val typeclassId = (annotation.getValueArgument(0) as? IrConst)?.value as? String
+                val targetId = (annotation.getValueArgument(1) as? IrConst)?.value as? String
+                val kind = (annotation.getValueArgument(2) as? IrConst)?.value as? String
+                typeclassId
+                    ?.takeIf { kind == "derive" && (targetId == null || targetId == classIdOrFail.asString()) }
+                    ?.let(ClassId::fromString)
+            }
+
+    private fun IrClass.recordGeneratedDerivedTypeclassMetadata(
+        directTypeclassIds: Set<ClassId>,
+    ) {
+        val annotationClass = pluginContext.referenceClass(GENERATED_INSTANCE_ANNOTATION_CLASS_ID)?.owner ?: return
+        val annotationConstructor = annotationClass.primaryConstructorOrNull() ?: return
+        val existingIds = generatedDerivedTypeclassIds().mapTo(linkedSetOf(), ClassId::asString)
+        val builder = DeclarationIrBuilder(pluginContext, symbol, startOffset, endOffset)
+        directTypeclassIds
+            .flatMapTo(linkedSetOf()) { typeclassId ->
+                expandDerivedTypeclassIds(
+                    typeclassId = typeclassId,
+                    previousWereTypeclass = true,
+                    visited = linkedSetOf(),
+                )
+            }.filterNot { typeclassId -> typeclassId.asString() in existingIds }
+            .forEach { typeclassId ->
+                annotations +=
+                    builder
+                        .irCallConstructor(annotationConstructor.symbol, emptyList())
+                        .apply {
+                            putValueArgument(0, builder.irString(typeclassId.asString()))
+                            putValueArgument(1, builder.irString(classIdOrFail.asString()))
+                            putValueArgument(2, builder.irString("derive"))
+                        }
+            }
+    }
 
     private fun typeclassGoal(
         typeclassId: ClassId,

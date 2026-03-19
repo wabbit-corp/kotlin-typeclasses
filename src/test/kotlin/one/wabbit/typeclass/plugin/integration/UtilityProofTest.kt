@@ -245,14 +245,14 @@ class UtilityProofTest : IntegrationTestSupport() {
             expectedDiagnostic = expectedErrorContaining("no context argument", "subtype"),
         )
         assertSubtypeFailure(
-            """println(provenSubtype<Contravariant<Int>, Contravariant<Any>>()) // E:TC_INVALID_BUILTIN_EVIDENCE contravariance reverses the direction""",
-            expectedMessageFragments = listOf("Subtype proof could not prove"),
-            expectedDiagnostic = expectedErrorContaining("subtype proof could not prove"),
+            """println(provenSubtype<Contravariant<Int>, Contravariant<Any>>()) // E:TC_NO_CONTEXT_ARGUMENT contravariance reverses the direction""",
+            expectedMessageFragments = listOf("no context argument", "Subtype"),
+            expectedDiagnostic = expectedNoContextArgument("subtype"),
         )
         assertSubtypeFailure(
-            """println(provenSubtype<String, Int>()) // E:TC_INVALID_BUILTIN_EVIDENCE unrelated types""",
-            expectedMessageFragments = listOf("Subtype proof could not prove"),
-            expectedDiagnostic = expectedErrorContaining("subtype proof could not prove"),
+            """println(provenSubtype<String, Int>()) // E:TC_NO_CONTEXT_ARGUMENT unrelated types""",
+            expectedMessageFragments = listOf("no context argument", "Subtype"),
+            expectedDiagnostic = expectedNoContextArgument("subtype"),
         )
     }
 
@@ -841,9 +841,9 @@ class UtilityProofTest : IntegrationTestSupport() {
             expectedDiagnostic = expectedErrorContaining("no context argument", "strictsubtype"),
         )
         assertStrictSubtypeFailure(
-            """println(provenStrictSubtype<String, Int>()) // E:TC_INVALID_BUILTIN_EVIDENCE unrelated types""",
-            expectedMessageFragments = listOf("StrictSubtype proof could not prove"),
-            expectedDiagnostic = expectedErrorContaining("strictsubtype proof could not prove"),
+            """println(provenStrictSubtype<String, Int>()) // E:TC_NO_CONTEXT_ARGUMENT unrelated types""",
+            expectedMessageFragments = listOf("no context argument", "StrictSubtype"),
+            expectedDiagnostic = expectedNoContextArgument("strictsubtype"),
         )
     }
 

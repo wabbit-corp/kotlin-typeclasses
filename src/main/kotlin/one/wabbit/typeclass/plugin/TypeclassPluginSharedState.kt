@@ -81,12 +81,12 @@ internal class TypeclassPluginSharedState(
     fun canDeriveGoal(
         session: FirSession,
         goal: TcType,
-    ): Boolean = resolutionIndex(session).canDeriveGoal(goal)
+    ): Boolean = resolutionIndex(session).canDeriveGoal(goal, session)
 
     fun allowedAssociatedOwnersForProvidedType(
         session: FirSession,
         providedType: TcType,
-    ): Set<ClassId> = resolutionIndex(session).allowedAssociatedOwnersForGoal(providedType)
+    ): Set<ClassId> = resolutionIndex(session).allowedAssociatedOwnersForGoal(providedType, session)
 
     fun isTypeclassType(
         session: FirSession,
@@ -300,7 +300,7 @@ private class FirResolutionScanner(
                 VisibleInstanceRule(rule = rule, associatedOwner = null)
             },
             associatedRulesByOwner = associatedRulesByOwner.mapValues { (_, rules) -> rules.toList() },
-            classInfoById = classInfoById.toMap(),
+            classInfoById = classInfoById.toMutableMap(),
             derivableTypeclassIdsByOwner =
                 derivableTypeclassIdsByOwner.mapValues { (_, typeclassIds) -> typeclassIds.toSet() },
         )
@@ -310,17 +310,18 @@ private data class ResolutionIndex(
     val configuration: TypeclassConfiguration,
     val topLevelRules: List<VisibleInstanceRule>,
     val associatedRulesByOwner: Map<ClassId, List<VisibleInstanceRule>>,
-    val classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    val classInfoById: MutableMap<String, VisibleClassHierarchyInfo>,
     val derivableTypeclassIdsByOwner: Map<String, Set<String>>,
 ) {
     private val lazilyDiscoveredAssociatedRulesByOwner: MutableMap<ClassId, List<VisibleInstanceRule>> = linkedMapOf()
+    private val lazilyDiscoveredDerivableTypeclassIdsByOwner: MutableMap<String, Set<String>> = linkedMapOf()
 
     fun rulesForGoal(
         goal: TcType,
         session: FirSession,
         canMaterializeVariable: (String) -> Boolean,
     ): List<InstanceRule> {
-        val owners = allowedAssociatedOwnersForGoal(goal)
+        val owners = allowedAssociatedOwnersForGoal(goal, session)
         val associated =
             owners.flatMapTo(linkedSetOf()) { owner ->
                 associatedRulesByOwner[owner].orEmpty() + discoverAssociatedRules(owner, session)
@@ -367,47 +368,81 @@ private data class ResolutionIndex(
             .toList()
     }
 
-    fun canDeriveGoal(goal: TcType): Boolean {
+    fun canDeriveGoal(
+        goal: TcType,
+        session: FirSession,
+    ): Boolean {
         val constructor = goal as? TcType.Constructor ?: return false
         val typeclassId = constructor.classifierId
-        val targetType = constructor.arguments.singleOrNull() as? TcType.Constructor ?: return false
-        return derivationOwnersForTarget(targetType.classifierId).any { owner ->
-            typeclassId in derivableTypeclassIdsByOwner[owner].orEmpty()
+        val targetType =
+            constructor.arguments.singleOrNull() as? TcType.Constructor
+                ?: return false
+        return derivationOwnersForTarget(targetType.classifierId, session).any { owner ->
+            typeclassId in discoveredDerivableTypeclassIds(owner, session)
         }
     }
 
-    fun allowedAssociatedOwnersForGoal(goal: TcType): Set<ClassId> {
+    fun allowedAssociatedOwnersForGoal(
+        goal: TcType,
+        session: FirSession,
+    ): Set<ClassId> {
         val constructor = goal as? TcType.Constructor ?: return emptySet()
         val ownerIds = linkedSetOf<String>()
-        ownerIds += sealedOwnerChain(constructor.classifierId)
+        ownerIds += sealedOwnerChain(constructor.classifierId, session)
         constructor.arguments.forEach { argument ->
-            ownerIds += associatedOwnerIds(argument)
+            ownerIds += associatedOwnerIds(argument, session)
         }
         return ownerIds.map(ClassId::fromString).toSet()
     }
 
-    private fun associatedOwnerIds(type: TcType): Set<String> =
+    private fun associatedOwnerIds(
+        type: TcType,
+        session: FirSession,
+    ): Set<String> =
         when (type) {
             TcType.StarProjection -> emptySet()
-            is TcType.Projected -> associatedOwnerIds(type.type)
+            is TcType.Projected -> associatedOwnerIds(type.type, session)
             is TcType.Variable -> emptySet()
 
             is TcType.Constructor -> {
                 val owners = linkedSetOf<String>()
-                owners += sealedOwnerChain(type.classifierId)
+                owners += sealedOwnerChain(type.classifierId, session)
                 type.arguments.forEach { argument ->
-                    owners += associatedOwnerIds(argument)
+                    owners += associatedOwnerIds(argument, session)
                 }
                 owners
             }
         }
 
-    private fun derivationOwnersForTarget(classifierId: String): Set<String> =
-        sealedOwnerChain(classifierId).filterTo(linkedSetOf()) { candidate ->
-            candidate in derivableTypeclassIdsByOwner
-        }
+    private fun derivationOwnersForTarget(
+        classifierId: String,
+        session: FirSession,
+    ): Set<String> = sealedOwnerChain(classifierId, session)
 
-    private fun sealedOwnerChain(classifierId: String): Set<String> {
+    private fun discoveredDerivableTypeclassIds(
+        owner: String,
+        session: FirSession?,
+    ): Set<String> =
+        derivableTypeclassIdsByOwner[owner]
+            ?: lazilyDiscoveredDerivableTypeclassIdsByOwner[owner]
+            ?: session?.let { activeSession ->
+                lazilyDiscoveredDerivableTypeclassIdsByOwner.getOrPut(owner) {
+                    val classId = runCatching { ClassId.fromString(owner) }.getOrNull() ?: return@getOrPut emptySet()
+                    val symbol =
+                        try {
+                            activeSession.symbolProvider.getClassLikeSymbolByClassId(classId) as? FirRegularClassSymbol
+                        } catch (_: IllegalArgumentException) {
+                            null
+                        } ?: return@getOrPut emptySet()
+                    symbol.fir.supportedDerivedTypeclassIds(activeSession).expandedDerivedTypeclassIds(activeSession, configuration)
+                }
+            }
+            ?: emptySet()
+
+    private fun sealedOwnerChain(
+        classifierId: String,
+        session: FirSession,
+    ): Set<String> {
         val result = linkedSetOf(classifierId)
         val queue = ArrayDeque<String>()
         queue += classifierId
@@ -417,7 +452,9 @@ private data class ResolutionIndex(
             if (!visited.add(current)) {
                 continue
             }
+            discoverClassInfo(current, session)
             classInfoById[current]?.superClassifiers.orEmpty().forEach { superClassifier ->
+                discoverClassInfo(superClassifier, session)
                 if (classInfoById[superClassifier]?.isSealed == true) {
                     result += superClassifier
                 }
@@ -425,6 +462,32 @@ private data class ResolutionIndex(
             }
         }
         return result
+    }
+
+    private fun discoverClassInfo(
+        classifierId: String,
+        session: FirSession,
+    ) {
+        if (classInfoById.containsKey(classifierId)) {
+            return
+        }
+        val classId = runCatching { ClassId.fromString(classifierId) }.getOrNull() ?: return
+        val classSymbol =
+            try {
+                session.symbolProvider.getClassLikeSymbolByClassId(classId) as? FirRegularClassSymbol
+            } catch (_: IllegalArgumentException) {
+                null
+            } ?: return
+        val declaration = classSymbol.fir
+        classInfoById[classifierId] =
+            VisibleClassHierarchyInfo(
+                superClassifiers =
+                    declaration.superTypeRefs.mapNotNull { superTypeRef ->
+                        superTypeRef.coneType.classId?.asString()
+                    }.toSet(),
+                isSealed = declaration.status.modality == Modality.SEALED,
+                typeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.symbol.fir.variance },
+            )
     }
 
     private fun discoverAssociatedRules(
@@ -497,11 +560,17 @@ internal fun FirRegularClass.derivedTypeclassIds(session: FirSession): Set<Strin
             .firstOrNull { annotation ->
                 annotation.annotationTypeRef.coneType.classId == DERIVE_ANNOTATION_CLASS_ID
             } ?: return emptySet()
-    return deriveAnnotation.argumentMapping.mapping.values
+    val deriveArguments =
+        deriveAnnotation.argumentMapping.mapping.values.ifEmpty {
+            deriveAnnotation.argumentList.arguments
+        }
+    val derivedIds =
+        deriveArguments
         .asSequence()
         .flatMap(::flattenDerivedTypeclassArgumentExpressions)
         .mapNotNull { expression -> expression.derivedTypeclassId(session) }
         .toCollection(linkedSetOf())
+    return derivedIds
 }
 
 private fun Iterable<String>.expandedDerivedTypeclassIds(
@@ -563,8 +632,11 @@ private fun flattenDerivedTypeclassArgumentExpressions(expression: FirExpression
     }
 
 private fun FirExpression.derivedTypeclassId(session: FirSession): String? {
-    val classReference = this as? FirGetClassCall ?: return null
-    val classId = classReference.argument.resolvedType.lowerBoundIfFlexible().classId ?: return null
+    val classId =
+        when (this) {
+            is FirGetClassCall -> argument.resolvedType.lowerBoundIfFlexible().classId
+            else -> resolvedType.lowerBoundIfFlexible().classId
+        } ?: return null
     val classSymbol =
         try {
             session.symbolProvider.getClassLikeSymbolByClassId(classId) as? FirRegularClassSymbol
