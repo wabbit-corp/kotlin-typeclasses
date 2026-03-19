@@ -136,6 +136,35 @@ class KClassBuiltinTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun explicitLocalKClassEvidenceShadowsSyntheticBuiltin() {
+        val source =
+            """
+            package demo
+
+            import kotlin.reflect.KClass
+            import one.wabbit.typeclass.summon
+
+            object FakeIntKClass : KClass<Int> by Int::class {
+                override val simpleName: String? get() = "FakeInt"
+            }
+
+            context(kClass: KClass<Int>)
+            fun chosenSimpleName(): String = summon<KClass<Int>>().simpleName ?: "missing"
+
+            fun main() {
+                context(FakeIntKClass) {
+                    println(chosenSimpleName())
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "FakeInt",
+            pluginOptions = listOf("builtinKClassTypeclass=enabled"),
+        )
+    }
+
     @Test fun rejectsNonReifiedGenericKClassMaterializationWithoutExplicitEvidence() {
         val source =
             """

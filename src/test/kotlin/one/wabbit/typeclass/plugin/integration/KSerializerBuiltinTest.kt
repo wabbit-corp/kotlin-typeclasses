@@ -227,6 +227,51 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun explicitLocalKSerializerEvidenceShadowsSyntheticBuiltin() {
+        val source =
+            """
+            package demo
+
+            import kotlinx.serialization.KSerializer
+            import kotlinx.serialization.Serializable
+            import kotlinx.serialization.descriptors.PrimitiveKind
+            import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+            import kotlinx.serialization.descriptors.SerialDescriptor
+            import kotlinx.serialization.encoding.Decoder
+            import kotlinx.serialization.encoding.Encoder
+            import kotlinx.serialization.serializer
+            import one.wabbit.typeclass.summon
+
+            @Serializable
+            data class User(val name: String)
+
+            object FakeUserSerializer : KSerializer<User> by serializer<User>() {
+                override val descriptor: SerialDescriptor =
+                    PrimitiveSerialDescriptor("demo.FakeUser", PrimitiveKind.STRING)
+
+                override fun serialize(encoder: Encoder, value: User) = error("unused")
+
+                override fun deserialize(decoder: Decoder): User = error("unused")
+            }
+
+            context(serializer: KSerializer<User>)
+            fun chosenSerialName(): String = summon<KSerializer<User>>().descriptor.serialName
+
+            fun main() {
+                context(FakeUserSerializer) {
+                    println(chosenSerialName())
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "demo.FakeUser",
+            requiredPlugins = serializationPlugins,
+            pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
+        )
+    }
+
     @Test
     fun classLevelSerializableWithCustomSerializerMatchesOfficialSerializerApi() {
         val source =

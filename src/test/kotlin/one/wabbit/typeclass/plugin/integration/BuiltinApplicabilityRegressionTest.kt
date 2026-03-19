@@ -79,4 +79,49 @@ class BuiltinApplicabilityRegressionTest : IntegrationTestSupport() {
             expectedStdout = "derived:2",
         )
     }
+
+    @Test
+    fun impossibleBuiltinKSerializerPrerequisiteDoesNotCreateFakeAmbiguity() {
+        val source =
+            """
+            package demo
+
+            import kotlinx.serialization.KSerializer
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            class NotSerializable(val value: Int)
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "exact:${'$'}value"
+            }
+
+            @Instance
+            context(_: KSerializer<NotSerializable>)
+            fun impossibleShow(): Show<Int> =
+                object : Show<Int> {
+                    override fun show(value: Int): String = "impossible:${'$'}value"
+                }
+
+            context(show: Show<Int>)
+            fun render(): String = show.show(4)
+
+            fun main() {
+                println(render())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "exact:4",
+            requiredPlugins = listOf(CompilerHarnessPlugin.Serialization),
+            pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
+        )
+    }
 }
