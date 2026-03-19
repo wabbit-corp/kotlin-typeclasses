@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reject direct self-recursive `@Instance` function rules against every expanded provided type, so wrapper-returning or inherited-`@Typeclass` heads like `WrappedShow<Box<A>> : Show<Box<A>>` can no longer dodge declaration-site recursion validation.
+- Add focused regressions for wrapper-returning instance rules, proving recursive expanded heads are rejected while nonrecursive wrapper-returning rules still compile and run.
 - Filter impossible `IsTypeclassInstance<TC>` builtin goals before planning when `TC` is visibly not a typeclass application, so those fake candidates cannot create spurious ambiguity or survive until IR-only failure.
 - Add focused regressions proving that an impossible `IsTypeclassInstance<List<Int>>` prerequisite no longer distorts ordinary rule search while a valid `IsTypeclassInstance<Show<Int>>` prerequisite still works.
 - Fix a FIR scanner crash on `@Instance` functions and properties with implicit return types by using the callable symbol's resolved return type instead of assuming the raw `returnTypeRef` is already a `FirResolvedTypeRef`.

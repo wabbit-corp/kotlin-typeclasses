@@ -216,8 +216,7 @@ internal class TypeclassFirCheckersExtension(
 
         val recursiveProvidedType = providedTypes.validTypes.firstOrNull { providedType ->
             ruleShape.prerequisites.any { prerequisite ->
-                prerequisite.normalizedKey() == ruleShape.declaredProvidedType.normalizedKey() &&
-                    prerequisite.normalizedKey() == providedType.normalizedKey()
+                prerequisite.normalizedKey() == providedType.normalizedKey()
             }
         }
         if (recursiveProvidedType != null) {
