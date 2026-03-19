@@ -12,9 +12,8 @@ class DerivationLawTest : IntegrationTestSupport() {
             import one.wabbit.typeclass.Derive
             import one.wabbit.typeclass.Instance
             import one.wabbit.typeclass.ProductTypeclassMetadata
-            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.ProductTypeclassDeriver
             import one.wabbit.typeclass.Typeclass
-            import one.wabbit.typeclass.TypeclassDeriver
             import one.wabbit.typeclass.get
             import one.wabbit.typeclass.summon
 
@@ -27,18 +26,9 @@ class DerivationLawTest : IntegrationTestSupport() {
             interface Monoid<A> : Semigroup<A> {
                 fun empty(): A
 
-                companion object : TypeclassDeriver {
-                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any {
-                        val constructor =
-                            Class.forName(metadata.typeName)
-                                .declaredConstructors
-                                .single { candidate -> candidate.parameterCount == metadata.fields.size }
-                                .also { candidate -> candidate.isAccessible = true }
-
-                        fun instantiate(arguments: List<Any?>): Any? =
-                            constructor.newInstance(*arguments.toTypedArray())
-
-                        return object : Monoid<Any?> {
+                companion object : ProductTypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Monoid<Any?> {
                             override fun combine(left: Any?, right: Any?): Any? {
                                 require(left != null)
                                 require(right != null)
@@ -47,7 +37,7 @@ class DerivationLawTest : IntegrationTestSupport() {
                                         val fieldMonoid = field.instance as Monoid<Any?>
                                         fieldMonoid.combine(field.get(left), field.get(right))
                                     }
-                                return instantiate(combinedFields)
+                                return metadata.construct(*combinedFields.toTypedArray())
                             }
 
                             override fun empty(): Any? {
@@ -56,13 +46,9 @@ class DerivationLawTest : IntegrationTestSupport() {
                                         val fieldMonoid = field.instance as Monoid<Any?>
                                         fieldMonoid.empty()
                                     }
-                                return instantiate(emptyFields)
+                                return metadata.construct(*emptyFields.toTypedArray())
                             }
                         }
-                    }
-
-                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
-                        error("sum monoid derivation is not used in this test")
                 }
             }
 

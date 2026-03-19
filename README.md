@@ -4,7 +4,7 @@ K2 compiler plugin for Kotlin 2.3.10 that adds:
 
 - implicit resolution for `context(...)` parameters whose interface is annotated with `@Typeclass`
 - instance search through top-level `@Instance` objects/functions and associated companions
-- `@Derive(...)` support for product types and sealed sums through companion-based `TypeclassDeriver`s
+- `@Derive(...)` support for product types through companion-based `ProductTypeclassDeriver`s, and sealed sums through full `TypeclassDeriver`s
 
 Prefer loading this through the Gradle plugin module:
 
@@ -50,7 +50,7 @@ kotlinc \
   ...
 ```
 
-Then write typeclasses with context parameters:
+Then write typeclasses with context parameters. Use `ProductTypeclassDeriver` when a typeclass only supports product derivation, and `TypeclassDeriver` when it can also derive sealed sums:
 
 ```kotlin
 import one.wabbit.typeclass.Derive

@@ -39,6 +39,7 @@ import org.jetbrains.kotlin.ir.builders.irBlock
 import org.jetbrains.kotlin.ir.builders.irCall
 import org.jetbrains.kotlin.ir.builders.irCallConstructor
 import org.jetbrains.kotlin.ir.builders.irIfThenElse
+import org.jetbrains.kotlin.ir.builders.irInt
 import org.jetbrains.kotlin.ir.builders.irGet
 import org.jetbrains.kotlin.ir.builders.irGetObject
 import org.jetbrains.kotlin.ir.builders.irIs
@@ -1236,7 +1237,97 @@ private class TypeclassIrCallTransformer(
         return irCallConstructor(metadataClass.primaryConstructorSymbol(), emptyList()).apply {
             putValueArgument(0, irString(reference.targetClass.renderClassName()))
             putValueArgument(1, irListOf(fieldElements, fieldClass.symbol.defaultType))
+            putValueArgument(
+                2,
+                buildProductConstructor(
+                    reference = reference,
+                    shape = shape,
+                    appliedBindings = appliedBindings,
+                    currentDeclaration = currentDeclaration,
+                    visibleTypeParameters = visibleTypeParameters,
+                ),
+            )
         }
+    }
+
+    private fun IrBuilderWithScope.buildProductConstructor(
+        reference: RuleReference.Derived,
+        shape: DerivedShape.Product,
+        appliedBindings: Map<String, TcType>,
+        currentDeclaration: IrDeclarationBase,
+        visibleTypeParameters: VisibleTypeParameters,
+    ): IrExpression {
+        val anyType = pluginContext.irBuiltIns.anyNType
+        val listClass =
+            pluginContext.referenceClass(ClassId.topLevel(FqName("kotlin.collections.List")))?.owner
+                ?: error("Could not resolve kotlin.collections.List")
+        val listType = listClass.symbol.typeWith(anyType)
+        val getFunction =
+            listClass.declarations
+                .filterIsInstance<IrSimpleFunction>()
+                .singleOrNull { function ->
+                    function.name.asString() == "get" && function.valueParameters.size == 1
+                } ?: error("Could not resolve kotlin.collections.List.get(Int)")
+        val lambdaType =
+            pluginContext.irBuiltIns.functionN(1).typeWith(
+                listType,
+                anyType,
+            )
+        val constructorLambda =
+            context.irFactory.buildFun {
+                name = Name.special("<typeclass-product-constructor>")
+                origin = IrDeclarationOrigin.LOCAL_FUNCTION
+                visibility = DescriptorVisibilities.LOCAL
+                returnType = anyType
+            }.apply {
+                parent = currentDeclaration as IrDeclarationParent
+            }
+        val argumentsParameter = constructorLambda.addValueParameter("arguments", listType)
+        val appliedIrTypesByRuleId =
+            reference.ruleTypeParameters.associate { parameter ->
+                parameter.id to modelToIrType(
+                    type = appliedBindings[parameter.id]
+                        ?: error("Missing applied type binding for ${parameter.id}"),
+                    visibleTypeParameters = visibleTypeParameters,
+                    pluginContext = pluginContext,
+                )
+            }
+        val constructorTypeArguments =
+            reference.ruleTypeParameters.map { parameter ->
+                appliedIrTypesByRuleId.getValue(parameter.id)
+            }
+        val typeArgumentMap =
+            reference.targetClass.typeParameters.zip(reference.ruleTypeParameters).associate { (typeParameter, parameter) ->
+                typeParameter.symbol to appliedIrTypesByRuleId.getValue(parameter.id)
+            }
+        constructorLambda.body =
+            DeclarationIrBuilder(pluginContext, constructorLambda.symbol, startOffset, endOffset).irBlockBody {
+                if (reference.targetClass.isObject) {
+                    +irReturn(irGetObject(reference.targetClass.symbol))
+                    return@irBlockBody
+                }
+                val constructor = shape.constructor
+                    ?: error("Constructive product derivation requires a constructor for ${reference.targetClass.classIdOrFail}")
+                +irReturn(
+                    irCallConstructor(constructor.symbol, constructorTypeArguments).apply {
+                        constructor.valueParameters.forEachIndexed { index, parameter ->
+                            val argument =
+                                irCall(getFunction.symbol).apply {
+                                    dispatchReceiver = irGet(argumentsParameter)
+                                    putValueArgument(0, irInt(index))
+                                }
+                            putValueArgument(index, irAs(argument, parameter.type.substitute(typeArgumentMap)))
+                        }
+                    },
+                )
+            }
+        return IrFunctionExpressionImpl(
+            startOffset = startOffset,
+            endOffset = endOffset,
+            type = lambdaType,
+            function = constructorLambda,
+            origin = IrStatementOrigin.LAMBDA,
+        )
     }
 
     private fun IrBuilderWithScope.buildProductFieldAccessor(
@@ -2094,6 +2185,14 @@ private class IrModuleScanner(
         subclassesBySuper: Map<String, Set<String>>,
     ): List<ResolvedRule> {
         val targetClassId = classId ?: return emptyList()
+        if (!supportsDeriveShape()) {
+            pluginContext.reportTypeclassError(
+                message = "@Derive is only supported on sealed or final classes and objects",
+                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                location = compilerMessageLocation(),
+            )
+            return emptyList()
+        }
         val typeclassInterface = pluginContext.referenceClass(typeclassId)?.owner ?: return emptyList()
         if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID)) {
             return emptyList()
@@ -2101,7 +2200,6 @@ private class IrModuleScanner(
         if (typeclassInterface.typeParameters.size != 1) {
             return emptyList()
         }
-        val deriverCompanion = typeclassInterface.findDeriverCompanion() ?: return emptyList()
         val ruleTypeParameters =
             typeParameters.mapIndexed { index, typeParameter ->
                 TcTypeParameter(
@@ -2123,6 +2221,29 @@ private class IrModuleScanner(
             } else {
                 buildDerivedProductShape(typeParameterBySymbol)
             } ?: return emptyList()
+        val requiredDeriverInterface =
+            if (shape is DerivedShape.Sum) {
+                TYPECLASS_DERIVER_CLASS_ID
+            } else {
+                PRODUCT_TYPECLASS_DERIVER_CLASS_ID
+            }
+        val deriverCompanion =
+            typeclassInterface.findDeriverCompanion(requiredDeriverInterface)
+                ?: run {
+                    val requiredName = requiredDeriverInterface.shortClassName.asString()
+                    val message =
+                        if (shape is DerivedShape.Sum) {
+                            "${typeclassId.shortClassName.asString()} companion must implement $requiredName; ProductTypeclassDeriver only supports products, not sealed sums"
+                        } else {
+                            "${typeclassId.shortClassName.asString()} companion must implement $requiredName to derive products"
+                        }
+                    pluginContext.reportTypeclassError(
+                        message = message,
+                        diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                        location = compilerMessageLocation(),
+                    )
+                    return emptyList()
+                }
         val prerequisiteTypes =
             when (shape) {
                 is DerivedShape.Product -> shape.fields.map { field -> typeclassGoal(typeclassId, field.type) }
@@ -2171,7 +2292,31 @@ private class IrModuleScanner(
                     getter = getter,
                 )
             }
-        return DerivedShape.Product(fields)
+        if (isObject) {
+            return DerivedShape.Product(fields = fields, constructor = null)
+        }
+        val constructor = primaryConstructorOrNull()
+        if (constructor == null) {
+            pluginContext.reportTypeclassError(
+                message =
+                    "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires a primary constructor",
+                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                location = compilerMessageLocation(),
+            )
+            return null
+        }
+        val constructorParameterNames = constructor.valueParameters.map { parameter -> parameter.name.asString() }
+        val fieldNames = fields.map(DerivedField::name)
+        if (constructorParameterNames != fieldNames) {
+            pluginContext.reportTypeclassError(
+                message =
+                    "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires constructor parameters to exactly match stored properties",
+                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                location = compilerMessageLocation(),
+            )
+            return null
+        }
+        return DerivedShape.Product(fields = fields, constructor = constructor)
     }
 
     private fun IrClass.buildDerivedSumShape(
@@ -2278,12 +2423,10 @@ private class IrModuleScanner(
         }
     }
 
-    private fun IrClass.findDeriverCompanion(): IrClass? =
+    private fun IrClass.findDeriverCompanion(requiredInterface: ClassId): IrClass? =
         declarations.filterIsInstance<IrClass>().singleOrNull { declaration ->
             declaration.isCompanion &&
-                declaration.superTypes.any { superType ->
-                    superType.classOrNull?.owner?.classId == TYPECLASS_DERIVER_CLASS_ID
-                }
+                declaration.implementsInterface(requiredInterface, linkedSetOf())
         }
 
     private fun typeclassGoal(
@@ -2718,6 +2861,7 @@ private sealed interface RuleReference {
 private sealed interface DerivedShape {
     data class Product(
         val fields: List<DerivedField>,
+        val constructor: IrConstructor?,
     ) : DerivedShape
 
     data class Sum(
@@ -2859,13 +3003,45 @@ private fun IrFunction.valueArgumentIndex(
     }.takeIf { index -> index >= 0 } ?: fallbackIndex
 
 private fun IrClass.primaryConstructorSymbol() =
-    declarations.filterIsInstance<IrConstructor>()
-        .singleOrNull { constructor -> constructor.isPrimary }
-        ?.symbol
-        ?: declarations.filterIsInstance<IrConstructor>().singleOrNull()?.symbol
+    primaryConstructorOrNull()?.symbol
         ?: error("Could not resolve a primary constructor for ${classIdOrFail}")
 
+private fun IrClass.primaryConstructorOrNull(): IrConstructor? =
+    declarations.filterIsInstance<IrConstructor>()
+        .singleOrNull { constructor -> constructor.isPrimary }
+        ?: declarations.filterIsInstance<IrConstructor>().singleOrNull()
+
+private fun IrClass.implementsInterface(
+    targetInterface: ClassId,
+    visited: MutableSet<String>,
+): Boolean {
+    val currentClassId = classIdOrFail.asString()
+    if (!visited.add(currentClassId)) {
+        return false
+    }
+    if (classId == targetInterface) {
+        return true
+    }
+    return superTypes.any { superType ->
+        val superOwner = superType.classOrNull?.owner ?: return@any false
+        val superClassId = superOwner.classId ?: return@any false
+        if (superClassId == targetInterface) {
+            true
+        } else {
+            superOwner.implementsInterface(targetInterface, visited)
+        }
+    }
+}
+
 private fun IrClass.renderClassName(): String = classId?.asFqNameString() ?: name.asString()
+
+private fun IrClass.supportsDeriveShape(): Boolean =
+    when {
+        isObject -> true
+        modality == Modality.SEALED -> true
+        modality == Modality.FINAL && kind != ClassKind.INTERFACE -> true
+        else -> false
+    }
 
 private fun lookupFunctionShape(
     function: IrSimpleFunction,

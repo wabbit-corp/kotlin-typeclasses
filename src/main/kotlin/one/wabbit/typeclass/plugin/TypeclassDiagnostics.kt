@@ -10,6 +10,15 @@ import org.jetbrains.kotlin.diagnostics.rendering.BaseDiagnosticRendererFactory
 import org.jetbrains.kotlin.diagnostics.rendering.CommonRenderers
 
 internal object TypeclassErrors : KtDiagnosticsContainer() {
+    val CANNOT_DERIVE =
+        KtDiagnosticFactory1<String>(
+            TypeclassDiagnosticIds.CANNOT_DERIVE,
+            Severity.ERROR,
+            SourceElementPositioningStrategies.DEFAULT,
+            PsiElement::class,
+            TypeclassErrorMessages,
+        )
+
     val INVALID_INSTANCE_DECLARATION =
         KtDiagnosticFactory1<String>(
             TypeclassDiagnosticIds.INVALID_INSTANCE_DECL,
@@ -24,6 +33,11 @@ internal object TypeclassErrors : KtDiagnosticsContainer() {
 
 internal object TypeclassErrorMessages : BaseDiagnosticRendererFactory() {
     override val MAP by KtDiagnosticFactoryToRendererMap("TypeclassErrors") { map ->
+        map.put(
+            TypeclassErrors.CANNOT_DERIVE,
+            "${TypeclassDiagnosticIds.prefix(TypeclassDiagnosticIds.CANNOT_DERIVE)} Cannot derive: {0}",
+            CommonRenderers.STRING,
+        )
         map.put(
             TypeclassErrors.INVALID_INSTANCE_DECLARATION,
             "${TypeclassDiagnosticIds.prefix(TypeclassDiagnosticIds.INVALID_INSTANCE_DECL)} Invalid @Instance declaration: {0}",

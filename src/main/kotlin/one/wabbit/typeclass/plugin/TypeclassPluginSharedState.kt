@@ -239,7 +239,8 @@ private class FirResolutionScanner(
                             isSealed = declaration.status.modality == Modality.SEALED,
                             typeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.symbol.fir.variance },
                         )
-                    val derivedTypeclassIds = declaration.derivedTypeclassIds(session).expandedDerivedTypeclassIds(session, configuration)
+                    val derivedTypeclassIds =
+                        declaration.supportedDerivedTypeclassIds(session).expandedDerivedTypeclassIds(session, configuration)
                     if (derivedTypeclassIds.isNotEmpty()) {
                         derivableTypeclassIdsByOwner.getOrPut(classId.asString(), ::linkedSetOf) += derivedTypeclassIds
                     }
@@ -489,7 +490,7 @@ private fun collectAssociatedRules(
     }
 }
 
-private fun FirRegularClass.derivedTypeclassIds(session: FirSession): Set<String> {
+internal fun FirRegularClass.derivedTypeclassIds(session: FirSession): Set<String> {
     val deriveAnnotation =
         annotations
             .filterIsInstance<FirAnnotationCall>()
@@ -944,7 +945,7 @@ private fun FirSimpleFunction.resolvedReturnConeTypeOrNull(): ConeKotlinType? =
 private fun FirProperty.resolvedReturnConeTypeOrNull(): ConeKotlinType? =
     runCatching { symbol.resolvedReturnTypeRef.coneType }.getOrNull()
 
-private fun FirRegularClass.declaredOrResolvedSuperTypes(): List<ConeKotlinType> {
+internal fun FirRegularClass.declaredOrResolvedSuperTypes(): List<ConeKotlinType> {
     val declared = superTypeRefs.map { it.coneType }
     if (declared.isNotEmpty()) {
         return declared

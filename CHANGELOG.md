@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add constructive product-derivation support via `ProductTypeclassMetadata.construct(...)`, require `ProductTypeclassDeriver` for product-only typeclasses, and require full `TypeclassDeriver` only for sealed-sum derivation.
+- Reject `@Derive` on open roots and on non-constructible product shapes whose stored properties cannot be rebuilt from the primary constructor, and cover the new capability contract with dedicated integration tests.
 - Replace legacy `// ERROR` integration-test assertions with line-scoped `// E:TC_*` / `// W:TC_*` markers, and teach the harness to merge those source markers with the older message-fragment expectations.
 - Add `TC_INVALID_BUILTIN_EVIDENCE` plus source-located IR reporting for builtin proof/materialization failures, and tag IR missing/recursive resolution failures with `TC_NO_CONTEXT_ARGUMENT` so negative tests can assert stable ids across both FIR and IR.
 - Rewrite `ImportVisibilityTest` around the stricter orphan policy: same-file top-level and companion-associated instances stay covered, unrelated-file top-level orphan cases are now declaration-site specs, and dependency-boundary visibility stays covered for `internal` and private/public companion instances.

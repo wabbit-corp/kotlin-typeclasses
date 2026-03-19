@@ -12,6 +12,7 @@ import one.wabbit.typeclass.plugin.model.references
 import org.jetbrains.kotlin.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.diagnostics.reportOn
 import org.jetbrains.kotlin.descriptors.ClassKind
+import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.analysis.checkers.MppCheckerKind
 import org.jetbrains.kotlin.fir.analysis.checkers.context.CheckerContext
@@ -24,8 +25,6 @@ import org.jetbrains.kotlin.fir.declarations.FirProperty
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 import org.jetbrains.kotlin.fir.declarations.FirSimpleFunction
 import org.jetbrains.kotlin.fir.declarations.hasAnnotation
-import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
-import org.jetbrains.kotlin.fir.symbols.SymbolInternals
 import org.jetbrains.kotlin.fir.types.coneType
 import org.jetbrains.kotlin.fir.types.ConeClassLikeType
 import org.jetbrains.kotlin.fir.types.ConeDefinitelyNotNullType
@@ -36,7 +35,6 @@ import org.jetbrains.kotlin.fir.types.lowerBoundIfFlexible
 import org.jetbrains.kotlin.fir.types.type
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
-import org.jetbrains.kotlin.name.SpecialNames
 
 internal class TypeclassFirCheckersExtension(
     session: FirSession,
@@ -46,6 +44,9 @@ internal class TypeclassFirCheckersExtension(
         object : FirRegularClassChecker(MppCheckerKind.Common) {
             context(context: CheckerContext, reporter: DiagnosticReporter)
             override fun check(declaration: FirRegularClass) {
+                if (declaration.hasAnnotation(DERIVE_ANNOTATION_CLASS_ID, session)) {
+                    validateDeriveDeclaration(declaration)
+                }
                 if (!declaration.hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
                     return
                 }
@@ -235,12 +236,58 @@ internal class TypeclassFirCheckersExtension(
     }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun validateDeriveDeclaration(
+        declaration: FirRegularClass,
+    ) {
+        if (!declaration.supportsDeriveShape()) {
+            reportCannotDerive(
+                declaration,
+                "@Derive is only supported on sealed or final classes and objects",
+            )
+            return
+        }
+
+        declaration.derivedTypeclassIds(session).forEach { typeclassIdString ->
+            val typeclassId = runCatching { ClassId.fromString(typeclassIdString) }.getOrNull() ?: return@forEach
+            val requiredDeriverInterface =
+                if (declaration.status.modality == Modality.SEALED) {
+                    TYPECLASS_DERIVER_CLASS_ID
+                } else {
+                    PRODUCT_TYPECLASS_DERIVER_CLASS_ID
+                }
+            if (!typeclassSupportsDeriveShape(typeclassId, requiredDeriverInterface, session)) {
+                val requiredName = requiredDeriverInterface.shortClassName.asString()
+                val targetName = typeclassId.shortClassName.asString()
+                val message =
+                    if (requiredDeriverInterface == TYPECLASS_DERIVER_CLASS_ID) {
+                        "$targetName companion must implement $requiredName; ProductTypeclassDeriver only supports products, not sealed sums"
+                    } else {
+                        "$targetName companion must implement $requiredName to derive products"
+                    }
+                reportCannotDerive(
+                    declaration,
+                    message,
+                )
+            }
+        }
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
     private fun reportInvalid(
         declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
         message: String,
     ) {
         val source = declaration.source ?: return
         reporter.reportOn(source, TypeclassErrors.INVALID_INSTANCE_DECLARATION, message)
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportCannotDerive(
+        declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
+        message: String,
+    ) {
+        val source = declaration.source ?: return
+        reporter.reportOn(source, TypeclassErrors.CANNOT_DERIVE, message)
     }
 
     private fun invalidInstancePrerequisiteMessage(type: ConeKotlinType): String? =
