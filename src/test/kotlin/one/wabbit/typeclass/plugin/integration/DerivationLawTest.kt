@@ -279,6 +279,137 @@ class DerivationLawTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun derivesEqForGenericEitherLikeAdts() {
+        val source =
+            eqSource(
+                definitions =
+                    """
+                    @Derive(Eq::class)
+                    sealed interface Either<A, B>
+
+                    @Derive(Eq::class)
+                    data class Left<A, B>(val value: A) : Either<A, B>
+
+                    @Derive(Eq::class)
+                    data class Right<A, B>(val value: B) : Either<A, B>
+                    """,
+                mainBody =
+                    """
+                    println(same<Either<String, Int>>(Left<String, Int>("ok"), Left<String, Int>("ok")))
+                    println(same<Either<String, Int>>(Left<String, Int>("ok"), Left<String, Int>("no")))
+                    println(same<Either<String, Int>>(Left<String, Int>("ok"), Right<String, Int>(1)))
+                    println(same<Either<String, Int>>(Right<String, Int>(1), Right<String, Int>(2)))
+                    """,
+            )
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                false
+                false
+                false
+                """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun derivesEqForNestedSealedSubclasses() {
+        val source =
+            eqSource(
+                definitions =
+                    """
+                    @Derive(Eq::class)
+                    sealed interface Expr
+
+                    @Derive(Eq::class)
+                    sealed interface Binary : Expr
+
+                    @Derive(Eq::class)
+                    data class Lit(val value: Int) : Expr
+
+                    @Derive(Eq::class)
+                    data class Add(val left: Expr, val right: Expr) : Binary
+
+                    @Derive(Eq::class)
+                    data class Mul(val left: Expr, val right: Expr) : Binary
+
+                    @Derive(Eq::class)
+                    object End : Expr {
+                        override fun toString(): String = "End"
+                    }
+                    """,
+                mainBody =
+                    """
+                    println(same<Expr>(Add(Lit(1), End), Add(Lit(1), End)))
+                    println(same<Expr>(Add(Lit(1), End), Mul(Lit(1), End)))
+                    println(same<Expr>(Lit(1), End))
+                    """,
+            )
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                false
+                false
+                """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun derivesEqForMixedSealedCaseKinds() {
+        val source =
+            eqSource(
+                definitions =
+                    """
+                    @Derive(Eq::class)
+                    sealed interface Outcome
+
+                    @Derive(Eq::class)
+                    object Unknown : Outcome {
+                        override fun toString(): String = "Unknown"
+                    }
+
+                    @Derive(Eq::class)
+                    data object Loading : Outcome
+
+                    @Derive(Eq::class)
+                    data class Success(val value: Int) : Outcome
+
+                    @Derive(Eq::class)
+                    class Failure(val code: Int) : Outcome {
+                        override fun toString(): String = "Failure(code=${'$'}code)"
+                    }
+                    """,
+                mainBody =
+                    """
+                    println(same<Outcome>(Unknown, Unknown))
+                    println(same<Outcome>(Loading, Loading))
+                    println(same<Outcome>(Success(1), Success(1)))
+                    println(same<Outcome>(Failure(7), Failure(7)))
+                    println(same<Outcome>(Failure(7), Failure(8)))
+                    println(same<Outcome>(Success(1), Failure(1)))
+                    """,
+            )
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                true
+                true
+                false
+                false
+                """.trimIndent(),
+        )
+    }
+
+    @Test
     fun derivesJsonCodecForEnumsLikeKSerializer() {
         val source =
             jsonCodecSource(
@@ -286,9 +417,9 @@ class DerivationLawTest : IntegrationTestSupport() {
                     """
                     @Serializable
                     @Derive(JsonCodec::class)
-                    enum class Priority {
-                        LOW,
-                        HIGH,
+                    enum class Priority(val label: String, val code: Int) {
+                        LOW("low", 1),
+                        HIGH("high", 2),
                     }
 
                     @Serializable
@@ -330,6 +461,57 @@ class DerivationLawTest : IntegrationTestSupport() {
                 {"id":7,"priority":"HIGH","title":"ops"}
                 true
                 Ticket(id=TicketId(value=7), priority=HIGH, title=ops)
+                """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun derivesJsonCodecForEnumsWithConstructorParametersLikeKSerializer() {
+        val source =
+            jsonCodecSource(
+                definitions =
+                    """
+                    @Serializable
+                    @Derive(JsonCodec::class)
+                    enum class Mode(val label: String, val retries: Int) {
+                        FAST("fast", 1),
+                        SAFE("safe", 3),
+                    }
+
+                    @Serializable
+                    @Derive(JsonCodec::class)
+                    data class Settings(val mode: Mode)
+                    """,
+                mainBody =
+                    """
+                    val modeCodec = summon<JsonCodec<Mode>>()
+                    println(modeCodec.encode(Mode.SAFE))
+                    println(modeCodec.decode(JsonPrimitive("FAST")))
+                    println(modeCodec.encode(Mode.SAFE) == Json.encodeToJsonElement(serializer<Mode>(), Mode.SAFE))
+
+                    val settingsCodec = summon<JsonCodec<Settings>>()
+                    val settings = Settings(Mode.FAST)
+                    val encoded = settingsCodec.encode(settings)
+                    val serializerEncoded = Json.encodeToJsonElement(serializer<Settings>(), settings)
+                    println(encoded)
+                    println(serializerEncoded)
+                    println(encoded == serializerEncoded)
+                    println(settingsCodec.decode(encoded))
+                    """,
+            )
+
+        assertCompilesAndRuns(
+            source = source,
+            requiredPlugins = serializationPlugins,
+            expectedStdout =
+                """
+                "SAFE"
+                FAST
+                true
+                {"mode":"FAST"}
+                {"mode":"FAST"}
+                true
+                Settings(mode=FAST)
                 """.trimIndent(),
         )
     }
@@ -617,6 +799,78 @@ class DerivationLawTest : IntegrationTestSupport() {
         }
 
         ${definitions.trimIndent()}
+
+        fun main() {
+        ${mainBody.trimIndent().prependIndent("    ")}
+        }
+        """.trimIndent()
+
+    private fun eqSource(
+        definitions: String,
+        mainBody: String,
+    ): String =
+        """
+        package demo
+
+        import one.wabbit.typeclass.Derive
+        import one.wabbit.typeclass.Instance
+        import one.wabbit.typeclass.ProductTypeclassMetadata
+        import one.wabbit.typeclass.SumTypeclassMetadata
+        import one.wabbit.typeclass.Typeclass
+        import one.wabbit.typeclass.TypeclassDeriver
+        import one.wabbit.typeclass.get
+        import one.wabbit.typeclass.matches
+
+        @Typeclass
+        interface Eq<A> {
+            fun eq(left: A, right: A): Boolean
+
+            companion object : TypeclassDeriver {
+                override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                    object : Eq<Any?> {
+                        override fun eq(left: Any?, right: Any?): Boolean {
+                            if (left == null || right == null) {
+                                return left == right
+                            }
+                            return metadata.fields.all { field ->
+                                val fieldEq = field.instance as Eq<Any?>
+                                fieldEq.eq(field.get(left), field.get(right))
+                            }
+                        }
+                    }
+
+                override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                    object : Eq<Any?> {
+                        override fun eq(left: Any?, right: Any?): Boolean {
+                            if (left == null || right == null) {
+                                return left == right
+                            }
+                            val leftCase = metadata.cases.single { candidate -> candidate.matches(left) }
+                            val rightCase = metadata.cases.single { candidate -> candidate.matches(right) }
+                            if (leftCase.name != rightCase.name) {
+                                return false
+                            }
+                            val caseEq = leftCase.instance as Eq<Any?>
+                            return caseEq.eq(left, right)
+                        }
+                    }
+            }
+        }
+
+        @Instance
+        object IntEq : Eq<Int> {
+            override fun eq(left: Int, right: Int): Boolean = left == right
+        }
+
+        @Instance
+        object StringEq : Eq<String> {
+            override fun eq(left: String, right: String): Boolean = left == right
+        }
+
+        ${definitions.trimIndent()}
+
+        context(eq: Eq<A>)
+        fun <A> same(left: A, right: A): Boolean = eq.eq(left, right)
 
         fun main() {
         ${mainBody.trimIndent().prependIndent("    ")}
