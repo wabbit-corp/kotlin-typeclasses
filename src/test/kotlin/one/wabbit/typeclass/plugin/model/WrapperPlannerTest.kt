@@ -63,6 +63,35 @@ class WrapperPlannerTest {
     }
 
     @Test
+    fun `local exact evidence wins over an applicable rule`() {
+        val a = TcTypeParameter("outer:A", "A")
+        val b = TcTypeParameter("outer:B", "B")
+        val x = TcTypeParameter("rule:X", "X")
+        val y = TcTypeParameter("rule:Y", "Y")
+
+        val pairRule =
+            InstanceRule(
+                id = "pairEq",
+                typeParameters = listOf(x, y),
+                providedType = eq(pair(typeVariable(x), typeVariable(y))),
+                prerequisiteTypes = listOf(eq(typeVariable(x)), eq(typeVariable(y))),
+            )
+
+        val desired = eq(pair(typeVariable(a), typeVariable(b)))
+        val result =
+            TypeclassResolutionPlanner(listOf(pairRule)).resolve(
+                desiredType = desired,
+                localContextTypes = listOf(desired, eq(typeVariable(a)), eq(typeVariable(b))),
+            )
+
+        val success = assertIs<ResolutionSearchResult.Success>(result)
+        assertEquals(
+            ResolutionPlan.LocalContext(index = 0, providedType = desired),
+            success.plan,
+        )
+    }
+
+    @Test
     fun `nested pair evidence resolves recursively`() {
         val a = TcTypeParameter("outer:A", "A")
         val b = TcTypeParameter("outer:B", "B")
@@ -127,6 +156,84 @@ class WrapperPlannerTest {
     }
 
     @Test
+    fun `recursive candidates are ignored when a non-recursive rule succeeds`() {
+        val a = TcTypeParameter("outer:A", "A")
+        val x = TcTypeParameter("rule:X", "X")
+        val fooFromBar =
+            InstanceRule(
+                id = "fooFromBar",
+                typeParameters = listOf(x),
+                providedType = foo(typeVariable(x)),
+                prerequisiteTypes = listOf(bar(typeVariable(x))),
+            )
+        val barFromFoo =
+            InstanceRule(
+                id = "barFromFoo",
+                typeParameters = listOf(x),
+                providedType = bar(typeVariable(x)),
+                prerequisiteTypes = listOf(foo(typeVariable(x))),
+            )
+        val directFoo =
+            InstanceRule(
+                id = "directFoo",
+                typeParameters = listOf(x),
+                providedType = foo(typeVariable(x)),
+                prerequisiteTypes = emptyList(),
+            )
+
+        val result =
+            TypeclassResolutionPlanner(listOf(fooFromBar, barFromFoo, directFoo)).resolve(
+                desiredType = foo(typeVariable(a)),
+                localContextTypes = emptyList(),
+            )
+
+        val success = assertIs<ResolutionSearchResult.Success>(result)
+        val applied = assertIs<ResolutionPlan.ApplyRule>(success.plan)
+        assertEquals("directFoo", applied.ruleId)
+        assertEquals(emptyList(), applied.prerequisitePlans)
+    }
+
+    @Test
+    fun `rule ordering does not change the surviving successful plan`() {
+        val a = TcTypeParameter("outer:A", "A")
+        val x = TcTypeParameter("rule:X", "X")
+        val fooFromBar =
+            InstanceRule(
+                id = "fooFromBar",
+                typeParameters = listOf(x),
+                providedType = foo(typeVariable(x)),
+                prerequisiteTypes = listOf(bar(typeVariable(x))),
+            )
+        val barFromFoo =
+            InstanceRule(
+                id = "barFromFoo",
+                typeParameters = listOf(x),
+                providedType = bar(typeVariable(x)),
+                prerequisiteTypes = listOf(foo(typeVariable(x))),
+            )
+        val directFoo =
+            InstanceRule(
+                id = "directFoo",
+                typeParameters = listOf(x),
+                providedType = foo(typeVariable(x)),
+                prerequisiteTypes = emptyList(),
+            )
+
+        val leftToRight =
+            TypeclassResolutionPlanner(listOf(fooFromBar, barFromFoo, directFoo)).resolve(
+                desiredType = foo(typeVariable(a)),
+                localContextTypes = emptyList(),
+            )
+        val rightToLeft =
+            TypeclassResolutionPlanner(listOf(directFoo, barFromFoo, fooFromBar)).resolve(
+                desiredType = foo(typeVariable(a)),
+                localContextTypes = emptyList(),
+            )
+
+        assertEquals(leftToRight, rightToLeft)
+    }
+
+    @Test
     fun `multiple local matches are ambiguous`() {
         val a = TcTypeParameter("outer:A", "A")
         val planner = TypeclassResolutionPlanner(emptyList())
@@ -139,6 +246,39 @@ class WrapperPlannerTest {
 
         val ambiguous = assertIs<ResolutionSearchResult.Ambiguous>(result)
         assertEquals(2, ambiguous.matchingPlans.size)
+    }
+
+    @Test
+    fun `ambiguous rule matches keep both competing plans`() {
+        val a = TcTypeParameter("outer:A", "A")
+        val x = TcTypeParameter("rule:X", "X")
+        val fooFromBar =
+            InstanceRule(
+                id = "fooFromBar",
+                typeParameters = listOf(x),
+                providedType = foo(typeVariable(x)),
+                prerequisiteTypes = listOf(bar(typeVariable(x))),
+            )
+        val fooFromBaz =
+            InstanceRule(
+                id = "fooFromBaz",
+                typeParameters = listOf(x),
+                providedType = foo(typeVariable(x)),
+                prerequisiteTypes = listOf(baz(typeVariable(x))),
+            )
+
+        val result =
+            TypeclassResolutionPlanner(listOf(fooFromBar, fooFromBaz)).resolve(
+                desiredType = foo(typeVariable(a)),
+                localContextTypes = listOf(bar(typeVariable(a)), baz(typeVariable(a))),
+            )
+
+        val ambiguous = assertIs<ResolutionSearchResult.Ambiguous>(result)
+        val matchingRuleIds =
+            ambiguous.matchingPlans.map { plan ->
+                assertIs<ResolutionPlan.ApplyRule>(plan).ruleId
+            }.toSet()
+        assertEquals(setOf("fooFromBar", "fooFromBaz"), matchingRuleIds)
     }
 
     @Test
@@ -178,6 +318,8 @@ class WrapperPlannerTest {
     private fun foo(argument: TcType): TcType = typeConstructor("demo.Foo", argument)
 
     private fun bar(argument: TcType): TcType = typeConstructor("demo.Bar", argument)
+
+    private fun baz(argument: TcType): TcType = typeConstructor("demo.Baz", argument)
 
     private fun box(argument: TcType): TcType = typeConstructor("demo.Box", argument)
 

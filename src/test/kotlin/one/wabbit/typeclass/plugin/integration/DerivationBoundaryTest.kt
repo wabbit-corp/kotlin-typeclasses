@@ -352,6 +352,215 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
             dependencies = listOf(modelDependency),
         )
     }
+
+    @Test
+    fun consumerModuleGetsUsefulFailureWhenDependencySealedSubclassLacksEvidence() {
+        val typeclassDependency =
+            HarnessDependency(
+                name = "dep-show-missing-case",
+                sources = mapOf("dep/Show.kt" to showTypeclassSource(packageName = "dep")),
+            )
+        val modelDependency =
+            HarnessDependency(
+                name = "model-missing-case",
+                dependencies = listOf(typeclassDependency),
+                sources =
+                    mapOf(
+                        "model/NoShow.kt" to
+                            """
+                            package model
+
+                            data class NoShow(val value: String)
+                            """.trimIndent(),
+                        "model/Token.kt" to
+                            """
+                            package model
+
+                            import dep.Show
+                            import one.wabbit.typeclass.Derive
+
+                            @Derive(Show::class)
+                            sealed interface Token
+                            """.trimIndent(),
+                        "model/Word.kt" to
+                            """
+                            package model
+
+                            data class Word(val value: NoShow) : Token
+                            """.trimIndent(),
+                        "model/End.kt" to
+                            """
+                            package model
+
+                            object End : Token
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.render
+            import model.NoShow
+            import model.Token
+            import model.Word
+
+            fun main() {
+                val token: Token = Word(NoShow("missing"))
+                println(render(token)) // E:TC_NO_CONTEXT_ARGUMENT missing dependency field evidence
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("missing typeclass instance", "show"),
+            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.IR)),
+            dependencies = listOf(modelDependency),
+            unexpectedMessages = listOf("internal compiler error"),
+        )
+    }
+
+    @Test
+    fun consumerModuleGetsAmbiguityWhenDependencyExportsManualAndDerivedSealedInstances() {
+        val typeclassDependency =
+            HarnessDependency(
+                name = "dep-show-conflict",
+                sources = mapOf("dep/Show.kt" to showTypeclassSource(packageName = "dep")),
+            )
+        val modelDependency =
+            HarnessDependency(
+                name = "model-derived-conflict",
+                dependencies = listOf(typeclassDependency),
+                sources =
+                    mapOf(
+                        "model/ShownString.kt" to shownStringSource("model", showPackage = "dep"),
+                        "model/Token.kt" to
+                            """
+                            package model
+
+                            import dep.Show
+                            import one.wabbit.typeclass.Derive
+                            import one.wabbit.typeclass.Instance
+
+                            @Derive(Show::class)
+                            sealed interface Token {
+                                companion object {
+                                    @Instance
+                                    val show: Show<Token> =
+                                        object : Show<Token> {
+                                            override fun show(value: Token): String = "manual"
+                                        }
+                                }
+                            }
+                            """.trimIndent(),
+                        "model/Word.kt" to
+                            """
+                            package model
+
+                            data class Word(val value: ShownString) : Token
+                            """.trimIndent(),
+                        "model/End.kt" to
+                            """
+                            package model
+
+                            object End : Token
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.render
+            import model.ShownString
+            import model.Token
+            import model.Word
+
+            fun main() {
+                val token: Token = Word(ShownString("clash"))
+                println(render(token))
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("show"),
+            expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("show")),
+            dependencies = listOf(modelDependency),
+            unexpectedMessages = listOf("internal compiler error"),
+        )
+    }
+
+    @Test
+    fun missingSecondDerivedHeadAcrossDependenciesDoesNotBreakTheWorkingHead() {
+        val typeclassDependency =
+            HarnessDependency(
+                name = "dep-show-eq",
+                sources =
+                    mapOf(
+                        "dep/Show.kt" to showTypeclassSource(packageName = "dep"),
+                        "dep/Eq.kt" to eqTypeclassSource(packageName = "dep"),
+                    ),
+            )
+        val modelDependency =
+            HarnessDependency(
+                name = "model-multi-derive",
+                dependencies = listOf(typeclassDependency),
+                sources =
+                    mapOf(
+                        "model/ShownString.kt" to shownStringSource("model", showPackage = "dep"),
+                        "model/Token.kt" to
+                            """
+                            package model
+
+                            import dep.Eq
+                            import dep.Show
+                            import one.wabbit.typeclass.Derive
+
+                            @Derive(Show::class, Eq::class)
+                            sealed interface Token
+                            """.trimIndent(),
+                        "model/Word.kt" to
+                            """
+                            package model
+
+                            data class Word(val value: ShownString) : Token
+                            """.trimIndent(),
+                        "model/End.kt" to
+                            """
+                            package model
+
+                            object End : Token
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.render
+            import dep.same
+            import model.End
+            import model.ShownString
+            import model.Token
+            import model.Word
+
+            fun main() {
+                val word: Token = Word(ShownString("ok"))
+                println(render(word))
+                println(render(End))
+                println(same(word, word)) // E:TC_NO_CONTEXT_ARGUMENT missing second derived head
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("no context argument", "eq"),
+            expectedDiagnostics = listOf(expectedNoContextArgument("eq")),
+            dependencies = listOf(modelDependency),
+            unexpectedMessages = listOf("internal compiler error"),
+        )
+    }
 }
 
 private fun showTypeclassSource(
@@ -421,6 +630,26 @@ private fun shownStringSource(packageName: String): String =
     }
     """.trimIndent()
 
+private fun shownStringSource(
+    packageName: String,
+    showPackage: String,
+): String =
+    """
+    package $packageName
+
+    import one.wabbit.typeclass.Instance
+
+    data class ShownString(val value: String) {
+        companion object {
+            @Instance
+            val show: $showPackage.Show<ShownString> =
+                object : $showPackage.Show<ShownString> {
+                    override fun show(value: ShownString): String = value.value
+                }
+        }
+    }
+    """.trimIndent()
+
 private fun shownIntSource(packageName: String): String =
     """
     package $packageName
@@ -436,4 +665,57 @@ private fun shownIntSource(packageName: String): String =
                 }
         }
     }
+    """.trimIndent()
+
+private fun eqTypeclassSource(
+    packageName: String,
+): String =
+    """
+    package $packageName
+
+    import one.wabbit.typeclass.ProductTypeclassMetadata
+    import one.wabbit.typeclass.SumTypeclassMetadata
+    import one.wabbit.typeclass.Typeclass
+    import one.wabbit.typeclass.TypeclassDeriver
+    import one.wabbit.typeclass.get
+    import one.wabbit.typeclass.matches
+
+    @Typeclass
+    interface Eq<A> {
+        fun equal(left: A, right: A): Boolean
+
+        companion object : TypeclassDeriver {
+            override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                object : Eq<Any?> {
+                    override fun equal(left: Any?, right: Any?): Boolean {
+                        if (left == null || right == null) {
+                            return left == right
+                        }
+                        return metadata.fields.all { field ->
+                            val fieldEq = field.instance as Eq<Any?>
+                            fieldEq.equal(field.get(left), field.get(right))
+                        }
+                    }
+                }
+
+            override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                object : Eq<Any?> {
+                    override fun equal(left: Any?, right: Any?): Boolean {
+                        if (left == null || right == null) {
+                            return left == right
+                        }
+                        val leftCase = metadata.cases.singleOrNull { candidate -> candidate.matches(left) } ?: return false
+                        val rightCase = metadata.cases.singleOrNull { candidate -> candidate.matches(right) } ?: return false
+                        if (leftCase.name != rightCase.name) {
+                            return false
+                        }
+                        val caseEq = leftCase.instance as Eq<Any?>
+                        return caseEq.equal(left, right)
+                    }
+                }
+        }
+    }
+
+    context(eq: Eq<A>)
+    fun <A> same(left: A, right: A): Boolean = eq.equal(left, right)
     """.trimIndent()

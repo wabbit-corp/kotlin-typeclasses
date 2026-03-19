@@ -1,6 +1,7 @@
 package one.wabbit.typeclass.plugin
 
 import one.wabbit.typeclass.plugin.model.TcType
+import one.wabbit.typeclass.plugin.model.containsStarProjection
 import one.wabbit.typeclass.plugin.model.isProvablyNullable
 import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.referencedVariableIds
@@ -109,6 +110,25 @@ internal fun supportsBuiltinTypeIdGoal(
         return true
     }
     val target = constructor.arguments.singleOrNull() ?: return false
+    return supportsRuntimeTypeMaterialization(target, canMaterializeVariable)
+}
+
+internal fun supportsBuiltinKSerializerShape(goal: TcType): Boolean {
+    return supportsBuiltinKSerializerShape(goal) { true }
+}
+
+internal fun supportsBuiltinKSerializerShape(
+    goal: TcType,
+    canMaterializeVariable: (String) -> Boolean,
+): Boolean {
+    val constructor = goal as? TcType.Constructor ?: return true
+    if (constructor.classifierId != KSERIALIZER_CLASS_ID.asString()) {
+        return true
+    }
+    val target = constructor.arguments.singleOrNull() ?: return false
+    if (target.containsStarProjection()) {
+        return false
+    }
     return supportsRuntimeTypeMaterialization(target, canMaterializeVariable)
 }
 

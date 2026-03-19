@@ -89,5 +89,8 @@
 - Read generated derive metadata for dependency classes from FIR resolved annotations instead of source-only annotation lists, which restores cross-module sealed derivation for dependency roots split across files and modules.
 - Add `DerivationBoundaryTest` coverage for cross-file and dependency-module sealed derivation, including generic sealed roots and a control case proving ordinary dependency companion instances already worked.
 - Add chained multi-module derivation coverage where module A owns the typeclass deriver, module B owns the derived sealed ADT, and the consumer module only sees the transitive dependency graph.
+- Add pure `BuiltinGoalSupportTest` coverage for `KClass`, `KnownType`, `TypeId`, `IsTypeclassInstance`, and `KSerializer` admissibility logic, and factor out the pure `KSerializer` shape gate so it no longer relies only on integration regressions.
+- Add negative derivation-boundary regressions for missing dependency-side field evidence, manual-vs-derived exported instance conflicts, and partial multi-`@Derive` success across module boundaries.
+- Expand `WrapperPlannerTest` with local-evidence precedence, cycle-plus-valid-alternative success, rule-order stability, and explicit competing-plan ambiguity checks.
 - Align impossible `Subtype` and `StrictSubtype` negative tests with the earlier FIR `TC_NO_CONTEXT_ARGUMENT` failure mode now that impossible builtin proof candidates are filtered before later materialization.
 - Reject `deriveProduct` and `deriveSum` implementations when FIR can statically see they return the wrong typeclass constructor for their enclosing `@Typeclass`.

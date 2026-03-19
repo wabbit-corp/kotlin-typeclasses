@@ -871,17 +871,11 @@ private fun supportsBuiltinKSerializerGoal(
     session: FirSession,
     canMaterializeVariable: (String) -> Boolean = { true },
 ): Boolean {
+    if (!supportsBuiltinKSerializerShape(goal, canMaterializeVariable)) {
+        return false
+    }
     val constructor = goal as? TcType.Constructor ?: return true
-    if (constructor.classifierId != KSERIALIZER_CLASS_ID.asString()) {
-        return true
-    }
-    val targetType = constructor.arguments.singleOrNull() ?: return false
-    if (targetType.containsStarProjection()) {
-        return false
-    }
-    if (!supportsRuntimeTypeMaterialization(targetType, canMaterializeVariable)) {
-        return false
-    }
+    val targetType = constructor.arguments.single()
     return isPotentiallySerializableType(
         type = targetType,
         session = session,
