@@ -42,8 +42,9 @@ class AtomicFuInteropTest : IntegrationTestSupport() {
             }
             """.trimIndent()
 
-        assertCompiles(
-            source,
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int:1",
             requiredPlugins = atomicFuPlugins,
         )
     }
@@ -85,14 +86,15 @@ class AtomicFuInteropTest : IntegrationTestSupport() {
             }
             """.trimIndent()
 
-        assertCompiles(
-            source,
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "2",
             requiredPlugins = atomicFuPlugins,
         )
     }
 
     @Test
-    fun derivedTypesContainingAtomicfuManagedStateDoNotCrashCompilerInterplay() {
+    fun typesContainingAtomicfuManagedStateDoNotCrashCompilerInterplay() {
         val source =
             """
             package demo
@@ -123,8 +125,9 @@ class AtomicFuInteropTest : IntegrationTestSupport() {
             }
             """.trimIndent()
 
-        assertCompiles(
-            source,
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int:1",
             requiredPlugins = atomicFuPlugins,
         )
     }

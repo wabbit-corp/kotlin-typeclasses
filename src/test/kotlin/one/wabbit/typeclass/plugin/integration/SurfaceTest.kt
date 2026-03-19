@@ -144,6 +144,7 @@ class SurfaceTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("no context argument", "foo"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "foo")),
         )
     }
 
@@ -309,6 +310,7 @@ class SurfaceTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("ambiguous", "nothing"),
+            expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("show")),
         )
     }
 
@@ -359,6 +361,7 @@ class SurfaceTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             sources = sources,
             expectedMessages = listOf("no context argument", "show"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
         )
     }
 
@@ -395,158 +398,6 @@ class SurfaceTest : IntegrationTestSupport() {
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "companion-object:1",
-        )
-    }
-
-    @Test fun handlesRecursiveDerivedAdtsWithoutCrashing() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Derive
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.ProductTypeclassMetadata
-            import one.wabbit.typeclass.SumTypeclassMetadata
-            import one.wabbit.typeclass.Typeclass
-            import one.wabbit.typeclass.TypeclassDeriver
-            import one.wabbit.typeclass.get
-            import one.wabbit.typeclass.matches
-
-            @Typeclass
-            interface Show<A> {
-                fun show(value: A): String
-
-                companion object : TypeclassDeriver {
-                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
-                        object : Show<Any?> {
-                            override fun show(value: Any?): String {
-                                require(value != null)
-                                val renderedFields =
-                                    metadata.fields.joinToString(", ") { field ->
-                                        val fieldValue = field.get(value)
-                                        val fieldShow = field.instance as Show<Any?>
-                                        "${'$'}{field.name}=${'$'}{fieldShow.show(fieldValue)}"
-                                    }
-                                val typeName = metadata.typeName.substringAfterLast('.')
-                                return "${'$'}typeName(${'$'}renderedFields)"
-                            }
-                        }
-
-                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
-                        object : Show<Any?> {
-                            override fun show(value: Any?): String {
-                                require(value != null)
-                                val matchingCase = metadata.cases.single { candidate -> candidate.matches(value) }
-                                val caseShow = matchingCase.instance as Show<Any?>
-                                return caseShow.show(value)
-                            }
-                        }
-                }
-            }
-
-            @Derive(Show::class)
-            sealed class Tree
-
-            @Derive(Show::class)
-            data class Branch(val left: Tree, val right: Tree) : Tree()
-
-            @Derive(Show::class)
-            object Leaf : Tree()
-
-            context(show: Show<A>)
-            fun <A> render(value: A): String = show.show(value)
-
-            fun main() {
-                println(render(Branch(Leaf, Leaf)))
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "Branch(left=Leaf(), right=Leaf())",
-        )
-    }
-
-    @Test fun derivesNestedGenericSealedHierarchies() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Derive
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.ProductTypeclassMetadata
-            import one.wabbit.typeclass.SumTypeclassMetadata
-            import one.wabbit.typeclass.Typeclass
-            import one.wabbit.typeclass.TypeclassDeriver
-            import one.wabbit.typeclass.get
-            import one.wabbit.typeclass.matches
-
-            @Typeclass
-            interface Show<A> {
-                fun show(value: A): String
-
-                companion object : TypeclassDeriver {
-                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
-                        object : Show<Any?> {
-                            override fun show(value: Any?): String {
-                                require(value != null)
-                                val renderedFields =
-                                    metadata.fields.joinToString(", ") { field ->
-                                        val fieldValue = field.get(value)
-                                        val fieldShow = field.instance as Show<Any?>
-                                        "${'$'}{field.name}=${'$'}{fieldShow.show(fieldValue)}"
-                                    }
-                                val typeName = metadata.typeName.substringAfterLast('.')
-                                return "${'$'}typeName(${'$'}renderedFields)"
-                            }
-                        }
-
-                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
-                        object : Show<Any?> {
-                            override fun show(value: Any?): String {
-                                require(value != null)
-                                val matchingCase = metadata.cases.single { candidate -> candidate.matches(value) }
-                                val caseShow = matchingCase.instance as Show<Any?>
-                                return caseShow.show(value)
-                            }
-                        }
-                }
-            }
-
-            @Instance
-            object IntShow : Show<Int> {
-                override fun show(value: Int): String = value.toString()
-            }
-
-            @Derive(Show::class)
-            sealed class Envelope<out A>
-
-            @Derive(Show::class)
-            data class Value<A>(val value: A) : Envelope<A>()
-
-            @Derive(Show::class)
-            sealed class Marker : Envelope<Nothing>()
-
-            @Derive(Show::class)
-            object Missing : Marker()
-
-            context(show: Show<A>)
-            fun <A> render(value: A): String = show.show(value)
-
-            fun main() {
-                val missing: Envelope<Int> = Missing
-                println(render(Value(1)))
-                println(render(missing))
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout =
-                """
-                Value(value=1)
-                Missing()
-                """.trimIndent(),
         )
     }
 
@@ -636,83 +487,12 @@ class SurfaceTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("conflicting", "binding"),
-        )
-    }
-
-    @Test fun derivedInstancesCanUseContextualFieldInstances() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Derive
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.ProductTypeclassMetadata
-            import one.wabbit.typeclass.SumTypeclassMetadata
-            import one.wabbit.typeclass.Typeclass
-            import one.wabbit.typeclass.TypeclassDeriver
-            import one.wabbit.typeclass.get
-            import one.wabbit.typeclass.matches
-
-            @Typeclass
-            interface Show<A> {
-                fun show(value: A): String
-
-                companion object : TypeclassDeriver {
-                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
-                        object : Show<Any?> {
-                            override fun show(value: Any?): String {
-                                require(value != null)
-                                val renderedFields =
-                                    metadata.fields.joinToString(", ") { field ->
-                                        val fieldValue = field.get(value)
-                                        val fieldShow = field.instance as Show<Any?>
-                                        "${'$'}{field.name}=${'$'}{fieldShow.show(fieldValue)}"
-                                    }
-                                val typeName = metadata.typeName.substringAfterLast('.')
-                                return "${'$'}typeName(${'$'}renderedFields)"
-                            }
-                        }
-
-                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
-                        object : Show<Any?> {
-                            override fun show(value: Any?): String {
-                                require(value != null)
-                                val matchingCase = metadata.cases.single { candidate -> candidate.matches(value) }
-                                val caseShow = matchingCase.instance as Show<Any?>
-                                return caseShow.show(value)
-                            }
-                        }
-                }
-            }
-
-            @Instance
-            object IntShow : Show<Int> {
-                override fun show(value: Int): String = value.toString()
-            }
-
-            @Instance
-            context(show: Show<A>)
-            fun <A> listShow(): Show<List<A>> =
-                object : Show<List<A>> {
-                    override fun show(value: List<A>): String =
-                        value.joinToString(prefix = "[", postfix = "]") { element -> show.show(element) }
-                }
-
-            @Derive(Show::class)
-            data class Wrapper<A>(val values: List<A>)
-
-            context(show: Show<A>)
-            fun <A> render(value: A): String = show.show(value)
-
-            fun main() {
-                val wrapper: Wrapper<Int> = Wrapper(listOf(1, 2))
-                println(render(wrapper))
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "Wrapper(values=[1, 2])",
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(
+                        messageRegex = "(?i)(conflicting|cannot infer|inferred as|type mismatch)",
+                    ),
+                ),
         )
     }
 
@@ -758,6 +538,7 @@ class SurfaceTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("no context argument", "eq"),
+            expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("eq")),
         )
     }
 
@@ -1072,6 +853,7 @@ class SurfaceTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("no context argument", "render(1)"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
         )
     }
 
@@ -1145,6 +927,7 @@ class SurfaceTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             sources = sources,
             expectedMessages = listOf("no context argument"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
         )
     }
 
@@ -1904,51 +1687,4 @@ class SurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun derivesEnumClasses() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Derive
-            import one.wabbit.typeclass.ProductTypeclassMetadata
-            import one.wabbit.typeclass.SumTypeclassMetadata
-            import one.wabbit.typeclass.Typeclass
-            import one.wabbit.typeclass.TypeclassDeriver
-
-            @Typeclass
-            interface Show<A> {
-                fun show(value: A): String
-
-                companion object : TypeclassDeriver {
-                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
-                        object : Show<Any?> {
-                            override fun show(value: Any?): String = value.toString()
-                        }
-
-                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
-                        object : Show<Any?> {
-                            override fun show(value: Any?): String = value.toString()
-                        }
-                }
-            }
-
-            @Derive(Show::class)
-            enum class Color {
-                RED,
-                BLUE,
-            }
-
-            context(show: Show<A>)
-            fun <A> render(value: A): String = show.show(value)
-
-            fun main() {
-                println(render(Color.RED))
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "RED",
-        )
-    }
 }

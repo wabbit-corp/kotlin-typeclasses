@@ -151,6 +151,12 @@ class KClassBuiltinTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("kclass", "concrete"),
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(
+                        messageRegex = "(?i)(kclass|no context argument|reified|runtime)",
+                    ),
+                ),
             pluginOptions = listOf("builtinKClassTypeclass=enabled"),
         )
     }
@@ -174,6 +180,12 @@ class KClassBuiltinTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("kclass", "non-null"),
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(
+                        messageRegex = "(?i)(kclass|non-null|upper bound|any)",
+                    ),
+                ),
             pluginOptions = listOf("builtinKClassTypeclass=enabled"),
         )
     }

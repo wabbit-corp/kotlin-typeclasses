@@ -24,41 +24,23 @@ That part is solid. It is much closer to “try to break the plugin” than the 
 
 `UtilityProofTest` is also broad in a good way. It exercises a lot of proof-surface API, conversions, composition, and using proofs as prerequisites. Good instinct.
 
-## A lot of the remaining failing tests still lean on weak message matching
+## Negative diagnostics are in much better shape now
 
-The harness now has a structured diagnostic path, but a lot of callers still use legacy `expectedMessages` substring checks.
+The harness now has a structured diagnostic path, and the active negative suites mostly use it.
 
-That means some tests still prove only that a compile error happened somewhere near words already present in the file, which is softer than it should be.
+That is a real improvement. The suite is less likely to pass because compiler stdout happened to echo the right source comment.
 
-The main remaining offenders are many negative cases in `UtilityProofTest` and a fair number of declaration-site rejection tests in `InstanceDeclarationTest`.
+What remains is narrower:
 
-That also means the suite does **not** yet reliably catch the FIR/IR phase split I pointed out earlier. A builtin proof can be “accepted” too early in FIR, fail later in IR, and some legacy assertions can still go green because a backend message happened to contain the right token soup.
+* ignored `GADTDerivationTest` negatives still do not guard anything
+* the harness still matches free-text messages rather than stable plugin diagnostic IDs
+* backend-vs-frontend differences can still collapse into similarly worded generic diagnostics
 
 ## A few tests are misleading or scoped wrong
 
-`ResolutionTest.doesNotImplicitlyResolveNonTypeclassContexts` is the clearest offender.
-
-It tries to test “non-`@Typeclass` contexts are not auto-resolved,” but the sample also declares:
-
-```kotlin
-@Instance
-object IntEq : Eq<Int>
-```
-
-where `Eq` is **not** a typeclass.
-
-So the test is mixing two different failures:
-
-* invalid `@Instance` declaration
-* missing context argument for `same(1)`
-
-That is sloppy. If it fails, you do not know which behavior you actually exercised. The fix is simple: make `IntEq` an ordinary object, not an `@Instance`.
-
 `KClassBuiltinTest.rejectsNullableKClassMaterializationEvenInsideReifiedHelpers` is also suspect. `KClass<T>` already has a non-null bound shape in Kotlin, so that test risks checking the language’s own type constraint more than your plugin’s rejection path.
 
-`AtomicFuInteropTest` and `PowerAssertInteropTest` are mostly **co-loading smoke tests**, not semantic interop tests. That is fine, but the names oversell them. AtomicFu especially can compile and run plenty of code even if its compiler plugin does nothing interesting.
-
-`ParcelizeInteropTest` is underpowered too. Those tests have `main` functions and could often be run, but you only assert compile success.
+`PowerAssertInteropTest` is still mostly a co-loading smoke test. That is fine, but the current name oversells it unless the harness starts running with `-ea`.
 
 ## The ignored tests are doing double duty as documentation, and it shows
 
@@ -100,7 +82,7 @@ Those are exactly the places where the current implementation is shaky.
 
 If you only fix one thing next in the tests, make it this:
 
-1. **Finish migrating negative assertions to structured diagnostics.**
-   The harness support is there now. Use it broadly enough that failing tests stop depending on raw stdout substring soup.
+1. **Add stable diagnostic IDs and assert on those.**
+   The big migration to structured diagnostics is mostly done in active suites. The next real quality jump is to stop keying tests off free-text messages altogether.
 
-So: **good suite, weak truthiness**. The broad semantic positives are valuable. The remaining legacy negative tests are still too easy to satisfy for the wrong reason. Finish migrating those, and the suite will stop flattering bugs.
+So: **good suite, better truthiness, still too stringly typed**. The broad semantic positives are valuable, and the negative tests are in much better shape than they were, but stable diagnostic IDs would make the failures much more trustworthy.

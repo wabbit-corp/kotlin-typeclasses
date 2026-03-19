@@ -58,6 +58,7 @@ class ReviewRegressionTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("eq", "user"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "eq")),
         )
     }
 
@@ -96,6 +97,7 @@ class ReviewRegressionTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("no context argument", "show"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
         )
     }
 
@@ -143,6 +145,7 @@ class ReviewRegressionTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("no context argument", "foo"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "foo")),
         )
     }
 
@@ -185,6 +188,7 @@ class ReviewRegressionTest : IntegrationTestSupport() {
             source = source,
             expectedMessages = listOf("companion"),
             unexpectedMessages = listOf("ambiguous"),
+            expectedDiagnostics = listOf(expectedErrorContaining("companion")),
         )
     }
 
@@ -226,51 +230,7 @@ class ReviewRegressionTest : IntegrationTestSupport() {
             source = source,
             expectedMessages = listOf("companion"),
             unexpectedMessages = listOf("ambiguous"),
-        )
-    }
-
-    @Test
-    fun genericSealedSubclassesAreRejectedForNonGenericDerivedRoots() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Derive
-            import one.wabbit.typeclass.ProductTypeclassMetadata
-            import one.wabbit.typeclass.SumTypeclassMetadata
-            import one.wabbit.typeclass.Typeclass
-            import one.wabbit.typeclass.TypeclassDeriver
-
-            @Typeclass
-            interface Show<A> {
-                fun show(value: A): String
-
-                companion object : TypeclassDeriver {
-                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
-                        object : Show<Any?> {
-                            override fun show(value: Any?): String = metadata.typeName
-                        }
-
-                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
-                        object : Show<Any?> {
-                            override fun show(value: Any?): String = metadata.typeName
-                        }
-                }
-            }
-
-            @Derive(Show::class)
-            sealed interface Expr
-
-            data class Lit<T>(val value: T) : Expr
-
-            fun main() {
-                println("unreachable")
-            }
-            """.trimIndent()
-
-        assertDoesNotCompile(
-            source = source,
-            expectedMessages = listOf("cannot derive", "lit"),
+            expectedDiagnostics = listOf(expectedErrorContaining("companion")),
         )
     }
 
@@ -494,6 +454,7 @@ class ReviewRegressionTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("show", "int"),
+            expectedDiagnostics = listOf(expectedErrorContaining("show")),
         )
     }
 
@@ -538,47 +499,6 @@ class ReviewRegressionTest : IntegrationTestSupport() {
             source = source,
             expectedStdout = "instance",
             pluginOptions = listOf("builtinKClassTypeclass=enabled"),
-        )
-    }
-
-    @Ignore("Pending derivation admissibility work")
-    @Test
-    fun derivesOnlyAdmissibleSumCasesForRequestedTypeclasses() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Derive
-            import one.wabbit.typeclass.ProductTypeclassMetadata
-            import one.wabbit.typeclass.SumTypeclassMetadata
-            import one.wabbit.typeclass.Typeclass
-            import one.wabbit.typeclass.TypeclassDeriver
-
-            @Typeclass
-            interface Codec<A> {
-                fun encode(value: A): String
-                fun decode(value: String): A
-
-                companion object : TypeclassDeriver {
-                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
-                        error("placeholder")
-
-                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
-                        error("placeholder")
-                }
-            }
-
-            @Derive(Codec::class)
-            sealed interface Expr<A>
-
-            data class Lit(val value: Int) : Expr<Int>
-
-            data class Name(val value: String) : Expr<String>
-            """.trimIndent()
-
-        assertDoesNotCompile(
-            source = source,
-            expectedMessages = listOf("derive", "expr"),
         )
     }
 

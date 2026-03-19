@@ -151,6 +151,12 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("serializer", "user"),
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(
+                        messageRegex = "(?i)(serializer|no context argument|serializable|generated)",
+                    ),
+                ),
             requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
@@ -456,6 +462,7 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("star", "serializer"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "value")),
             requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
@@ -481,6 +488,12 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("reified", "serializer"),
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(
+                        messageRegex = "(?i)(reified|serializer|runtime|type argument)",
+                    ),
+                ),
             requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )

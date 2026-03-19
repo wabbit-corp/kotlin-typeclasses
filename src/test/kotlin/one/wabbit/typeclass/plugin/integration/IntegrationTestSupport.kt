@@ -144,6 +144,16 @@ abstract class IntegrationTestSupport {
             },
         )
 
+    protected fun expectedAmbiguousOrNoContext(vararg fragments: String): ExpectedDiagnostic.Error =
+        ExpectedDiagnostic.Error(
+            description = "ambiguous or missing-context diagnostic containing ${fragments.joinToString()}",
+            messagePredicate = { message ->
+                val normalized = message.lowercase()
+                (normalized.contains("ambiguous") || normalized.contains("no context argument")) &&
+                    fragments.all { normalized.contains(it.lowercase()) }
+            },
+        )
+
     protected fun assertCompilesAndRuns(
         source: String,
         expectedStdout: String,

@@ -12,21 +12,19 @@ The big strengths first:
 
 Now the parts that need tightening, because humans always stop two inches short of discipline.
 
-### 1. A lot of the remaining negative diagnostic assertions are still too weak
+### 1. The active negative diagnostic assertions are much less weak than they were
 
-The harness now has a structured diagnostic path, but a lot of `assertDoesNotCompile(...)` callers still check for fragments like `"same"`, `"box"`, or `"nullable"`. Since compiler output usually includes source lines, those tests can still pass for the wrong reason. That is not verification. That is tea-leaf reading.
+The harness now has a structured diagnostic path, and the active suites mostly use it.
 
-Examples of weak ones:
+That is good progress. The remaining problem is not broad caller adoption so much as the fact that the matcher still keys off human-readable message text.
 
-* many cases in `UtilityProofTest`
-* several negative cases in `InstanceDeclarationTest`, `DerivationTest`, and `ResolutionTest`
+What is still weak:
 
-What you want instead:
+* ignored `GADTDerivationTest` negatives still do not protect anything
+* message text is still easier to churn than stable diagnostic IDs
+* generic frontend/backend wording can hide which phase really failed
 
-* finish migrating callers to the structured diagnostic matcher in the harness
 * stable diagnostic IDs from your plugin, like `TC_NO_CONTEXT_ARGUMENT`, `TC_AMBIGUOUS_INSTANCE`, `TC_INVALID_INSTANCE_DECL`
-
-Right now some of these tests prove “a compile error happened somewhere near a word already present in the file.” Splendid ritual, not a regression test.
 
 ### 2. Suite boundaries are blurry
 
@@ -34,7 +32,7 @@ The tests are good, but the file organization is not.
 
 Examples:
 
-* `DerivationTest` is better after extracting `InstanceDeclarationTest`, but it still contains a lot of general resolution/lowering tests that have nothing to do with derivation.
+* the split between `DerivationTest` and `TypeclassContractTest` is much clearer now
 * `SurfaceTest` and `ResolutionTest` overlap heavily.
 * `ContextualPropertyTest` and `ImportVisibilityTest` are much clearer names than before, but the overall file boundaries are still uneven.
 * You mix `org.junit.Ignore` and `kotlin.test.Ignore`. Pick one and stop collecting annotation dialects like Victorian spoons.
@@ -45,9 +43,6 @@ This does not break correctness, but it does make the suite harder to navigate a
 
 Specific callouts:
 
-* `AtomicFuInteropTest.derivedTypesContainingAtomicfuManagedStateDoNotCrashCompilerInterplay`
-  It does not derive anything. It is just a class with an `atomic` field and a contextual method. Rename it or actually derive something.
-
 * `SurfaceTest.rewritesContextualContainsOperatorCalls`
   The original private-property bug in the fixture is gone, but the test is still ignored because the operator rewrite currently trips a runtime `ClassCastException`. That is at least a real bug now, not just a broken fixture.
 
@@ -57,17 +52,6 @@ Specific callouts:
 ### 4. Some compile-only interop tests should probably run
 
 Compose compile-only is sensible. You are testing rewrite coexistence, not UI execution.
-
-AtomicFu and Parcelize are different:
-
-* those sources already have runnable `main`s
-* the runtime is on the classpath
-* the tests would be stronger if they actually executed
-
-So:
-
-* `AtomicFuInteropTest` should likely be `assertCompilesAndRuns`
-* `ParcelizeInteropTest` could probably do the same for at least one case
 
 `PowerAssertInteropTest` is fine as compile-only unless you change the harness to run with `-ea`, because otherwise JVM assertions are a theatrical prop.
 
@@ -97,7 +81,7 @@ The bad:
 
 * global orphan-style discovery is still a coherence smell
 
-`DerivationTest.additionalUnrelatedFilesCanChangeResolutionOutcome` is an honest test, but it documents the main philosophical wart: adding an unrelated file can change resolution. That is bad for local reasoning, modularity, and general typeclass hygiene.
+`TypeclassContractTest.additionalUnrelatedFilesCanChangeResolutionOutcome` is an honest test, but it documents the main philosophical wart: adding an unrelated file can change resolution. That is bad for local reasoning, modularity, and general typeclass hygiene.
 
 The dedicated import-visibility suite suggests you already know this. If “functional programming goodness” matters beyond mere convenience, import-scoped visibility or associated-only discovery is the cleaner direction.
 
@@ -122,8 +106,8 @@ The core is solid. The best tests are genuinely good and show careful thought ab
 
 But I would not call the suite “tight” yet. The three things I would fix first now are:
 
-1. finish migrating negative tests to structured diagnostics
+1. add stable diagnostic IDs and assert on those instead of human-readable message text
 2. make the coherence story less global and less orphan-happy, or at least admit that it is a deliberate tradeoff
-3. keep collapsing the remaining `SurfaceTest` / `ResolutionTest` / `DerivationTest` overlap and clean up a few misleading tests
+3. keep collapsing the remaining `SurfaceTest` / `ResolutionTest` overlap and clean up a few misleading tests
 
 So: sane overall, strong on compiler plumbing, mixed on consistency, and only partly “FP-good” because the coherence story is still a bit too global and magical. A respectable suite with a few bad habits, like most institutions and nearly every programmer.

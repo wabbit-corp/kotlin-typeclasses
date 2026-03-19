@@ -26,6 +26,7 @@ class ExistentialTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf(),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
         )
     }
 
@@ -170,6 +171,7 @@ class ExistentialTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("ambiguous", "foo"),
+            expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("foo")),
         )
     }
 

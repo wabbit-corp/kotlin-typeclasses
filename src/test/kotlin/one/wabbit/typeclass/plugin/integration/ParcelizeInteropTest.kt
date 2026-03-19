@@ -74,8 +74,9 @@ class ParcelizeInteropTest : IntegrationTestSupport() {
             }
             """.trimIndent()
 
-        assertCompiles(
-            source,
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "User(id=1)",
             requiredPlugins = parcelizePlugins,
         )
     }
@@ -114,8 +115,9 @@ class ParcelizeInteropTest : IntegrationTestSupport() {
             }
             """.trimIndent()
 
-        assertCompiles(
-            source,
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "user:1",
             requiredPlugins = parcelizePlugins,
         )
     }
@@ -152,8 +154,9 @@ class ParcelizeInteropTest : IntegrationTestSupport() {
             }
             """.trimIndent()
 
-        assertCompiles(
-            source,
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "user:1",
             requiredPlugins = parcelizePlugins,
         )
     }
