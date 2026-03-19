@@ -842,7 +842,7 @@ internal fun FirSimpleFunction.instanceProvidedTypes(
     session: FirSession,
     configuration: TypeclassConfiguration = TypeclassConfiguration(),
 ): ProvidedTypeExpansion {
-    val returnType = returnTypeRef.coneType
+    val returnType = resolvedReturnConeTypeOrNull() ?: return ProvidedTypeExpansion(emptyList(), emptyList())
     val typeParameters =
         typeParameters.mapIndexed { index, typeParameter ->
             TcTypeParameter(
@@ -872,13 +872,19 @@ internal fun FirProperty.instanceProvidedTypes(
     session: FirSession,
     configuration: TypeclassConfiguration = TypeclassConfiguration(),
 ): ProvidedTypeExpansion {
-    val returnType = returnTypeRef.coneType
+    val returnType = resolvedReturnConeTypeOrNull() ?: return ProvidedTypeExpansion(emptyList(), emptyList())
     return listOf(returnType).expandProvidedTypes(
         session = session,
         typeParameterBySymbol = emptyMap(),
         configuration = configuration,
     )
 }
+
+private fun FirSimpleFunction.resolvedReturnConeTypeOrNull(): ConeKotlinType? =
+    runCatching { symbol.resolvedReturnTypeRef.coneType }.getOrNull()
+
+private fun FirProperty.resolvedReturnConeTypeOrNull(): ConeKotlinType? =
+    runCatching { symbol.resolvedReturnTypeRef.coneType }.getOrNull()
 
 private fun FirRegularClass.declaredOrResolvedSuperTypes(): List<ConeKotlinType> {
     val declared = superTypeRefs.map { it.coneType }

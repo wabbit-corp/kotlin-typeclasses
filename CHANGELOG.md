@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix a FIR scanner crash on `@Instance` functions and properties with implicit return types by using the callable symbol's resolved return type instead of assuming the raw `returnTypeRef` is already a `FirResolvedTypeRef`.
+- Add a focused FIR regression covering Brewing-shaped companion `@Instance val ... = ...` declarations with implicit types plus a downstream contextual `updateComponent<T>(...)` call.
 - Enable a small batch of low-risk core regressions covering fun-interface typeclasses, use-site variance in ordinary typeclass goals, non-discovery of local `@Instance` declarations, definitely-non-null typeclass goals, and filtering of inapplicable associated sealed-supertype candidates.
 - Enable the PHASE17 all-open/no-arg interop coverage and extend the integration harness with explicit `AllOpen(...)` and `NoArg(...)` support plugins that forward annotation-based compiler-plugin options.
 - Enable the PHASE13G `TypeId` regressions, preserve use-site variance in the internal semantic type model, and materialize reified `TypeId<T>` evidence through `typeOf<T>()` plus a runtime `KType` factory.
