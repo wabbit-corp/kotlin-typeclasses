@@ -2361,8 +2361,14 @@ private class IrModuleScanner(
     fun derivedRulesForOwner(classifierId: String): List<ResolvedRule> {
         val ownerClass = classesById[classifierId] ?: return emptyList()
         val subclassesBySuper = subclassesBySuper()
-        return applicableDerivedTypeclassIdsForOwner(classifierId).flatMap { typeclassId ->
-            ownerClass.toDerivedRules(typeclassId, subclassesBySuper)
+        return buildList {
+            addAll(
+                applicableDerivedTypeclassIdsForOwner(classifierId).flatMap { typeclassId ->
+                    ownerClass.toDerivedRules(typeclassId, subclassesBySuper)
+                },
+            )
+            addAll(ownerClass.toDerivedEquivRules())
+            addAll(ownerClass.toDeriveViaRules())
         }
     }
 
@@ -2407,6 +2413,7 @@ private class IrModuleScanner(
             is IrClass -> {
                 declaration.classId?.let { classId ->
                     val supportedDerivedTypeclassIds = declaration.supportedDerivedTypeclassIds()
+                    val generatedDerivedMetadataEntries = declaration.generatedDerivedMetadataEntries()
                     classesById[classId.asString()] = declaration
                     declaredDerivationsByClassId[classId.asString()] = supportedDerivedTypeclassIds
                     classInfoById[classId.asString()] =
@@ -2418,8 +2425,8 @@ private class IrModuleScanner(
                             isSealed = declaration.modality == Modality.SEALED,
                             typeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.variance },
                         )
-                    if (supportedDerivedTypeclassIds.isNotEmpty()) {
-                        declaration.recordGeneratedDerivedTypeclassMetadata(supportedDerivedTypeclassIds)
+                    if (generatedDerivedMetadataEntries.isNotEmpty()) {
+                        declaration.recordGeneratedDerivedTypeclassMetadata(generatedDerivedMetadataEntries)
                     }
                 }
 
@@ -3199,6 +3206,19 @@ private class IrModuleScanner(
             addAll(derivedTypeclassIds())
         }
 
+    private fun IrClass.generatedDerivedMetadataEntries(): List<Pair<ClassId, String>> =
+        buildList {
+            supportedDerivedTypeclassIds().forEach { typeclassId ->
+                add(typeclassId to "derive")
+            }
+            deriveViaRequests(pluginContext).forEach { request ->
+                add(request.typeclassId to "derive-via")
+            }
+            if (deriveEquivRequests().isNotEmpty()) {
+                add(EQUIV_CLASS_ID to "derive-equiv")
+            }
+        }
+
     private fun IrClass.generatedDerivedTypeclassIds(): Set<ClassId> =
         annotations
             .flatMap { annotation -> annotation.flattenGeneratedInstanceAnnotations() }
@@ -3221,28 +3241,41 @@ private class IrModuleScanner(
         }
 
     private fun IrClass.recordGeneratedDerivedTypeclassMetadata(
-        directTypeclassIds: Set<ClassId>,
+        directEntries: List<Pair<ClassId, String>>,
     ) {
         val annotationClass = pluginContext.referenceClass(GENERATED_INSTANCE_ANNOTATION_CLASS_ID)?.owner ?: return
         val annotationConstructor = annotationClass.primaryConstructorOrNull() ?: return
-        val existingIds = generatedDerivedTypeclassIds().mapTo(linkedSetOf(), ClassId::asString)
+        val existingEntries =
+            annotations
+                .flatMap { annotation -> annotation.flattenGeneratedInstanceAnnotations() }
+                .mapNotNullTo(linkedSetOf()) { annotation ->
+                    val typeclassId = (annotation.getValueArgument(0) as? IrConst)?.value as? String
+                    val targetId = (annotation.getValueArgument(1) as? IrConst)?.value as? String
+                    val kind = (annotation.getValueArgument(2) as? IrConst)?.value as? String
+                    val actualTypeclassId =
+                        typeclassId
+                            ?.takeIf { targetId == null || targetId == classIdOrFail.asString() }
+                            ?.let(ClassId::fromString)
+                            ?: return@mapNotNullTo null
+                    actualTypeclassId.asString() to kind.orEmpty()
+                }
         val builder = DeclarationIrBuilder(pluginContext, symbol, startOffset, endOffset)
-        directTypeclassIds
-            .flatMapTo(linkedSetOf()) { typeclassId ->
+        directEntries
+            .flatMapTo(linkedSetOf()) { (typeclassId, kind) ->
                 expandDerivedTypeclassIds(
                     typeclassId = typeclassId,
                     previousWereTypeclass = true,
                     visited = linkedSetOf(),
-                )
-            }.filterNot { typeclassId -> typeclassId.asString() in existingIds }
-            .forEach { typeclassId ->
+                ).map { expandedTypeclassId -> expandedTypeclassId to kind }
+            }.filterNot { (typeclassId, kind) -> (typeclassId.asString() to kind) in existingEntries }
+            .forEach { (typeclassId, kind) ->
                 annotations +=
                     builder
                         .irCallConstructor(annotationConstructor.symbol, emptyList())
                         .apply {
                             putValueArgument(0, builder.irString(typeclassId.asString()))
                             putValueArgument(1, builder.irString(classIdOrFail.asString()))
-                            putValueArgument(2, builder.irString("derive"))
+                            putValueArgument(2, builder.irString(kind))
                         }
             }
     }

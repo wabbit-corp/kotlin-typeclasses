@@ -242,7 +242,9 @@ private class FirResolutionScanner(
                             typeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.symbol.fir.variance },
                         )
                     val derivedTypeclassIds =
-                        declaration.supportedDerivedTypeclassIds(session).expandedDerivedTypeclassIds(session, configuration)
+                        declaration.supportedDerivedTypeclassIds(session).let { supportedTypeclassIds ->
+                            supportedTypeclassIds + supportedTypeclassIds.expandedDerivedTypeclassIds(session, configuration)
+                        }
                     if (derivedTypeclassIds.isNotEmpty()) {
                         derivableTypeclassIdsByOwner.getOrPut(classId.asString(), ::linkedSetOf) += derivedTypeclassIds
                     }
@@ -376,8 +378,13 @@ private data class ResolutionIndex(
     ): Boolean {
         val constructor = goal as? TcType.Constructor ?: return false
         val typeclassId = constructor.classifierId
+        val targetIndex =
+            when (typeclassId) {
+                EQUIV_CLASS_ID.asString() -> 0
+                else -> constructor.arguments.lastIndex
+            }
         val targetType =
-            constructor.arguments.lastOrNull() as? TcType.Constructor
+            constructor.arguments.getOrNull(targetIndex) as? TcType.Constructor
                 ?: return false
         return derivationOwnersForTarget(targetType.classifierId, session).any { owner ->
             typeclassId in discoveredDerivableTypeclassIds(owner, session)
@@ -436,7 +443,9 @@ private data class ResolutionIndex(
                         } catch (_: IllegalArgumentException) {
                             null
                         } ?: return@getOrPut emptySet()
-                    symbol.fir.supportedDerivedTypeclassIds(activeSession).expandedDerivedTypeclassIds(activeSession, configuration)
+                    symbol.fir.supportedDerivedTypeclassIds(activeSession).let { supportedTypeclassIds ->
+                        supportedTypeclassIds + supportedTypeclassIds.expandedDerivedTypeclassIds(activeSession, configuration)
+                    }
                 }
             }
             ?: emptySet()

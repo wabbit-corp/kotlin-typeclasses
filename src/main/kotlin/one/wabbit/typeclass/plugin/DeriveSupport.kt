@@ -120,12 +120,23 @@ internal fun FirRegularClass.generatedDerivedTypeclassIds(session: FirSession): 
             }
         }
     return generatedAnnotations.mapNotNullTo(linkedSetOf()) { annotation ->
-        val typeclassId = annotation.getStringArgument(Name.identifier("typeclassId"), session)
-        val targetId = annotation.getStringArgument(Name.identifier("targetId"), session)
-        val kind = annotation.getStringArgument(Name.identifier("kind"), session)
-        typeclassId?.takeIf { kind == "derive" && (targetId == null || targetId == ownerId) }
+        val typeclassId = annotation.getStringArgumentCompat("typeclassId", session)
+        val targetId = annotation.getStringArgumentCompat("targetId", session)
+        val kind = annotation.getStringArgumentCompat("kind", session)
+        typeclassId?.takeIf {
+            kind in setOf("derive", "derive-via", "derive-equiv") &&
+                (targetId == null || targetId == ownerId)
+        }
     }
 }
+
+private fun FirAnnotation.getStringArgumentCompat(
+    name: String,
+    session: FirSession,
+): String? =
+    getStringArgument(Name.identifier(name), session)
+        ?: (findArgumentByName(Name.identifier(name)) as? org.jetbrains.kotlin.fir.expressions.FirLiteralExpression)
+            ?.value as? String
 
 internal fun FirRegularClass.resolvedAnnotationsByClassId(
     annotationClassId: ClassId,
@@ -153,10 +164,20 @@ private fun FirAnnotation.containedGeneratedInstanceAnnotations(): List<FirAnnot
 }
 
 private fun FirAnnotation.getClassIdArgument(name: String): ClassId? =
-    (findArgumentByName(Name.identifier(name)) as? org.jetbrains.kotlin.fir.expressions.FirGetClassCall)
-        ?.argument
-        ?.resolvedType
-        ?.classId
+    findArgumentByName(Name.identifier(name))
+        ?.unwrapVarargValue()
+        .orEmpty()
+        .ifEmpty { findArgumentByName(Name.identifier(name))?.let(::listOf).orEmpty() }
+        .asSequence()
+        .filterIsInstance<org.jetbrains.kotlin.fir.expressions.FirExpression>()
+        .mapNotNull { expression ->
+            when (expression) {
+                is org.jetbrains.kotlin.fir.expressions.FirGetClassCall ->
+                    expression.argument.resolvedType.lowerBoundIfFlexible().classId
+
+                else -> expression.resolvedType.lowerBoundIfFlexible().classId
+            }
+        }.firstOrNull()
 
 internal fun FirRegularClass.deriveViaTypeclassIds(session: FirSession): Set<String> =
     resolvedAnnotationsByClassId(DERIVE_VIA_ANNOTATION_CLASS_ID, session)
