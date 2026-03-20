@@ -1,10 +1,11 @@
 package one.wabbit.typeclass.plugin.integration.derivation
 
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
-import org.junit.Ignore
 import kotlin.test.Test
 
-class DerivationTest : IntegrationTestSupport() {
+class DerivationSurfaceTest : IntegrationTestSupport() {
+    // Root derivation contracts: the annotated sealed root must be sufficient
+    // for the requested typeclass.
     @Test fun derivesSealedInterfaces() {
         val source =
             """
@@ -491,47 +492,6 @@ class DerivationTest : IntegrationTestSupport() {
             source = source,
             expectedMessages = listOf("cannot derive", "lit"),
             expectedDiagnostics = listOf(expectedCannotDerive("lit")),
-        )
-    }
-
-    @Ignore("Pending derivation admissibility work")
-    @Test fun derivesOnlyAdmissibleSumCasesForRequestedTypeclasses() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Derive
-            import one.wabbit.typeclass.ProductTypeclassMetadata
-            import one.wabbit.typeclass.SumTypeclassMetadata
-            import one.wabbit.typeclass.Typeclass
-            import one.wabbit.typeclass.TypeclassDeriver
-
-            @Typeclass
-            interface Codec<A> {
-                fun encode(value: A): String
-                fun decode(value: String): A
-
-                companion object : TypeclassDeriver {
-                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
-                        error("placeholder")
-
-                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
-                        error("placeholder")
-                }
-            }
-
-            @Derive(Codec::class)
-            sealed interface Expr<A>
-
-            data class Lit(val value: Int) : Expr<Int>
-
-            data class Name(val value: String) : Expr<String>
-            """.trimIndent()
-
-        assertDoesNotCompile(
-            source = source,
-            expectedMessages = listOf("derive", "expr"),
-            expectedDiagnostics = listOf(expectedErrorContaining("derive")),
         )
     }
 }

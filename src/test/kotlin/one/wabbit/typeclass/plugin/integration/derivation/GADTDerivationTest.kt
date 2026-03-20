@@ -1219,4 +1219,46 @@ class GADTDerivationTest : IntegrationTestSupport() {
             expectedStdout = "{\"cond\":{\"value\":true}, \"ifTrue\":{\"value\":1}, \"ifFalse\":{\"value\":2}}",
         )
     }
+
+    @Ignore("Pending derivation admissibility work")
+    @Test
+    fun derivesOnlyAdmissibleSumCasesForRequestedTypeclasses() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+
+            @Typeclass
+            interface Codec<A> {
+                fun encode(value: A): String
+                fun decode(value: String): A
+
+                companion object : TypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        error("placeholder")
+
+                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                        error("placeholder")
+                }
+            }
+
+            @Derive(Codec::class)
+            sealed interface Expr<A>
+
+            data class Lit(val value: Int) : Expr<Int>
+
+            data class Name(val value: String) : Expr<String>
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("derive", "expr"),
+            expectedDiagnostics = listOf(expectedErrorContaining("derive")),
+        )
+    }
 }
