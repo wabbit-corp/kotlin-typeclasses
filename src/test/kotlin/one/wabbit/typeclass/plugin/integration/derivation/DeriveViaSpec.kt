@@ -762,6 +762,53 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
+    @Test fun deriveViaExpandsInheritedTypeclassHeadsForResolution() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Eq<A> {
+                fun label(value: A): String
+            }
+
+            @Typeclass
+            interface Ord<A> : Eq<A> {
+                fun compare(left: A, right: A): Int
+            }
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooOrd : Ord<Foo> {
+                override fun label(value: Foo): String = "foo:${'$'}{value.value}"
+
+                override fun compare(left: Foo, right: Foo): Int = left.value.compareTo(right.value)
+            }
+
+            @JvmInline
+            @DeriveVia(Ord::class, Foo::class)
+            value class UserId(val value: Int)
+
+            context(eq: Eq<A>)
+            fun <A> render(value: A): String = eq.label(value)
+
+            fun main() {
+                println(render(UserId(7)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "foo:7",
+        )
+    }
+
     @Test fun deriveViaRejectsUnsupportedInheritedAbstractMembers() {
         val source =
             """

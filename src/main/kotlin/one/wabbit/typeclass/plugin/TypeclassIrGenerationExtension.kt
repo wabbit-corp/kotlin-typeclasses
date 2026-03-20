@@ -2923,18 +2923,18 @@ private class IrModuleScanner(
             return emptyList()
         }
         val planner = DirectTransportPlanner(pluginContext)
-        return deriveViaRequests(pluginContext).mapNotNull { request ->
+        return deriveViaRequests(pluginContext).flatMap { request ->
             if (request.path.isEmpty()) {
                 pluginContext.reportTypeclassError(
                     message = "Cannot derive via an empty path",
                     diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                     location = compilerMessageLocation(request.annotation),
                 )
-                return@mapNotNull null
+                return@flatMap emptyList()
             }
-            val typeclassInterface = pluginContext.referenceClass(request.typeclassId)?.owner ?: return@mapNotNull null
+            val typeclassInterface = pluginContext.referenceClass(request.typeclassId)?.owner ?: return@flatMap emptyList()
             if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID)) {
-                return@mapNotNull null
+                return@flatMap emptyList()
             }
             if (typeclassInterface.typeParameters.isEmpty()) {
                 pluginContext.reportTypeclassError(
@@ -2942,7 +2942,7 @@ private class IrModuleScanner(
                     diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                     location = compilerMessageLocation(request.annotation),
                 )
-                return@mapNotNull null
+                return@flatMap emptyList()
             }
             typeclassInterface.validateDeriveViaTransportability()?.let { message ->
                 pluginContext.reportTypeclassError(
@@ -2950,7 +2950,7 @@ private class IrModuleScanner(
                     diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                     location = compilerMessageLocation(request.annotation),
                 )
-                return@mapNotNull null
+                return@flatMap emptyList()
             }
             val resolvedPath =
                 planner.resolveViaPath(symbol.defaultType, request.path)
@@ -2960,15 +2960,8 @@ private class IrModuleScanner(
                             diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                             location = compilerMessageLocation(request.annotation),
                         )
-                        return@mapNotNull null
+                        return@flatMap emptyList()
                     }
-            val prefixParameters =
-                typeclassInterface.typeParameters.dropLast(1).mapIndexed { index, typeParameter ->
-                    TcTypeParameter(
-                        id = "derive-via:${targetClassId.asString()}:${request.typeclassId.asString()}:$index",
-                        displayName = typeParameter.name.asString(),
-                    )
-                }
             val targetType =
                 TcType.Constructor(targetClassId.asString(), emptyList())
             val viaTypeModel =
@@ -2978,36 +2971,50 @@ private class IrModuleScanner(
                         diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                         location = compilerMessageLocation(request.annotation),
                     )
-                    return@mapNotNull null
+                    return@flatMap emptyList()
                 }
-            val providedType =
-                TcType.Constructor(
-                    classifierId = request.typeclassId.asString(),
-                    arguments = prefixParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) } + targetType,
+            expandDerivedTypeclassIds(
+                typeclassId = request.typeclassId,
+                previousWereTypeclass = true,
+                visited = linkedSetOf(),
+            ).mapNotNull { expandedTypeclassId ->
+                val expandedTypeclassInterface = pluginContext.referenceClass(expandedTypeclassId)?.owner ?: return@mapNotNull null
+                val prefixParameters =
+                    expandedTypeclassInterface.typeParameters.dropLast(1).mapIndexed { index, typeParameter ->
+                        TcTypeParameter(
+                            id = "derive-via:${targetClassId.asString()}:${expandedTypeclassId.asString()}:$index",
+                            displayName = typeParameter.name.asString(),
+                        )
+                    }
+                val providedType =
+                    TcType.Constructor(
+                        classifierId = expandedTypeclassId.asString(),
+                        arguments = prefixParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) } + targetType,
+                    )
+                val prerequisiteType =
+                    TcType.Constructor(
+                        classifierId = expandedTypeclassId.asString(),
+                        arguments = prefixParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) } + viaTypeModel,
+                    )
+                ResolvedRule(
+                    rule =
+                        InstanceRule(
+                            id = "derived-via:${expandedTypeclassId.asString()}:${targetClassId.asString()}:${request.path.joinToString("|") { it.classId.asString() }}",
+                            typeParameters = prefixParameters,
+                            providedType = providedType,
+                            prerequisiteTypes = listOf(prerequisiteType),
+                        ),
+                    reference =
+                        RuleReference.DerivedVia(
+                            typeclassInterface = expandedTypeclassInterface,
+                            targetType = symbol.defaultType,
+                            viaType = resolvedPath.viaType,
+                            forwardPlan = resolvedPath.forwardPlan,
+                            backwardPlan = resolvedPath.backwardPlan,
+                        ),
+                    associatedOwner = targetClassId,
                 )
-            val prerequisiteType =
-                TcType.Constructor(
-                    classifierId = request.typeclassId.asString(),
-                    arguments = prefixParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) } + viaTypeModel,
-                )
-            ResolvedRule(
-                rule =
-                    InstanceRule(
-                        id = "derived-via:${request.typeclassId.asString()}:${targetClassId.asString()}:${request.path.joinToString("|") { it.classId.asString() }}",
-                        typeParameters = prefixParameters,
-                        providedType = providedType,
-                        prerequisiteTypes = listOf(prerequisiteType),
-                    ),
-                reference =
-                    RuleReference.DerivedVia(
-                        typeclassInterface = typeclassInterface,
-                        targetType = symbol.defaultType,
-                        viaType = resolvedPath.viaType,
-                        forwardPlan = resolvedPath.forwardPlan,
-                        backwardPlan = resolvedPath.backwardPlan,
-                    ),
-                associatedOwner = targetClassId,
-            )
+            }
         }
     }
 
