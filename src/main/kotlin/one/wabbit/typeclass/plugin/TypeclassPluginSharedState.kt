@@ -23,7 +23,9 @@ import org.jetbrains.kotlin.fir.declarations.FirDeclaration
 import org.jetbrains.kotlin.fir.declarations.FirProperty
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 import org.jetbrains.kotlin.fir.declarations.FirSimpleFunction
+import org.jetbrains.kotlin.fir.declarations.findArgumentByName
 import org.jetbrains.kotlin.fir.declarations.hasAnnotation
+import org.jetbrains.kotlin.fir.declarations.unwrapVarargValue
 import org.jetbrains.kotlin.fir.expressions.FirAnnotationCall
 import org.jetbrains.kotlin.fir.expressions.FirExpression
 import org.jetbrains.kotlin.fir.expressions.FirGetClassCall
@@ -554,19 +556,41 @@ private fun collectAssociatedRules(
 }
 
 internal fun FirRegularClass.derivedTypeclassIds(session: FirSession): Set<String> {
-    val deriveAnnotation =
-        annotations
-            .filterIsInstance<FirAnnotationCall>()
-            .firstOrNull { annotation ->
-                annotation.annotationTypeRef.coneType.classId == DERIVE_ANNOTATION_CLASS_ID
-            } ?: return emptySet()
     val deriveArguments =
-        deriveAnnotation.argumentMapping.mapping.values.ifEmpty {
-            deriveAnnotation.argumentList.arguments
+        buildList {
+            addAll(
+                resolvedAnnotationsByClassId(
+                    annotationClassId = DERIVE_ANNOTATION_CLASS_ID,
+                    session = session,
+                )
+                    .flatMap { annotation ->
+                        annotation.findArgumentByName(Name.identifier("value"))
+                            ?.unwrapVarargValue()
+                            .orEmpty()
+                    },
+            )
+            if (isEmpty()) {
+                val deriveAnnotation =
+                    annotations
+                        .filterIsInstance<FirAnnotationCall>()
+                        .firstOrNull { annotation ->
+                            annotation.annotationTypeRef.coneType.classId == DERIVE_ANNOTATION_CLASS_ID
+                        }
+                if (deriveAnnotation != null) {
+                    addAll(
+                        deriveAnnotation.argumentMapping.mapping.values.ifEmpty {
+                            deriveAnnotation.argumentList.arguments
+                        },
+                    )
+                }
+            }
         }
+    if (deriveArguments.isEmpty()) {
+        return emptySet()
+    }
     val derivedIds =
         deriveArguments
-        .asSequence()
+            .asSequence()
         .flatMap(::flattenDerivedTypeclassArgumentExpressions)
         .mapNotNull { expression -> expression.derivedTypeclassId(session) }
         .toCollection(linkedSetOf())

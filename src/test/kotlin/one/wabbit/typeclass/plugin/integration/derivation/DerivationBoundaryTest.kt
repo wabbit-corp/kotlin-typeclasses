@@ -1,5 +1,8 @@
-package one.wabbit.typeclass.plugin.integration
+package one.wabbit.typeclass.plugin.integration.derivation
 
+import one.wabbit.typeclass.plugin.integration.HarnessDependency
+import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
+import one.wabbit.typeclass.plugin.integration.DiagnosticPhase
 import kotlin.test.Test
 
 class DerivationBoundaryTest : IntegrationTestSupport() {
@@ -128,8 +131,9 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     import shared.render
 
                     fun main() {
+                        val value: Envelope<ShownInt> = Value(ShownInt(1))
                         val missing: Envelope<ShownInt> = Missing
-                        println(render(Value(ShownInt(1))))
+                        println(render(value))
                         println(render(missing))
                     }
                     """.trimIndent(),
@@ -250,8 +254,9 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
             import dep.render
 
             fun main() {
+                val value: Envelope<ShownInt> = Value(ShownInt(2))
                 val missing: Envelope<ShownInt> = Missing
-                println(render(Value(ShownInt(2))))
+                println(render(value))
                 println(render(missing))
             }
             """.trimIndent()
@@ -485,14 +490,71 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("show"),
-            expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("show")),
+            expectedDiagnostics = listOf(expectedAmbiguousInstance("show")),
             dependencies = listOf(modelDependency),
             unexpectedMessages = listOf("internal compiler error"),
         )
     }
 
     @Test
-    fun missingSecondDerivedHeadAcrossDependenciesDoesNotBreakTheWorkingHead() {
+    fun workingDerivedHeadAcrossDependenciesStillWorksWhenAnotherHeadIsMissing() {
+        val dependencies = multiHeadDerivationDependencies()
+        val source =
+            """
+            package demo
+
+            import dep.render
+            import model.End
+            import model.ShownString
+            import model.Token
+            import model.Word
+
+            fun main() {
+                val word: Token = Word(ShownString("ok"))
+                println(render(word))
+                println(render(End))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                Word(value=ok)
+                End()
+                """.trimIndent(),
+            dependencies = dependencies,
+        )
+    }
+
+    @Test
+    fun missingSecondDerivedHeadAcrossDependenciesReportsOnlyTheMissingHead() {
+        val dependencies = multiHeadDerivationDependencies()
+        val source =
+            """
+            package demo
+
+            import dep.same
+            import model.ShownString
+            import model.Token
+            import model.Word
+
+            fun main() {
+                val word: Token = Word(ShownString("ok"))
+                println(same(word, word)) // E:TC_NO_CONTEXT_ARGUMENT missing second derived head
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("missing typeclass instance", "eq"),
+            expectedDiagnostics = listOf(expectedNoContextArgument("eq", phase = DiagnosticPhase.IR)),
+            dependencies = dependencies,
+            unexpectedMessages = listOf("internal compiler error"),
+        )
+    }
+
+    private fun multiHeadDerivationDependencies(): List<HarnessDependency> {
         val typeclassDependency =
             HarnessDependency(
                 name = "dep-show-eq",
@@ -534,32 +596,7 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                             """.trimIndent(),
                     ),
             )
-        val source =
-            """
-            package demo
-
-            import dep.render
-            import dep.same
-            import model.End
-            import model.ShownString
-            import model.Token
-            import model.Word
-
-            fun main() {
-                val word: Token = Word(ShownString("ok"))
-                println(render(word))
-                println(render(End))
-                println(same(word, word)) // E:TC_NO_CONTEXT_ARGUMENT missing second derived head
-            }
-            """.trimIndent()
-
-        assertDoesNotCompile(
-            source = source,
-            expectedMessages = listOf("no context argument", "eq"),
-            expectedDiagnostics = listOf(expectedNoContextArgument("eq")),
-            dependencies = listOf(modelDependency),
-            unexpectedMessages = listOf("internal compiler error"),
-        )
+        return listOf(modelDependency)
     }
 }
 

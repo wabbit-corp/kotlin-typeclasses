@@ -1,5 +1,6 @@
-package one.wabbit.typeclass.plugin.integration
+package one.wabbit.typeclass.plugin.integration.derivation
 
+import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import org.junit.Ignore
 import kotlin.test.Test
 
@@ -221,8 +222,9 @@ class DerivationTest : IntegrationTestSupport() {
             fun <A> render(value: A): String = show.show(value)
 
             fun main() {
+                val value: Envelope<Int> = Value(1)
                 val missing: Envelope<Int> = Missing
-                println(render(Value(1)))
+                println(render(value))
                 println(render(missing))
             }
             """.trimIndent()

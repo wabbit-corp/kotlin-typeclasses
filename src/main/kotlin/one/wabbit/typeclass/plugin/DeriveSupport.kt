@@ -10,11 +10,14 @@ import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.getAnnotationsByClassId
 import org.jetbrains.kotlin.fir.declarations.getStringArgument
+import org.jetbrains.kotlin.fir.expressions.FirAnnotation
 import org.jetbrains.kotlin.fir.expressions.FirAnnotationCall
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 import org.jetbrains.kotlin.fir.declarations.FirSimpleFunction
+import org.jetbrains.kotlin.fir.declarations.findArgumentByName
 import org.jetbrains.kotlin.fir.declarations.hasAnnotation
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
+import org.jetbrains.kotlin.fir.declarations.unwrapVarargValue
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.types.classId
 import org.jetbrains.kotlin.fir.types.coneType
@@ -24,14 +27,17 @@ import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.name.SpecialNames
 
 internal fun FirRegularClass.supportedDerivedTypeclassIds(session: FirSession): Set<String> {
-    generatedDerivedTypeclassIds(session).takeIf { it.isNotEmpty() }?.let { generatedIds ->
+    val generatedIds = generatedDerivedTypeclassIds(session)
+    if (!supportsDeriveShape()) {
         return generatedIds
     }
-    if (!supportsDeriveShape()) {
-        return emptySet()
-    }
-    return derivedTypeclassIds(session).filterTo(linkedSetOf()) { typeclassId ->
-        supportsDerivationForTypeclass(typeclassId, session)
+    val explicitIds =
+        derivedTypeclassIds(session).filterTo(linkedSetOf()) { typeclassId ->
+            supportsDerivationForTypeclass(typeclassId, session)
+        }
+    return buildSet {
+        addAll(generatedIds)
+        addAll(explicitIds)
     }
 }
 
@@ -68,21 +74,71 @@ internal fun FirRegularClass.requiredDeriveMethodNameForDeriveShape(): String? =
 internal fun FirRegularClass.generatedDerivedTypeclassIds(session: FirSession): Set<String> {
     val ownerId = symbol.classId.asString()
     val generatedAnnotations =
-        symbol.resolvedAnnotationsWithArguments
-            .getAnnotationsByClassId(GENERATED_INSTANCE_ANNOTATION_CLASS_ID, session)
-            .ifEmpty {
-                annotations
-                    .filterIsInstance<FirAnnotationCall>()
-                    .filter { annotation ->
-                        annotation.annotationTypeRef.coneType.classId == GENERATED_INSTANCE_ANNOTATION_CLASS_ID
-                    }
+        buildList {
+            addAll(
+                resolvedAnnotationsByClassId(
+                    annotationClassId = GENERATED_INSTANCE_ANNOTATION_CLASS_ID,
+                    session = session,
+                ),
+            )
+            addAll(
+                resolvedAnnotationsByClassId(
+                    annotationClassId = GENERATED_INSTANCE_ANNOTATION_CONTAINER_CLASS_ID,
+                    session = session,
+                )
+                    .flatMap { annotation -> annotation.containedGeneratedInstanceAnnotations() },
+            )
+        }.ifEmpty {
+            buildList {
+                addAll(
+                    annotations
+                        .filterIsInstance<FirAnnotationCall>()
+                        .filter { annotation ->
+                            annotation.annotationTypeRef.coneType.classId == GENERATED_INSTANCE_ANNOTATION_CLASS_ID
+                        },
+                )
+                addAll(
+                    annotations
+                        .filterIsInstance<FirAnnotationCall>()
+                        .filter { annotation ->
+                            annotation.annotationTypeRef.coneType.classId == GENERATED_INSTANCE_ANNOTATION_CONTAINER_CLASS_ID
+                        }.flatMap { annotation ->
+                            annotation.containedGeneratedInstanceAnnotations()
+                        },
+                )
             }
+        }
     return generatedAnnotations.mapNotNullTo(linkedSetOf()) { annotation ->
         val typeclassId = annotation.getStringArgument(Name.identifier("typeclassId"), session)
         val targetId = annotation.getStringArgument(Name.identifier("targetId"), session)
         val kind = annotation.getStringArgument(Name.identifier("kind"), session)
         typeclassId?.takeIf { kind == "derive" && (targetId == null || targetId == ownerId) }
     }
+}
+
+internal fun FirRegularClass.resolvedAnnotationsByClassId(
+    annotationClassId: ClassId,
+    session: FirSession,
+) : List<FirAnnotation> {
+    val resolvedWithArguments =
+        symbol.resolvedAnnotationsWithArguments
+            .getAnnotationsByClassId(annotationClassId, session)
+    if (resolvedWithArguments.isNotEmpty()) {
+        return resolvedWithArguments
+    }
+    val resolvedWithClassIds =
+        symbol.resolvedAnnotationsWithClassIds
+            .getAnnotationsByClassId(annotationClassId, session)
+    if (resolvedWithClassIds.isNotEmpty()) {
+        return resolvedWithClassIds
+    }
+    return annotations
+        .getAnnotationsByClassId(annotationClassId, session)
+}
+
+private fun FirAnnotation.containedGeneratedInstanceAnnotations(): List<FirAnnotation> {
+    val valueArgument = findArgumentByName(Name.identifier("value")) ?: return emptyList()
+    return valueArgument.unwrapVarargValue().filterIsInstance<FirAnnotation>()
 }
 
 internal fun typeclassSupportsDeriveShape(

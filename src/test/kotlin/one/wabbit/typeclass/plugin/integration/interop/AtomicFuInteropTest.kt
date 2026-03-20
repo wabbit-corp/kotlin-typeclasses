@@ -1,5 +1,7 @@
-package one.wabbit.typeclass.plugin.integration
+package one.wabbit.typeclass.plugin.integration.interop
 
+import one.wabbit.typeclass.plugin.integration.CompilerHarnessPlugin
+import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import kotlin.test.Test
 
 /**

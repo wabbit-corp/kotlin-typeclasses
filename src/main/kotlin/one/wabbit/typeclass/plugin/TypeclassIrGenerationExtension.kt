@@ -74,6 +74,7 @@ import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.expressions.IrClassReference
 import org.jetbrains.kotlin.ir.expressions.IrComposite
 import org.jetbrains.kotlin.ir.expressions.IrConst
+import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrExpressionBody
 import org.jetbrains.kotlin.ir.expressions.IrReturn
@@ -2835,13 +2836,15 @@ private class IrModuleScanner(
         }
 
     private fun IrClass.supportedDerivedTypeclassIds(): Set<ClassId> =
-        generatedDerivedTypeclassIds().ifEmpty { derivedTypeclassIds() }
+        buildSet {
+            addAll(generatedDerivedTypeclassIds())
+            addAll(derivedTypeclassIds())
+        }
 
     private fun IrClass.generatedDerivedTypeclassIds(): Set<ClassId> =
         annotations
-            .filter { constructorCall ->
-                constructorCall.symbol.owner.parentAsClass.classId == GENERATED_INSTANCE_ANNOTATION_CLASS_ID
-            }.mapNotNullTo(linkedSetOf()) { annotation ->
+            .flatMap { annotation -> annotation.flattenGeneratedInstanceAnnotations() }
+            .mapNotNullTo(linkedSetOf()) { annotation ->
                 val typeclassId = (annotation.getValueArgument(0) as? IrConst)?.value as? String
                 val targetId = (annotation.getValueArgument(1) as? IrConst)?.value as? String
                 val kind = (annotation.getValueArgument(2) as? IrConst)?.value as? String
@@ -2849,6 +2852,15 @@ private class IrModuleScanner(
                     ?.takeIf { kind == "derive" && (targetId == null || targetId == classIdOrFail.asString()) }
                     ?.let(ClassId::fromString)
             }
+
+    private fun IrConstructorCall.flattenGeneratedInstanceAnnotations(): List<IrConstructorCall> =
+        when (symbol.owner.parentAsClass.classId) {
+            GENERATED_INSTANCE_ANNOTATION_CLASS_ID -> listOf(this)
+            GENERATED_INSTANCE_ANNOTATION_CONTAINER_CLASS_ID ->
+                ((getValueArgument(0) as? IrVararg)?.elements.orEmpty())
+                    .mapNotNull { element -> element as? IrConstructorCall }
+            else -> emptyList()
+        }
 
     private fun IrClass.recordGeneratedDerivedTypeclassMetadata(
         directTypeclassIds: Set<ClassId>,

@@ -509,198 +509,6 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun rewritesContextualCallsInsideSafeCallLet() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.Typeclass
-
-            class ItemMeta
-            class ItemStack(val itemMeta: ItemMeta? = ItemMeta())
-
-            @Typeclass
-            interface ItemComponentType<A>
-
-            data class Curse(val soulbound: Boolean) {
-                companion object {
-                    @Instance
-                    val itemComponentType =
-                        object : ItemComponentType<Curse> {}
-                }
-            }
-
-            class Items {
-                context(type: ItemComponentType<Type>)
-                fun <Type> getComponent(item: ItemStack): Type? =
-                    item.itemMeta?.let { getComponent(it) }
-
-                context(type: ItemComponentType<Type>)
-                fun <Type> getComponent(item: ItemMeta): Type? = null
-            }
-
-            fun main() {
-                with(Curse.itemComponentType) {
-                    println(Items().getComponent<Curse>(ItemStack()) == null)
-                }
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
-    }
-
-    @Test fun infersOuterContextInsideSafeCallLetWithoutExplicitTypeArguments() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.Typeclass
-
-            class ItemMeta
-            class ItemStack(val itemMeta: ItemMeta? = ItemMeta())
-
-            @Typeclass
-            interface ItemComponentType<A>
-
-            data class Curse(val soulbound: Boolean) {
-                companion object {
-                    @Instance
-                    val itemComponentType =
-                        object : ItemComponentType<Curse> {}
-                }
-            }
-
-            class Items {
-                context(type: ItemComponentType<Type>)
-                fun <Type> getComponent(item: ItemStack): Type? =
-                    item.itemMeta?.let { getComponent(it) }
-
-                context(type: ItemComponentType<Type>)
-                fun <Type> getComponent(item: ItemMeta): Type? = null
-
-                context(type: ItemComponentType<Type>)
-                fun <Type> use(item: ItemStack): Boolean = getComponent(item) == null
-            }
-
-            fun main() {
-                with(Curse.itemComponentType) {
-                    println(Items().use(ItemStack()))
-                }
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
-    }
-
-    @Test fun infersOuterContextAcrossSameNameOverloadsInsideSafeCallLet() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.Typeclass
-
-            class ItemMeta
-            class ItemStack(val itemMeta: ItemMeta? = ItemMeta())
-
-            @Typeclass
-            interface ItemComponentType<A>
-
-            data class Curse(val soulbound: Boolean) {
-                companion object {
-                    @Instance
-                    val itemComponentType =
-                        object : ItemComponentType<Curse> {}
-                }
-            }
-
-            class Items {
-                context(type: ItemComponentType<Type>)
-                fun <Type> getComponent(item: ItemStack): Type? =
-                    item.itemMeta?.let { getComponent(it) }
-
-                context(type: ItemComponentType<Type>)
-                fun <Type> getComponent(item: ItemMeta): Type? = null
-            }
-
-            fun main() {
-                with(Curse.itemComponentType) {
-                    println(Items().getComponent(ItemStack()) == null)
-                }
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
-    }
-
-    @Test fun infersOuterContextAcrossPlatformSafeCallLetInsideSameNameOverload() {
-        val sources =
-            mapOf(
-                "demo/Items.kt" to
-                    """
-                    package demo
-
-                    import java.util.concurrent.atomic.AtomicReference
-                    import one.wabbit.typeclass.Typeclass
-
-                    class ItemMeta
-
-                    class ItemStack(meta: ItemMeta? = ItemMeta()) {
-                        val itemMetaRef = AtomicReference(meta)
-                    }
-
-                    @Typeclass
-                    interface ItemComponentType<A>
-
-                    class Items {
-                        context(type: ItemComponentType<Type>)
-                        fun <Type> getComponent(item: ItemStack): Type? =
-                            item.itemMetaRef.get()?.let { getComponent(it) }
-
-                        context(type: ItemComponentType<Type>)
-                        fun <Type> getComponent(item: ItemMeta): Type? = null
-                    }
-                    """.trimIndent(),
-                "demo/Main.kt" to
-                    """
-                    package demo
-
-                    import one.wabbit.typeclass.Instance
-
-                    data class Curse(val soulbound: Boolean) {
-                        companion object {
-                            @Instance
-                            val itemComponentType =
-                                object : ItemComponentType<Curse> {}
-                        }
-                    }
-
-                    fun main() {
-                        with(Curse.itemComponentType) {
-                            println(Items().getComponent(ItemStack()) == null)
-                        }
-                    }
-                    """.trimIndent(),
-            )
-
-        assertCompilesAndRuns(
-            sources = sources,
-            expectedStdout = "true",
-            mainClass = "demo.MainKt",
-        )
-    }
-
     @Test fun supportsCrossFileExplicitTypeArgumentsOnNestedOverloadedSelfCall() {
         val sources =
             mapOf(
@@ -769,100 +577,6 @@ class ResolutionTest : IntegrationTestSupport() {
                 true
                 """.trimIndent(),
             mainClass = "demo.MainKt",
-        )
-    }
-
-    @Test fun rewritesContextualCallsInsideHigherOrderArguments() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.Typeclass
-
-            class ItemMeta
-
-            @Typeclass
-            interface ItemComponentType<A>
-
-            data class Curse(val soulbound: Boolean) {
-                companion object {
-                    @Instance
-                    val itemComponentType =
-                        object : ItemComponentType<Curse> {}
-                }
-            }
-
-            class Items {
-                context(type: ItemComponentType<Type>)
-                fun <Type> getComponent(item: ItemMeta): Type? = null
-
-                context(type: ItemComponentType<Type>)
-                fun <Type> updateComponent(item: ItemMeta, f: (Type?) -> Type): Type {
-                    val value = f(getComponent(item))
-                    return value
-                }
-            }
-
-            fun main() {
-                with(Curse.itemComponentType) {
-                    println(Items().updateComponent(ItemMeta()) { Curse(true) }.soulbound)
-                }
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
-    }
-
-    @Test fun resolvesAssociatedContextualOverloadInsidePredicateLambda() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.Typeclass
-
-            class ItemMeta
-            class ItemStack(val itemMeta: ItemMeta? = ItemMeta())
-
-            class DropList(
-                private val items: MutableList<ItemStack>,
-            ) {
-                fun removeIf(predicate: (ItemStack) -> Boolean): Boolean = items.removeIf(predicate)
-            }
-
-            @Typeclass
-            interface ItemComponentType<A>
-
-            data class Curse(val soulbound: Boolean) {
-                companion object {
-                    @Instance
-                    val itemComponentType =
-                        object : ItemComponentType<Curse> {}
-                }
-            }
-
-            class Items {
-                context(type: ItemComponentType<Type>)
-                fun <Type> hasComponent(item: ItemStack): Boolean =
-                    item.itemMeta?.let { hasComponent<Type>(it) } ?: false
-
-                context(type: ItemComponentType<Type>)
-                fun <Type> hasComponent(item: ItemMeta): Boolean = true
-            }
-
-            fun main() {
-                val drops = DropList(mutableListOf(ItemStack()))
-                println(drops.removeIf { item -> Items().hasComponent<Curse>(item) })
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
         )
     }
 
@@ -980,78 +694,6 @@ class ResolutionTest : IntegrationTestSupport() {
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "true",
-        )
-    }
-
-    @Test fun doesNotImplicitlyResolveNonTypeclassContexts() {
-        val source =
-            """
-            package demo
-
-            interface Eq<A> {
-                fun eq(left: A, right: A): Boolean
-            }
-
-            object IntEq : Eq<Int> {
-                override fun eq(left: Int, right: Int): Boolean = left == right
-            }
-
-            context(_: Eq<A>)
-            fun <A> same(a: A): Boolean = true
-
-            fun main() {
-                println(same(1))
-            }
-            """.trimIndent()
-
-        assertDoesNotCompile(
-            source = source,
-            expectedMessages =
-                listOf(
-                    "No context argument",
-                    "Eq",
-                ),
-            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "eq")),
-        )
-    }
-
-    @Test fun reportsMissingCompanionInstanceAnnotationWithoutCrashing() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Typeclass
-
-            @Typeclass
-            interface ItemComponentType<A>
-
-            data class SomeItemComponent<C>(val value: C, val type: ItemComponentType<C>) {
-                companion object {
-                    context(type: ItemComponentType<C>)
-                    operator fun <C> invoke(value: C): SomeItemComponent<C> = SomeItemComponent(value, type)
-                }
-            }
-
-            data class Curse(val soulbound: Boolean) {
-                companion object {
-                    val itemComponentType =
-                        object : ItemComponentType<Curse> {}
-                }
-            }
-
-            fun main() {
-                println(SomeItemComponent(Curse(true)))
-            }
-            """.trimIndent()
-
-        assertDoesNotCompile(
-            source = source,
-            expectedMessages =
-                listOf(
-                    "No context argument",
-                    "SomeItemComponent",
-                ),
-            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "itemcomponenttype")),
         )
     }
 
@@ -1184,51 +826,6 @@ class ResolutionTest : IntegrationTestSupport() {
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "property",
-        )
-    }
-
-    @Test fun rewritesNamedAndDefaultArgumentsOnContextualCalls() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.Typeclass
-
-            class ItemMeta
-
-            @Typeclass
-            interface Tag<A> {
-                fun value(): String
-            }
-
-            data class Curse(val soulbound: Boolean)
-
-            @Instance
-            object CurseTag : Tag<Curse> {
-                override fun value(): String = "curse"
-            }
-
-            class Items {
-                context(tag: Tag<T>)
-                fun <T> update(item: ItemMeta, amount: Int = 1, suffix: String = tag.value()): String =
-                    suffix + ":" + amount
-
-                context(_: Tag<T>)
-                fun <T> call(item: ItemMeta): String =
-                    update(amount = 2, item = item)
-            }
-
-            fun main() {
-                with(CurseTag) {
-                    println(Items().call<Curse>(ItemMeta()))
-                }
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "curse:2",
         )
     }
 
@@ -1412,50 +1009,6 @@ class ResolutionTest : IntegrationTestSupport() {
             source = source,
             expectedMessages = listOf("ambiguous", "int"),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
-        )
-    }
-
-    @Test fun rewritesContextualExtensionsWithDefaultsAndOverloads() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.Typeclass
-
-            @Typeclass
-            interface Tag<A> {
-                fun value(): String
-            }
-
-            data class Curse(val soulbound: Boolean)
-
-            @Instance
-            object CurseTag : Tag<Curse> {
-                override fun value(): String = "curse"
-            }
-
-            class Items {
-                context(tag: Tag<T>)
-                fun <T> T.renderSelf(prefix: String = tag.value()): String = prefix + ":" + this.toString()
-
-                context(tag: Tag<T>)
-                fun <T> render(value: T, prefix: String = tag.value()): String = value.renderSelf(prefix)
-
-                context(_: Tag<T>)
-                fun <T> call(value: T): String = render(value = value)
-            }
-
-            fun main() {
-                with(CurseTag) {
-                    println(Items().call(Curse(true)))
-                }
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "curse:Curse(soulbound=true)",
         )
     }
 
@@ -1942,6 +1495,895 @@ class ResolutionTest : IntegrationTestSupport() {
             source = source,
             expectedMessages = listOf("missing", "big"),
             expectedDiagnostics = listOf(expectedErrorContaining("missing", "show", "big")),
+        )
+    }
+
+    @Test fun resolutionIsStableAcrossDeclarationOrder() {
+        val sourceWithWorkingRuleFirst =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            @Typeclass
+            interface Extra<A>
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(): String = "ok"
+            }
+
+            @Instance
+            context(_: Show<A>)
+            fun <A> listShow(): Show<List<A>> =
+                object : Show<List<A>> {
+                    override fun show(): String = "ok"
+                }
+
+            @Instance
+            context(_: Show<A>, _: Extra<A>)
+            fun <A> brokenListShow(): Show<List<A>> =
+                object : Show<List<A>> {
+                    override fun show(): String = "broken"
+                }
+
+            context(_: Show<A>)
+            fun <A> render(): String = summon<Show<A>>().show()
+
+            fun main() {
+                println(render<List<Int>>())
+            }
+            """.trimIndent()
+
+        val sourceWithBrokenRuleFirst =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            @Typeclass
+            interface Extra<A>
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(): String = "ok"
+            }
+
+            @Instance
+            context(_: Show<A>, _: Extra<A>)
+            fun <A> brokenListShow(): Show<List<A>> =
+                object : Show<List<A>> {
+                    override fun show(): String = "broken"
+                }
+
+            @Instance
+            context(_: Show<A>)
+            fun <A> listShow(): Show<List<A>> =
+                object : Show<List<A>> {
+                    override fun show(): String = "ok"
+                }
+
+            context(_: Show<A>)
+            fun <A> render(): String = summon<Show<A>>().show()
+
+            fun main() {
+                println(render<List<Int>>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = sourceWithWorkingRuleFirst,
+            expectedStdout = "ok",
+        )
+        assertCompilesAndRuns(
+            source = sourceWithBrokenRuleFirst,
+            expectedStdout = "ok",
+        )
+    }
+
+    @Test fun detectsMutualRecursionAcrossTypeclasses() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Foo<A> {
+                fun label(): String
+            }
+
+            @Typeclass
+            interface Bar<A> {
+                fun label(): String
+            }
+
+            @Instance
+            context(_: Bar<A>)
+            fun <A> fooFromBar(): Foo<A> =
+                object : Foo<A> {
+                    override fun label(): String = "foo"
+                }
+
+            @Instance
+            context(_: Foo<A>)
+            fun <A> barFromFoo(): Bar<A> =
+                object : Bar<A> {
+                    override fun label(): String = "bar"
+                }
+
+            context(_: Foo<A>)
+            fun <A> use(): String = "ok"
+
+            fun main() {
+                println(use<Int>()) // E:TC_NO_CONTEXT_ARGUMENT Foo<Int> depends on Bar<Int> which depends on Foo<Int>
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("no context argument", "foo"),
+            expectedDiagnostics = listOf(expectedNoContextArgument("foo")),
+        )
+    }
+
+    @Test fun localEvidenceShadowsTopLevelInstance() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            @Instance
+            object GlobalIntShow : Show<Int> {
+                override fun show(): String = "global"
+            }
+
+            val localIntShow =
+                object : Show<Int> {
+                    override fun show(): String = "local"
+                }
+
+            context(show: Show<A>)
+            fun <A> render(): String = show.show()
+
+            fun main() {
+                println(render<Int>())
+                context(localIntShow) {
+                    println(render<Int>())
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                global
+                local
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun resolvesContextualOverloadsBetweenSingleAndVarargAlternatives() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            class Logger {
+                context(show: Show<Int>)
+                fun log(value: Int): String = "one:" + show.show(value)
+
+                context(show: Show<Int>)
+                fun log(vararg values: Int): String =
+                    "many:" + values.joinToString("|") { value -> show.show(value) }
+            }
+
+            fun main() {
+                val logger = Logger()
+                println(logger.log(1))
+                println(logger.log(1, 2))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                one:int:1
+                many:int:1|int:2
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun prefersExactContravariantNothingInstanceOverBroaderCandidates() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<in A> {
+                fun label(): String
+            }
+
+            @Instance
+            object NothingShow : Show<Nothing> {
+                override fun label(): String = "nothing"
+            }
+
+            @Instance
+            object AnyShow : Show<Any> {
+                override fun label(): String = "any"
+            }
+
+            context(_: Show<Nothing>)
+            fun which(): String = summon<Show<Nothing>>().label()
+
+            fun main() {
+                println(which())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "nothing",
+        )
+    }
+
+    @Ignore("NEW: review before enabling")
+    @Test fun reportsAmbiguityBetweenBroaderContravariantCandidatesForNothingWithoutExactMatch() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<in A> {
+                fun label(): String
+            }
+
+            @Instance
+            object AnyShow : Show<Any> {
+                override fun label(): String = "any"
+            }
+
+            @Instance
+            object StringShow : Show<String> {
+                override fun label(): String = "string"
+            }
+
+            context(_: Show<Nothing>)
+            fun which(): String = summon<Show<Nothing>>().label()
+
+            fun main() {
+                println(which()) // multiple broader contravariant instances match Show<Nothing>
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("ambiguous", "nothing"),
+            expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("show")),
+        )
+    }
+
+    @Test fun resolvesAssociatedCompanionObjectInstances() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            data class Box<A>(val value: A) {
+                companion object {
+                    @Instance
+                    object IntBoxShow : Show<Box<Int>> {
+                        override fun show(value: Box<Int>): String = "companion-object:${'$'}{value.value}"
+                    }
+                }
+            }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(Box(1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "companion-object:1",
+        )
+    }
+
+    @Test fun distinguishesValueClassesFromUnderlyingTypes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @JvmInline
+            value class UserId(val value: Int)
+
+            data class Box<A>(val value: A)
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            @Instance
+            object UserIdShow : Show<UserId> {
+                override fun show(value: UserId): String = "user:${'$'}{value.value}"
+            }
+
+            @Instance
+            context(show: Show<A>)
+            fun <A> boxShow(): Show<Box<A>> =
+                object : Show<Box<A>> {
+                    override fun show(value: Box<A>): String = "box-" + show.show(value.value)
+                }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(UserId(1)))
+                println(render(Box(UserId(2))))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                user:1
+                box-user:2
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun reportsConflictingBindingsFromLocalContexts() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A>
+
+            @Instance
+            object IntShow : Show<Int>
+
+            @Instance
+            object StringListShow : Show<List<String>>
+
+            context(_: Show<A>, _: Show<List<A>>)
+            fun <A> choose(): String = "ok"
+
+            fun main() {
+                context(IntShow) {
+                    context(StringListShow) {
+                        println(choose()) // A is inferred as both Int and String
+                    }
+                }
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("conflicting", "binding"),
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(
+                        messageRegex = "(?i)(conflicting|cannot infer|inferred as|type mismatch)",
+                    ),
+                ),
+        )
+    }
+
+    @Test fun reportsAmbiguityBetweenNullableSpecificAndGenericRules() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Eq<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object NullableIntEq : Eq<Int?> {
+                override fun label(): String = "nullable"
+            }
+
+            @Instance
+            context(eq: Eq<A>)
+            fun <A> listEq(): Eq<List<A>> =
+                object : Eq<List<A>> {
+                    override fun label(): String = "generic-" + eq.label()
+                }
+
+            @Instance
+            object NullableIntListEq : Eq<List<Int?>> {
+                override fun label(): String = "specific-nullable"
+            }
+
+            context(_: Eq<A>)
+            fun <A> which(): String = summon<Eq<A>>().label()
+
+            fun main() {
+                println(which<List<Int?>>()) // E:TC_NO_CONTEXT_ARGUMENT decide whether specific or generic nullable rule should win
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("no context argument", "eq"),
+            expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("eq")),
+        )
+    }
+
+    @Test fun treatsTypeAliasesAsTransparentForResolution() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            typealias UserId = Int
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(): String = "int"
+            }
+
+            context(_: Show<A>)
+            fun <A> render(): String = summon<Show<A>>().show()
+
+            fun main() {
+                println(render<UserId>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int",
+        )
+    }
+
+    @Test fun treatsNestedTypeAliasesAsTransparentForResolution() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            object Aliases {
+                typealias UserId = Int
+            }
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(): String = "int"
+            }
+
+            context(_: Show<A>)
+            fun <A> render(): String = summon<Show<A>>().show()
+
+            fun main() {
+                println(render<Aliases.UserId>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int",
+        )
+    }
+
+    @Test fun preservesUseSiteVarianceInTypeclassGoals() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun label(): String = "int"
+            }
+
+            @Instance
+            context(show: Show<A>)
+            fun <A> outArrayShow(): Show<Array<out A>> =
+                object : Show<Array<out A>> {
+                    override fun label(): String = "array-" + show.label()
+                }
+
+            context(show: Show<Array<out Int>>)
+            fun render(): String = show.label()
+
+            fun main() {
+                println(render())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "array-int",
+        )
+    }
+
+    @Test fun combinesExplicitRegularContextWithImplicitTypeclassResolution() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            data class Prefix(val value: String)
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            context(prefix: Prefix, show: Show<Int>)
+            fun renderInt(value: Int): String = prefix.value + show.show(value)
+
+            fun main() {
+                context(Prefix("value=")) {
+                    println(renderInt(1))
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "value=int:1",
+        )
+    }
+
+    @Test fun distinguishesShadowedTypeParametersAcrossNestedGenericScopes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            @Instance
+            object StringShow : Show<String> {
+                override fun show(value: String): String = "string:${'$'}value"
+            }
+
+            context(outerShow: Show<T>)
+            fun <T> outer(value: T): String {
+                context(innerShow: Show<T>)
+                fun <T> inner(inner: T): String = outerShow.show(value) + "/" + innerShow.show(inner)
+
+                return inner("x")
+            }
+
+            fun main() {
+                println(outer(1))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int:1/string:x",
+        )
+    }
+
+    @Test fun usesExtensionReceiverAsTheOnlyAvailableEvidence() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            context(show: Show<Int>)
+            fun renderInt(value: Int): String = show.show(value)
+
+            fun Show<Int>.callViaReceiver(): String = renderInt(1)
+
+            fun main() {
+                println(IntShow.callViaReceiver())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int:1",
+        )
+    }
+
+    @Test fun capturesDefinitionSiteEvidenceForReturnedLambdasObjectsAndBoundReferences() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object GlobalIntShow : Show<Int> {
+                override fun show(value: Int): String = "global:${'$'}value"
+            }
+
+            context(show: Show<Int>)
+            fun makeLambda(): () -> String = { show.show(1) }
+
+            interface Renderer {
+                fun render(): String
+            }
+
+            context(show: Show<Int>)
+            fun makeRenderer(): Renderer =
+                object : Renderer {
+                    override fun render(): String = show.show(2)
+                }
+
+            fun main() {
+                val localShow =
+                    object : Show<Int> {
+                        override fun show(value: Int): String = "local:${'$'}value"
+                    }
+
+                val globalLambda = makeLambda()
+                val localLambda = context(localShow) { makeLambda() }
+                val globalRenderer = makeRenderer()
+                val localRenderer = context(localShow) { makeRenderer() }
+                val globalBound = makeRenderer()::render
+                val localBound = context(localShow) { makeRenderer()::render }
+
+                println(globalLambda())
+                context(localShow) {
+                    println(globalLambda())
+                }
+                println(localLambda())
+                println(globalRenderer.render())
+                println(localRenderer.render())
+                println(globalBound())
+                println(localBound())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                global:1
+                global:1
+                local:1
+                global:2
+                local:2
+                global:2
+                local:2
+                """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun overloadedInstanceRulesWithSameNameAndProvidedTypeDoNotCollapseById() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Alpha<A>
+
+            @Typeclass
+            interface Beta<A>
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object AlphaInt : Alpha<Int>
+
+            @Instance
+            context(_: Beta<Int>)
+            fun witness(): Show<Int> =
+                object : Show<Int> {
+                    override fun label(): String = "beta"
+                }
+
+            @Instance
+            context(_: Alpha<Int>)
+            fun witness(): Show<Int> =
+                object : Show<Int> {
+                    override fun label(): String = "alpha"
+                }
+
+            context(show: Show<Int>)
+            fun render(): String = show.label()
+
+            context(_: Alpha<Int>)
+            fun useAlphaOnly(): String = render()
+
+            fun main() {
+                println(useAlphaOnly())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "alpha",
+        )
+    }
+
+    @Test
+    fun overloadedInstanceRulesWithSameNameAndProvidedTypeStillReportAmbiguity() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Alpha<A>
+
+            @Typeclass
+            interface Beta<A>
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object AlphaInt : Alpha<Int>
+
+            @Instance
+            object BetaInt : Beta<Int>
+
+            @Instance
+            context(_: Beta<Int>)
+            fun witness(): Show<Int> =
+                object : Show<Int> {
+                    override fun label(): String = "beta"
+                }
+
+            @Instance
+            context(_: Alpha<Int>)
+            fun witness(): Show<Int> =
+                object : Show<Int> {
+                    override fun label(): String = "alpha"
+                }
+
+            context(show: Show<Int>)
+            fun render(): String = show.label()
+
+            context(_: Alpha<Int>, _: Beta<Int>)
+            fun useBoth(): String = render() // E:TC_NO_CONTEXT_ARGUMENT ambiguous Show<Int> resolution
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("ambiguous", "show"),
+            expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("show")),
         )
     }
 

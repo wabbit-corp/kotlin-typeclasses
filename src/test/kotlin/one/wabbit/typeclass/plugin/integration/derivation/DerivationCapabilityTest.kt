@@ -1,8 +1,46 @@
-package one.wabbit.typeclass.plugin.integration
+package one.wabbit.typeclass.plugin.integration.derivation
 
+import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import kotlin.test.Test
 
 class DerivationCapabilityTest : IntegrationTestSupport() {
+    @Test
+    fun deriveAnnotationsSatisfyTheRequestedTypeclass() {
+        val source =
+            requestedHeadOnlySource(
+                extraDeclarations =
+                    """
+                    context(show: Show<A>)
+                    fun <A> render(value: A): String = show.show(value)
+                    """,
+                mainBody = """println(render(User("ada")))""",
+            )
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "User",
+        )
+    }
+
+    @Test
+    fun deriveAnnotationsDoNotSatisfyUnrequestedTypeclasses() {
+        val source =
+            requestedHeadOnlySource(
+                extraDeclarations =
+                    """
+                    context(_: Eq<User>)
+                    fun requiresEq(): String = "eq"
+                    """,
+                mainBody = """println(requiresEq())""",
+            )
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("eq", "user"),
+            expectedDiagnostics = listOf(expectedNoContextArgument("eq")),
+        )
+    }
+
     @Test
     fun deriveProductMustReturnTheRequestedTypeclassConstructorWhenStaticallyKnown() {
         val source =
@@ -39,6 +77,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("deriveProduct", "Show", "Eq"),
+            expectedDiagnostics = listOf(expectedCannotDerive("deriveProduct", "Show", "Eq", phase = null)),
         )
     }
 
@@ -87,6 +126,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("deriveSum", "Show", "Eq"),
+            expectedDiagnostics = listOf(expectedCannotDerive("deriveSum", "Show", "Eq", phase = null)),
         )
     }
 
@@ -140,6 +180,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("deriveEnum", "Show", "Eq"),
+            expectedDiagnostics = listOf(expectedCannotDerive("deriveEnum", "Show", "Eq", phase = null)),
         )
     }
 
@@ -182,6 +223,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("deriveEnum", "enum classes"),
+            expectedDiagnostics = listOf(expectedCannotDerive("deriveEnum", "enum classes", phase = null)),
         )
     }
 
@@ -218,6 +260,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("ProductTypeclassDeriver", "sealed sums"),
+            expectedDiagnostics = listOf(expectedCannotDerive("ProductTypeclassDeriver", "sealed sums", phase = null)),
         )
     }
 
@@ -251,6 +294,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("sealed or final classes and objects"),
+            expectedDiagnostics = listOf(expectedCannotDerive("sealed or final classes and objects", phase = null)),
         )
     }
 
@@ -286,6 +330,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("constructor parameters", "stored properties"),
+            expectedDiagnostics =
+                listOf(expectedCannotDerive("constructor parameters", "stored properties", phase = null)),
         )
     }
 
@@ -325,6 +371,58 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("primary constructor"),
+            expectedDiagnostics = listOf(expectedCannotDerive("primary constructor", phase = null)),
         )
     }
+
+    private fun requestedHeadOnlySource(
+        extraDeclarations: String,
+        mainBody: String,
+    ): String =
+        """
+        package demo
+
+        import one.wabbit.typeclass.Derive
+        import one.wabbit.typeclass.Instance
+        import one.wabbit.typeclass.ProductTypeclassMetadata
+        import one.wabbit.typeclass.SumTypeclassMetadata
+        import one.wabbit.typeclass.Typeclass
+        import one.wabbit.typeclass.TypeclassDeriver
+
+        @Typeclass
+        interface Show<A> {
+            fun show(value: A): String
+
+            companion object : TypeclassDeriver {
+                override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                    object : Show<Any?> {
+                        override fun show(value: Any?): String = metadata.typeName.substringAfterLast('.')
+                    }
+
+                override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                    object : Show<Any?> {
+                        override fun show(value: Any?): String = metadata.typeName.substringAfterLast('.')
+                    }
+            }
+        }
+
+        @Typeclass
+        interface Eq<A> {
+            fun same(left: A, right: A): Boolean
+        }
+
+        @Instance
+        object StringShow : Show<String> {
+            override fun show(value: String): String = value
+        }
+
+        @Derive(Show::class)
+        data class User(val name: String)
+
+        ${extraDeclarations.trimIndent()}
+
+        fun main() {
+            $mainBody
+        }
+        """.trimIndent()
 }

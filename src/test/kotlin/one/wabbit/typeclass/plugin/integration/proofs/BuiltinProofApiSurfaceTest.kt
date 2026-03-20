@@ -1,8 +1,9 @@
-package one.wabbit.typeclass.plugin.integration
+package one.wabbit.typeclass.plugin.integration.proofs
 
+import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import kotlin.test.Test
 
-class InternalTypeclassApiInteropTest : IntegrationTestSupport() {
+class BuiltinProofApiSurfaceTest : IntegrationTestSupport() {
     @Test
     fun builtinProofSummoningDoesNotRequireInternalOptIn() {
         val source =

@@ -1,23 +1,64 @@
-package one.wabbit.typeclass.plugin.integration
+package one.wabbit.typeclass.plugin.integration.interop
 
+import one.wabbit.typeclass.plugin.integration.CompilerHarnessPlugin
+import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import kotlin.test.Test
 
-/**
- * Parcelize compatibility design tests.
- *
- * These focus on coexistence with the Parcelize compiler plugin.
- */
-class ParcelizeInteropTest : IntegrationTestSupport() {
-    private val parcelizePlugins = listOf(CompilerHarnessPlugin.Parcelize)
-
+class AllOpenNoArgInteropTest : IntegrationTestSupport() {
     @Test
-    fun parcelizedDataClassesCanDeriveTypeclasses() {
+    fun allOpenClassesCanStillProvideAssociatedCompanionInstances() {
         val source =
             """
             package demo
 
-            import android.os.Parcelable
-            import kotlinx.parcelize.Parcelize
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.Instance
+
+            annotation class OpenForFramework
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @OpenForFramework
+            class Box(val value: Int) {
+                companion object {
+                    @Instance
+                    object BoxShow : Show<Box> {
+                        override fun show(value: Box): String = "box:${'$'}{value.value}"
+                    }
+                }
+            }
+
+            class FancyBox() : Box(1)
+
+            context(show: Show<Box>)
+            fun render(value: Box): String = show.show(value)
+
+            fun main() {
+                println(render(FancyBox()))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "box:1",
+            requiredPlugins =
+                listOf(
+                    CompilerHarnessPlugin.AllOpen(
+                        annotations = listOf("demo.OpenForFramework"),
+                    ),
+                ),
+        )
+    }
+
+    @Test
+    fun noArgEntitiesCanStillDeriveTypeclasses() {
+        val source =
+            """
+            package demo
+
             import one.wabbit.typeclass.Derive
             import one.wabbit.typeclass.Instance
             import one.wabbit.typeclass.ProductTypeclassMetadata
@@ -26,6 +67,8 @@ class ParcelizeInteropTest : IntegrationTestSupport() {
             import one.wabbit.typeclass.TypeclassDeriver
             import one.wabbit.typeclass.get
             import one.wabbit.typeclass.matches
+
+            annotation class Entity
 
             @Typeclass
             interface Show<A> {
@@ -62,84 +105,53 @@ class ParcelizeInteropTest : IntegrationTestSupport() {
                 override fun show(value: Int): String = value.toString()
             }
 
-            @Parcelize
+            @Entity
             @Derive(Show::class)
-            data class User(val id: Int) : Parcelable
+            class User(val id: Int)
 
             context(show: Show<User>)
             fun render(value: User): String = show.show(value)
 
             fun main() {
-                println(render(User(1)))
+                val reflected = User::class.java.getDeclaredConstructor().newInstance()
+                println(render(reflected))
             }
             """.trimIndent()
 
         assertCompilesAndRuns(
             source = source,
-            expectedStdout = "User(id=1)",
-            requiredPlugins = parcelizePlugins,
+            expectedStdout = "User(id=0)",
+            requiredPlugins =
+                listOf(
+                    CompilerHarnessPlugin.NoArg(
+                        annotations = listOf("demo.Entity"),
+                    ),
+                ),
         )
     }
 
     @Test
-    fun parcelizedClassesCanUseAssociatedCompanionInstances() {
+    fun allOpenAndNoArgTransformedClassesStillWorkInContextualCalls() {
         val source =
             """
             package demo
 
-            import android.os.Parcelable
-            import kotlinx.parcelize.Parcelize
             import one.wabbit.typeclass.Instance
             import one.wabbit.typeclass.Typeclass
+
+            annotation class OpenForFramework
+            annotation class Entity
 
             @Typeclass
             interface Show<A> {
                 fun show(value: A): String
             }
 
-            @Parcelize
-            data class User(val id: Int) : Parcelable {
-                companion object {
-                    @Instance
-                    object UserShow : Show<User> {
-                        override fun show(value: User): String = "user:${'$'}{value.id}"
-                    }
-                }
-            }
+            @OpenForFramework
+            @Entity
+            class User(val id: Int)
 
-            context(show: Show<User>)
-            fun render(value: User): String = show.show(value)
-
-            fun main() {
-                println(render(User(1)))
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "user:1",
-            requiredPlugins = parcelizePlugins,
-        )
-    }
-
-    @Test
-    fun parcelizedTypesCanStillParticipateInContextualCalls() {
-        val source =
-            """
-            package demo
-
-            import android.os.Parcelable
-            import kotlinx.parcelize.Parcelize
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.Typeclass
-
-            @Typeclass
-            interface Show<A> {
-                fun show(value: A): String
-            }
-
-            @Parcelize
-            data class User(val id: Int) : Parcelable
+            class FancyUser() : User(7)
 
             @Instance
             object UserShow : Show<User> {
@@ -150,14 +162,28 @@ class ParcelizeInteropTest : IntegrationTestSupport() {
             fun render(value: User): String = show.show(value)
 
             fun main() {
-                println(render(User(1)))
+                val reflected = User::class.java.getDeclaredConstructor().newInstance()
+                println(render(reflected))
+                println(render(FancyUser()))
             }
             """.trimIndent()
 
         assertCompilesAndRuns(
             source = source,
-            expectedStdout = "user:1",
-            requiredPlugins = parcelizePlugins,
+            expectedStdout =
+                """
+                user:0
+                user:7
+                """.trimIndent(),
+            requiredPlugins =
+                listOf(
+                    CompilerHarnessPlugin.AllOpen(
+                        annotations = listOf("demo.OpenForFramework"),
+                    ),
+                    CompilerHarnessPlugin.NoArg(
+                        annotations = listOf("demo.Entity"),
+                    ),
+                ),
         )
     }
 }

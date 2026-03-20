@@ -1,5 +1,6 @@
-package one.wabbit.typeclass.plugin.integration
+package one.wabbit.typeclass.plugin.integration.derivation
 
+import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import org.junit.Ignore
 import kotlin.test.Test
 

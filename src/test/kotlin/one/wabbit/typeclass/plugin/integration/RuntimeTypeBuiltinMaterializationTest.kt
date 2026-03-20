@@ -2,7 +2,7 @@ package one.wabbit.typeclass.plugin.integration
 
 import kotlin.test.Test
 
-class BuiltinMaterializationRegressionTest : IntegrationTestSupport() {
+class RuntimeTypeBuiltinMaterializationTest : IntegrationTestSupport() {
     @Test
     fun nonReifiedNestedKnownTypePrerequisiteFailsAsMissingEvidence() {
         val source =

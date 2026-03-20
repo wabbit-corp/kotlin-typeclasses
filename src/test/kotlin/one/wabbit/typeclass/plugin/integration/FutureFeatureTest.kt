@@ -185,44 +185,6 @@ class FutureFeatureTest : IntegrationTestSupport() {
         )
     }
 
-    // REVIEWED : to be added
-    @Test fun supportsDerivingViaWrapperInstances() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.Instance
-            import one.wabbit.typeclass.Typeclass
-
-            @Typeclass
-            interface Show<A> {
-                fun show(value: A): String
-            }
-
-            @Instance
-            object IntShow : Show<Int> {
-                override fun show(value: Int): String = "int:${'$'}value"
-            }
-
-            // WONT COMPILE, NEEDS NEW SYNTAX
-            @DeriveVia(Int::class, Show::class)
-            @JvmInline
-            value class UserId(val value: Int)
-
-            context(show: Show<A>)
-            fun <A> render(value: A): String = show.show(value)
-
-            fun main() {
-                println(render(UserId(1)))
-            }
-            """.trimIndent()
-
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
-    }
-
     @Test fun supportsHigherKindedTypeclasses() {
         val source =
             """

@@ -4,7 +4,7 @@ import org.junit.Ignore
 import kotlin.test.Test
 
 @Ignore("NEW: review before enabling")
-class ExistentialTest : IntegrationTestSupport() {
+class StarProjectionResolutionTest : IntegrationTestSupport() {
     @Test fun reportsMissingInstanceForStarProjectedGoalsWithoutCrashing() {
         val source =
             """

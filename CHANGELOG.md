@@ -3,6 +3,10 @@
 ## Unreleased
 
 - Add first-class `enum class` derivation via `deriveEnum`, including IR-generated enum metadata and JSON-codec regressions that prove derived enum/product output can match `kotlinx.serialization` for enum-bearing ADTs.
+- Make the test-model JSON codec treat primitive-backed sum cases symmetrically on decode, and add a sealed-root regression where an enum case encodes through `{"type": "...", "value": ...}` rather than an object payload.
+- Split serialization runtime support from the serialization compiler plugin in the test harness, and run pure model `JsonCodec` derivation regressions against the runtime-only classpath so they catch hidden plugin dependencies.
+- Add richer Compose/contextual interop regressions for composable lambda bodies, default parameter expressions, remembered lambdas, and effect scopes.
+- Add operator and delegated-property regressions for delegation operators, unary operators, `+=` fallback through `plus`, and pending explicit-argument `invoke` regressions.
 - Expand derivation law coverage for richer ADTs, including generic `Either<A, B>`-style sums, enums with constructor parameters, nested sealed subclasses, and mixed `object` / `data object` / `data class` / plain-class sealed hierarchies.
 - Add constructive product-derivation support via `ProductTypeclassMetadata.construct(...)`, require `ProductTypeclassDeriver` for product-only typeclasses, and require full `TypeclassDeriver` only for sealed-sum derivation.
 - Add value-class metadata to constructive derivation for both products and sealed-sum cases, and cover a recursive `JsonElement` codec that mirrors sealed `KSerializer`-style output for products, sums, objects, and value classes without JVM reflection.

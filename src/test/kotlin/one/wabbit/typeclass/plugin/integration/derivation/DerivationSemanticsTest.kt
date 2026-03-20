@@ -1,9 +1,12 @@
-package one.wabbit.typeclass.plugin.integration
+package one.wabbit.typeclass.plugin.integration.derivation
 
+import one.wabbit.typeclass.plugin.integration.CompilerHarnessPlugin
+import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import kotlin.test.Test
 
-class DerivationLawTest : IntegrationTestSupport() {
+class DerivationSemanticsTest : IntegrationTestSupport() {
     private val serializationPlugins = listOf(CompilerHarnessPlugin.Serialization)
+    private val serializationRuntime = listOf(CompilerHarnessPlugin.SerializationRuntime)
 
     @Test
     fun derivesProductMonoidsSemantically() {
@@ -517,6 +520,54 @@ class DerivationLawTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun derivesJsonCodecForSealedRootsWhoseEnumCasesEncodeAsPrimitives() {
+        val source =
+            jsonCodecSource(
+                definitions =
+                    """
+                    @Serializable
+                    @Derive(JsonCodec::class)
+                    sealed interface Status
+
+                    @Serializable
+                    @Derive(JsonCodec::class)
+                    enum class Priority : Status {
+                        LOW,
+                        HIGH,
+                    }
+
+                    @Serializable
+                    @Derive(JsonCodec::class)
+                    data class Note(val message: String) : Status
+                    """,
+                mainBody =
+                    """
+                    val statusCodec = summon<JsonCodec<Status>>()
+
+                    val priorityJson = statusCodec.encode(Priority.HIGH)
+                    println(priorityJson)
+                    println(statusCodec.decode(priorityJson))
+
+                    val noteJson = statusCodec.encode(Note("ops"))
+                    println(noteJson)
+                    println(statusCodec.decode(noteJson))
+                    """,
+            )
+
+        assertCompilesAndRuns(
+            source = source,
+            requiredPlugins = serializationPlugins,
+            expectedStdout =
+                """
+                {"type":"demo.Priority","value":"HIGH"}
+                HIGH
+                {"type":"demo.Note","message":"ops"}
+                Note(message=ops)
+                """.trimIndent(),
+        )
+    }
+
+    @Test
     fun derivesJsonCodecForRecursiveAdtsValueClassesAndGenericProducts() {
         val source =
             jsonCodecSource(
@@ -563,7 +614,7 @@ class DerivationLawTest : IntegrationTestSupport() {
 
         assertCompilesAndRuns(
             source = source,
-            requiredPlugins = serializationPlugins,
+            requiredPlugins = serializationRuntime,
             expectedStdout =
                 """
                 {"type":"demo.Add","left":{"type":"demo.Var","name":"x"},"right":{"type":"demo.Add","left":{"type":"demo.Lit","value":1},"right":{"type":"demo.End"}}}
@@ -604,7 +655,7 @@ class DerivationLawTest : IntegrationTestSupport() {
 
         assertCompilesAndRuns(
             source = source,
-            requiredPlugins = serializationPlugins,
+            requiredPlugins = serializationRuntime,
             expectedStdout =
                 """
                 "abc"
@@ -653,7 +704,7 @@ class DerivationLawTest : IntegrationTestSupport() {
 
         assertCompilesAndRuns(
             source = source,
-            requiredPlugins = serializationPlugins,
+            requiredPlugins = serializationRuntime,
             expectedStdout =
                 """
                 {"type":"demo.Text","value":"hi"}
@@ -693,8 +744,15 @@ class DerivationLawTest : IntegrationTestSupport() {
         import one.wabbit.typeclass.matches
         import one.wabbit.typeclass.summon
 
+        enum class JsonCodecRepresentation {
+            INLINE,
+            OBJECT,
+        }
+
         @Typeclass
         interface JsonCodec<A> {
+            val representation: JsonCodecRepresentation
+
             fun encode(value: A): JsonElement
 
             fun decode(element: JsonElement): A
@@ -702,6 +760,13 @@ class DerivationLawTest : IntegrationTestSupport() {
             companion object : TypeclassDeriver {
                 override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
                     object : JsonCodec<Any?> {
+                        override val representation: JsonCodecRepresentation =
+                            if (metadata.isValueClass) {
+                                JsonCodecRepresentation.INLINE
+                            } else {
+                                JsonCodecRepresentation.OBJECT
+                            }
+
                         override fun encode(value: Any?): JsonElement {
                             require(value != null)
                             if (metadata.isValueClass) {
@@ -735,6 +800,8 @@ class DerivationLawTest : IntegrationTestSupport() {
 
                 override fun deriveSum(metadata: one.wabbit.typeclass.SumTypeclassMetadata): Any =
                     object : JsonCodec<Any?> {
+                        override val representation: JsonCodecRepresentation = JsonCodecRepresentation.OBJECT
+
                         override fun encode(value: Any?): JsonElement {
                             require(value != null)
                             val selected = metadata.cases.single { candidate -> candidate.matches(value) }
@@ -763,10 +830,9 @@ class DerivationLawTest : IntegrationTestSupport() {
                                 }
                             val caseCodec = selected.instance as JsonCodec<Any?>
                             val payload =
-                                if (selected.isValueClass) {
-                                    jsonObject.getValue("value")
-                                } else {
-                                    JsonObject(jsonObject.filterKeys { key -> key != "type" })
+                                when (caseCodec.representation) {
+                                    JsonCodecRepresentation.INLINE -> jsonObject.getValue("value")
+                                    JsonCodecRepresentation.OBJECT -> JsonObject(jsonObject.filterKeys { key -> key != "type" })
                                 }
                             return caseCodec.decode(payload)
                         }
@@ -774,6 +840,8 @@ class DerivationLawTest : IntegrationTestSupport() {
 
                 override fun deriveEnum(metadata: EnumTypeclassMetadata): Any =
                     object : JsonCodec<Any?> {
+                        override val representation: JsonCodecRepresentation = JsonCodecRepresentation.INLINE
+
                         override fun encode(value: Any?): JsonElement {
                             require(value != null)
                             return JsonPrimitive(metadata.entryOf(value).name)
@@ -786,6 +854,8 @@ class DerivationLawTest : IntegrationTestSupport() {
 
         @Instance
         object IntJsonCodec : JsonCodec<Int> {
+            override val representation: JsonCodecRepresentation = JsonCodecRepresentation.INLINE
+
             override fun encode(value: Int): JsonElement = JsonPrimitive(value)
 
             override fun decode(element: JsonElement): Int = element.jsonPrimitive.int
@@ -793,6 +863,8 @@ class DerivationLawTest : IntegrationTestSupport() {
 
         @Instance
         object StringJsonCodec : JsonCodec<String> {
+            override val representation: JsonCodecRepresentation = JsonCodecRepresentation.INLINE
+
             override fun encode(value: String): JsonElement = JsonPrimitive(value)
 
             override fun decode(element: JsonElement): String = element.jsonPrimitive.content

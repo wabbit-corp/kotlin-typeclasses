@@ -461,4 +461,168 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             expectedDiagnostics = listOf(expectedErrorContaining("suspend")),
         )
     }
+
+    @Test
+    fun illegalMemberInstanceFunctionsDoNotCreateSpuriousCallSiteAmbiguity() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "good:${'$'}value"
+            }
+
+            class BadScope {
+                @Instance
+                fun badShow(): Show<Int> =
+                    object : Show<Int> {
+                        override fun show(value: Int): String = "bad:${'$'}value"
+                    }
+            }
+
+            context(show: Show<Int>)
+            fun render(): String = show.show(1)
+
+            fun main() {
+                println(render())
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("companion"),
+            unexpectedMessages = listOf("ambiguous"),
+            expectedDiagnostics = listOf(expectedErrorContaining("companion")),
+        )
+    }
+
+    @Test
+    fun illegalNestedInstanceObjectsDoNotCreateSpuriousCallSiteAmbiguity() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "good:${'$'}value"
+            }
+
+            class BadScope {
+                @Instance
+                object BadShow : Show<Int> {
+                    override fun show(value: Int): String = "bad:${'$'}value"
+                }
+            }
+
+            context(show: Show<Int>)
+            fun render(): String = show.show(1)
+
+            fun main() {
+                println(render())
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("companion"),
+            unexpectedMessages = listOf("ambiguous"),
+            expectedDiagnostics = listOf(expectedErrorContaining("companion")),
+        )
+    }
+
+    @Test
+    fun rejectsDirectSelfRecursiveWrapperReturningInstanceRulesAtDeclarationSite() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            data class Box<A>(val value: A)
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Typeclass
+            interface WrappedShow<A> : Show<A>
+
+            @Instance // E:TC_INVALID_INSTANCE_DECL expands to Show<Box<A>> => Show<Box<A>>
+            context(_: Show<Box<A>>)
+            fun <A> recursiveWrappedBoxShow(): WrappedShow<Box<A>> =
+                object : WrappedShow<Box<A>> {
+                    override fun label(): String = "recursive"
+                }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("recursive"),
+            expectedDiagnostics = listOf(expectedErrorContaining("recursive")),
+        )
+    }
+
+    @Test
+    fun allowsWrapperReturningInstanceRulesWhenExpandedProvidedTypeIsNotRecursive() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            data class Box<A>(val value: A)
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Typeclass
+            interface WrappedShow<A> : Show<A>
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun label(): String = "int"
+            }
+
+            @Instance
+            context(_: Show<A>)
+            fun <A> wrappedBoxShow(): WrappedShow<Box<A>> =
+                object : WrappedShow<Box<A>> {
+                    override fun label(): String = "box"
+                }
+
+            context(show: Show<A>)
+            fun <A> label(): String = show.label()
+
+            fun main() {
+                println(label<Box<Int>>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "box",
+        )
+    }
 }

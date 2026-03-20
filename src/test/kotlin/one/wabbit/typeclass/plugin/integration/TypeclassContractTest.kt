@@ -1,7 +1,6 @@
 package one.wabbit.typeclass.plugin.integration
 
 import org.jetbrains.kotlin.cli.common.ExitCode
-import org.junit.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -1031,6 +1030,359 @@ class TypeclassContractTest : IntegrationTestSupport() {
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "ord:hash:7",
+        )
+    }
+
+    @Test fun doesNotImplicitlyResolveNonTypeclassContexts() {
+        val source =
+            """
+            package demo
+
+            interface Eq<A> {
+                fun eq(left: A, right: A): Boolean
+            }
+
+            object IntEq : Eq<Int> {
+                override fun eq(left: Int, right: Int): Boolean = left == right
+            }
+
+            context(_: Eq<A>)
+            fun <A> same(a: A): Boolean = true
+
+            fun main() {
+                println(same(1))
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages =
+                listOf(
+                    "No context argument",
+                    "Eq",
+                ),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "eq")),
+        )
+    }
+
+    @Test fun reportsMissingCompanionInstanceAnnotationWithoutCrashing() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface ItemComponentType<A>
+
+            data class SomeItemComponent<C>(val value: C, val type: ItemComponentType<C>) {
+                companion object {
+                    context(type: ItemComponentType<C>)
+                    operator fun <C> invoke(value: C): SomeItemComponent<C> = SomeItemComponent(value, type)
+                }
+            }
+
+            data class Curse(val soulbound: Boolean) {
+                companion object {
+                    val itemComponentType =
+                        object : ItemComponentType<Curse> {}
+                }
+            }
+
+            fun main() {
+                println(SomeItemComponent(Curse(true)))
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages =
+                listOf(
+                    "No context argument",
+                    "SomeItemComponent",
+                ),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "itemcomponenttype")),
+        )
+    }
+
+    @Test fun rejectsTopLevelDuplicateInstancesAcrossUnrelatedFiles() {
+        val sources =
+            mapOf(
+                "demo/InstancesOne.kt" to
+                    """
+                    package demo
+
+                    import one.wabbit.typeclass.Instance
+                    import one.wabbit.typeclass.Typeclass
+
+                    @Typeclass
+                    interface Show<A> {
+                        fun show(): String
+                    }
+
+                    @Instance
+                    object IntShowOne : Show<Int> { // ambiguous instance declaration
+                        override fun show(): String = "one"
+                    }
+                    """.trimIndent(),
+                "demo/InstancesTwo.kt" to
+                    """
+                    package demo
+
+                    import one.wabbit.typeclass.Instance
+
+                    @Instance
+                    object IntShowTwo : Show<Int> { // E:TC_INVALID_INSTANCE_DECL unrelated-file duplicate instance should be rejected at declaration site
+                        override fun show(): String = "two"
+                    }
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    context(show: Show<A>)
+                    fun <A> render(): String = show.show()
+
+                    fun main() {
+                        println(render<Int>())
+                    }
+                    """.trimIndent(),
+            )
+
+        assertDoesNotCompile(
+            sources = sources,
+            expectedMessages = listOf("invalid @instance declaration", "same file", "show"),
+            expectedDiagnostics = listOf(expectedInvalidInstanceDecl("same file", "show")),
+        )
+    }
+
+    @Test fun doesNotDiscoverLocalInstanceDeclarationsGlobally() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                @Instance
+                object LocalIntShow : Show<Int> {
+                    override fun show(value: Int): String = "int:${'$'}value"
+                }
+
+                println(render(1)) // E:TC_NO_CONTEXT_ARGUMENT local @Instance declarations should not be auto-discovered
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("no context argument", "render(1)"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
+        )
+    }
+
+    @Test fun doesNotLeakPrivateTopLevelInstancesAcrossFiles() {
+        val sources =
+            mapOf(
+                "Hidden.kt" to
+                    """
+                    package demo
+
+                    import one.wabbit.typeclass.Instance
+                    import one.wabbit.typeclass.Typeclass
+                    import one.wabbit.typeclass.summon
+
+                    @Typeclass
+                    interface Show<A> {
+                        fun show(): String
+                    }
+
+                    @Instance
+                    private object HiddenIntShow : Show<Int> {
+                        override fun show(): String = "hidden"
+                    }
+
+                    context(_: Show<A>)
+                    fun <A> render(): String = summon<Show<A>>().show()
+                    """.trimIndent(),
+                "Main.kt" to
+                    """
+                    package demo
+
+                    fun main() {
+                        println(render<Int>()) // E:TC_NO_CONTEXT_ARGUMENT private @Instance declarations should not leak across files
+                    }
+                    """.trimIndent(),
+            )
+
+        assertDoesNotCompile(
+            sources = sources,
+            expectedMessages = listOf("no context argument"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
+        )
+    }
+
+    @Test
+    fun ambiguousImplicitContextsRemainVisibleToTheFrontend() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object IntShowOne : Show<Int> {
+                override fun label(): String = "one"
+            }
+
+            @Instance
+            object IntShowTwo : Show<Int> {
+                override fun label(): String = "two"
+            }
+
+            context(_: Show<Int>)
+            fun render(): String = "value"
+
+            fun main() {
+                println(render())
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("no context argument", "show"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
+        )
+    }
+
+    @Test
+    fun recursiveImplicitContextsRemainVisibleToTheFrontend() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Foo<A> {
+                fun label(): String
+            }
+
+            @Typeclass
+            interface Bar<A> {
+                fun label(): String
+            }
+
+            @Instance
+            context(_: Bar<A>)
+            fun <A> fooFromBar(): Foo<A> =
+                object : Foo<A> {
+                    override fun label(): String = "foo"
+                }
+
+            @Instance
+            context(_: Foo<A>)
+            fun <A> barFromFoo(): Bar<A> =
+                object : Bar<A> {
+                    override fun label(): String = "bar"
+                }
+
+            context(_: Foo<Int>)
+            fun use(): String = "ok"
+
+            fun main() {
+                println(use())
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("no context argument", "foo"),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "foo")),
+        )
+    }
+
+    @Test
+    fun resolvesImplicitlyTypedCompanionInstancesWithoutFirCrash() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Codec<A> {
+                fun encode(value: A): String
+            }
+
+            @Typeclass
+            interface EntityComponentType<Type> {
+                val codec: Codec<Type>
+            }
+
+            class Entity
+
+            class Entities {
+                context(type: EntityComponentType<Type>)
+                fun <Type> updateComponent(entity: Entity, update: (Type?) -> Type): Type {
+                    val value = update(null)
+                    return value
+                }
+            }
+
+            data class AlcoholIntoxication(val level: Double) {
+                companion object {
+                    @Instance
+                    val codec =
+                        object : Codec<AlcoholIntoxication> {
+                            override fun encode(value: AlcoholIntoxication): String = value.level.toString()
+                        }
+
+                    @Instance
+                    val entityComponentType =
+                        object : EntityComponentType<AlcoholIntoxication> {
+                            override val codec = AlcoholIntoxication.codec
+                        }
+                }
+            }
+
+            fun main() {
+                val entities = Entities()
+                val entity = Entity()
+                with(AlcoholIntoxication.entityComponentType) {
+                    val updated =
+                        entities.updateComponent<AlcoholIntoxication>(entity) {
+                            if (it == null) AlcoholIntoxication(1.5) else it.copy(level = it.level + 1.0)
+                        }
+                    println(updated.level)
+                    println(codec.encode(updated))
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                1.5
+                1.5
+                """.trimIndent(),
         )
     }
 
