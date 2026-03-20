@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Match `GadtDerivationPolicy` by its full `one.wabbit.typeclass` identity in IR instead of by short-name coincidence, add the public runtime annotation surface for the policy override, and cover collisions with unrelated same-named annotations from other packages.
 - Expand `@DeriveVia` IR rule emission through inherited typeclass superinterfaces so backend-generated rules stay aligned with FIR derivability for cases like `Ord<T> : Eq<T>`, and add a focused regression proving `@DeriveVia(Ord::class, ...)` can satisfy `Eq<...>` call sites.
 - Fix the review-driven compiler regressions around `@DeriveVia` recursion tracking, `@Derive`/`@DeriveVia`/`@DeriveEquiv` derivability filtering, full terminal `via` type preservation, active-rule-scoped recursive planning, stricter deriver return-type validation, and explicit review regressions for repeated sibling transport, nullable/parameterized `via` targets, generic/non-unary unsupported derivation sites, and recursive-rule scoping.
 - Implement the active `GADTDerivationTest` contract: classify effective variance from typeclass signatures, honor conservative GADT-policy overrides, synthesize specialized sealed-root derivation heads for admissible result-head refinements, preserve ordinary covariant `Nothing` cases in generic sealed ADTs, and keep user-written instances ambiguous against derived ones instead of letting GADT-specific rule priority hide them.

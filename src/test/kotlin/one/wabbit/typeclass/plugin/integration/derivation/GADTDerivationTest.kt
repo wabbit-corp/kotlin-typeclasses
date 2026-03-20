@@ -419,18 +419,12 @@ class GADTDerivationTest : IntegrationTestSupport() {
         package demo
 
         import one.wabbit.typeclass.Derive
+        import one.wabbit.typeclass.GadtDerivationMode
+        import one.wabbit.typeclass.GadtDerivationPolicy
         import one.wabbit.typeclass.ProductTypeclassMetadata
         import one.wabbit.typeclass.SumTypeclassMetadata
         import one.wabbit.typeclass.Typeclass
         import one.wabbit.typeclass.TypeclassDeriver
-
-        enum class GadtDerivationMode {
-            SURFACE_TRUSTED,
-            CONSERVATIVE_ONLY,
-        }
-
-        @Target(AnnotationTarget.CLASS, AnnotationTarget.TYPE_PARAMETER)
-        annotation class GadtDerivationPolicy(val mode: GadtDerivationMode)
 
         @Typeclass
         interface Constructors<@GadtDerivationPolicy(GadtDerivationMode.CONSERVATIVE_ONLY) A> {
@@ -762,6 +756,89 @@ class GADTDerivationTest : IntegrationTestSupport() {
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "Branch(left=Leaf(value=1), right=Branch(left=Leaf(value=2), right=Leaf(value=3)))",
+        )
+    }
+
+    @Test
+    fun ignoresUnrelatedSameNamedGadtPolicyAnnotationsFromOtherPackages() {
+        val sources =
+            mapOf(
+                "OtherPolicy.kt" to
+                    """
+                    package other
+
+                    enum class GadtDerivationMode {
+                        SURFACE_TRUSTED,
+                        CONSERVATIVE_ONLY,
+                    }
+
+                    @Target(AnnotationTarget.CLASS, AnnotationTarget.TYPE_PARAMETER)
+                    annotation class GadtDerivationPolicy(val mode: GadtDerivationMode)
+                    """.trimIndent(),
+                "Sample.kt" to
+                    """
+                    package demo
+
+                    import other.GadtDerivationMode
+                    import other.GadtDerivationPolicy
+                    import one.wabbit.typeclass.Derive
+                    import one.wabbit.typeclass.Instance
+                    import one.wabbit.typeclass.ProductTypeclassMetadata
+                    import one.wabbit.typeclass.SumTypeclassMetadata
+                    import one.wabbit.typeclass.Typeclass
+                    import one.wabbit.typeclass.TypeclassDeriver
+
+                    @GadtDerivationPolicy(GadtDerivationMode.CONSERVATIVE_ONLY)
+                    @Typeclass
+                    interface Show<A> {
+                        fun show(value: A): String
+
+                        companion object : TypeclassDeriver {
+                            override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                                object : Show<Any?> {
+                                    override fun show(value: Any?): String = metadata.typeName.substringAfterLast('.')
+                                }
+
+                            override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                                object : Show<Any?> {
+                                    override fun show(value: Any?): String = metadata.typeName.substringAfterLast('.')
+                            }
+                        }
+                    }
+
+                    @Instance
+                    object IntShow : Show<Int> {
+                        override fun show(value: Int): String = value.toString()
+                    }
+
+                    @Instance
+                    object BooleanShow : Show<Boolean> {
+                        override fun show(value: Boolean): String = value.toString()
+                    }
+
+                    context(show: Show<A>)
+                    fun <A> render(value: A): String = show.show(value)
+
+                    @Derive(Show::class)
+                    sealed interface Expr<A>
+
+                    @Derive(Show::class)
+                    data class IntLit(val value: Int) : Expr<Int>
+
+                    @Derive(Show::class)
+                    data class BoolLit(val value: Boolean) : Expr<Boolean>
+
+                    fun main() {
+                        val value: Expr<Int> = IntLit(1)
+                        println(render(value))
+                    }
+                    """.trimIndent(),
+            )
+
+        assertCompilesAndRuns(
+            sources = sources,
+            mainClass = "demo.SampleKt",
+            expectedStdout = "Expr",
         )
     }
 

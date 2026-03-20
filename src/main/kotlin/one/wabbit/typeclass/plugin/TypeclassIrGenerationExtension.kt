@@ -3929,14 +3929,29 @@ private fun IrTypeParameter.gadtPolicyMode(): GadtAdmissionMode? =
 
 private fun org.jetbrains.kotlin.ir.expressions.IrConstructorCall.gadtPolicyMode(): GadtAdmissionMode? {
     val annotationClass = symbol.owner.parentAsClass
-    if (annotationClass.name.asString() != "GadtDerivationPolicy") {
+    if (annotationClass.classId != GADT_DERIVATION_POLICY_ANNOTATION_CLASS_ID) {
         return null
     }
-    val renderedMode = getValueArgument(0)?.render().orEmpty()
-    return when {
-        "CONSERVATIVE_ONLY" in renderedMode -> GadtAdmissionMode.CONSERVATIVE_ONLY
-        "SURFACE_TRUSTED" in renderedMode -> GadtAdmissionMode.SURFACE_TRUSTED
-        else -> null
+    return when (val modeArgument = getValueArgument(0)) {
+        is org.jetbrains.kotlin.ir.expressions.IrGetEnumValue ->
+            modeArgument.symbol.owner.takeIf { enumEntry ->
+                enumEntry.parentAsClass.classId == GADT_DERIVATION_MODE_CLASS_ID
+            }?.name?.asString()?.let { entryName ->
+                when (entryName) {
+                    "CONSERVATIVE_ONLY" -> GadtAdmissionMode.CONSERVATIVE_ONLY
+                    "SURFACE_TRUSTED" -> GadtAdmissionMode.SURFACE_TRUSTED
+                    else -> null
+                }
+            }
+
+        else -> {
+            val renderedMode = modeArgument?.render().orEmpty()
+            when {
+                "CONSERVATIVE_ONLY" in renderedMode -> GadtAdmissionMode.CONSERVATIVE_ONLY
+                "SURFACE_TRUSTED" in renderedMode -> GadtAdmissionMode.SURFACE_TRUSTED
+                else -> null
+            }
+        }
     }
 }
 
