@@ -1,7 +1,6 @@
 package one.wabbit.typeclass.plugin.integration.derivation
 
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
-import org.junit.Ignore
 import kotlin.test.Test
 
 /**
@@ -73,9 +72,26 @@ import kotlin.test.Test
  * - Effectively phantom:
  *   start by enabling at least the contravariant fragment; it may admit an even larger
  *   subset because the type parameter is observationally irrelevant.
+ * Phantom caveat:
+ * - Observationally phantom typeclasses may be semantically able to admit a wider class
+ *   of constructors than the current contract supports, because they may never inspect
+ *   or require field evidence for hidden types.
+ * - This spec still rejects such shapes until metadata can distinguish shape-only
+ *   derivation from derivation that eagerly requires per-field evidence.
+ * - Therefore "phantom may be more permissive" is a semantic design direction, not yet
+ *   a blanket implementation rule.
  * - In every relaxed bucket, once a constructor result head is admitted, every required
  *   field-evidence type must be expressible solely in terms of the admitted root
  *   parameters and concrete types.
+ * Recoverability criterion:
+ * - Let the admitted constructor result head determine a visible environment consisting
+ *   of the root type parameters instantiated by that head plus any concrete types
+ *   appearing in that head.
+ * - Every field-evidence type required by the constructor must be formulable using only
+ *   that visible environment.
+ * - Fresh subclass type parameters, existentially hidden types, or proof-mediated type
+ *   equalities do not count as visible unless a future design explicitly introduces
+ *   machinery to expose or transport them.
  *
  * Conservative head-preserving fragment:
  * - The derived root is a sealed generic hierarchy.
@@ -93,10 +109,25 @@ import kotlin.test.Test
  * Under the current metadata / evidence contract, still reject in every variance bucket
  * unless a later design adds explicit equality reasoning or relaxes eager field-evidence
  * requirements:
+ * Important distinction:
+ * - The rejections in this section are not all semantic impossibilities for every
+ *   observational bucket.
+ * - Some shapes, especially those with hidden subclass type parameters, may still be
+ *   admissible for sufficiently shape-only or truly phantom typeclasses.
+ * - They remain rejected here because the current derivation contract assumes eager
+ *   field-evidence availability through metadata and does not yet support a weaker
+ *   shape-only metadata mode.
  * - Fresh subclass type parameters that do not appear in the admitted result head.
  * - Field evidence that depends on a type variable hidden from the admitted result head.
  * - Constructor-local equalities / proof obligations not honestly encoded in the admitted
  *   result head.
+ * Example of an out-of-scope proof-carrying constructor shape:
+ * - `Store<X, A>(value: X, proof: Same<X, A>)`
+ * - `Cast<A>(store: Store<*, A>) : Expr<A>`
+ * - Here the result head `Expr<A>` does not expose the hidden witness type `X`.
+ * - Admitting such a constructor would require existential unpacking plus equality
+ *   transport from `Same<X, A>`, not merely ordinary root-parameter substitution.
+ * - The current design intentionally excludes such proof-carrying cases.
  *
  * Fixture caveat:
  * - `Show<A>` is effectively contravariant because `A` only appears in
@@ -108,7 +139,6 @@ import kotlin.test.Test
  *   callable surface. Proof-like or case-sensitive APIs may still need a stricter future
  *   override if pure signature inference would classify them too permissively.
  */
-@Ignore("REVIEWED: future GADT derivation design")
 class GADTDerivationTest : IntegrationTestSupport() {
     private val showDeriverPrelude =
         """
@@ -661,14 +691,15 @@ class GADTDerivationTest : IntegrationTestSupport() {
             data object BoolLit : Expr<Boolean>
 
             fun main() {
-                val value: Expr<Int> = decode("{}")
+                val value: Expr<Int> = decode<Expr<Int>>("{}")
                 println(value)
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("refine", "result head"),
+            expectedMessages = listOf("conservative", "result head"),
+            expectedDiagnostics = listOf(expectedCannotDerive("conservative", "result head")),
         )
     }
 
@@ -691,14 +722,15 @@ class GADTDerivationTest : IntegrationTestSupport() {
             data class Many<A>(val values: List<A>) : Container<List<A>>
 
             fun main() {
-                val value: Container<List<Int>> = roundTrip("[]")
+                val value: Container<List<Int>> = roundTrip<Container<List<Int>>>("[]")
                 println(value)
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("refine", "result head"),
+            expectedMessages = listOf("conservative", "result head"),
+            expectedDiagnostics = listOf(expectedCannotDerive("conservative", "result head")),
         )
     }
 
@@ -752,7 +784,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             data class Branch<A>(val left: Tree<A>, val right: Tree<A>) : Tree<A>
 
             fun main() {
-                val value: Tree<Int> = decode("{}")
+                val value: Tree<Int> = decode<Tree<Int>>("{}")
                 println(value)
             }
             """.trimIndent()
@@ -777,7 +809,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("hidden", "result head"),
+            expectedMessages = listOf("not quantified", "admitted result head"),
+            expectedDiagnostics = listOf(expectedCannotDerive("not quantified", "admitted result head")),
         )
     }
 
@@ -804,7 +837,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("hidden", "result head"),
+            expectedMessages = listOf("not quantified", "admitted result head"),
+            expectedDiagnostics = listOf(expectedCannotDerive("not quantified", "admitted result head")),
         )
     }
 
@@ -931,6 +965,35 @@ class GADTDerivationTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("conservative", "result head"),
+        )
+    }
+
+    // NEW
+    // Rationale: this documents the distinction between semantic phantom permissiveness
+    // and the current eager field-evidence contract. `Tag<A>` never inspects fields, but
+    // `Hidden<A, B>` still introduces a subclass-local `B` that current metadata cannot
+    // model in a shape-only way.
+    @Test
+    fun currentlyRejectsHiddenSubclassTypeParametersEvenForPhantomTypeclassesDueToEagerFieldEvidence() {
+        val source =
+            """
+            $phantomTagDeriverPrelude
+
+            @Derive(Tag::class)
+            sealed interface Packed<A>
+
+            @Derive(Tag::class)
+            data class Hidden<A, B>(val value: B) : Packed<A>
+
+            fun main() {
+                println(tagName<Packed<Int>>())
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("not quantified", "admitted result head"),
+            expectedDiagnostics = listOf(expectedCannotDerive("not quantified", "admitted result head")),
         )
     }
 
@@ -1220,45 +1283,61 @@ class GADTDerivationTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("Pending derivation admissibility work")
+    // NEW
+    // Rationale: this is the proof-carrying / existential-unpacking boundary. The result
+    // head `Expr<A>` does not expose the witness type carried by `Store<X, A>`, so a
+    // derivation would need more than ordinary head unification and field substitution.
     @Test
-    fun derivesOnlyAdmissibleSumCasesForRequestedTypeclasses() {
+    fun rejectsConstructorsThatRequireExistentialUnpackingAndEqualityTransport() {
         val source =
             """
-            package demo
+            $showDeriverPrelude
 
-            import one.wabbit.typeclass.Derive
-            import one.wabbit.typeclass.ProductTypeclassMetadata
-            import one.wabbit.typeclass.SumTypeclassMetadata
-            import one.wabbit.typeclass.Typeclass
-            import one.wabbit.typeclass.TypeclassDeriver
+            data class Same<X, A>(val unit: Unit = Unit)
 
-            @Typeclass
-            interface Codec<A> {
-                fun encode(value: A): String
-                fun decode(value: String): A
+            data class Store<X, A>(
+                val value: X,
+                val proof: Same<X, A>,
+            )
 
-                companion object : TypeclassDeriver {
-                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
-                        error("placeholder")
-
-                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
-                        error("placeholder")
-                }
-            }
-
-            @Derive(Codec::class)
+            @Derive(Show::class)
             sealed interface Expr<A>
 
-            data class Lit(val value: Int) : Expr<Int>
-
-            data class Name(val value: String) : Expr<String>
+            @Derive(Show::class)
+            data class Cast<A>(val store: Store<*, A>) : Expr<A>
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("derive", "expr"),
-            expectedDiagnostics = listOf(expectedErrorContaining("derive")),
+            expectedMessages = listOf("proof", "equality", "hidden", "result head"),
+        )
+    }
+
+    @Test
+    fun derivesOnlyAdmissibleSumCasesForRequestedTypeclasses() {
+        val source =
+            """
+            $codecDeriverPrelude
+
+            @Derive(Codec::class)
+            sealed interface Expr<A>
+
+            @Derive(Codec::class)
+            data class Pass<A>(val value: A) : Expr<A>
+
+            @Derive(Codec::class)
+            data class Lit(val value: Int) : Expr<Int>
+
+            fun main() {
+                val value: Expr<Int> = roundTrip<Expr<Int>>("ignored")
+                println(value)
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = listOf("conservative", "result head"),
+            expectedDiagnostics = listOf(expectedCannotDerive("conservative", "result head")),
         )
     }
 }

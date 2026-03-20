@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Implement the active `GADTDerivationTest` contract: classify effective variance from typeclass signatures, honor conservative GADT-policy overrides, synthesize specialized sealed-root derivation heads for admissible result-head refinements, preserve ordinary covariant `Nothing` cases in generic sealed ADTs, and keep user-written instances ambiguous against derived ones instead of letting GADT-specific rule priority hide them.
 - Implement `@DeriveVia` and `@DeriveEquiv` end to end, including compiler-owned `Equiv` evidence, FIR/IR validation for invalid `Equiv` declarations, last-slot typeclass transport, pinned `Iso` path segments, structural transportability checks, and active `DeriveViaSpec` coverage.
 - Add first-class `enum class` derivation via `deriveEnum`, including IR-generated enum metadata and JSON-codec regressions that prove derived enum/product output can match `kotlinx.serialization` for enum-bearing ADTs.
 - Make the test-model JSON codec treat primitive-backed sum cases symmetrically on decode, and add a sealed-root regression where an enum case encodes through `{"type": "...", "value": ...}` rather than an object payload.

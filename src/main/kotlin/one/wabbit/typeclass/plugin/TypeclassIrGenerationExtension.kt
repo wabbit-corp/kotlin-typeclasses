@@ -84,6 +84,7 @@ import org.jetbrains.kotlin.ir.expressions.IrTypeOperatorCall
 import org.jetbrains.kotlin.ir.expressions.IrVararg
 import org.jetbrains.kotlin.ir.expressions.impl.IrFunctionExpressionImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrGetEnumValueImpl
+import org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol
 import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.IrStarProjection
 import org.jetbrains.kotlin.ir.types.IrTypeArgument
@@ -2625,14 +2626,40 @@ private class IrModuleScanner(
                 targetClassId.asString(),
                 ruleTypeParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) },
             )
-        val shape =
+        val derivedSpecs =
             when {
-                kind == ClassKind.ENUM_CLASS -> buildDerivedEnumShape()
-                modality == Modality.SEALED -> buildDerivedSumShape(targetType, subclassesBySuper)
-                else -> buildDerivedProductShape(typeParameterBySymbol)
+                kind == ClassKind.ENUM_CLASS ->
+                    buildDerivedEnumShape()?.let { shape ->
+                        listOf(
+                            DerivedRuleSpec(
+                                targetType = targetType,
+                                shape = shape,
+                                ruleTypeParameters = ruleTypeParameters,
+                            ),
+                        )
+                    }
+
+                modality == Modality.SEALED ->
+                    buildDerivedSumRuleSpecs(
+                        typeclassInterface = typeclassInterface,
+                        rootTargetType = targetType,
+                        subclassesBySuper = subclassesBySuper,
+                    )
+
+                else ->
+                    buildDerivedProductShape(typeParameterBySymbol)?.let { shape ->
+                        listOf(
+                            DerivedRuleSpec(
+                                targetType = targetType,
+                                shape = shape,
+                                ruleTypeParameters = ruleTypeParameters,
+                            ),
+                        )
+                    }
             } ?: return emptyList()
+        val representativeShape = derivedSpecs.firstOrNull()?.shape ?: return emptyList()
         val requiredDeriverInterface =
-            when (shape) {
+            when (representativeShape) {
                 is DerivedShape.Product -> PRODUCT_TYPECLASS_DERIVER_CLASS_ID
                 is DerivedShape.Sum, is DerivedShape.Enum -> TYPECLASS_DERIVER_CLASS_ID
             }
@@ -2641,9 +2668,9 @@ private class IrModuleScanner(
                 ?: run {
                     val requiredName = requiredDeriverInterface.shortClassName.asString()
                     val message =
-                        if (shape is DerivedShape.Enum) {
+                        if (representativeShape is DerivedShape.Enum) {
                             "${typeclassId.shortClassName.asString()} companion must implement $requiredName; ProductTypeclassDeriver only supports products, not enums"
-                        } else if (shape is DerivedShape.Sum) {
+                        } else if (representativeShape is DerivedShape.Sum) {
                             "${typeclassId.shortClassName.asString()} companion must implement $requiredName; ProductTypeclassDeriver only supports products, not sealed sums"
                         } else {
                             "${typeclassId.shortClassName.asString()} companion must implement $requiredName to derive products"
@@ -2656,14 +2683,14 @@ private class IrModuleScanner(
                     return emptyList()
                 }
         val deriveMethodName =
-            when (shape) {
+            when (representativeShape) {
                 is DerivedShape.Product -> "deriveProduct"
                 is DerivedShape.Sum -> "deriveSum"
                 is DerivedShape.Enum -> "deriveEnum"
             }
         if (deriverCompanion.declarations.filterIsInstance<IrSimpleFunction>().none { function -> function.name.asString() == deriveMethodName }) {
             val message =
-                if (shape is DerivedShape.Enum) {
+                if (representativeShape is DerivedShape.Enum) {
                     "${typeclassId.shortClassName.asString()} companion must override deriveEnum to derive enum classes"
                 } else {
                     "Typeclass deriver ${deriverCompanion.classIdOrFail.asString()} is missing $deriveMethodName"
@@ -2675,39 +2702,43 @@ private class IrModuleScanner(
             )
             return emptyList()
         }
-        val prerequisiteTypes =
-            when (shape) {
-                is DerivedShape.Product -> shape.fields.map { field -> typeclassGoal(typeclassId, field.type) }
-                is DerivedShape.Sum -> shape.cases.map { case -> typeclassGoal(typeclassId, case.type) }
-                is DerivedShape.Enum -> emptyList()
+        return derivedSpecs.flatMap { spec ->
+            val prerequisiteTypes =
+                when (val shape = spec.shape) {
+                    is DerivedShape.Product -> shape.fields.map { field -> typeclassGoal(typeclassId, field.type) }
+                    is DerivedShape.Sum -> shape.cases.map { case -> typeclassGoal(typeclassId, case.type) }
+                    is DerivedShape.Enum -> emptyList()
+                }
+            val providedTypes = expandDerivedProvidedTypes(typeclassId, spec.targetType)
+            providedTypes.map { providedType ->
+                ResolvedRule(
+                    rule =
+                        InstanceRule(
+                            id =
+                                directRuleId(
+                                    prefix = "derived",
+                                    declarationKey =
+                                        "${typeclassId.asString()}:${targetClassId.asString()}:${spec.targetType.normalizedKey()}",
+                                    providedType = providedType,
+                                    prerequisiteTypes = prerequisiteTypes,
+                                    typeParameters = spec.ruleTypeParameters,
+                                ),
+                            typeParameters = spec.ruleTypeParameters,
+                            providedType = providedType,
+                            prerequisiteTypes = prerequisiteTypes,
+                            supportsRecursiveResolution = true,
+                            priority = spec.priority,
+                        ),
+                    reference =
+                        RuleReference.Derived(
+                            targetClass = this,
+                            deriverCompanion = deriverCompanion,
+                            shape = spec.shape,
+                            ruleTypeParameters = spec.ruleTypeParameters,
+                        ),
+                    associatedOwner = targetClassId,
+                )
             }
-        val providedTypes = expandDerivedProvidedTypes(typeclassId, targetType)
-        return providedTypes.map { providedType ->
-            ResolvedRule(
-                rule =
-                    InstanceRule(
-                        id =
-                            directRuleId(
-                                prefix = "derived",
-                                declarationKey = "${typeclassId.asString()}:${targetClassId.asString()}",
-                                providedType = providedType,
-                                prerequisiteTypes = prerequisiteTypes,
-                                typeParameters = ruleTypeParameters,
-                            ),
-                        typeParameters = ruleTypeParameters,
-                        providedType = providedType,
-                        prerequisiteTypes = prerequisiteTypes,
-                        supportsRecursiveResolution = true,
-                    ),
-                reference =
-                    RuleReference.Derived(
-                        targetClass = this,
-                        deriverCompanion = deriverCompanion,
-                        shape = shape,
-                        ruleTypeParameters = ruleTypeParameters,
-                    ),
-                associatedOwner = targetClassId,
-            )
         }
     }
 
@@ -2904,35 +2935,21 @@ private class IrModuleScanner(
         return DerivedShape.Product(fields = fields, constructor = constructor)
     }
 
-    private fun IrClass.buildDerivedSumShape(
-        targetType: TcType.Constructor,
+    private fun IrClass.buildDerivedSumRuleSpecs(
+        typeclassInterface: IrClass,
+        rootTargetType: TcType.Constructor,
         subclassesBySuper: Map<String, Set<String>>,
-    ): DerivedShape.Sum? {
+    ): List<DerivedRuleSpec>? {
         val directSubclasses = subclassesBySuper[classIdOrFail.asString()].orEmpty()
         if (directSubclasses.isEmpty()) {
             return null
         }
-        val allowedVariableIds = targetType.referencedVariableIds()
-        val cases =
+        val caseInfos =
             directSubclasses.mapNotNull { subclassId ->
                 val subclass = classesById[subclassId] ?: return@mapNotNull null
-                val caseType = subclass.caseTypeForSealedBase(this, targetType) ?: return@mapNotNull null
-                if (!caseType.referencedVariableIds().all(allowedVariableIds::contains)) {
-                    pluginContext.reportTypeclassError(
-                        message =
-                            "Cannot derive ${classIdOrFail.asString()} because sealed subclass ${subclass.classIdOrFail.asString()} introduces type parameters that are not quantified by the sealed root",
-                        diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                        location = subclass.compilerMessageLocation(),
-                    )
-                    return null
-                }
-                DerivedCase(
-                    name = subclass.name.asString(),
-                    klass = subclass,
-                    type = caseType,
-                )
+                subclass.buildDerivedSumCaseInfo(this)
             }
-        if (cases.size != directSubclasses.size) {
+        if (caseInfos.size != directSubclasses.size) {
             pluginContext.reportTypeclassError(
                 message =
                     "Cannot derive ${classIdOrFail.asString()} because one or more sealed subclasses cannot be expressed from the sealed root's type parameters",
@@ -2941,7 +2958,111 @@ private class IrModuleScanner(
             )
             return null
         }
-        return DerivedShape.Sum(cases)
+
+        val admissionMode = typeclassInterface.gadtAdmissionMode()
+        val candidates =
+            when (admissionMode) {
+                GadtAdmissionMode.CONSERVATIVE_ONLY ->
+                    listOf(
+                        DerivedSumCandidate(
+                            targetType = rootTargetType,
+                            ruleTypeParameters = typeParameters.mapIndexed { index, typeParameter ->
+                                TcTypeParameter(
+                                    id = "${classIdOrFail.asString()}#$index",
+                                    displayName = typeParameter.name.asString(),
+                                )
+                            },
+                            priority = rootTargetType.gadtSpecificityScore(),
+                        ),
+                    )
+
+                GadtAdmissionMode.SURFACE_TRUSTED ->
+                    caseInfos
+                        .map { caseInfo ->
+                            caseInfo.projectedHead.toDerivedSumCandidate(classIdOrFail.asString(), caseInfo.subclass.name.asString())
+                        }.distinctBy { candidate -> candidate.targetType.normalizedKey() }
+            }
+
+        val firstRejectionMessages = mutableListOf<String>()
+        val specs = mutableListOf<DerivedRuleSpec>()
+        val admittedCaseIds = linkedSetOf<String>()
+        val unrecoverableCaseMessages = linkedMapOf<String, String>()
+
+        candidates.forEach { candidate ->
+            val admissions =
+                caseInfos.map { caseInfo ->
+                    caseInfo.admitToCandidate(
+                        rootClass = this,
+                        candidate = candidate,
+                        conservativeOnly = admissionMode == GadtAdmissionMode.CONSERVATIVE_ONLY,
+                    )
+                }
+            val admittedCases = admissions.mapNotNull(CaseAdmission::derivedCase)
+            admissions.forEachIndexed { index, admission ->
+                val caseInfo = caseInfos[index]
+                if (admission.derivedCase != null) {
+                    admittedCaseIds += caseInfo.subclass.classIdOrFail.asString()
+                } else {
+                    admission.rejectionMessage?.let { message ->
+                        unrecoverableCaseMessages.putIfAbsent(caseInfo.subclass.classIdOrFail.asString(), message)
+                        firstRejectionMessages += message
+                    }
+                }
+            }
+
+            if (admissionMode == GadtAdmissionMode.CONSERVATIVE_ONLY && admittedCases.size != caseInfos.size) {
+                val message =
+                    admissions.mapNotNull(CaseAdmission::rejectionMessage).firstOrNull()
+                        ?: "Cannot derive ${classIdOrFail.asString()} because one or more sealed subclasses require result-head refinements beyond the conservative admissibility policy"
+                pluginContext.reportTypeclassError(
+                    message = message,
+                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                    location = compilerMessageLocation(),
+                )
+                return null
+            }
+
+            if (admittedCases.isNotEmpty()) {
+                specs +=
+                    DerivedRuleSpec(
+                        targetType = candidate.targetType,
+                        shape = DerivedShape.Sum(admittedCases),
+                        ruleTypeParameters = candidate.ruleTypeParameters,
+                        priority = candidate.priority,
+                    )
+            }
+        }
+
+        val unrecoverableCaseMessage =
+            caseInfos.firstNotNullOfOrNull { caseInfo ->
+                val caseId = caseInfo.subclass.classIdOrFail.asString()
+                if (caseId !in admittedCaseIds) {
+                    unrecoverableCaseMessages[caseId]
+                } else {
+                    null
+                }
+            }
+        if (unrecoverableCaseMessage != null) {
+            pluginContext.reportTypeclassError(
+                message = unrecoverableCaseMessage,
+                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                location = compilerMessageLocation(),
+            )
+            return null
+        }
+
+        if (specs.isEmpty()) {
+            pluginContext.reportTypeclassError(
+                message =
+                    firstRejectionMessages.firstOrNull()
+                        ?: "Cannot derive ${classIdOrFail.asString()} because no sealed subclasses are admissible for the requested typeclass",
+                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                location = compilerMessageLocation(),
+            )
+            return null
+        }
+
+        return specs
     }
 
     private fun IrClass.buildDerivedEnumShape(): DerivedShape.Enum? {
@@ -2999,6 +3120,45 @@ private class IrModuleScanner(
             caseTypeParameters.isEmpty() -> subclassDeclaredType
             else -> null
         }
+    }
+
+    private fun IrClass.buildDerivedSumCaseInfo(
+        sealedBase: IrClass,
+    ): DerivedSumCaseInfo? {
+        val subclassClassId = classId ?: return null
+        val caseTypeParameters =
+            typeParameters.mapIndexed { index, typeParameter ->
+                TcTypeParameter(
+                    id = "${subclassClassId.asString()}#$index",
+                    displayName = typeParameter.name.asString(),
+                )
+            }
+        val caseTypeBySymbol =
+            typeParameters.zip(caseTypeParameters).associate { (symbol, parameter) ->
+                symbol.symbol to parameter
+            }
+        val projectedHead =
+            superTypes.firstOrNull { superType ->
+                superType.classOrNull?.owner?.classId == sealedBase.classId
+            }?.let { superType ->
+                irTypeToModel(superType, caseTypeBySymbol)
+            } as? TcType.Constructor ?: return null
+        val fieldTypes =
+            structuralProperties().map { property ->
+                val getter = property.getter ?: return null
+                irTypeToModel(getter.returnType, caseTypeBySymbol) ?: return null
+            }
+        return DerivedSumCaseInfo(
+            subclass = this,
+            projectedHead = projectedHead,
+            subclassDeclaredType =
+                TcType.Constructor(
+                    subclassClassId.asString(),
+                    caseTypeParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) },
+                ),
+            caseTypeParameters = caseTypeParameters,
+            fieldTypes = fieldTypes,
+        )
     }
 
     private fun IrClass.structuralProperties(): List<IrProperty> {
@@ -3556,6 +3716,450 @@ private data class DerivedEnumEntry(
     val name: String,
     val entry: IrEnumEntry,
 )
+
+private data class DerivedRuleSpec(
+    val targetType: TcType.Constructor,
+    val shape: DerivedShape,
+    val ruleTypeParameters: List<TcTypeParameter>,
+    val priority: Int = 0,
+)
+
+private data class DerivedSumCandidate(
+    val targetType: TcType.Constructor,
+    val ruleTypeParameters: List<TcTypeParameter>,
+    val priority: Int,
+)
+
+private data class DerivedSumCaseInfo(
+    val subclass: IrClass,
+    val projectedHead: TcType.Constructor,
+    val subclassDeclaredType: TcType.Constructor,
+    val caseTypeParameters: List<TcTypeParameter>,
+    val fieldTypes: List<TcType>,
+)
+
+private data class CaseAdmission(
+    val derivedCase: DerivedCase? = null,
+    val rejectionMessage: String? = null,
+)
+
+private enum class GadtAdmissionMode {
+    SURFACE_TRUSTED,
+    CONSERVATIVE_ONLY,
+}
+
+private enum class GadtEffectiveVariance {
+    PHANTOM,
+    COVARIANT,
+    CONTRAVARIANT,
+    INVARIANT,
+}
+
+private fun IrClass.gadtAdmissionMode(): GadtAdmissionMode {
+    val transported = typeParameters.lastOrNull() ?: return GadtAdmissionMode.CONSERVATIVE_ONLY
+    val declaredOverride = transported.gadtPolicyMode() ?: gadtPolicyMode()
+    if (declaredOverride == GadtAdmissionMode.CONSERVATIVE_ONLY) {
+        return GadtAdmissionMode.CONSERVATIVE_ONLY
+    }
+    return when (effectiveVarianceFor(transported.symbol)) {
+        GadtEffectiveVariance.CONTRAVARIANT,
+        GadtEffectiveVariance.PHANTOM,
+        -> GadtAdmissionMode.SURFACE_TRUSTED
+
+        GadtEffectiveVariance.COVARIANT,
+        GadtEffectiveVariance.INVARIANT,
+        -> GadtAdmissionMode.CONSERVATIVE_ONLY
+    }
+}
+
+private fun IrClass.gadtPolicyMode(): GadtAdmissionMode? =
+    annotations.firstNotNullOfOrNull { annotation -> annotation.gadtPolicyMode() }
+
+private fun IrTypeParameter.gadtPolicyMode(): GadtAdmissionMode? =
+    annotations.firstNotNullOfOrNull { annotation -> annotation.gadtPolicyMode() }
+
+private fun org.jetbrains.kotlin.ir.expressions.IrConstructorCall.gadtPolicyMode(): GadtAdmissionMode? {
+    val annotationClass = symbol.owner.parentAsClass
+    if (annotationClass.name.asString() != "GadtDerivationPolicy") {
+        return null
+    }
+    val renderedMode = getValueArgument(0)?.render().orEmpty()
+    return when {
+        "CONSERVATIVE_ONLY" in renderedMode -> GadtAdmissionMode.CONSERVATIVE_ONLY
+        "SURFACE_TRUSTED" in renderedMode -> GadtAdmissionMode.SURFACE_TRUSTED
+        else -> null
+    }
+}
+
+private fun IrClass.effectiveVarianceFor(
+    transported: IrTypeParameterSymbol,
+): GadtEffectiveVariance {
+    val declaredVariance = transported.owner.variance
+    return when (declaredVariance) {
+        Variance.IN_VARIANCE -> GadtEffectiveVariance.CONTRAVARIANT
+        Variance.OUT_VARIANCE -> GadtEffectiveVariance.COVARIANT
+        Variance.INVARIANT ->
+            analyzeCallableSurfaceVariance(
+                substitution = typeParameters.associate { parameter -> parameter.symbol to parameter.symbol.defaultType },
+                transported = transported,
+                visited = linkedSetOf(),
+            )
+        else -> GadtEffectiveVariance.INVARIANT
+    }
+}
+
+private fun IrClass.analyzeCallableSurfaceVariance(
+    substitution: Map<IrTypeParameterSymbol, IrType>,
+    transported: IrTypeParameterSymbol,
+    visited: MutableSet<String>,
+): GadtEffectiveVariance {
+    val visitKey =
+        buildString {
+            append(classIdOrFail.asString())
+            append(':')
+            append(
+                typeParameters.joinToString(separator = ",") { parameter ->
+                    substitution[parameter.symbol]?.render() ?: parameter.name.asString()
+                },
+            )
+        }
+    if (!visited.add(visitKey)) {
+        return GadtEffectiveVariance.PHANTOM
+    }
+
+    var result = GadtEffectiveVariance.PHANTOM
+
+    declarations.filterIsInstance<IrProperty>().forEach { property ->
+        val getter = property.getter ?: return@forEach
+        result =
+            result.parallelCombine(
+                analyzeTypeVariance(
+                    type = getter.returnType.substitute(substitution),
+                    position = GadtEffectiveVariance.COVARIANT,
+                    transported = transported,
+                ),
+            )
+    }
+
+    declarations.filterIsInstance<IrSimpleFunction>().forEach { function ->
+        if (function.name.asString() == "<init>") {
+            return@forEach
+        }
+        function.extensionReceiverParameter?.let { receiver ->
+            result =
+                result.parallelCombine(
+                    analyzeTypeVariance(
+                        type = receiver.type.substitute(substitution),
+                        position = GadtEffectiveVariance.CONTRAVARIANT,
+                        transported = transported,
+                    ),
+                )
+        }
+        function.parameters
+            .filter { parameter ->
+                parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context ||
+                    parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular
+            }
+            .forEach { parameter ->
+                result =
+                    result.parallelCombine(
+                        analyzeTypeVariance(
+                            type = parameter.type.substitute(substitution),
+                            position = GadtEffectiveVariance.CONTRAVARIANT,
+                            transported = transported,
+                        ),
+                    )
+            }
+        result =
+            result.parallelCombine(
+                analyzeTypeVariance(
+                    type = function.returnType.substitute(substitution),
+                    position = GadtEffectiveVariance.COVARIANT,
+                    transported = transported,
+                ),
+            )
+    }
+
+    superTypes.forEach { superType ->
+        val substitutedSuperType = superType.substitute(substitution)
+        val superSimpleType = substitutedSuperType as? IrSimpleType ?: return@forEach
+        val superClass = superSimpleType.classOrNull?.owner ?: return@forEach
+        val superSubstitution =
+            superClass.typeParameters.mapIndexedNotNull { index, parameter ->
+                val argument = superSimpleType.arguments.getOrNull(index)?.argumentTypeOrNull() ?: return@mapIndexedNotNull null
+                parameter.symbol to argument
+            }.toMap()
+        result =
+            result.parallelCombine(
+                superClass.analyzeCallableSurfaceVariance(
+                    substitution = superSubstitution,
+                    transported = transported,
+                    visited = visited,
+                ),
+            )
+    }
+
+    return result
+}
+
+private fun analyzeTypeVariance(
+    type: IrType,
+    position: GadtEffectiveVariance,
+    transported: IrTypeParameterSymbol,
+): GadtEffectiveVariance {
+    if (type.hasUnsafeVarianceMarker()) {
+        return GadtEffectiveVariance.PHANTOM
+    }
+    type.gadtFunctionTypeInfoOrNull()?.let { functionInfo ->
+        var functionResult = GadtEffectiveVariance.PHANTOM
+        functionInfo.parameterTypes.forEach { parameterType ->
+            functionResult =
+                functionResult.parallelCombine(
+                    analyzeTypeVariance(
+                        type = parameterType,
+                        position = position.composeWith(GadtEffectiveVariance.CONTRAVARIANT),
+                        transported = transported,
+                    ),
+                )
+        }
+        functionResult =
+            functionResult.parallelCombine(
+                analyzeTypeVariance(
+                        type = functionInfo.returnType,
+                        position = position.composeWith(GadtEffectiveVariance.COVARIANT),
+                        transported = transported,
+                    ),
+                )
+        return functionResult
+    }
+
+    val simpleType = type as? IrSimpleType ?: return GadtEffectiveVariance.PHANTOM
+    when (val classifier = simpleType.classifier) {
+        transported -> return position
+        is IrTypeParameterSymbol -> return GadtEffectiveVariance.PHANTOM
+        else -> Unit
+    }
+
+    val klass = simpleType.classOrNull?.owner ?: return GadtEffectiveVariance.PHANTOM
+    var result = GadtEffectiveVariance.PHANTOM
+    simpleType.arguments.forEachIndexed { index, argument ->
+        val nestedType = argument.argumentTypeOrNull() ?: return@forEachIndexed
+        val declaredVariance = klass.typeParameters.getOrNull(index)?.variance ?: Variance.INVARIANT
+        val argumentVariance =
+            when (argument) {
+                is org.jetbrains.kotlin.ir.types.IrTypeProjection ->
+                    when (argument.variance) {
+                        Variance.IN_VARIANCE -> GadtEffectiveVariance.CONTRAVARIANT
+                        Variance.OUT_VARIANCE -> GadtEffectiveVariance.COVARIANT
+                        Variance.INVARIANT -> declaredVariance.toGadtEffectiveVariance()
+                    }
+
+                else -> declaredVariance.toGadtEffectiveVariance()
+            }
+        result =
+            result.parallelCombine(
+                analyzeTypeVariance(
+                    type = nestedType,
+                    position = position.composeWith(argumentVariance),
+                    transported = transported,
+                ),
+            )
+    }
+    return result
+}
+
+private fun IrType.hasUnsafeVarianceMarker(): Boolean =
+    (this as? IrSimpleType)
+        ?.annotations
+        ?.any { annotation ->
+            annotation.symbol.owner.parentAsClass.classId ==
+                ClassId.topLevel(FqName("kotlin.UnsafeVariance"))
+        } == true
+
+private fun Variance.toGadtEffectiveVariance(): GadtEffectiveVariance =
+    when (this) {
+        Variance.INVARIANT -> GadtEffectiveVariance.INVARIANT
+        Variance.IN_VARIANCE -> GadtEffectiveVariance.CONTRAVARIANT
+        Variance.OUT_VARIANCE -> GadtEffectiveVariance.COVARIANT
+    }
+
+private fun GadtEffectiveVariance.composeWith(
+    nested: GadtEffectiveVariance,
+): GadtEffectiveVariance =
+    when {
+        this == GadtEffectiveVariance.PHANTOM || nested == GadtEffectiveVariance.PHANTOM -> GadtEffectiveVariance.PHANTOM
+        this == GadtEffectiveVariance.INVARIANT || nested == GadtEffectiveVariance.INVARIANT -> GadtEffectiveVariance.INVARIANT
+        this == nested -> GadtEffectiveVariance.COVARIANT
+        else -> GadtEffectiveVariance.CONTRAVARIANT
+    }
+
+private fun GadtEffectiveVariance.parallelCombine(
+    other: GadtEffectiveVariance,
+): GadtEffectiveVariance =
+    when {
+        this == GadtEffectiveVariance.INVARIANT || other == GadtEffectiveVariance.INVARIANT -> GadtEffectiveVariance.INVARIANT
+        this == GadtEffectiveVariance.PHANTOM -> other
+        other == GadtEffectiveVariance.PHANTOM -> this
+        this == other -> this
+        else -> GadtEffectiveVariance.INVARIANT
+    }
+
+private data class GadtFunctionTypeInfo(
+    val parameterTypes: List<IrType>,
+    val returnType: IrType,
+)
+
+private fun IrType.gadtFunctionTypeInfoOrNull(): GadtFunctionTypeInfo? {
+    val simpleType = this as? IrSimpleType ?: return null
+    val classId = simpleType.classOrNull?.owner?.classId ?: return null
+    val fqName = classId.asSingleFqName().asString()
+    if (!fqName.startsWith("kotlin.Function") && !fqName.startsWith("kotlin.SuspendFunction")) {
+        return null
+    }
+    val arguments =
+        simpleType.arguments.mapNotNull { argument ->
+            when (argument) {
+                is IrType -> argument
+                is org.jetbrains.kotlin.ir.types.IrTypeProjection -> argument.type
+                else -> null
+            }
+        }
+    if (arguments.isEmpty()) {
+        return null
+    }
+    return GadtFunctionTypeInfo(
+        parameterTypes = arguments.dropLast(1),
+        returnType = arguments.last(),
+    )
+}
+
+private fun TcType.toDerivedSumCandidate(
+    ownerId: String,
+    seed: String,
+): DerivedSumCandidate {
+    val constructor = this as? TcType.Constructor ?: error("Derived sum candidates must be constructor heads")
+    val referencedVariables = constructor.referencedVariableIds().toList()
+    val ruleTypeParameters =
+        referencedVariables.mapIndexed { index, variableId ->
+            TcTypeParameter(
+                id = "derived-sum:$ownerId:$seed:$index",
+                displayName = "A$index",
+            ) to variableId
+        }
+    val targetType =
+        constructor.substituteType(
+            ruleTypeParameters.associate { (parameter, variableId) ->
+                variableId to TcType.Variable(parameter.id, parameter.displayName)
+            },
+        ) as TcType.Constructor
+    return DerivedSumCandidate(
+        targetType = targetType,
+        ruleTypeParameters = ruleTypeParameters.map(Pair<TcTypeParameter, String>::first),
+        priority = targetType.gadtSpecificityScore(),
+    )
+}
+
+private fun DerivedSumCaseInfo.admitToCandidate(
+    rootClass: IrClass,
+    candidate: DerivedSumCandidate,
+    conservativeOnly: Boolean,
+): CaseAdmission {
+    val bindings =
+        unifyTypes(
+            left = projectedHead,
+            right = candidate.targetType,
+            bindableVariableIds = caseTypeParameters.mapTo(linkedSetOf(), TcTypeParameter::id),
+        ) ?: when {
+            subclassDeclaredType.referencedVariableIds().isEmpty() &&
+                projectedHead.isVarianceCompatibleWithCandidate(
+                    candidate.targetType,
+                    rootClass.typeParameters.map(IrTypeParameter::variance),
+                ) ->
+                emptyMap()
+
+            conservativeOnly ->
+                return CaseAdmission(
+                    rejectionMessage =
+                        "Cannot derive ${rootClass.classIdOrFail.asString()} because sealed subclass ${subclass.classIdOrFail.asString()} refines the result head beyond the conservative admissibility policy",
+                )
+
+            else -> return CaseAdmission()
+        }
+
+    val allowedVariableIds = candidate.targetType.referencedVariableIds()
+    val caseType = subclassDeclaredType.substituteType(bindings)
+    if (!caseType.referencedVariableIds().all(allowedVariableIds::contains)) {
+        return CaseAdmission(
+            rejectionMessage =
+                "Cannot derive ${rootClass.classIdOrFail.asString()} because sealed subclass ${subclass.classIdOrFail.asString()} introduces type parameters that are not quantified by the admitted result head",
+        )
+    }
+    fieldTypes.forEach { fieldType ->
+        val substitutedFieldType = fieldType.substituteType(bindings)
+        if (substitutedFieldType.containsStarProjection()) {
+            return CaseAdmission(
+                rejectionMessage =
+                    "Cannot derive ${rootClass.classIdOrFail.asString()} because sealed subclass ${subclass.classIdOrFail.asString()} requires proof/equality-carrying field evidence hidden from the admitted result head",
+            )
+        }
+        if (!substitutedFieldType.referencedVariableIds().all(allowedVariableIds::contains)) {
+            return CaseAdmission(
+                rejectionMessage =
+                    "Cannot derive ${rootClass.classIdOrFail.asString()} because sealed subclass ${subclass.classIdOrFail.asString()} requires field evidence that is not recoverable from the admitted result head",
+            )
+        }
+    }
+    return CaseAdmission(
+        derivedCase =
+            DerivedCase(
+                name = subclass.name.asString(),
+                klass = subclass,
+                type = caseType,
+            ),
+    )
+}
+
+private fun TcType.isVarianceCompatibleWithCandidate(
+    candidate: TcType,
+    variances: List<Variance>,
+): Boolean {
+    val actual = this as? TcType.Constructor ?: return false
+    val expected = candidate as? TcType.Constructor ?: return false
+    if (actual.classifierId != expected.classifierId || actual.arguments.size != expected.arguments.size) {
+        return false
+    }
+    return actual.arguments.indices.all { index ->
+        val actualArgument = actual.arguments[index]
+        val expectedArgument = expected.arguments[index]
+        when (variances.getOrNull(index) ?: Variance.INVARIANT) {
+            Variance.OUT_VARIANCE -> actualArgument.isVarianceSubtypeOf(expectedArgument)
+            Variance.IN_VARIANCE -> expectedArgument.isVarianceSubtypeOf(actualArgument)
+            Variance.INVARIANT -> actualArgument == expectedArgument
+        }
+    }
+}
+
+private fun TcType.isVarianceSubtypeOf(
+    expected: TcType,
+): Boolean =
+    when {
+        expected is TcType.Variable -> true
+        this == expected -> true
+        this is TcType.Constructor && expected is TcType.Constructor ->
+            this.classifierId == expected.classifierId &&
+                this.arguments.size == expected.arguments.size &&
+                this.arguments.zip(expected.arguments).all { (left, right) -> left.isVarianceSubtypeOf(right) }
+
+        else -> false
+    }
+
+private fun TcType.gadtSpecificityScore(): Int =
+    when (this) {
+        TcType.StarProjection -> 0
+        is TcType.Projected -> 1 + type.gadtSpecificityScore()
+        is TcType.Variable -> 0
+        is TcType.Constructor -> 1 + arguments.sumOf(TcType::gadtSpecificityScore)
+    }
 
 private data class WrapperResolutionShape(
     val dispatchReceiver: Boolean,

@@ -41,6 +41,7 @@ internal data class InstanceRule(
     val providedType: TcType,
     val prerequisiteTypes: List<TcType>,
     val supportsRecursiveResolution: Boolean = false,
+    val priority: Int = 0,
 )
 
 internal sealed interface ResolutionPlan {

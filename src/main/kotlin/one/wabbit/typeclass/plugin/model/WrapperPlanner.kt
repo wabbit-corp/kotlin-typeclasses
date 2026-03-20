@@ -58,7 +58,7 @@ internal class TypeclassResolutionPlanner(
                 return InternalResolution(localMatches.toSearchResult(desiredType), freshCounter)
             }
 
-            val successfulCandidates = mutableListOf<ResolutionPlan>()
+            val successfulCandidates = mutableListOf<SuccessfulCandidate>()
             var sawRecursiveCandidate = false
             var nextFreshCounter = freshCounter
 
@@ -105,20 +105,25 @@ internal class TypeclassResolutionPlanner(
 
                 nextFreshCounter = candidateFreshCounter
                 successfulCandidates +=
-                    ResolutionPlan.ApplyRule(
+                    SuccessfulCandidate(
+                        priority = appliedRule.priority,
                         ruleId = appliedRule.id,
-                        providedType = appliedRule.providedType,
-                        appliedTypeArguments =
-                            instantiatedRule.rule.typeParameters.map { parameter ->
-                                TcType.Variable(parameter.id, parameter.displayName).substitute(substitution)
-                            },
-                        prerequisitePlans = prerequisitePlans,
+                        plan =
+                            ResolutionPlan.ApplyRule(
+                                ruleId = appliedRule.id,
+                                providedType = appliedRule.providedType,
+                                appliedTypeArguments =
+                                    instantiatedRule.rule.typeParameters.map { parameter ->
+                                        TcType.Variable(parameter.id, parameter.displayName).substitute(substitution)
+                                    },
+                                prerequisitePlans = prerequisitePlans,
+                            ),
                     )
             }
 
             val result =
                 when {
-                    successfulCandidates.isNotEmpty() -> successfulCandidates.toSearchResult(desiredType)
+                    successfulCandidates.isNotEmpty() -> successfulCandidates.toCandidateSearchResult(desiredType)
                     sawRecursiveCandidate -> ResolutionSearchResult.Recursive(desiredType)
                     else -> ResolutionSearchResult.Missing(desiredType)
                 }
@@ -155,11 +160,25 @@ internal class TypeclassResolutionPlanner(
                     providedType = rule.providedType.substitute(substitution),
                     prerequisiteTypes = rule.prerequisiteTypes.map { it.substitute(substitution) },
                     supportsRecursiveResolution = rule.supportsRecursiveResolution,
+                    priority = rule.priority,
                 ),
             nextFreshCounter = freshCounter + 1,
         )
     }
 }
+
+private data class SuccessfulCandidate(
+    val priority: Int,
+    val ruleId: String,
+    val plan: ResolutionPlan,
+)
+
+private fun List<ResolutionPlan>.toSearchResult(desiredType: TcType): ResolutionSearchResult =
+    when (size) {
+        0 -> ResolutionSearchResult.Missing(desiredType)
+        1 -> ResolutionSearchResult.Success(single())
+        else -> ResolutionSearchResult.Ambiguous(desiredType, this)
+    }
 
 internal sealed interface ResolutionSearchResult {
     data class Success(
@@ -190,11 +209,21 @@ private data class InstantiatedRule(
     val nextFreshCounter: Int,
 )
 
-private fun List<ResolutionPlan>.toSearchResult(desiredType: TcType): ResolutionSearchResult =
+private fun List<SuccessfulCandidate>.toCandidateSearchResult(desiredType: TcType): ResolutionSearchResult =
     when (size) {
         0 -> ResolutionSearchResult.Missing(desiredType)
-        1 -> ResolutionSearchResult.Success(single())
-        else -> ResolutionSearchResult.Ambiguous(desiredType, this)
+        1 -> ResolutionSearchResult.Success(single().plan)
+        else -> {
+            if (any { candidate -> !candidate.ruleId.startsWith("derived:") }) {
+                return ResolutionSearchResult.Ambiguous(desiredType, map(SuccessfulCandidate::plan))
+            }
+            val maxPriority = maxOf(SuccessfulCandidate::priority)
+            val highestPriority = filter { candidate -> candidate.priority == maxPriority }
+            when (highestPriority.size) {
+                1 -> ResolutionSearchResult.Success(highestPriority.single().plan)
+                else -> ResolutionSearchResult.Ambiguous(desiredType, highestPriority.map(SuccessfulCandidate::plan))
+            }
+        }
     }
 
 private data class Substitution(

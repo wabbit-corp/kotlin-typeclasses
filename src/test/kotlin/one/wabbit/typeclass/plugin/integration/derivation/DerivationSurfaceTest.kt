@@ -481,7 +481,7 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
             @Derive(Show::class)
             sealed interface Expr
 
-            data class Lit<T>(val value: T) : Expr // E:TC_CANNOT_DERIVE
+            data class Lit<T>(val value: T) : Expr
 
             fun main() {
                 println("unreachable")
