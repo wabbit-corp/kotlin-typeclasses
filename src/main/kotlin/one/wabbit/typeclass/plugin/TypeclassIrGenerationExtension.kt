@@ -77,6 +77,7 @@ import org.jetbrains.kotlin.ir.expressions.IrConst
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrExpressionBody
+import org.jetbrains.kotlin.ir.expressions.IrGetObjectValue
 import org.jetbrains.kotlin.ir.expressions.IrReturn
 import org.jetbrains.kotlin.ir.expressions.IrStatementOrigin
 import org.jetbrains.kotlin.ir.expressions.IrSpreadElement
@@ -1264,13 +1265,36 @@ private class TypeclassIrCallTransformer(
     ): Boolean =
         deriverReturnValidationCache.getOrPut(deriveMethod) {
             val expectedTypeclassId = typeclassInterface.classIdOrFail.asString()
-            deriveMethod.knownDeriverReturnTypes().forEach { returnType ->
+            val declaredReturnTypeclassConstructors =
+                listOf(deriveMethod.returnType)
+                    .providedTypeExpansion(emptyMap(), configuration)
+                    .validTypes
+                    .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
+                    .distinct()
+            if (declaredReturnTypeclassConstructors.isNotEmpty()) {
+                if (expectedTypeclassId in declaredReturnTypeclassConstructors) {
+                    return@getOrPut true
+                }
+                pluginContext.reportTypeclassError(
+                    message =
+                        "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>; found ${declaredReturnTypeclassConstructors.joinToString { classifierId -> classifierId.shortClassNameOrSelf() }}",
+                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                    location = deriveMethod.compilerMessageLocation(),
+                )
+                return@getOrPut false
+            }
+            val knownReturnExpressions = deriveMethod.knownDeriverReturnExpressions()
+            if (knownReturnExpressions.isEmpty()) {
+                pluginContext.reportTypeclassError(
+                    message = "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>",
+                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                    location = deriveMethod.compilerMessageLocation(),
+                )
+                return@getOrPut false
+            }
+            knownReturnExpressions.forEach { returnExpression ->
                 val knownTypeclassConstructors =
-                    listOf(returnType)
-                        .providedTypeExpansion(emptyMap(), configuration)
-                        .validTypes
-                        .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
-                        .distinct()
+                    returnExpression.knownReturnedTypeclassConstructors(configuration)
                 if (knownTypeclassConstructors.isEmpty()) {
                     return@forEach
                 }
@@ -1780,12 +1804,12 @@ private fun IrFile.compilerMessageLocation(offset: Int): CompilerMessageSourceLo
     }
 }
 
-private fun IrSimpleFunction.knownDeriverReturnTypes(): List<IrType> {
+private fun IrSimpleFunction.knownDeriverReturnExpressions(): List<IrExpression> {
     val body = body ?: return emptyList()
-    val returnTypes = linkedSetOf<IrType>()
+    val returnExpressions = linkedSetOf<IrExpression>()
 
     fun record(expression: IrExpression?) {
-        expression?.knownReturnedTypeOrNull()?.let(returnTypes::add)
+        expression?.let(returnExpressions::add)
     }
 
     when (body) {
@@ -1810,7 +1834,7 @@ private fun IrSimpleFunction.knownDeriverReturnTypes(): List<IrType> {
             }
 
             override fun visitReturn(expression: IrReturn) {
-                if (expression.returnTargetSymbol == this@knownDeriverReturnTypes.symbol) {
+                if (expression.returnTargetSymbol == this@knownDeriverReturnExpressions.symbol) {
                     record(expression.value)
                     return
                 }
@@ -1818,17 +1842,85 @@ private fun IrSimpleFunction.knownDeriverReturnTypes(): List<IrType> {
             }
         },
     )
-    return returnTypes.toList()
+    return returnExpressions.toList()
 }
 
-private fun IrExpression.knownReturnedTypeOrNull(): IrType? =
+private fun IrExpression.knownReturnedTypeclassConstructors(
+    configuration: TypeclassConfiguration,
+): List<String> =
+    knownReturnedExpressionOrSelf()
+        .knownReturnedTypeclassConstructorsOrEmpty(configuration)
+
+private fun IrExpression.knownReturnedExpressionOrSelf(): IrExpression =
     when (this) {
-        is IrTypeOperatorCall -> argument.knownReturnedTypeOrNull()
-        is IrComposite -> (statements.lastOrNull() as? IrExpression)?.knownReturnedTypeOrNull() ?: type
+        is IrTypeOperatorCall -> argument.knownReturnedExpressionOrSelf()
+        is IrComposite -> (statements.lastOrNull() as? IrExpression)?.knownReturnedExpressionOrSelf() ?: this
         is org.jetbrains.kotlin.ir.expressions.IrBlock ->
-            (statements.lastOrNull() as? IrExpression)?.knownReturnedTypeOrNull() ?: type
-        else -> type
+            (statements.lastOrNull() as? IrExpression)?.knownReturnedExpressionOrSelf() ?: this
+        else -> this
     }
+
+private fun IrExpression.knownReturnedImplementationOwners(): List<IrClass> =
+    when (this) {
+        is IrTypeOperatorCall -> argument.knownReturnedImplementationOwners()
+        is IrConstructorCall -> listOf(symbol.owner.parentAsClass)
+        is IrGetObjectValue -> listOf(symbol.owner)
+        is IrComposite ->
+            buildList {
+                addAll(statements.filterIsInstance<IrClass>())
+                (statements.lastOrNull() as? IrExpression)?.let { lastExpression ->
+                    addAll(lastExpression.knownReturnedImplementationOwners())
+                }
+            }
+        is org.jetbrains.kotlin.ir.expressions.IrBlock ->
+            buildList {
+                addAll(statements.filterIsInstance<IrClass>())
+                (statements.lastOrNull() as? IrExpression)?.let { lastExpression ->
+                    addAll(lastExpression.knownReturnedImplementationOwners())
+                }
+            }
+        else -> type.classOrNull?.owner?.let(::listOf).orEmpty()
+    }
+
+private fun IrExpression.knownReturnedTypeclassConstructorsOrEmpty(
+    configuration: TypeclassConfiguration,
+): List<String> {
+    val direct =
+        listOf(type)
+            .providedTypeExpansion(emptyMap(), configuration)
+            .validTypes
+            .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
+            .distinct()
+    if (direct.isNotEmpty()) {
+        return direct
+    }
+    val result = linkedSetOf<String>()
+    val visited = linkedSetOf<String>()
+
+    fun visitSuperType(superType: IrType) {
+        val simpleType = superType as? IrSimpleType ?: return
+        val currentClass = simpleType.classOrNull?.owner ?: return
+        val visitKey = currentClass.classId?.asString() ?: currentClass.name.asString()
+        if (!visited.add(visitKey)) {
+            return
+        }
+        if (currentClass.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID)) {
+            val classifierId =
+                (irTypeToModel(superType, emptyMap()) as? TcType.Constructor)?.classifierId
+            if (classifierId != null) {
+                result += classifierId
+            }
+        }
+        currentClass.superTypes.forEach(::visitSuperType)
+    }
+
+    knownReturnedImplementationOwners()
+        .distinctBy { owner -> owner.classId?.asString() ?: owner.name.asString() }
+        .forEach { owner ->
+            owner.superTypes.forEach(::visitSuperType)
+        }
+    return result.toList()
+}
 
 private fun String.shortClassNameOrSelf(): String =
     runCatching { ClassId.fromString(this).shortClassName.asString() }.getOrDefault(this)
@@ -2616,6 +2708,11 @@ private class IrModuleScanner(
             return emptyList()
         }
         if (typeclassInterface.typeParameters.size != 1) {
+            pluginContext.reportTypeclassError(
+                message = "@Derive currently only supports typeclasses with exactly one type parameter",
+                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                location = compilerMessageLocation(),
+            )
             return emptyList()
         }
         val ruleTypeParameters =
@@ -2752,6 +2849,13 @@ private class IrModuleScanner(
     private fun IrClass.toDerivedEquivRules(): List<ResolvedRule> {
         val targetClassId = classId ?: return emptyList()
         if (typeParameters.isNotEmpty()) {
+            deriveEquivRequests().forEach { request ->
+                pluginContext.reportTypeclassError(
+                    message = "@DeriveEquiv only supports monomorphic classes for now",
+                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                    location = compilerMessageLocation(request.annotation),
+                )
+            }
             return emptyList()
         }
         val planner = DirectTransportPlanner(pluginContext)
@@ -2809,6 +2913,13 @@ private class IrModuleScanner(
     private fun IrClass.toDeriveViaRules(): List<ResolvedRule> {
         val targetClassId = classId ?: return emptyList()
         if (typeParameters.isNotEmpty()) {
+            deriveViaRequests(pluginContext).forEach { request ->
+                pluginContext.reportTypeclassError(
+                    message = "@DeriveVia only supports monomorphic classes for now",
+                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                    location = compilerMessageLocation(request.annotation),
+                )
+            }
             return emptyList()
         }
         val planner = DirectTransportPlanner(pluginContext)
@@ -2861,11 +2972,9 @@ private class IrModuleScanner(
             val targetType =
                 TcType.Constructor(targetClassId.asString(), emptyList())
             val viaTypeModel =
-                (resolvedPath.viaType.classOrNull?.owner?.classId?.let { classId ->
-                    TcType.Constructor(classId.asString(), emptyList())
-                }) ?: run {
+                irTypeToModel(resolvedPath.viaType, emptyMap()) ?: run {
                     pluginContext.reportTypeclassError(
-                        message = "DeriveVia terminal type must be a class type",
+                        message = "DeriveVia terminal type must be representable as a typeclass goal",
                         diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                         location = compilerMessageLocation(request.annotation),
                     )
@@ -4990,15 +5099,37 @@ private fun IrType.satisfiesExpectedContextType(
     if (visibleTypeParameters != null && matchesTypeclassParameterType(expected, visibleTypeParameters)) {
         return true
     }
-    val owner = classOrNull?.owner ?: return false
-    val visitKey = owner.classId?.asString() ?: owner.name.asString()
+    val simpleType = this as? IrSimpleType
+    val owner = simpleType?.classOrNull?.owner ?: classOrNull?.owner ?: return false
+    val visitKey = render()
     if (!visited.add(visitKey)) {
         return false
     }
+    val substitutions =
+        if (simpleType != null) {
+            owner.typeParameters.mapIndexedNotNull { index, parameter ->
+                val argument = simpleType.arguments.getOrNull(index)
+                val argumentType =
+                    when (argument) {
+                        is org.jetbrains.kotlin.ir.types.IrTypeProjection -> argument.type
+                        is IrType -> argument
+                        else -> null
+                    } ?: return@mapIndexedNotNull null
+                parameter.symbol to argumentType
+            }.toMap()
+        } else {
+            emptyMap()
+        }
     return owner.superTypes.any { superType ->
-        superType == expected ||
-            (visibleTypeParameters != null && superType.matchesTypeclassParameterType(expected, visibleTypeParameters)) ||
-            superType.satisfiesExpectedContextType(expected, visibleTypeParameters, visited)
+        val substitutedSuperType =
+            if (substitutions.isEmpty()) {
+                superType
+            } else {
+                superType.substitute(substitutions)
+            }
+        substitutedSuperType == expected ||
+            (visibleTypeParameters != null && substitutedSuperType.matchesTypeclassParameterType(expected, visibleTypeParameters)) ||
+            substitutedSuperType.satisfiesExpectedContextType(expected, visibleTypeParameters, visited)
     }
 }
 
@@ -5342,16 +5473,25 @@ private fun mapCurrentArgumentsToOriginalParameters(
     fun argumentProvidesContext(
         argument: IrExpression?,
         expectedType: IrType,
-    ): Boolean =
-        argument != null &&
-            (
-                argument.type.isTypeclassType(configuration) ||
-                    argument.type.localEvidenceTypes(visibleTypeParameterSymbols, configuration).isNotEmpty()
-            ) &&
+    ): Boolean {
+        argument ?: return false
+        val localEvidenceTypes = argument.type.localEvidenceTypes(visibleTypeParameterSymbols, configuration)
+        val expectedModel = irTypeToModel(expectedType, visibleTypeParameterSymbols)
+        val localEvidenceMatches =
+            expectedModel != null &&
+                localEvidenceTypes.any { candidate ->
+                    candidate == expectedModel || candidate.matchesProjectedExplicitContextType(expectedModel)
+                }
+        return (
+            argument.type.isTypeclassType(configuration) ||
+                localEvidenceTypes.isNotEmpty()
+        ) &&
             (
                 argument.type.satisfiesExpectedContextType(expectedType, visibleTypeParameters) ||
-                    argument.type.matchesProjectedExplicitContextType(expectedType, visibleTypeParameters)
+                    argument.type.matchesProjectedExplicitContextType(expectedType, visibleTypeParameters) ||
+                    localEvidenceMatches
             )
+    }
 
     fun argumentMatchesRegularParameter(
         argument: IrExpression?,

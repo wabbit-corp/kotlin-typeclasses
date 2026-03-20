@@ -25,6 +25,7 @@ internal class TypeclassResolutionPlanner(
             desiredType = desiredType,
             localContextTypes = localContextTypes,
             inProgress = linkedSetOf(),
+            allowedRecursiveGoals = linkedSetOf(),
             freshCounter = 0,
         ).result
 
@@ -32,12 +33,13 @@ internal class TypeclassResolutionPlanner(
         desiredType: TcType,
         localContextTypes: List<TcType>,
         inProgress: LinkedHashSet<String>,
+        allowedRecursiveGoals: LinkedHashSet<String>,
         freshCounter: Int,
     ): InternalResolution {
         val normalizedDesired = desiredType.normalizedKey()
         if (!inProgress.add(normalizedDesired)) {
             val recursiveResult =
-                if (ruleProvider(desiredType).any(InstanceRule::supportsRecursiveResolution)) {
+                if (normalizedDesired in allowedRecursiveGoals) {
                     ResolutionSearchResult.Success(ResolutionPlan.RecursiveReference(desiredType))
                 } else {
                     ResolutionSearchResult.Recursive(desiredType)
@@ -82,24 +84,34 @@ internal class TypeclassResolutionPlanner(
 
                 val prerequisitePlans = mutableListOf<ResolutionPlan>()
                 var candidateFreshCounter = nextFreshCounter
+                val recursiveGoalKey = appliedRule.providedType.normalizedKey()
+                val addedRecursiveGoal =
+                    appliedRule.supportsRecursiveResolution && allowedRecursiveGoals.add(recursiveGoalKey)
 
-                for (prerequisiteType in appliedRule.prerequisiteTypes) {
-                    val nested =
-                        resolveInternal(
-                            desiredType = prerequisiteType,
-                            localContextTypes = appliedLocals,
-                            inProgress = inProgress,
-                            freshCounter = candidateFreshCounter,
-                        )
-                    candidateFreshCounter = nested.freshCounter
-                    when (val nestedResult = nested.result) {
-                        is ResolutionSearchResult.Success -> prerequisitePlans += nestedResult.plan
-                        is ResolutionSearchResult.Recursive -> {
-                            sawRecursiveCandidate = true
-                            return@forEach
+                try {
+                    for (prerequisiteType in appliedRule.prerequisiteTypes) {
+                        val nested =
+                            resolveInternal(
+                                desiredType = prerequisiteType,
+                                localContextTypes = appliedLocals,
+                                inProgress = inProgress,
+                                allowedRecursiveGoals = allowedRecursiveGoals,
+                                freshCounter = candidateFreshCounter,
+                            )
+                        candidateFreshCounter = nested.freshCounter
+                        when (val nestedResult = nested.result) {
+                            is ResolutionSearchResult.Success -> prerequisitePlans += nestedResult.plan
+                            is ResolutionSearchResult.Recursive -> {
+                                sawRecursiveCandidate = true
+                                return@forEach
+                            }
+
+                            else -> return@forEach
                         }
-
-                        else -> return@forEach
+                    }
+                } finally {
+                    if (addedRecursiveGoal) {
+                        allowedRecursiveGoals.remove(recursiveGoalKey)
                     }
                 }
 

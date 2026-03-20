@@ -33,13 +33,29 @@ internal fun FirRegularClass.supportedDerivedTypeclassIds(session: FirSession): 
         if (!supportsDeriveShape()) {
             emptySet()
         } else {
-            derivedTypeclassIds(session).filterTo(linkedSetOf()) { typeclassId ->
+                derivedTypeclassIds(session).filterTo(linkedSetOf()) { typeclassId ->
                 supportsDerivationForTypeclass(typeclassId, session)
             }
         }
-    val deriveViaIds = deriveViaTypeclassIds(session)
+    val deriveViaIds =
+        if (typeParameters.isEmpty()) {
+            deriveViaTypeclassIds(session).filterTo(linkedSetOf()) { typeclassId ->
+                (
+                    runCatching { ClassId.fromString(typeclassId) }.getOrNull()
+                        ?.let { classId -> typeclassTypeParameterCount(classId, session)?.let { it >= 1 } == true }
+                    ) == true
+            }
+        } else {
+            emptySet()
+        }
     val deriveEquivIds =
-        if (deriveEquivRequests(session).isNotEmpty()) {
+        if (typeParameters.isEmpty() && deriveEquivRequests(session).any { otherClassId ->
+                (
+                    runCatching { ClassId.fromString(otherClassId) }.getOrNull()
+                        ?.let { classId -> session.regularClassSymbolOrNull(classId)?.fir?.typeParameters?.isEmpty() == true }
+                    ) == true
+            }
+        ) {
             setOf(EQUIV_CLASS_ID.asString())
         } else {
             emptySet()
@@ -72,6 +88,9 @@ internal fun FirRegularClass.supportsDerivationForTypeclass(
     session: FirSession,
 ): Boolean {
     val classId = runCatching { ClassId.fromString(typeclassId) }.getOrNull() ?: return false
+    if (typeclassTypeParameterCount(classId, session) != 1) {
+        return false
+    }
     val requiredDeriverInterface = requiredDeriverInterfaceForDeriveShape()
     return typeclassSupportsDeriveShape(classId, requiredDeriverInterface, session)
 }
@@ -163,7 +182,7 @@ private fun FirAnnotation.containedGeneratedInstanceAnnotations(): List<FirAnnot
     return valueArgument.unwrapVarargValue().filterIsInstance<FirAnnotation>()
 }
 
-private fun FirAnnotation.getClassIdArgument(name: String): ClassId? =
+internal fun FirAnnotation.getClassIdArgument(name: String): ClassId? =
     findArgumentByName(Name.identifier(name))
         ?.unwrapVarargValue()
         .orEmpty()
@@ -215,12 +234,7 @@ private fun typeclassCompanionSymbol(
     typeclassId: ClassId,
     session: FirSession,
 ): FirRegularClassSymbol? {
-    val typeclassSymbol =
-        try {
-            session.symbolProvider.getClassLikeSymbolByClassId(typeclassId) as? FirRegularClassSymbol
-        } catch (_: IllegalArgumentException) {
-            null
-        } ?: return null
+    val typeclassSymbol = session.regularClassSymbolOrNull(typeclassId) ?: return null
     return typeclassSymbol.fir.declarations
         .filterIsInstance<FirRegularClass>()
         .singleOrNull { declaration ->
@@ -234,6 +248,18 @@ private fun typeclassCompanionSymbol(
             null
         }
 }
+
+internal fun typeclassTypeParameterCount(
+    typeclassId: ClassId,
+    session: FirSession,
+): Int? = session.regularClassSymbolOrNull(typeclassId)?.fir?.typeParameters?.size
+
+internal fun FirSession.regularClassSymbolOrNull(classId: ClassId): FirRegularClassSymbol? =
+    try {
+        symbolProvider.getClassLikeSymbolByClassId(classId) as? FirRegularClassSymbol
+    } catch (_: IllegalArgumentException) {
+        null
+    }
 
 internal fun FirRegularClassSymbol.implementsInterface(
     targetInterface: ClassId,

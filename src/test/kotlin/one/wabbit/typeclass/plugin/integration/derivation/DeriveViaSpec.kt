@@ -536,6 +536,341 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
+    @Test fun deriveEquivSupportsRepeatedSiblingTransportPairs() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveEquiv
+            import one.wabbit.typeclass.Equiv
+            import one.wabbit.typeclass.InternalTypeclassApi
+            import one.wabbit.typeclass.summon
+
+            @JvmInline
+            value class A(val value: Int)
+
+            @JvmInline
+            value class B(val value: Int)
+
+            @DeriveEquiv(Right::class)
+            data class Left(val first: A, val second: A)
+
+            data class Right(val first: B, val second: B)
+
+            @OptIn(InternalTypeclassApi::class)
+            fun main() {
+                val equiv = summon<Equiv<Left, Right>>()
+                println(equiv.to(Left(A(1), A(2))))
+                println(equiv.from(Right(B(3), B(4))))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                Right(first=B(value=1), second=B(value=2))
+                Left(first=A(value=3), second=A(value=4))
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun deriveViaSupportsRepeatedSiblingStructuralTransportShapes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            data class Box<A>(val value: A)
+            data class Nest<A>(val left: Box<A>, val right: Box<A>)
+
+            @Typeclass
+            interface Fancy<A> {
+                fun adjust(value: Nest<A>): Nest<A>
+            }
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooFancy : Fancy<Foo> {
+                override fun adjust(value: Nest<Foo>): Nest<Foo> =
+                    Nest(
+                        left = Box(Foo(value.left.value.value + 1)),
+                        right = Box(Foo(value.right.value.value + 1)),
+                    )
+            }
+
+            @JvmInline
+            @DeriveVia(Fancy::class, Foo::class)
+            value class UserId(val value: Int)
+
+            context(fancy: Fancy<A>)
+            fun <A> adjust(value: Nest<A>): Nest<A> = fancy.adjust(value)
+
+            fun main() {
+                println(adjust(Nest(Box(UserId(1)), Box(UserId(2)))))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "Nest(left=Box(value=UserId(value=2)), right=Box(value=UserId(value=3)))",
+        )
+    }
+
+    @Test fun deriveViaPreservesNullableTerminalViaTypes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Iso
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object NullableStringShow : Show<String?> {
+                override fun show(value: String?): String = value ?: "<null>"
+            }
+
+            @JvmInline
+            @DeriveVia(Show::class, UserIdIso::class)
+            value class UserId(val value: Int)
+
+            object UserIdIso : Iso<UserId, String?> {
+                override fun to(value: UserId): String? = value.value.takeIf { it >= 0 }?.toString()
+
+                override fun from(value: String?): UserId = UserId(value?.toInt() ?: -1)
+            }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(UserId(7)))
+                println(render(UserId(-1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                7
+                <null>
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun deriveViaPreservesParameterizedTerminalViaTypes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Iso
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntListShow : Show<List<Int>> {
+                override fun show(value: List<Int>): String = value.joinToString("|")
+            }
+
+            @JvmInline
+            @DeriveVia(Show::class, UserIdIso::class)
+            value class UserId(val value: Int)
+
+            object UserIdIso : Iso<UserId, List<Int>> {
+                override fun to(value: UserId): List<Int> = listOf(value.value, value.value + 1)
+
+                override fun from(value: List<Int>): UserId = UserId(value.first())
+            }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(UserId(4)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "4|5",
+        )
+    }
+
+    @Test fun deriveViaImplementsInheritedAbstractMembers() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Render<A> {
+                fun render(value: A): String
+            }
+
+            @Typeclass
+            interface Pretty<A> : Render<A> {
+                fun pretty(value: A): String
+            }
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooPretty : Pretty<Foo> {
+                override fun render(value: Foo): String = "render:${'$'}{value.value}"
+
+                override fun pretty(value: Foo): String = "pretty:${'$'}{value.value}"
+            }
+
+            @JvmInline
+            @DeriveVia(Pretty::class, Foo::class)
+            value class UserId(val value: Int)
+
+            context(pretty: Pretty<A>)
+            fun <A> describe(value: A): String = pretty.render(value) + "|" + pretty.pretty(value)
+
+            fun main() {
+                println(describe(UserId(9)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "render:9|pretty:9",
+        )
+    }
+
+    @Test fun deriveViaRejectsUnsupportedInheritedAbstractMembers() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            data class MutableBox<A>(var value: A)
+
+            @Typeclass
+            interface Render<A> {
+                fun renderAll(value: MutableBox<A>): MutableBox<A>
+            }
+
+            @Typeclass
+            interface Pretty<A> : Render<A> {
+                fun pretty(value: A): String
+            }
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooPretty : Pretty<Foo> {
+                override fun renderAll(value: MutableBox<Foo>): MutableBox<Foo> = value
+
+                override fun pretty(value: Foo): String = value.value.toString()
+            }
+
+            @JvmInline
+            @DeriveVia(Pretty::class, Foo::class) // E:TC_CANNOT_DERIVE inherited abstract members must participate in DeriveVia validation
+            value class UserId(val value: Int)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = emptyList(),
+            expectedDiagnostics = listOf(expectedCannotDerive("opaque or mutable nominal containers")),
+        )
+    }
+
+    @Test fun genericDeriveEquivTargetsAreRejectedAtTheAnnotationSite() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveEquiv
+            import one.wabbit.typeclass.Equiv
+            import one.wabbit.typeclass.summon
+
+            data class PlainIntBox(val value: Int)
+
+            @DeriveEquiv(PlainIntBox::class) // E:TC_CANNOT_DERIVE generic DeriveEquiv targets are not supported yet
+            data class GenericBox<A>(val value: A)
+
+            fun main() {
+                println(summon<Equiv<GenericBox<Int>, PlainIntBox>>())
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = emptyList(),
+            expectedDiagnostics = listOf(expectedCannotDerive("monomorphic")),
+        )
+    }
+
+    @Test fun genericDeriveViaTargetsAreRejectedAtTheAnnotationSite() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooShow : Show<Foo> {
+                override fun show(value: Foo): String = value.value.toString()
+            }
+
+            @DeriveVia(Show::class, Foo::class) // E:TC_CANNOT_DERIVE generic DeriveVia targets are not supported yet
+            data class GenericBox<A>(val value: A)
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(GenericBox(1)))
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = emptyList(),
+            expectedDiagnostics = listOf(expectedCannotDerive("monomorphic")),
+        )
+    }
+
     // Exact intended semantics:
     // - if the same declaration requests the same typeclass through multiple viable DeriveVia paths,
     //   those are user-visible terminal choices rather than harmless internal Equiv proof-tree differences

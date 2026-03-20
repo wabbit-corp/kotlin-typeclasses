@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fix the review-driven compiler regressions around `@DeriveVia` recursion tracking, `@Derive`/`@DeriveVia`/`@DeriveEquiv` derivability filtering, full terminal `via` type preservation, active-rule-scoped recursive planning, stricter deriver return-type validation, and explicit review regressions for repeated sibling transport, nullable/parameterized `via` targets, generic/non-unary unsupported derivation sites, and recursive-rule scoping.
 - Implement the active `GADTDerivationTest` contract: classify effective variance from typeclass signatures, honor conservative GADT-policy overrides, synthesize specialized sealed-root derivation heads for admissible result-head refinements, preserve ordinary covariant `Nothing` cases in generic sealed ADTs, and keep user-written instances ambiguous against derived ones instead of letting GADT-specific rule priority hide them.
 - Implement `@DeriveVia` and `@DeriveEquiv` end to end, including compiler-owned `Equiv` evidence, FIR/IR validation for invalid `Equiv` declarations, last-slot typeclass transport, pinned `Iso` path segments, structural transportability checks, and active `DeriveViaSpec` coverage.
 - Add cross-module `@DeriveVia` / `@DeriveEquiv` regressions, including upstream-module waypoint and pinned-`Iso` transport plus a two-dependency `@DeriveEquiv(A::class)` export case, and harden FIR/IR derivation discovery so binary generated markers and external DeriveVia/DeriveEquiv rules remain visible across module boundaries.

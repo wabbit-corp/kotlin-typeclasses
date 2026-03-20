@@ -222,6 +222,7 @@ private class FirResolutionScanner(
     private val associatedRulesByOwner = linkedMapOf<ClassId, MutableList<VisibleInstanceRule>>()
     private val classInfoById = linkedMapOf<String, VisibleClassHierarchyInfo>()
     private val derivableTypeclassIdsByOwner = linkedMapOf<String, MutableSet<String>>()
+    private val deriveEquivTargetIdsByOwner = linkedMapOf<String, MutableSet<String>>()
 
     @OptIn(DirectDeclarationsAccess::class)
     fun scanDeclaration(
@@ -247,6 +248,18 @@ private class FirResolutionScanner(
                         }
                     if (derivedTypeclassIds.isNotEmpty()) {
                         derivableTypeclassIdsByOwner.getOrPut(classId.asString(), ::linkedSetOf) += derivedTypeclassIds
+                    }
+                    if (declaration.typeParameters.isEmpty()) {
+                        val deriveEquivTargets =
+                            declaration.deriveEquivRequests(session).filterTo(linkedSetOf()) { otherClassId ->
+                                runCatching { ClassId.fromString(otherClassId) }.getOrNull()
+                                    ?.let { otherClassIdValue ->
+                                        session.regularClassSymbolOrNull(otherClassIdValue)?.fir?.typeParameters?.isEmpty() == true
+                                    } == true
+                            }
+                        if (deriveEquivTargets.isNotEmpty()) {
+                            deriveEquivTargetIdsByOwner.getOrPut(classId.asString(), ::linkedSetOf) += deriveEquivTargets
+                        }
                     }
                 }
 
@@ -307,6 +320,8 @@ private class FirResolutionScanner(
             classInfoById = classInfoById.toMutableMap(),
             derivableTypeclassIdsByOwner =
                 derivableTypeclassIdsByOwner.mapValues { (_, typeclassIds) -> typeclassIds.toSet() },
+            deriveEquivTargetIdsByOwner =
+                deriveEquivTargetIdsByOwner.mapValues { (_, targetIds) -> targetIds.toSet() },
         )
 }
 
@@ -316,9 +331,11 @@ private data class ResolutionIndex(
     val associatedRulesByOwner: Map<ClassId, List<VisibleInstanceRule>>,
     val classInfoById: MutableMap<String, VisibleClassHierarchyInfo>,
     val derivableTypeclassIdsByOwner: Map<String, Set<String>>,
+    val deriveEquivTargetIdsByOwner: Map<String, Set<String>>,
 ) {
     private val lazilyDiscoveredAssociatedRulesByOwner: MutableMap<ClassId, List<VisibleInstanceRule>> = linkedMapOf()
     private val lazilyDiscoveredDerivableTypeclassIdsByOwner: MutableMap<String, Set<String>> = linkedMapOf()
+    private val lazilyDiscoveredDeriveEquivTargetIdsByOwner: MutableMap<String, Set<String>> = linkedMapOf()
 
     fun rulesForGoal(
         goal: TcType,
@@ -378,16 +395,31 @@ private data class ResolutionIndex(
     ): Boolean {
         val constructor = goal as? TcType.Constructor ?: return false
         val typeclassId = constructor.classifierId
-        val targetIndex =
-            when (typeclassId) {
-                EQUIV_CLASS_ID.asString() -> 0
-                else -> constructor.arguments.lastIndex
+        return when (typeclassId) {
+            EQUIV_CLASS_ID.asString() -> {
+                val sourceType = constructor.arguments.getOrNull(0) as? TcType.Constructor ?: return false
+                val targetType = constructor.arguments.getOrNull(1) as? TcType.Constructor ?: return false
+                if (sourceType.isNullable || targetType.isNullable) {
+                    return false
+                }
+                derivationOwnersForTarget(sourceType.classifierId, session).any { owner ->
+                    val preciseTargets = discoveredDeriveEquivTargetIds(owner, session)
+                    when {
+                        preciseTargets.isNotEmpty() -> targetType.classifierId in preciseTargets
+                        else -> EQUIV_CLASS_ID.asString() in discoveredDerivableTypeclassIds(owner, session)
+                    }
+                }
             }
-        val targetType =
-            constructor.arguments.getOrNull(targetIndex) as? TcType.Constructor
-                ?: return false
-        return derivationOwnersForTarget(targetType.classifierId, session).any { owner ->
-            typeclassId in discoveredDerivableTypeclassIds(owner, session)
+
+            else -> {
+                val targetType = constructor.arguments.lastOrNull() as? TcType.Constructor ?: return false
+                if (targetType.isNullable) {
+                    return false
+                }
+                derivationOwnersForTarget(targetType.classifierId, session).any { owner ->
+                    typeclassId in discoveredDerivableTypeclassIds(owner, session)
+                }
+            }
         }
     }
 
@@ -445,6 +477,29 @@ private data class ResolutionIndex(
                         } ?: return@getOrPut emptySet()
                     symbol.fir.supportedDerivedTypeclassIds(activeSession).let { supportedTypeclassIds ->
                         supportedTypeclassIds + supportedTypeclassIds.expandedDerivedTypeclassIds(activeSession, configuration)
+                    }
+                }
+            }
+            ?: emptySet()
+
+    private fun discoveredDeriveEquivTargetIds(
+        owner: String,
+        session: FirSession?,
+    ): Set<String> =
+        deriveEquivTargetIdsByOwner[owner]
+            ?: lazilyDiscoveredDeriveEquivTargetIdsByOwner[owner]
+            ?: session?.let { activeSession ->
+                lazilyDiscoveredDeriveEquivTargetIdsByOwner.getOrPut(owner) {
+                    val classId = runCatching { ClassId.fromString(owner) }.getOrNull() ?: return@getOrPut emptySet()
+                    val symbol = activeSession.regularClassSymbolOrNull(classId) ?: return@getOrPut emptySet()
+                    if (symbol.fir.typeParameters.isNotEmpty()) {
+                        return@getOrPut emptySet()
+                    }
+                    symbol.fir.deriveEquivRequests(activeSession).filterTo(linkedSetOf()) { otherClassId ->
+                        runCatching { ClassId.fromString(otherClassId) }.getOrNull()
+                            ?.let { otherClassIdValue ->
+                                activeSession.regularClassSymbolOrNull(otherClassIdValue)?.fir?.typeParameters?.isEmpty() == true
+                            } == true
                     }
                 }
             }

@@ -194,6 +194,42 @@ class WrapperPlannerTest {
     }
 
     @Test
+    fun `recursive admissibility is scoped to the active candidate rule`() {
+        val a = TcTypeParameter("outer:A", "A")
+        val x = TcTypeParameter("rule:X", "X")
+        val poisonRecursiveRule =
+            InstanceRule(
+                id = "derived:poisonRecursiveFoo",
+                typeParameters = listOf(x),
+                providedType = foo(pair(typeVariable(x), typeVariable(x))),
+                prerequisiteTypes = listOf(foo(pair(typeVariable(x), typeVariable(x)))),
+                supportsRecursiveResolution = true,
+            )
+        val fooFromBar =
+            InstanceRule(
+                id = "customFooFromBar",
+                typeParameters = listOf(x),
+                providedType = foo(typeVariable(x)),
+                prerequisiteTypes = listOf(bar(typeVariable(x))),
+            )
+        val barFromFoo =
+            InstanceRule(
+                id = "barFromFoo",
+                typeParameters = listOf(x),
+                providedType = bar(typeVariable(x)),
+                prerequisiteTypes = listOf(foo(typeVariable(x))),
+            )
+
+        val result =
+            TypeclassResolutionPlanner(listOf(poisonRecursiveRule, fooFromBar, barFromFoo)).resolve(
+                desiredType = foo(typeVariable(a)),
+                localContextTypes = emptyList(),
+            )
+
+        assertIs<ResolutionSearchResult.Recursive>(result)
+    }
+
+    @Test
     fun `rule ordering does not change the surviving successful plan`() {
         val a = TcTypeParameter("outer:A", "A")
         val x = TcTypeParameter("rule:X", "X")

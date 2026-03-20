@@ -1139,4 +1139,46 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
         )
     }
 
+    @Ignore("Blocked by broader explicit context-argument frontend support; keep as a focused substitution regression once that path is active")
+    @Test
+    fun explicitContextArgumentsRespectGenericSupertypeSubstitution() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            data class Box<A>(val value: A)
+
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            open class GenericBoxShow<T>(
+                private val elementShow: Show<T>,
+            ) : Show<Box<T>> {
+                override fun show(value: Box<T>): String = "box:${'$'}{elementShow.show(value.value)}"
+            }
+
+            object IntBoxShow : GenericBoxShow<Int>(IntShow)
+
+            context(show: Show<Box<Int>>)
+            fun render(value: Box<Int>): String = show.show(value)
+
+            fun main() {
+                println(render(IntBoxShow, Box(1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "box:int:1",
+        )
+    }
+
 }

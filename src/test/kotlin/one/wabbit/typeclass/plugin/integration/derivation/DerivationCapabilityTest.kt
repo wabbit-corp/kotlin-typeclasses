@@ -1,6 +1,7 @@
 package one.wabbit.typeclass.plugin.integration.derivation
 
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
+import one.wabbit.typeclass.plugin.integration.DiagnosticPhase
 import kotlin.test.Test
 
 class DerivationCapabilityTest : IntegrationTestSupport() {
@@ -42,6 +43,59 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun deriveAnnotationsDoNotSatisfyNullableInstantiationsOfTheDerivedHead() {
+        val source =
+            requestedHeadOnlySource(
+                extraDeclarations =
+                    """
+                    context(show: Show<A>)
+                    fun <A> render(value: A): String = show.show(value)
+                    """,
+                mainBody = """println(render<User?>(null))""",
+            )
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = emptyList(),
+            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.IR)),
+        )
+    }
+
+    @Test
+    fun nonUnaryTypeclassesCannotBeDerived() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Decoder<E, A> {
+                fun decode(env: E): A
+
+                companion object : ProductTypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Decoder<String, Any?> {
+                            override fun decode(env: String): Any? = metadata.typeName
+                        }
+                }
+            }
+
+            @Derive(Decoder::class) // E:TC_CANNOT_DERIVE non-unary typeclasses are not derivable with @Derive
+            data class Box(val value: Int)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = emptyList(),
+            expectedDiagnostics = listOf(expectedCannotDerive("exactly one type parameter")),
+        )
+    }
+
+    @Test
     fun deriveProductMustReturnTheRequestedTypeclassConstructorWhenStaticallyKnown() {
         val source =
             """
@@ -78,6 +132,37 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             source = source,
             expectedMessages = listOf("deriveProduct", "Show", "Eq"),
             expectedDiagnostics = listOf(expectedCannotDerive("deriveProduct", "Show", "Eq", phase = null)),
+        )
+    }
+
+    @Test
+    fun deriveProductDeclaredReturnTypeMustExpandToTheOwningTypeclass() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : ProductTypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any = 42 // E:TC_CANNOT_DERIVE
+                }
+            }
+
+            @Derive(Show::class)
+            data class Box(val value: Int)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = emptyList(),
+            expectedDiagnostics = listOf(expectedCannotDerive("deriveProduct", "Show")),
         )
     }
 
@@ -127,6 +212,46 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             source = source,
             expectedMessages = listOf("deriveSum", "Show", "Eq"),
             expectedDiagnostics = listOf(expectedCannotDerive("deriveSum", "Show", "Eq", phase = null)),
+        )
+    }
+
+    @Test
+    fun deriveSumDeclaredReturnTypeMustExpandToTheOwningTypeclass() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : TypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+
+                    override fun deriveSum(metadata: SumTypeclassMetadata): Any = 42 // E:TC_CANNOT_DERIVE
+                }
+            }
+
+            @Derive(Show::class)
+            sealed interface Token
+
+            data class Word(val value: String) : Token
+            object End : Token
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = emptyList(),
+            expectedDiagnostics = listOf(expectedCannotDerive("deriveSum", "Show")),
         )
     }
 
@@ -181,6 +306,52 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             source = source,
             expectedMessages = listOf("deriveEnum", "Show", "Eq"),
             expectedDiagnostics = listOf(expectedCannotDerive("deriveEnum", "Show", "Eq", phase = null)),
+        )
+    }
+
+    @Test
+    fun deriveEnumDeclaredReturnTypeMustExpandToTheOwningTypeclass() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.EnumTypeclassMetadata
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : TypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+
+                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+
+                    override fun deriveEnum(metadata: EnumTypeclassMetadata): Any = 42 // E:TC_CANNOT_DERIVE
+                }
+            }
+
+            @Derive(Show::class)
+            enum class Priority {
+                LOW,
+                HIGH,
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedMessages = emptyList(),
+            expectedDiagnostics = listOf(expectedCannotDerive("deriveEnum", "Show")),
         )
     }
 

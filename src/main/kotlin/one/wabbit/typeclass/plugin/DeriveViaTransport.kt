@@ -319,44 +319,47 @@ internal class DirectTransportPlanner(
         if (!visiting.add(visitKey)) {
             return null
         }
+        try {
+            if (sourceType.isMarkedNullable() || targetType.isMarkedNullable()) {
+                if (!sourceType.isMarkedNullable() || !targetType.isMarkedNullable()) {
+                    return null
+                }
+                val sourceInner = sourceType.withoutNullability() ?: return null
+                val targetInner = targetType.withoutNullability() ?: return null
+                val inner = synthesize(sourceInner, targetInner, visiting) ?: return null
+                return TransportPlan.Nullable(sourceType, targetType, inner)
+            }
 
-        if (sourceType.isMarkedNullable() || targetType.isMarkedNullable()) {
-            if (!sourceType.isMarkedNullable() || !targetType.isMarkedNullable()) {
+            val sourceSimple = sourceType as? IrSimpleType ?: return null
+            val targetSimple = targetType as? IrSimpleType ?: return null
+            val sourceClass = sourceSimple.classOrNull?.owner
+            val targetClass = targetSimple.classOrNull?.owner
+
+            if (sourceClass == null || targetClass == null) {
                 return null
             }
-            val sourceInner = sourceType.withoutNullability() ?: return null
-            val targetInner = targetType.withoutNullability() ?: return null
-            val inner = synthesize(sourceInner, targetInner, visiting) ?: return null
-            return TransportPlan.Nullable(sourceType, targetType, inner)
-        }
 
-        val sourceSimple = sourceType as? IrSimpleType ?: return null
-        val targetSimple = targetType as? IrSimpleType ?: return null
-        val sourceClass = sourceSimple.classOrNull?.owner
-        val targetClass = targetSimple.classOrNull?.owner
+            if (sourceClass.isTransparentValueClass() && targetType.render() != sourceType.render()) {
+                val sourceField = sourceClass.transparentValueField() ?: return null
+                val nested = synthesize(sourceField.type, targetType, visiting) ?: return null
+                return TransportPlan.ValueUnwrap(sourceType, targetType, sourceField.getter, nested)
+            }
 
-        if (sourceClass == null || targetClass == null) {
+            if (targetClass.isTransparentValueClass() && targetType.render() != sourceType.render()) {
+                val targetField = targetClass.transparentValueField() ?: return null
+                val constructor = targetClass.primaryConstructorOrNullLocal() ?: return null
+                val nested = synthesize(sourceType, targetField.type, visiting) ?: return null
+                return TransportPlan.ValueWrap(sourceType, targetType, constructor, nested)
+            }
+
+            synthesizeFunction(sourceType, targetType, visiting)?.let { return it }
+            synthesizeProduct(sourceType, targetType, sourceClass, targetClass, visiting)?.let { return it }
+            synthesizeSum(sourceType, targetType, sourceClass, targetClass, visiting)?.let { return it }
+
             return null
+        } finally {
+            visiting.remove(visitKey)
         }
-
-        if (sourceClass.isTransparentValueClass() && targetType.render() != sourceType.render()) {
-            val sourceField = sourceClass.transparentValueField() ?: return null
-            val nested = synthesize(sourceField.type, targetType, visiting) ?: return null
-            return TransportPlan.ValueUnwrap(sourceType, targetType, sourceField.getter, nested)
-        }
-
-        if (targetClass.isTransparentValueClass() && targetType.render() != sourceType.render()) {
-            val targetField = targetClass.transparentValueField() ?: return null
-            val constructor = targetClass.primaryConstructorOrNullLocal() ?: return null
-            val nested = synthesize(sourceType, targetField.type, visiting) ?: return null
-            return TransportPlan.ValueWrap(sourceType, targetType, constructor, nested)
-        }
-
-        synthesizeFunction(sourceType, targetType, visiting)?.let { return it }
-        synthesizeProduct(sourceType, targetType, sourceClass, targetClass, visiting)?.let { return it }
-        synthesizeSum(sourceType, targetType, sourceClass, targetClass, visiting)?.let { return it }
-
-        return null
     }
 
     private fun synthesizeFunction(
@@ -1123,36 +1126,40 @@ private fun IrType.transportabilityViolation(
     if (!visiting.add(visitKey)) {
         return "DeriveVia does not support recursive nominal transport shapes"
     }
-    if (klass.isTransparentValueClass()) {
-        val field = klass.transparentValueField() ?: return "DeriveVia requires transparent total value classes"
-        return field.type.transportabilityViolation(transported, opaqueParameters, visiting)
-    }
-    val productInfo = klass.transparentProductInfo(this)
-    if (productInfo != null) {
-        productInfo.fields.forEach { field ->
-            val message = field.type.transportabilityViolation(transported, opaqueParameters, visiting)
-            if (message != null) {
-                return message
-            }
+    try {
+        if (klass.isTransparentValueClass()) {
+            val field = klass.transparentValueField() ?: return "DeriveVia requires transparent total value classes"
+            return field.type.transportabilityViolation(transported, opaqueParameters, visiting)
         }
-        return null
-    }
-    val sumCases = klass.transparentSealedCases()
-    if (sumCases != null) {
-        sumCases.forEach { case ->
-            val message =
-                case.symbol.defaultType.transportabilityViolation(
-                    transported = transported,
-                    opaqueParameters = opaqueParameters,
-                    visiting = visiting,
-                )
-            if (message != null) {
-                return message
+        val productInfo = klass.transparentProductInfo(this)
+        if (productInfo != null) {
+            productInfo.fields.forEach { field ->
+                val message = field.type.transportabilityViolation(transported, opaqueParameters, visiting)
+                if (message != null) {
+                    return message
+                }
             }
+            return null
         }
-        return null
+        val sumCases = klass.transparentSealedCases()
+        if (sumCases != null) {
+            sumCases.forEach { case ->
+                val message =
+                    case.symbol.defaultType.transportabilityViolation(
+                        transported = transported,
+                        opaqueParameters = opaqueParameters,
+                        visiting = visiting,
+                    )
+                if (message != null) {
+                    return message
+                }
+            }
+            return null
+        }
+        return "DeriveVia does not support opaque or mutable nominal containers in transported positions"
+    } finally {
+        visiting.remove(visitKey)
     }
-    return "DeriveVia does not support opaque or mutable nominal containers in transported positions"
 }
 
 private fun IrType.mentionsTransportedType(

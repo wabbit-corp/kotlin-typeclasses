@@ -30,9 +30,12 @@ import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 import org.jetbrains.kotlin.fir.declarations.FirSimpleFunction
 import org.jetbrains.kotlin.fir.declarations.hasAnnotation
 import org.jetbrains.kotlin.fir.expressions.FirAnonymousFunctionExpression
+import org.jetbrains.kotlin.fir.expressions.FirAnnotation
 import org.jetbrains.kotlin.fir.expressions.FirAnonymousObjectExpression
 import org.jetbrains.kotlin.fir.expressions.FirExpression
 import org.jetbrains.kotlin.fir.expressions.FirReturnExpression
+import org.jetbrains.kotlin.fir.resolve.providers.firProvider
+import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.types.coneType
 import org.jetbrains.kotlin.fir.types.ConeClassLikeType
 import org.jetbrains.kotlin.fir.types.ConeDefinitelyNotNullType
@@ -60,6 +63,12 @@ internal class TypeclassFirCheckersExtension(
                 }
                 if (declaration.hasAnnotation(DERIVE_ANNOTATION_CLASS_ID, session)) {
                     validateDeriveDeclaration(declaration)
+                }
+                if (declaration.hasAnnotation(DERIVE_VIA_ANNOTATION_CLASS_ID, session)) {
+                    validateDeriveViaDeclarations(declaration)
+                }
+                if (declaration.hasAnnotation(DERIVE_EQUIV_ANNOTATION_CLASS_ID, session)) {
+                    validateDeriveEquivDeclarations(declaration)
                 }
                 if (declaration.directlyExtendsEquiv()) {
                     reportInvalidEquiv(
@@ -302,6 +311,13 @@ internal class TypeclassFirCheckersExtension(
 
         declaration.derivedTypeclassIds(session).forEach { typeclassIdString ->
             val typeclassId = runCatching { ClassId.fromString(typeclassIdString) }.getOrNull() ?: return@forEach
+            if (typeclassTypeParameterCount(typeclassId, session) != 1) {
+                reportCannotDerive(
+                    declaration,
+                    "@Derive currently only supports typeclasses with exactly one type parameter",
+                )
+                return
+            }
             val requiredDeriverInterface = declaration.requiredDeriverInterfaceForDeriveShape()
             if (!typeclassSupportsDeriveShape(typeclassId, requiredDeriverInterface, session)) {
                 val requiredName = requiredDeriverInterface.shortClassName.asString()
@@ -332,6 +348,50 @@ internal class TypeclassFirCheckersExtension(
     }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun validateDeriveViaDeclarations(
+        declaration: FirRegularClass,
+    ) {
+        declaration.resolvedAnnotationsByClassId(DERIVE_VIA_ANNOTATION_CLASS_ID, session).forEach { annotation ->
+            if (declaration.typeParameters.isNotEmpty()) {
+                reportCannotDerive(
+                    annotation,
+                    "@DeriveVia only supports monomorphic classes for now",
+                )
+                return@forEach
+            }
+            val typeclassId = annotation.getClassIdArgument("typeclass") ?: return@forEach
+            if (typeclassTypeParameterCount(typeclassId, session)?.let { it >= 1 } != true) {
+                reportCannotDerive(
+                    annotation,
+                    "DeriveVia requires a typeclass with at least one type parameter",
+                )
+            }
+        }
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun validateDeriveEquivDeclarations(
+        declaration: FirRegularClass,
+    ) {
+        declaration.resolvedAnnotationsByClassId(DERIVE_EQUIV_ANNOTATION_CLASS_ID, session).forEach { annotation ->
+            if (declaration.typeParameters.isNotEmpty()) {
+                reportCannotDerive(
+                    annotation,
+                    "@DeriveEquiv only supports monomorphic classes for now",
+                )
+                return@forEach
+            }
+            val otherClassId = annotation.getClassIdArgument("otherClass") ?: return@forEach
+            if (session.regularClassSymbolOrNull(otherClassId)?.fir?.typeParameters?.isEmpty() != true) {
+                reportCannotDerive(
+                    annotation,
+                    "@DeriveEquiv only supports monomorphic classes for now",
+                )
+            }
+        }
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
     private fun validateTypeclassDeriverCompanionContracts(
         declaration: FirRegularClass,
     ) {
@@ -348,11 +408,33 @@ internal class TypeclassFirCheckersExtension(
                 if (deriveMethodName != "deriveProduct" && deriveMethodName != "deriveSum" && deriveMethodName != "deriveEnum") {
                     return@forEach
                 }
+                val declaredReturnConstructors =
+                    listOf(function.returnTypeRef.coneType)
+                        .expandProvidedTypes(session, emptyMap(), sharedState.configuration)
+                        .validTypes
+                        .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
+                        .distinct()
+                if (declaredReturnConstructors.isNotEmpty()) {
+                    if (typeclassId.asString() !in declaredReturnConstructors) {
+                        reportCannotDerive(
+                            function,
+                            "$deriveMethodName must return ${typeclassId.shortClassName.asString()}<...>; found ${declaredReturnConstructors.joinToString { classifierId -> classifierId.shortClassNameOrSelf() }}",
+                        )
+                    }
+                    return@forEach
+                }
                 function.knownDeriverReturnExpressions().forEach { expression ->
                     val knownTypeclassConstructors =
                         expression.knownReturnedTypeclassConstructors(session, sharedState.configuration)
                     if (knownTypeclassConstructors.isEmpty()) {
-                        return@forEach
+                        if (expression is FirAnonymousObjectExpression) {
+                            return@forEach
+                        }
+                        reportCannotDerive(
+                            function,
+                            "$deriveMethodName must return ${typeclassId.shortClassName.asString()}<...>",
+                        )
+                        return
                     }
                     if (typeclassId.asString() in knownTypeclassConstructors) {
                         return@forEach
@@ -390,6 +472,15 @@ internal class TypeclassFirCheckersExtension(
         message: String,
     ) {
         val source = declaration.source ?: return
+        reporter.reportOn(source, TypeclassErrors.CANNOT_DERIVE, message)
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportCannotDerive(
+        annotation: FirAnnotation,
+        message: String,
+    ) {
+        val source = annotation.source ?: return
         reporter.reportOn(source, TypeclassErrors.CANNOT_DERIVE, message)
     }
 
@@ -462,14 +553,34 @@ private fun FirExpression.knownReturnedTypeclassConstructors(
     when (this) {
         is FirAnonymousObjectExpression ->
             anonymousObject.superTypeRefs
-                .map { typeRef -> typeRef.coneType }
-                .expandProvidedTypes(session, emptyMap(), configuration)
-                .validTypes
-                .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
+                .mapNotNull { typeRef ->
+                    val classifierId = typeRef.coneType.lowerBoundIfFlexible().classId?.asString() ?: return@mapNotNull null
+                    classifierId.takeIf { configuration.supportsReturnedTypeclassClassifierId(it, session) }
+                }
                 .distinct()
 
         else -> emptyList()
     }
+
+private fun TypeclassConfiguration.supportsReturnedTypeclassClassifierId(
+    classifierId: String,
+    session: FirSession,
+): Boolean {
+    val classId = runCatching { ClassId.fromString(classifierId) }.getOrNull() ?: return false
+    if (isBuiltinTypeclass(classId)) {
+        return true
+    }
+    if (classId.isLocal) {
+        return false
+    }
+    val classSymbol =
+        try {
+            session.firProvider.symbolProvider.getClassLikeSymbolByClassId(classId) as? FirRegularClassSymbol
+        } catch (_: IllegalArgumentException) {
+            null
+        } ?: return false
+    return classSymbol.fir.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)
+}
 
 private fun String.shortClassNameOrSelf(): String =
     runCatching { ClassId.fromString(this).shortClassName.asString() }.getOrDefault(this)

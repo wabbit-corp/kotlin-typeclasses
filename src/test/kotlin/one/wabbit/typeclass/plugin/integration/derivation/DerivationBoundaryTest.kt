@@ -619,7 +619,7 @@ private fun showTypeclassSource(
         fun show(value: A): String
 
         companion object : TypeclassDeriver {
-            override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+            override fun deriveProduct(metadata: ProductTypeclassMetadata): Show<Any?> =
                 object : Show<Any?> {
                     override fun show(value: Any?): String {
                         require(value != null)
@@ -634,7 +634,7 @@ private fun showTypeclassSource(
                     }
                 }
 
-            override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+            override fun deriveSum(metadata: SumTypeclassMetadata): Show<Any?> =
                 object : Show<Any?> {
                     override fun show(value: Any?): String {
                         require(value != null)
