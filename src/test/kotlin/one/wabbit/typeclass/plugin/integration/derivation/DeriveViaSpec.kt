@@ -196,7 +196,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             }
 
             @JvmInline
-            @DeriveVia(Show::class)
+            @DeriveVia(Show::class) // E:TC_CANNOT_DERIVE empty DeriveVia paths must be rejected
             value class UserId(val value: Int)
             """.trimIndent()
 
@@ -205,7 +205,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive(),
+                    expectedCannotDerive("empty path"),
                 ),
         )
     }
@@ -300,7 +300,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             data class TaggedUserId(val value: Int)
 
             fun main() {
-                println(summon<Equiv<TaggedUserId, ViaB>>())
+                println(summon<Equiv<TaggedUserId, ViaB>>()) // E:TC_NO_CONTEXT_ARGUMENT TaggedUserId does not export Equiv without @DeriveEquiv
             }
             """.trimIndent()
 
@@ -354,14 +354,14 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun <A> render(value: A): String = show.show(value)
 
             fun main() {
-                println(render(UserId(3)))
+                println(render(UserId(3))) // E:TC_AMBIGUOUS_INSTANCE two viable DeriveVia paths produce ambiguous Show<UserId>
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedMessages = listOf("ambiguous", "show"),
-            expectedDiagnostics = listOf(expectedAmbiguousInstance("show")),
+            expectedDiagnostics = listOf(expectedAmbiguousInstance("show", "userid")),
         )
     }
 
@@ -438,7 +438,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             value class UserId(val value: Int)
 
             fun main() {
-                val encoder = one.wabbit.typeclass.summon<Encoder<UserId, String>>()
+                val encoder = one.wabbit.typeclass.summon<Encoder<UserId, String>>() // E:TC_NO_CONTEXT_ARGUMENT DeriveVia only transports the final typeclass slot
                 println(encoder.encode(UserId(1)))
             }
             """.trimIndent()
@@ -477,7 +477,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             }
 
             @JvmInline
-            @DeriveVia(Show::class, Int::class)
+            @DeriveVia(Show::class, Int::class) // E:TC_CANNOT_DERIVE validated wrappers are not transparent total value classes
             value class PositiveInt(val value: Int) {
                 init {
                     require(value > 0)
@@ -490,7 +490,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive(),
+                    expectedCannotDerive("derive via", "positiveint"),
                 ),
         )
     }
@@ -507,7 +507,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
             data class PlainBox(val value: Int)
 
-            @DeriveEquiv(PlainBox::class)
+            @DeriveEquiv(PlainBox::class) // E:TC_CANNOT_DERIVE extra backing fields break structural Equiv transparency
             data class StatefulBox(val value: Int) {
                 private var cached: Int? = null
             }
@@ -518,7 +518,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive(),
+                    expectedCannotDerive("equiv", "statefulbox", "plainbox"),
                 ),
         )
     }
@@ -535,7 +535,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
             data class PlainBox(val value: Int)
 
-            @DeriveEquiv(PlainBox::class)
+            @DeriveEquiv(PlainBox::class) // E:TC_CANNOT_DERIVE delegated stored state is outside the transparency whitelist
             data class DelegatedBox(val value: Int) {
                 val cached: Int by lazy { value }
             }
@@ -546,7 +546,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive(),
+                    expectedCannotDerive("equiv", "delegatedbox", "plainbox"),
                 ),
         )
     }
@@ -563,7 +563,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
             data class PlainBox(val value: Int)
 
-            @DeriveEquiv(PlainBox::class)
+            @DeriveEquiv(PlainBox::class) // E:TC_CANNOT_DERIVE secondary constructors break structural Equiv transparency
             data class SecondaryBox(val value: Int) {
                 constructor(text: String) : this(text.length)
             }
@@ -574,7 +574,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive(),
+                    expectedCannotDerive("equiv", "secondarybox", "plainbox"),
                 ),
         )
     }
@@ -1014,7 +1014,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             }
 
             @JvmInline
-            @DeriveVia(Fancy::class, Foo::class)
+            @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE List<A> is an opaque nominal container here
             value class UserId(val value: Int)
             """.trimIndent()
 
@@ -1023,7 +1023,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive(),
+                    expectedCannotDerive("opaque or mutable nominal containers"),
                 ),
         )
     }
@@ -1057,7 +1057,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             }
 
             @JvmInline
-            @DeriveVia(Fancy::class, Foo::class)
+            @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE mutable structural boxes are outside the transport closure
             value class UserId(val value: Int)
             """.trimIndent()
 
@@ -1066,7 +1066,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive(),
+                    expectedCannotDerive("opaque or mutable nominal containers"),
                 ),
         )
     }
@@ -1104,7 +1104,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             }
 
             @JvmInline
-            @DeriveVia(Fancy::class, Foo::class)
+            @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE context parameters must not mention the transported type parameter
             value class UserId(val value: Int)
             """.trimIndent()
 
@@ -1113,7 +1113,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive(),
+                    expectedCannotDerive("context parameters", "transported type parameter"),
                 ),
         )
     }
@@ -1144,7 +1144,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             }
 
             @JvmInline
-            @DeriveVia(Fancy::class, Foo::class)
+            @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE method bounds mentioning the transported type parameter are unsupported
             value class UserId(val value: Int)
             """.trimIndent()
 
@@ -1153,7 +1153,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive(),
+                    expectedCannotDerive("type-parameter bounds", "transported type parameter"),
                 ),
         )
     }
@@ -1183,7 +1183,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             }
 
             @JvmInline
-            @DeriveVia(Fancy::class, Foo::class)
+            @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE definitely-non-null and intersection member types are unsupported
             value class UserId(val value: Int)
             """.trimIndent()
 
@@ -1192,7 +1192,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive(),
+                    expectedCannotDerive("definitely-non-null", "intersection member types"),
                 ),
         )
     }
@@ -1225,7 +1225,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             }
 
             @JvmInline
-            @DeriveVia(Fancy::class, Foo::class)
+            @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE recursive nominal transport shapes are unsupported
             value class UserId(val value: Int)
             """.trimIndent()
 
@@ -1234,7 +1234,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive(),
+                    expectedCannotDerive("recursive nominal transport shapes"),
                 ),
         )
     }
@@ -1258,7 +1258,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             // - after Unit-normalization, Empty and UnitBox(Unit) are both nullary cases
             // - both can map to RightShape.Empty, so the sum match is ambiguous
             // - DeriveEquiv(RightShape::class) must therefore fail at compile time
-            @DeriveEquiv(RightShape::class)
+            @DeriveEquiv(RightShape::class) // E:TC_CANNOT_DERIVE Unit-normalized sum cases become ambiguous here
             sealed interface LeftShape {
                 data object Empty : LeftShape
                 data class UnitBox(val unit: Unit) : LeftShape
@@ -1270,7 +1270,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive(),
+                    expectedCannotDerive("equiv", "leftshape", "rightshape"),
                 ),
         )
     }
@@ -1288,7 +1288,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
             data class RightShape(val x: String, val y: String, val z: Int)
 
-            @DeriveEquiv(RightShape::class)
+            @DeriveEquiv(RightShape::class) // E:TC_CANNOT_DERIVE repeated field types make the product permutation ambiguous
             data class LeftShape(val a: String, val b: Int, val c: String)
             """.trimIndent()
 
@@ -1297,7 +1297,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive(),
+                    expectedCannotDerive("equiv", "leftshape", "rightshape"),
                 ),
         )
     }
@@ -1361,7 +1361,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             data class UserId(val value: Int)
 
             @Instance
-            object UserIdIntEquiv : one.wabbit.typeclass.Equiv<UserId, Int>() {
+            object UserIdIntEquiv : one.wabbit.typeclass.Equiv<UserId, Int>() { // E:TC_INVALID_EQUIV_DECL Equiv is compiler-owned
                 override fun to(value: UserId): Int = value.value
                 override fun from(value: Int): UserId = UserId(value)
             }
@@ -1388,7 +1388,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
             data class UserId(val value: Int)
 
-            object SneakyEquiv : one.wabbit.typeclass.Equiv<UserId, Int>() {
+            object SneakyEquiv : one.wabbit.typeclass.Equiv<UserId, Int>() { // E:TC_INVALID_EQUIV_DECL Equiv is compiler-owned
                 override fun to(value: UserId): Int = value.value
                 override fun from(value: Int): UserId = UserId(value)
             }
@@ -1512,7 +1512,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             }
 
             @JvmInline
-            @DeriveVia(Show::class, BadIso::class)
+            @DeriveVia(Show::class, BadIso::class) // E:TC_CANNOT_DERIVE pinned Iso segments must name object singletons
             value class UserId(val value: Int)
             """.trimIndent()
 
@@ -1521,7 +1521,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive(),
+                    expectedCannotDerive("derive via", "badiso", "userid"),
                 ),
         )
     }
@@ -1562,7 +1562,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             }
 
             @JvmInline
-            @DeriveVia(Show::class, MidFooIso::class)
+            @DeriveVia(Show::class, MidFooIso::class) // E:TC_CANNOT_DERIVE disconnected pinned Iso paths must fail
             value class UserId(val value: Int)
             """.trimIndent()
 
@@ -1571,7 +1571,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive(),
+                    expectedCannotDerive("disconnected", "midfooiso"),
                 ),
         )
     }
@@ -1616,7 +1616,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             }
 
             @JvmInline
-            @DeriveVia(Show::class, BridgeIso::class)
+            @DeriveVia(Show::class, BridgeIso::class) // E:TC_CANNOT_DERIVE pinned Iso attachment is ambiguous when both endpoints are reachable
             value class UserId(val value: Int)
 
             // Spec:
@@ -1632,7 +1632,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive(),
+                    expectedCannotDerive("ambiguous", "bridgeiso", "both endpoints"),
                 ),
         )
     }
@@ -1913,7 +1913,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
             data class PlainBox(val value: Int)
 
-            @DeriveEquiv(PlainBox::class)
+            @DeriveEquiv(PlainBox::class) // E:TC_CANNOT_DERIVE validated products are not transparently equivalent
             data class PositiveBox(val value: Int) {
                 init {
                     require(value > 0)
@@ -1926,7 +1926,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive(),
+                    expectedCannotDerive("equiv", "positivebox", "plainbox"),
                 ),
         )
     }

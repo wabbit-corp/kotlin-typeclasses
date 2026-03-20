@@ -32,10 +32,12 @@ internal sealed interface DeriveViaPathSegment {
 internal data class DeriveViaRequest(
     val typeclassId: ClassId,
     val path: List<DeriveViaPathSegment>,
+    val annotation: IrConstructorCall,
 )
 
 internal data class DeriveEquivRequest(
     val otherClassId: ClassId,
+    val annotation: IrConstructorCall,
 )
 
 internal fun IrClass.deriveViaRequests(pluginContext: IrPluginContext): List<DeriveViaRequest> =
@@ -73,7 +75,7 @@ internal fun IrClass.deriveViaRequests(pluginContext: IrPluginContext): List<Der
                         DeriveViaPathSegment.Waypoint(classId)
                     }
                 }
-            DeriveViaRequest(typeclassId = typeclassId, path = path)
+            DeriveViaRequest(typeclassId = typeclassId, path = path, annotation = annotation)
         }
 
 internal fun IrClass.deriveEquivRequests(): List<DeriveEquivRequest> =
@@ -88,7 +90,7 @@ internal fun IrClass.deriveEquivRequests(): List<DeriveEquivRequest> =
                     ?.owner
                     ?.classId
                     ?: return@mapNotNull null
-            DeriveEquivRequest(otherClassId)
+            DeriveEquivRequest(otherClassId, annotation)
         }
 
 internal fun IrClass.isEquivTypeclass(): Boolean = hasAnnotation(EQUIV_CLASS_ID)

@@ -2725,7 +2725,7 @@ private class IrModuleScanner(
                 pluginContext.reportTypeclassError(
                     message = "@DeriveEquiv only supports monomorphic classes for now",
                     diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                    location = compilerMessageLocation(),
+                    location = compilerMessageLocation(request.annotation),
                 )
                 return@mapNotNull null
             }
@@ -2736,7 +2736,7 @@ private class IrModuleScanner(
                             message =
                                 "Cannot derive Equiv between ${targetClassId.asString()} and ${request.otherClassId.asString()}",
                             diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                            location = compilerMessageLocation(),
+                            location = compilerMessageLocation(request.annotation),
                         )
                         return@mapNotNull null
                     }
@@ -2779,7 +2779,7 @@ private class IrModuleScanner(
                 pluginContext.reportTypeclassError(
                     message = "Cannot derive via an empty path",
                     diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                    location = compilerMessageLocation(),
+                    location = compilerMessageLocation(request.annotation),
                 )
                 return@mapNotNull null
             }
@@ -2791,7 +2791,7 @@ private class IrModuleScanner(
                 pluginContext.reportTypeclassError(
                     message = "DeriveVia requires a typeclass with at least one type parameter",
                     diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                    location = compilerMessageLocation(),
+                    location = compilerMessageLocation(request.annotation),
                 )
                 return@mapNotNull null
             }
@@ -2799,7 +2799,7 @@ private class IrModuleScanner(
                 pluginContext.reportTypeclassError(
                     message = message,
                     diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                    location = compilerMessageLocation(),
+                    location = compilerMessageLocation(request.annotation),
                 )
                 return@mapNotNull null
             }
@@ -2809,7 +2809,7 @@ private class IrModuleScanner(
                         pluginContext.reportTypeclassError(
                             message = error.message ?: "Failed to resolve DeriveVia path",
                             diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                            location = compilerMessageLocation(),
+                            location = compilerMessageLocation(request.annotation),
                         )
                         return@mapNotNull null
                     }
@@ -2829,7 +2829,7 @@ private class IrModuleScanner(
                     pluginContext.reportTypeclassError(
                         message = "DeriveVia terminal type must be a class type",
                         diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                        location = compilerMessageLocation(),
+                        location = compilerMessageLocation(request.annotation),
                     )
                     return@mapNotNull null
                 }
