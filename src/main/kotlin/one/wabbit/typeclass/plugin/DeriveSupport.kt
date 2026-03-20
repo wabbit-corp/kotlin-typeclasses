@@ -22,22 +22,33 @@ import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.types.classId
 import org.jetbrains.kotlin.fir.types.coneType
 import org.jetbrains.kotlin.fir.types.lowerBoundIfFlexible
+import org.jetbrains.kotlin.fir.types.resolvedType
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.name.SpecialNames
 
 internal fun FirRegularClass.supportedDerivedTypeclassIds(session: FirSession): Set<String> {
     val generatedIds = generatedDerivedTypeclassIds(session)
-    if (!supportsDeriveShape()) {
-        return generatedIds
-    }
     val explicitIds =
-        derivedTypeclassIds(session).filterTo(linkedSetOf()) { typeclassId ->
-            supportsDerivationForTypeclass(typeclassId, session)
+        if (!supportsDeriveShape()) {
+            emptySet()
+        } else {
+            derivedTypeclassIds(session).filterTo(linkedSetOf()) { typeclassId ->
+                supportsDerivationForTypeclass(typeclassId, session)
+            }
+        }
+    val deriveViaIds = deriveViaTypeclassIds(session)
+    val deriveEquivIds =
+        if (deriveEquivRequests(session).isNotEmpty()) {
+            setOf(EQUIV_CLASS_ID.asString())
+        } else {
+            emptySet()
         }
     return buildSet {
         addAll(generatedIds)
         addAll(explicitIds)
+        addAll(deriveViaIds)
+        addAll(deriveEquivIds)
     }
 }
 
@@ -140,6 +151,24 @@ private fun FirAnnotation.containedGeneratedInstanceAnnotations(): List<FirAnnot
     val valueArgument = findArgumentByName(Name.identifier("value")) ?: return emptyList()
     return valueArgument.unwrapVarargValue().filterIsInstance<FirAnnotation>()
 }
+
+private fun FirAnnotation.getClassIdArgument(name: String): ClassId? =
+    (findArgumentByName(Name.identifier(name)) as? org.jetbrains.kotlin.fir.expressions.FirGetClassCall)
+        ?.argument
+        ?.resolvedType
+        ?.classId
+
+internal fun FirRegularClass.deriveViaTypeclassIds(session: FirSession): Set<String> =
+    resolvedAnnotationsByClassId(DERIVE_VIA_ANNOTATION_CLASS_ID, session)
+        .mapNotNullTo(linkedSetOf()) { annotation ->
+            annotation.getClassIdArgument("typeclass")?.asString()
+        }
+
+internal fun FirRegularClass.deriveEquivRequests(session: FirSession): Set<String> =
+    resolvedAnnotationsByClassId(DERIVE_EQUIV_ANNOTATION_CLASS_ID, session)
+        .mapNotNullTo(linkedSetOf()) { annotation ->
+            annotation.getClassIdArgument("otherClass")?.asString()
+        }
 
 internal fun typeclassSupportsDeriveShape(
     typeclassId: ClassId,

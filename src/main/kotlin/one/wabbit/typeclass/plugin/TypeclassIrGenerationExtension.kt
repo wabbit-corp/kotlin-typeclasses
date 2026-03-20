@@ -964,6 +964,42 @@ private class TypeclassIrCallTransformer(
                             recursiveDerivedResolvers = recursiveDerivedResolvers,
                             returnMetadataSlot = false,
                         )
+
+                    is RuleReference.DerivedEquiv ->
+                        buildGeneratedEquivExpression(
+                            sourceType = reference.sourceType,
+                            targetType = reference.targetType,
+                            forwardPlan = reference.forwardPlan,
+                            backwardPlan = reference.backwardPlan,
+                            pluginContext = pluginContext,
+                            lambdaParent = metadataLambdaParent(currentDeclaration, currentFunction),
+                        )
+
+                    is RuleReference.DerivedVia -> {
+                        val prerequisiteExpression =
+                            plan.prerequisitePlans.singleOrNull()?.let { nested ->
+                                buildExpressionForPlan(
+                                    plan = nested,
+                                    currentDeclaration = currentDeclaration,
+                                    currentFunction = currentFunction,
+                                    localContexts = localContexts,
+                                    visibleTypeParameters = visibleTypeParameters,
+                                    recursiveDerivedResolvers = recursiveDerivedResolvers,
+                                    diagnosticLocation = diagnosticLocation,
+                                )
+                            } ?: error("DeriveVia rule ${plan.ruleId} must have exactly one prerequisite")
+                        buildDeriveViaAdapterExpression(
+                            typeclassInterface = reference.typeclassInterface,
+                            expectedType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext),
+                            viaType = reference.viaType,
+                            viaInstance = prerequisiteExpression,
+                            targetType = reference.targetType,
+                            forwardPlan = reference.forwardPlan,
+                            backwardPlan = reference.backwardPlan,
+                            pluginContext = pluginContext,
+                            lambdaParent = metadataLambdaParent(currentDeclaration, currentFunction),
+                        )
+                    }
                 }
             }
         }
@@ -2280,8 +2316,17 @@ private class IrModuleScanner(
                 }
             }
         }
-        return expandedPairs.flatMap { (classId, typeclassId) ->
-            classesById[classId]?.toDerivedRules(typeclassId, subclassesBySuper).orEmpty()
+        return buildList {
+            addAll(
+                expandedPairs.flatMap { (classId, typeclassId) ->
+                    classesById[classId]?.toDerivedRules(typeclassId, subclassesBySuper).orEmpty()
+                },
+            )
+            addAll(
+                classesById.values.flatMap { klass ->
+                    klass.toDerivedEquivRules() + klass.toDeriveViaRules()
+                },
+            )
         }
     }
 
@@ -2660,6 +2705,159 @@ private class IrModuleScanner(
                         deriverCompanion = deriverCompanion,
                         shape = shape,
                         ruleTypeParameters = ruleTypeParameters,
+                    ),
+                associatedOwner = targetClassId,
+            )
+        }
+    }
+
+    private fun IrClass.toDerivedEquivRules(): List<ResolvedRule> {
+        val targetClassId = classId ?: return emptyList()
+        if (typeParameters.isNotEmpty()) {
+            return emptyList()
+        }
+        val planner = DirectTransportPlanner(pluginContext)
+        return deriveEquivRequests().mapNotNull { request ->
+            val otherClass =
+                pluginContext.referenceClass(request.otherClassId)?.owner
+                    ?: return@mapNotNull null
+            if (otherClass.typeParameters.isNotEmpty()) {
+                pluginContext.reportTypeclassError(
+                    message = "@DeriveEquiv only supports monomorphic classes for now",
+                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                    location = compilerMessageLocation(),
+                )
+                return@mapNotNull null
+            }
+            val plans =
+                planner.planEquiv(symbol.defaultType, otherClass.symbol.defaultType)
+                    ?: run {
+                        pluginContext.reportTypeclassError(
+                            message =
+                                "Cannot derive Equiv between ${targetClassId.asString()} and ${request.otherClassId.asString()}",
+                            diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                            location = compilerMessageLocation(),
+                        )
+                        return@mapNotNull null
+                    }
+            ResolvedRule(
+                rule =
+                    InstanceRule(
+                        id = "derived-equiv:${targetClassId.asString()}:${request.otherClassId.asString()}",
+                        typeParameters = emptyList(),
+                        providedType =
+                            TcType.Constructor(
+                                classifierId = EQUIV_CLASS_ID.asString(),
+                                arguments =
+                                    listOf(
+                                        TcType.Constructor(targetClassId.asString(), emptyList()),
+                                        TcType.Constructor(request.otherClassId.asString(), emptyList()),
+                                    ),
+                            ),
+                        prerequisiteTypes = emptyList(),
+                    ),
+                reference =
+                    RuleReference.DerivedEquiv(
+                        sourceType = symbol.defaultType,
+                        targetType = otherClass.symbol.defaultType,
+                        forwardPlan = plans.first,
+                        backwardPlan = plans.second,
+                    ),
+                associatedOwner = targetClassId,
+            )
+        }
+    }
+
+    private fun IrClass.toDeriveViaRules(): List<ResolvedRule> {
+        val targetClassId = classId ?: return emptyList()
+        if (typeParameters.isNotEmpty()) {
+            return emptyList()
+        }
+        val planner = DirectTransportPlanner(pluginContext)
+        return deriveViaRequests(pluginContext).mapNotNull { request ->
+            if (request.path.isEmpty()) {
+                pluginContext.reportTypeclassError(
+                    message = "Cannot derive via an empty path",
+                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                    location = compilerMessageLocation(),
+                )
+                return@mapNotNull null
+            }
+            val typeclassInterface = pluginContext.referenceClass(request.typeclassId)?.owner ?: return@mapNotNull null
+            if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID)) {
+                return@mapNotNull null
+            }
+            if (typeclassInterface.typeParameters.isEmpty()) {
+                pluginContext.reportTypeclassError(
+                    message = "DeriveVia requires a typeclass with at least one type parameter",
+                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                    location = compilerMessageLocation(),
+                )
+                return@mapNotNull null
+            }
+            typeclassInterface.validateDeriveViaTransportability()?.let { message ->
+                pluginContext.reportTypeclassError(
+                    message = message,
+                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                    location = compilerMessageLocation(),
+                )
+                return@mapNotNull null
+            }
+            val resolvedPath =
+                planner.resolveViaPath(symbol.defaultType, request.path)
+                    .getOrElse { error ->
+                        pluginContext.reportTypeclassError(
+                            message = error.message ?: "Failed to resolve DeriveVia path",
+                            diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                            location = compilerMessageLocation(),
+                        )
+                        return@mapNotNull null
+                    }
+            val prefixParameters =
+                typeclassInterface.typeParameters.dropLast(1).mapIndexed { index, typeParameter ->
+                    TcTypeParameter(
+                        id = "derive-via:${targetClassId.asString()}:${request.typeclassId.asString()}:$index",
+                        displayName = typeParameter.name.asString(),
+                    )
+                }
+            val targetType =
+                TcType.Constructor(targetClassId.asString(), emptyList())
+            val viaTypeModel =
+                (resolvedPath.viaType.classOrNull?.owner?.classId?.let { classId ->
+                    TcType.Constructor(classId.asString(), emptyList())
+                }) ?: run {
+                    pluginContext.reportTypeclassError(
+                        message = "DeriveVia terminal type must be a class type",
+                        diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                        location = compilerMessageLocation(),
+                    )
+                    return@mapNotNull null
+                }
+            val providedType =
+                TcType.Constructor(
+                    classifierId = request.typeclassId.asString(),
+                    arguments = prefixParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) } + targetType,
+                )
+            val prerequisiteType =
+                TcType.Constructor(
+                    classifierId = request.typeclassId.asString(),
+                    arguments = prefixParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) } + viaTypeModel,
+                )
+            ResolvedRule(
+                rule =
+                    InstanceRule(
+                        id = "derived-via:${request.typeclassId.asString()}:${targetClassId.asString()}:${request.path.joinToString("|") { it.classId.asString() }}",
+                        typeParameters = prefixParameters,
+                        providedType = providedType,
+                        prerequisiteTypes = listOf(prerequisiteType),
+                    ),
+                reference =
+                    RuleReference.DerivedVia(
+                        typeclassInterface = typeclassInterface,
+                        targetType = symbol.defaultType,
+                        viaType = resolvedPath.viaType,
+                        forwardPlan = resolvedPath.forwardPlan,
+                        backwardPlan = resolvedPath.backwardPlan,
                     ),
                 associatedOwner = targetClassId,
             )
@@ -3310,6 +3508,21 @@ private sealed interface RuleReference {
         val shape: DerivedShape,
         val ruleTypeParameters: List<TcTypeParameter>,
     ) : RuleReference
+
+    data class DerivedEquiv(
+        val sourceType: IrType,
+        val targetType: IrType,
+        val forwardPlan: TransportPlan,
+        val backwardPlan: TransportPlan,
+    ) : RuleReference
+
+    data class DerivedVia(
+        val typeclassInterface: IrClass,
+        val targetType: IrType,
+        val viaType: IrType,
+        val forwardPlan: TransportPlan,
+        val backwardPlan: TransportPlan,
+    ) : RuleReference
 }
 
 private sealed interface DerivedShape {
@@ -3474,7 +3687,7 @@ private fun IrClass.primaryConstructorOrNull(): IrConstructor? =
         .singleOrNull { constructor -> constructor.isPrimary }
         ?: declarations.filterIsInstance<IrConstructor>().singleOrNull()
 
-private fun IrClass.implementsInterface(
+internal fun IrClass.implementsInterface(
     targetInterface: ClassId,
     visited: MutableSet<String>,
 ): Boolean {

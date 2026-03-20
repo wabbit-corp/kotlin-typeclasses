@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Implement `@DeriveVia` and `@DeriveEquiv` end to end, including compiler-owned `Equiv` evidence, FIR/IR validation for invalid `Equiv` declarations, last-slot typeclass transport, pinned `Iso` path segments, structural transportability checks, and active `DeriveViaSpec` coverage.
 - Add first-class `enum class` derivation via `deriveEnum`, including IR-generated enum metadata and JSON-codec regressions that prove derived enum/product output can match `kotlinx.serialization` for enum-bearing ADTs.
 - Make the test-model JSON codec treat primitive-backed sum cases symmetrically on decode, and add a sealed-root regression where an enum case encodes through `{"type": "...", "value": ...}` rather than an object payload.
 - Split serialization runtime support from the serialization compiler plugin in the test harness, and run pure model `JsonCodec` derivation regressions against the runtime-only classpath so they catch hidden plugin dependencies.

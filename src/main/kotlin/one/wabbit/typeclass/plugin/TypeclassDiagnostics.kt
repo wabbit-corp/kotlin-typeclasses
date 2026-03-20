@@ -28,6 +28,15 @@ internal object TypeclassErrors : KtDiagnosticsContainer() {
             TypeclassErrorMessages,
         )
 
+    val INVALID_EQUIV_DECLARATION =
+        KtDiagnosticFactory1<String>(
+            TypeclassDiagnosticIds.INVALID_EQUIV_DECL,
+            Severity.ERROR,
+            SourceElementPositioningStrategies.DEFAULT,
+            PsiElement::class,
+            TypeclassErrorMessages,
+        )
+
     override fun getRendererFactory(): BaseDiagnosticRendererFactory = TypeclassErrorMessages
 }
 
@@ -41,6 +50,11 @@ internal object TypeclassErrorMessages : BaseDiagnosticRendererFactory() {
         map.put(
             TypeclassErrors.INVALID_INSTANCE_DECLARATION,
             "[${TypeclassDiagnosticIds.INVALID_INSTANCE_DECL}] Invalid @Instance declaration: {0}",
+            CommonRenderers.STRING,
+        )
+        map.put(
+            TypeclassErrors.INVALID_EQUIV_DECLARATION,
+            "[${TypeclassDiagnosticIds.INVALID_EQUIV_DECL}] Invalid Equiv declaration: {0}",
             CommonRenderers.STRING,
         )
     }

@@ -38,6 +38,7 @@ import org.jetbrains.kotlin.fir.types.ConeClassLikeType
 import org.jetbrains.kotlin.fir.types.ConeDefinitelyNotNullType
 import org.jetbrains.kotlin.fir.types.ConeIntersectionType
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
+import org.jetbrains.kotlin.fir.types.classId
 import org.jetbrains.kotlin.fir.types.ConeStarProjection
 import org.jetbrains.kotlin.fir.types.lowerBoundIfFlexible
 import org.jetbrains.kotlin.fir.types.type
@@ -59,6 +60,13 @@ internal class TypeclassFirCheckersExtension(
                 }
                 if (declaration.hasAnnotation(DERIVE_ANNOTATION_CLASS_ID, session)) {
                     validateDeriveDeclaration(declaration)
+                }
+                if (declaration.directlyExtendsEquiv()) {
+                    reportInvalidEquiv(
+                        declaration,
+                        "Equiv is compiler-owned; users must not subclass it directly",
+                    )
+                    return
                 }
                 if (!declaration.hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
                     return
@@ -100,9 +108,18 @@ internal class TypeclassFirCheckersExtension(
                     }
                 }
 
+                val providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration)
+                if (providedTypes.validTypes.any(::isEquivType)) {
+                    reportInvalidEquiv(
+                        declaration,
+                        "Equiv is compiler-owned and cannot be published as an @Instance",
+                    )
+                    return
+                }
+
                 validateAssociatedScope(
                     ownerContext = firInstanceOwnerContext(session, declaration.symbol.callableId),
-                    providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration),
+                    providedTypes = providedTypes,
                     declaration = declaration,
                 )
                 validateFunctionRuleSemantics(declaration)
@@ -138,9 +155,18 @@ internal class TypeclassFirCheckersExtension(
                     }
                 }
 
+                val providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration)
+                if (providedTypes.validTypes.any(::isEquivType)) {
+                    reportInvalidEquiv(
+                        declaration,
+                        "Equiv is compiler-owned and cannot be published as an @Instance",
+                    )
+                    return
+                }
+
                 validateAssociatedScope(
                     ownerContext = firInstanceOwnerContext(session, declaration.symbol.callableId),
-                    providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration),
+                    providedTypes = providedTypes,
                     declaration = declaration,
                 )
             }
@@ -350,6 +376,15 @@ internal class TypeclassFirCheckersExtension(
     }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportInvalidEquiv(
+        declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
+        message: String,
+    ) {
+        val source = declaration.source ?: return
+        reporter.reportOn(source, TypeclassErrors.INVALID_EQUIV_DECLARATION, message)
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
     private fun reportCannotDerive(
         declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
         message: String,
@@ -373,6 +408,14 @@ internal class TypeclassFirCheckersExtension(
         }
 
 }
+
+private fun FirRegularClass.directlyExtendsEquiv(): Boolean =
+    superTypeRefs.any { superTypeRef ->
+        superTypeRef.coneType.classId == EQUIV_CLASS_ID
+    }
+
+private fun isEquivType(type: TcType): Boolean =
+    (type as? TcType.Constructor)?.classifierId == EQUIV_CLASS_ID.asString()
 
 private fun FirSimpleFunction.knownDeriverReturnExpressions(): List<FirExpression> {
     val expressions = linkedSetOf<FirExpression>()

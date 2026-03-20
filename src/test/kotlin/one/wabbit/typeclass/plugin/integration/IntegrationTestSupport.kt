@@ -1231,6 +1231,11 @@ sealed interface CompilerHarnessPlugin {
             )
     }
 
+    data object CoroutinesRuntime : CompilerHarnessPlugin {
+        override val runtimeClasspathJarMarkers: List<String> =
+            listOf("kotlinx-coroutines-core-jvm")
+    }
+
     data object Compose : CompilerHarnessPlugin {
         override val runtimeClasspathJarMarkers: List<String> =
             listOf(

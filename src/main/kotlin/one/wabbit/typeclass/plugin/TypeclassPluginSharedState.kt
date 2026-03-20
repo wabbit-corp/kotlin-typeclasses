@@ -377,7 +377,7 @@ private data class ResolutionIndex(
         val constructor = goal as? TcType.Constructor ?: return false
         val typeclassId = constructor.classifierId
         val targetType =
-            constructor.arguments.singleOrNull() as? TcType.Constructor
+            constructor.arguments.lastOrNull() as? TcType.Constructor
                 ?: return false
         return derivationOwnersForTarget(targetType.classifierId, session).any { owner ->
             typeclassId in discoveredDerivableTypeclassIds(owner, session)
