@@ -256,7 +256,6 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("Pending builtin admissibility coverage")
     @Test
     fun inapplicableBuiltinCandidatesDoNotCreateFalseAmbiguity() {
         val source =
@@ -274,19 +273,19 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             }
 
             @Instance
-            object IntShow : Show<Int> {
+            object NullableIntListShow : Show<List<Int?>> {
                 override fun label(): String = "instance"
             }
 
             @Instance
             context(_: KClass<A>)
-            fun <A> builtinBackedShow(): Show<A> =
-                object : Show<A> {
+            fun <A : Any> builtinBackedShow(): Show<List<A>> =
+                object : Show<List<A>> {
                     override fun label(): String = "builtin"
                 }
 
-            context(_: Show<Int>)
-            fun render(): String = summon<Show<Int>>().label()
+            context(_: Show<List<Int?>>)
+            fun render(): String = summon<Show<List<Int?>>>().label()
 
             fun main() {
                 println(render())

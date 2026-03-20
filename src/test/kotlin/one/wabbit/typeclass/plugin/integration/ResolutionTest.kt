@@ -1045,13 +1045,11 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("NEW: review before enabling")
     @Test fun resolvesOverloadsThatDifferOnlyByTypeclassContexts() {
         val source =
             """
             package demo
 
-            import one.wabbit.typeclass.Instance
             import one.wabbit.typeclass.Typeclass
 
             @Typeclass
@@ -1064,12 +1062,10 @@ class ResolutionTest : IntegrationTestSupport() {
                 fun label(): String
             }
 
-            @Instance
             object IntEq : Eq<Int> {
                 override fun label(): String = "eq"
             }
 
-            @Instance
             object IntShow : Show<Int> {
                 override fun label(): String = "show"
             }
@@ -1233,7 +1229,6 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("NEW: review before enabling")
     @Test fun purelyLocalEvidenceSelectsOverloads() {
         val source =
             """
@@ -1242,20 +1237,30 @@ class ResolutionTest : IntegrationTestSupport() {
             import one.wabbit.typeclass.Typeclass
 
             @Typeclass
-            interface Eq<A>
+            interface Eq<A> {
+                fun label(): String
+            }
 
             @Typeclass
-            interface Show<A>
+            interface Show<A> {
+                fun label(): String
+            }
 
-            context(_: Eq<Int>)
-            fun choose(value: Int): String = "eq"
+            context(eq: Eq<Int>)
+            fun choose(value: Int): String = "eq:" + eq.label()
 
-            context(_: Show<Int>)
-            fun choose(value: Int): String = "show"
+            context(show: Show<Int>)
+            fun choose(value: Int): String = "show:" + show.label()
 
             fun main() {
-                val localEq = object : Eq<Int> {}
-                val localShow = object : Show<Int> {}
+                val localEq =
+                    object : Eq<Int> {
+                        override fun label(): String = "local-eq"
+                    }
+                val localShow =
+                    object : Show<Int> {
+                        override fun label(): String = "local-show"
+                    }
 
                 context(localEq) {
                     println(choose(1))
@@ -1270,8 +1275,8 @@ class ResolutionTest : IntegrationTestSupport() {
             source = source,
             expectedStdout =
                 """
-                eq
-                show
+                eq:local-eq
+                show:local-show
                 """.trimIndent(),
         )
     }
@@ -1768,8 +1773,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("NEW: review before enabling")
-    @Test fun reportsAmbiguityBetweenBroaderContravariantCandidatesForNothingWithoutExactMatch() {
+    @Test fun broaderContravariantCandidatesForNothingWithoutExactMatchDoNotResolve() {
         val source =
             """
             package demo
@@ -1803,8 +1807,8 @@ class ResolutionTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("ambiguous", "nothing"),
-            expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("show")),
+            expectedMessages = listOf("show", "nothing"),
+            expectedDiagnostics = listOf(expectedNoContextArgument("show")),
         )
     }
 

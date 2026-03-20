@@ -1,12 +1,13 @@
-package one.wabbit.typeclass.plugin.integration
+package one.wabbit.typeclass.plugin.integration.blocked
 
 import org.junit.Ignore
+import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import kotlin.test.Test
 
-class ContextualPropertyTest : IntegrationTestSupport() {
-    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no property-access refinement hook for contextual getter resolution")
+class CallableReferenceTest : IntegrationTestSupport() {
+    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no callable-reference refinement hook for contextual callable adaptation")
     @Test
-    fun resolvesContextualPropertyGetter() {
+    fun adaptsCallableReferencesToContextualTopLevelFunctions() {
         val source =
             """
             package demo
@@ -25,11 +26,12 @@ class ContextualPropertyTest : IntegrationTestSupport() {
             }
 
             context(show: Show<Int>)
-            val intLabel: String
-                get() = show.show(1)
+            fun renderInt(value: Int): String = show.show(value)
+
+            fun consume(f: (Int) -> String): String = f(1)
 
             fun main() {
-                println(intLabel)
+                println(consume(::renderInt))
             }
             """.trimIndent()
 
@@ -39,9 +41,10 @@ class ContextualPropertyTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no property-access refinement hook for contextual getter resolution")
+    // NEW
+    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no callable-reference refinement hook for contextual callable adaptation")
     @Test
-    fun resolvesContextualExtensionPropertyGetter() {
+    fun adaptsBoundCallableReferencesToContextualMemberFunctions() {
         val source =
             """
             package demo
@@ -59,12 +62,15 @@ class ContextualPropertyTest : IntegrationTestSupport() {
                 override fun show(value: Int): String = "int:${'$'}value"
             }
 
-            context(show: Show<Int>)
-            val Int.rendered: String
-                get() = show.show(this)
+            class Items {
+                context(show: Show<Int>)
+                fun renderInt(value: Int): String = show.show(value)
+            }
+
+            fun consume(f: (Int) -> String): String = f(1)
 
             fun main() {
-                println(1.rendered)
+                println(consume(Items()::renderInt))
             }
             """.trimIndent()
 
@@ -74,9 +80,10 @@ class ContextualPropertyTest : IntegrationTestSupport() {
         )
     }
 
-    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no property-access refinement hook for contextual property-reference adaptation")
+    // NEW
+    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no callable-reference refinement hook for contextual callable adaptation")
     @Test
-    fun adaptsPropertyReferencesToContextualProperties() {
+    fun preservesExtensionFunctionReferenceInterchangeability() {
         val source =
             """
             package demo
@@ -95,18 +102,25 @@ class ContextualPropertyTest : IntegrationTestSupport() {
             }
 
             context(show: Show<Int>)
-            val intLabel: String
-                get() = show.show(1)
+            fun Int.rendered(suffix: String): String = show.show(this) + suffix
+
+            fun consumeAsExtension(f: Int.(String) -> String): String = 1.f("!")
+
+            fun consumeAsPlain(f: (Int, String) -> String): String = f(1, "?")
 
             fun main() {
-                val getter = ::intLabel
-                println(getter.get())
+                println(consumeAsExtension(Int::rendered))
+                println(consumeAsPlain(Int::rendered))
             }
             """.trimIndent()
 
         assertCompilesAndRuns(
             source = source,
-            expectedStdout = "int:1",
+            expectedStdout =
+                """
+                int:1!
+                int:1?
+                """.trimIndent(),
         )
     }
 }
