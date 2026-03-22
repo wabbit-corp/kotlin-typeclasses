@@ -2,6 +2,14 @@ package one.wabbit.typeclass.plugin.integration
 
 import one.wabbit.typeclass.plugin.TYPECLASS_PLUGIN_ID
 import one.wabbit.typeclass.plugin.TypeclassDiagnosticIds
+import one.wabbit.typeclass.plugin.TypeclassDiagnostic
+import one.wabbit.typeclass.plugin.cannotDeriveDiagnostic
+import one.wabbit.typeclass.plugin.fix
+import one.wabbit.typeclass.plugin.headline
+import one.wabbit.typeclass.plugin.invalidEquivDiagnostic
+import one.wabbit.typeclass.plugin.invalidInstanceDiagnostic
+import one.wabbit.typeclass.plugin.parseTypeclassDiagnostic
+import one.wabbit.typeclass.plugin.reason
 import org.jetbrains.kotlin.cli.common.ExitCode
 import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
 import kotlin.io.path.createDirectories
@@ -24,7 +32,8 @@ abstract class IntegrationTestSupport {
         private val locatedDiagnosticRegex = Regex("""^(.+):(\d+):(\d+):\s+(error|warning):\s+(.*)$""")
         private val globalDiagnosticRegex = Regex("""^(e|w|error|warning):\s+(.*)$""")
         private val prefixedDiagnosticIdRegex = Regex("""^\[(TC_[A-Z_]+)]\s*(.*)$""")
-        private val sourceDiagnosticMarkerRegex = Regex("""\b([EW]):(TC_[A-Z_]+)\b""")
+        private val sourceDiagnosticMarkerRegex =
+            Regex("""\b(?:([A-Za-z_][A-Za-z0-9_]*)@)?([EW])(?::(TC_[A-Z_]+))?\b""")
 
         private fun maxJvmTarget(left: String, right: String): String =
             if (normalizeJvmTarget(left) >= normalizeJvmTarget(right)) {
@@ -59,7 +68,6 @@ abstract class IntegrationTestSupport {
 
     protected fun assertDoesNotCompile(
         source: String,
-        expectedMessages: List<String>,
         expectedDiagnostics: List<ExpectedDiagnostic> = emptyList(),
         unexpectedMessages: List<String> = emptyList(),
         requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
@@ -69,10 +77,35 @@ abstract class IntegrationTestSupport {
         enableContextParameters: Boolean = true,
         compilerArguments: List<String> = emptyList(),
     ) {
-        assertDoesNotCompile(
+        assertDoesNotCompileInternal(
             sources = mapOf("Sample.kt" to source),
-            expectedMessages = expectedMessages,
             expectedDiagnostics = expectedDiagnostics,
+            expectedLabeledDiagnostics = emptyMap(),
+            unexpectedMessages = unexpectedMessages,
+            requiredPlugins = requiredPlugins,
+            pluginOptions = pluginOptions,
+            dependencies = dependencies,
+            useTypeclassPlugin = useTypeclassPlugin,
+            enableContextParameters = enableContextParameters,
+            compilerArguments = compilerArguments,
+        )
+    }
+
+    protected fun assertDoesNotCompile(
+        source: String,
+        expectedDiagnostics: Map<String, TypeclassDiagnostic>,
+        unexpectedMessages: List<String> = emptyList(),
+        requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
+        pluginOptions: List<String> = emptyList(),
+        dependencies: List<HarnessDependency> = emptyList(),
+        useTypeclassPlugin: Boolean = true,
+        enableContextParameters: Boolean = true,
+        compilerArguments: List<String> = emptyList(),
+    ) {
+        assertDoesNotCompileInternal(
+            sources = mapOf("Sample.kt" to source),
+            expectedDiagnostics = emptyList(),
+            expectedLabeledDiagnostics = expectedDiagnostics,
             unexpectedMessages = unexpectedMessages,
             requiredPlugins = requiredPlugins,
             pluginOptions = pluginOptions,
@@ -85,7 +118,6 @@ abstract class IntegrationTestSupport {
 
     protected fun assertDoesNotCompile(
         sources: Map<String, String>,
-        expectedMessages: List<String>,
         expectedDiagnostics: List<ExpectedDiagnostic> = emptyList(),
         unexpectedMessages: List<String> = emptyList(),
         requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
@@ -94,6 +126,57 @@ abstract class IntegrationTestSupport {
         useTypeclassPlugin: Boolean = true,
         enableContextParameters: Boolean = true,
         compilerArguments: List<String> = emptyList(),
+    ) {
+        assertDoesNotCompileInternal(
+            sources = sources,
+            expectedDiagnostics = expectedDiagnostics,
+            expectedLabeledDiagnostics = emptyMap(),
+            unexpectedMessages = unexpectedMessages,
+            requiredPlugins = requiredPlugins,
+            pluginOptions = pluginOptions,
+            dependencies = dependencies,
+            useTypeclassPlugin = useTypeclassPlugin,
+            enableContextParameters = enableContextParameters,
+            compilerArguments = compilerArguments,
+        )
+    }
+
+    protected fun assertDoesNotCompile(
+        sources: Map<String, String>,
+        expectedDiagnostics: Map<String, TypeclassDiagnostic>,
+        unexpectedMessages: List<String> = emptyList(),
+        requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
+        pluginOptions: List<String> = emptyList(),
+        dependencies: List<HarnessDependency> = emptyList(),
+        useTypeclassPlugin: Boolean = true,
+        enableContextParameters: Boolean = true,
+        compilerArguments: List<String> = emptyList(),
+    ) {
+        assertDoesNotCompileInternal(
+            sources = sources,
+            expectedDiagnostics = emptyList(),
+            expectedLabeledDiagnostics = expectedDiagnostics,
+            unexpectedMessages = unexpectedMessages,
+            requiredPlugins = requiredPlugins,
+            pluginOptions = pluginOptions,
+            dependencies = dependencies,
+            useTypeclassPlugin = useTypeclassPlugin,
+            enableContextParameters = enableContextParameters,
+            compilerArguments = compilerArguments,
+        )
+    }
+
+    private fun assertDoesNotCompileInternal(
+        sources: Map<String, String>,
+        expectedDiagnostics: List<ExpectedDiagnostic>,
+        expectedLabeledDiagnostics: Map<String, TypeclassDiagnostic>,
+        unexpectedMessages: List<String>,
+        requiredPlugins: List<CompilerHarnessPlugin>,
+        pluginOptions: List<String>,
+        dependencies: List<HarnessDependency>,
+        useTypeclassPlugin: Boolean,
+        enableContextParameters: Boolean,
+        compilerArguments: List<String>,
     ) {
         val result =
             compileSourceInternal(
@@ -110,10 +193,28 @@ abstract class IntegrationTestSupport {
             result.exitCode,
             result.stdout,
         )
-        val lowercaseOutput = result.stdout.lowercase()
         val diagnostics = parseCompilerDiagnostics(result.stdout)
-        val commentDiagnostics = expectedDiagnosticsFromSourceMarkers(sources)
-        (expectedDiagnostics + commentDiagnostics).forEach { expectedDiagnostic ->
+        val sourceMarkers = parseSourceDiagnosticMarkers(sources)
+        assertTrue(
+            sourceMarkers.any { it.severity == DiagnosticSeverity.ERROR },
+            buildString {
+                appendLine("assertDoesNotCompile requires at least one inline error marker like // E:TC_... or // label@E:TC_...")
+                appendLine("Sources:")
+                sources.forEach { (file, source) ->
+                    appendLine("== $file ==")
+                    appendLine(source)
+                }
+            },
+        )
+        val commentDiagnostics =
+            expectedDiagnosticsFromSourceMarkers(
+                markers = sourceMarkers,
+                labeledDiagnostics = expectedLabeledDiagnostics,
+            )
+        val inlineErrorDiagnostics =
+            commentDiagnostics.filterIsInstance<ExpectedDiagnostic.Error>()
+        val allExpectedDiagnostics = expectedDiagnostics + commentDiagnostics
+        allExpectedDiagnostics.forEach { expectedDiagnostic ->
             assertTrue(
                 diagnostics.any(expectedDiagnostic::matches),
                 buildString {
@@ -129,9 +230,45 @@ abstract class IntegrationTestSupport {
                 },
             )
         }
-        expectedMessages.forEach { expectedMessage ->
-            assertTrue(lowercaseOutput.contains(expectedMessage.lowercase()), result.stdout)
-        }
+        val unannotatedErrors =
+            diagnostics.filter { diagnostic ->
+                diagnostic.severity == DiagnosticSeverity.ERROR &&
+                    inlineErrorDiagnostics.none { expected -> expected.matches(diagnostic) }
+            }
+        assertTrue(
+            unannotatedErrors.isEmpty(),
+            buildString {
+                appendLine("All compiler errors must have an inline source marker annotation.")
+                appendLine("Compiler errors without a matching inline marker:")
+                appendLine(formatDiagnostics(unannotatedErrors))
+                appendLine("Inline marker diagnostics:")
+                appendLine(inlineErrorDiagnostics.joinToString(separator = "\n"))
+                if (allExpectedDiagnostics.isNotEmpty()) {
+                    appendLine("All expected diagnostics:")
+                    appendLine(allExpectedDiagnostics.joinToString(separator = "\n"))
+                }
+                appendLine("Full compiler output:")
+                append(result.stdout)
+            },
+        )
+        val unmatchedTypedDiagnostics =
+            expectedDiagnostics.filterNot { expected ->
+                diagnostics.any(expected::matches)
+            }
+        assertTrue(
+            unmatchedTypedDiagnostics.isEmpty(),
+            buildString {
+                appendLine("Expected typed diagnostics were not found:")
+                appendLine(unmatchedTypedDiagnostics.joinToString(separator = "\n"))
+                if (allExpectedDiagnostics.isNotEmpty()) {
+                    appendLine("All expected diagnostics:")
+                    appendLine(allExpectedDiagnostics.joinToString(separator = "\n"))
+                }
+                appendLine("Full compiler output:")
+                append(result.stdout)
+            },
+        )
+        val lowercaseOutput = result.stdout.lowercase()
         unexpectedMessages.forEach { unexpectedMessage ->
             assertTrue(!lowercaseOutput.contains(unexpectedMessage.lowercase()), result.stdout)
         }
@@ -143,6 +280,8 @@ abstract class IntegrationTestSupport {
         line: Int? = null,
     ): ExpectedDiagnostic.Error =
         inferDiagnosticIdsFromFragments(fragments.asList()).let { diagnosticIds ->
+            val effectiveFragments =
+                fragments.toList() + automaticNarrativeFragments(diagnosticIds)
             ExpectedDiagnostic.Error(
                 diagnosticIds = diagnosticIds,
                 file = file,
@@ -153,11 +292,11 @@ abstract class IntegrationTestSupport {
                         if (isNotEmpty()) {
                             append(", ")
                         }
-                        append("message containing ${fragments.joinToString()}")
+                        append("message containing ${effectiveFragments.joinToString()}")
                     },
                 messagePredicate = { message ->
                     val normalized = message.lowercase()
-                    fragments.all { normalized.contains(it.lowercase()) }
+                    effectiveFragments.all { normalized.contains(it.lowercase()) }
                 },
             )
         }
@@ -182,56 +321,104 @@ abstract class IntegrationTestSupport {
         )
 
     protected fun expectedNoContextArgument(
-        vararg fragments: String,
+        vararg headlineFragments: String,
+        whyFragments: List<String> = emptyList(),
+        fixFragments: List<String> = emptyList(),
         file: String? = null,
         line: Int? = null,
         phase: DiagnosticPhase? = DiagnosticPhase.FIR,
     ): ExpectedDiagnostic.Error =
-        expectedDiagnosticId(
-            TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT,
-            *fragments,
+        expectedStructuredDiagnosticId(
+            diagnosticId = TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT,
+            headlineFragments =
+                listOf("no context argument") +
+                    if (phase == DiagnosticPhase.IR) listOf("required instance") else emptyList<String>() +
+                    headlineFragments.toList(),
+            whyFragments =
+                if (phase == DiagnosticPhase.IR) {
+                    if (whyFragments.isEmpty()) {
+                        listOf("no matching local context value or @instance rule could produce that goal")
+                    } else {
+                        whyFragments
+                    }
+                } else {
+                    whyFragments
+                },
+            fixFragments = fixFragments,
+            requireNarrative = phase == DiagnosticPhase.IR,
             file = file,
             line = line,
             phase = phase,
         )
 
     protected fun expectedAmbiguousInstance(
-        vararg fragments: String,
+        vararg headlineFragments: String,
+        whyFragments: List<String> = listOf("multiple candidates matched"),
+        fixFragments: List<String> = listOf("pass the intended context argument explicitly"),
         file: String? = null,
         line: Int? = null,
         phase: DiagnosticPhase? = DiagnosticPhase.IR,
     ): ExpectedDiagnostic.Error =
-        expectedDiagnosticId(
-            TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE,
-            *fragments,
+        expectedStructuredDiagnosticId(
+            diagnosticId = TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE,
+            headlineFragments = listOf("ambiguous typeclass instance") + headlineFragments.toList(),
+            whyFragments = whyFragments,
+            fixFragments = fixFragments,
+            requireNarrative = true,
             file = file,
             line = line,
             phase = phase,
         )
 
     protected fun expectedInvalidInstanceDecl(
-        vararg fragments: String,
+        vararg whyFragments: String,
+        fixFragments: List<String> = emptyList(),
         file: String? = null,
         line: Int? = null,
         phase: DiagnosticPhase? = DiagnosticPhase.FIR,
     ): ExpectedDiagnostic.Error =
-        expectedDiagnosticId(
-            TypeclassDiagnosticIds.INVALID_INSTANCE_DECL,
-            *fragments,
+        expectedStructuredDiagnosticId(
+            diagnosticId = TypeclassDiagnosticIds.INVALID_INSTANCE_DECL,
+            headlineFragments = emptyList(),
+            whyFragments = whyFragments.toList(),
+            fixFragments = fixFragments,
+            requireNarrative = true,
+            file = file,
+            line = line,
+            phase = phase,
+        )
+
+    protected fun expectedInvalidEquivDecl(
+        vararg whyFragments: String,
+        fixFragments: List<String> = emptyList(),
+        file: String? = null,
+        line: Int? = null,
+        phase: DiagnosticPhase? = DiagnosticPhase.FIR,
+    ): ExpectedDiagnostic.Error =
+        expectedStructuredDiagnosticId(
+            diagnosticId = TypeclassDiagnosticIds.INVALID_EQUIV_DECL,
+            headlineFragments = emptyList(),
+            whyFragments = whyFragments.toList(),
+            fixFragments = fixFragments,
+            requireNarrative = true,
             file = file,
             line = line,
             phase = phase,
         )
 
     protected fun expectedCannotDerive(
-        vararg fragments: String,
+        vararg whyFragments: String,
+        fixFragments: List<String> = emptyList(),
         file: String? = null,
         line: Int? = null,
         phase: DiagnosticPhase? = DiagnosticPhase.IR,
     ): ExpectedDiagnostic.Error =
-        expectedDiagnosticId(
-            TypeclassDiagnosticIds.CANNOT_DERIVE,
-            *fragments,
+        expectedStructuredDiagnosticId(
+            diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+            headlineFragments = emptyList(),
+            whyFragments = whyFragments.toList(),
+            fixFragments = fixFragments,
+            requireNarrative = true,
             file = file,
             line = line,
             phase = phase,
@@ -250,6 +437,102 @@ abstract class IntegrationTestSupport {
                 (normalized.contains("ambiguous") || normalized.contains("no context argument")) &&
                     fragments.all { normalized.contains(it.lowercase()) }
             },
+        )
+
+    protected fun expectedTypeclassDiagnostic(
+        expected: TypeclassDiagnostic,
+        file: String? = null,
+        line: Int? = null,
+        phase: DiagnosticPhase? = null,
+    ): ExpectedDiagnostic.Error =
+        ExpectedDiagnostic.Error(
+            diagnosticIds = setOf(expected.diagnosticId),
+            phase = phase,
+            file = file,
+            line = line,
+            description = "${expected.diagnosticId} exact narrative=$expected",
+            messagePredicate = { message ->
+                parseTypeclassDiagnostic(message, expected.diagnosticId) == expected
+            },
+        )
+
+    protected fun expectedExactInvalidInstanceDecl(
+        why: String,
+        file: String? = null,
+        line: Int? = null,
+        phase: DiagnosticPhase? = DiagnosticPhase.FIR,
+    ): ExpectedDiagnostic.Error =
+        expectedTypeclassDiagnostic(
+            expected = invalidInstanceDiagnostic(why),
+            file = file,
+            line = line,
+            phase = phase,
+        )
+
+    protected fun expectedExactInvalidEquivDecl(
+        why: String,
+        file: String? = null,
+        line: Int? = null,
+        phase: DiagnosticPhase? = DiagnosticPhase.FIR,
+    ): ExpectedDiagnostic.Error =
+        expectedTypeclassDiagnostic(
+            expected = invalidEquivDiagnostic(why),
+            file = file,
+            line = line,
+            phase = phase,
+        )
+
+    protected fun expectedExactCannotDerive(
+        why: String,
+        file: String? = null,
+        line: Int? = null,
+        phase: DiagnosticPhase? = DiagnosticPhase.IR,
+    ): ExpectedDiagnostic.Error =
+        expectedTypeclassDiagnostic(
+            expected = cannotDeriveDiagnostic(why),
+            file = file,
+            line = line,
+            phase = phase,
+        )
+
+    protected fun expectedExactNoContextArgument(
+        goal: String,
+        scope: String = "",
+        recursive: Boolean = false,
+        file: String? = null,
+        line: Int? = null,
+        phase: DiagnosticPhase? = DiagnosticPhase.IR,
+    ): ExpectedDiagnostic.Error =
+        expectedTypeclassDiagnostic(
+            expected =
+                TypeclassDiagnostic.NoContextArgument(
+                    goal = goal,
+                    scope = scope,
+                    recursive = recursive,
+                ),
+            file = file,
+            line = line,
+            phase = phase,
+        )
+
+    protected fun expectedExactAmbiguousInstance(
+        goal: String,
+        scope: String = "",
+        candidates: List<String>,
+        file: String? = null,
+        line: Int? = null,
+        phase: DiagnosticPhase? = DiagnosticPhase.IR,
+    ): ExpectedDiagnostic.Error =
+        expectedTypeclassDiagnostic(
+            expected =
+                TypeclassDiagnostic.AmbiguousInstance(
+                    goal = goal,
+                    scope = scope,
+                    candidates = candidates,
+                ),
+            file = file,
+            line = line,
+            phase = phase,
         )
 
     protected fun assertCompilesAndRuns(
@@ -801,11 +1084,13 @@ abstract class IntegrationTestSupport {
             return ParsedDiagnosticMessage(
                 message = explicitMatch.groupValues[2],
                 diagnosticId = explicitMatch.groupValues[1],
+                explicitDiagnosticId = true,
             )
         }
         return ParsedDiagnosticMessage(
             message = trimmed,
             diagnosticId = inferDiagnosticIdFromMessage(trimmed),
+            explicitDiagnosticId = false,
         )
     }
 
@@ -824,20 +1109,24 @@ abstract class IntegrationTestSupport {
         }
     }
 
-    private fun inferDiagnosticIdFromMessage(message: String): String? {
-        val normalized = message.lowercase()
-        return when {
-            normalized.startsWith("no context argument for ") ->
-                TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT
-            normalized.startsWith("ambiguous typeclass instance for ") ->
-                TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE
-            normalized.startsWith("invalid @instance declaration:") ->
-                TypeclassDiagnosticIds.INVALID_INSTANCE_DECL
-            normalized.startsWith("cannot derive ") ->
-                TypeclassDiagnosticIds.CANNOT_DERIVE
-            else -> null
-        }
-    }
+    private fun inferDiagnosticIdFromMessage(message: String): String? =
+        parseTypeclassDiagnostic(message)?.diagnosticId?.takeIf { it.startsWith("TC_") }
+            ?: run {
+                val normalized = message.lowercase()
+                when {
+                    normalized.startsWith("no context argument for ") ->
+                        TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT
+                    normalized.startsWith("ambiguous typeclass instance for ") ->
+                        TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE
+                    normalized.startsWith("invalid @instance declaration:") ->
+                        TypeclassDiagnosticIds.INVALID_INSTANCE_DECL
+                    normalized.startsWith("invalid equiv declaration:") ->
+                        TypeclassDiagnosticIds.INVALID_EQUIV_DECL
+                    normalized.startsWith("cannot derive") ->
+                        TypeclassDiagnosticIds.CANNOT_DERIVE
+                    else -> null
+                }
+            }
 
     private fun inferDiagnosticPhase(
         parsedMessage: ParsedDiagnosticMessage,
@@ -845,10 +1134,12 @@ abstract class IntegrationTestSupport {
     ): DiagnosticPhase =
         when (parsedMessage.diagnosticId) {
             TypeclassDiagnosticIds.INVALID_INSTANCE_DECL -> DiagnosticPhase.FIR
+            TypeclassDiagnosticIds.INVALID_EQUIV_DECL -> DiagnosticPhase.FIR
             TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE -> DiagnosticPhase.IR
             TypeclassDiagnosticIds.CANNOT_DERIVE -> DiagnosticPhase.IR
             TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT ->
                 when {
+                    parsedMessage.explicitDiagnosticId -> DiagnosticPhase.IR
                     parsedMessage.message.lowercase().startsWith("missing typeclass instance for ") ||
                         parsedMessage.message.lowercase().startsWith("recursive typeclass resolution for ") -> DiagnosticPhase.IR
                     else -> DiagnosticPhase.FIR
@@ -866,7 +1157,68 @@ abstract class IntegrationTestSupport {
                 }
         }
 
-    private fun expectedDiagnosticsFromSourceMarkers(sources: Map<String, String>): List<ExpectedDiagnostic> =
+    private fun expectedDiagnosticsFromSourceMarkers(
+        markers: List<SourceDiagnosticMarker>,
+        labeledDiagnostics: Map<String, TypeclassDiagnostic> = emptyMap(),
+    ): List<ExpectedDiagnostic> {
+        val labeledMarkers =
+            buildMap<String, SourceDiagnosticMarker> {
+                markers.filter { it.label != null }.forEach { marker ->
+                    val label = marker.label ?: error("unreachable")
+                    val previous = put(label, marker)
+                    check(previous == null) {
+                        "Duplicate source diagnostic marker label '$label' at ${marker.file}:${marker.line}"
+                    }
+                }
+            }
+        val missingExpectedLabels = labeledMarkers.keys - labeledDiagnostics.keys
+        check(missingExpectedLabels.isEmpty()) {
+            "Missing expected typed diagnostics for source labels: ${missingExpectedLabels.sorted().joinToString()}"
+        }
+        val unusedExpectedLabels = labeledDiagnostics.keys - labeledMarkers.keys
+        check(unusedExpectedLabels.isEmpty()) {
+            "Expected typed diagnostics reference missing source labels: ${unusedExpectedLabels.sorted().joinToString()}"
+        }
+        return markers.map { marker ->
+            val labeledDiagnostic = marker.label?.let(labeledDiagnostics::getValue)
+            if (labeledDiagnostic != null) {
+                check(marker.severity == DiagnosticSeverity.ERROR) {
+                    "Typed source diagnostic labels currently support only errors: ${marker.render()}"
+                }
+                check(marker.diagnosticId != null) {
+                    "Typed source diagnostic label '${marker.label}' must declare a TC_* diagnostic id."
+                }
+                check(labeledDiagnostic.diagnosticId == marker.diagnosticId) {
+                    "Typed source diagnostic label '${marker.label}' expects ${labeledDiagnostic.diagnosticId}, but source marker declares ${marker.diagnosticId}"
+                }
+                expectedTypeclassDiagnostic(
+                    expected = labeledDiagnostic,
+                    file = marker.file,
+                    line = marker.line,
+                )
+            } else {
+                when (marker.severity) {
+                    DiagnosticSeverity.ERROR ->
+                        ExpectedDiagnostic.Error(
+                            file = marker.file,
+                            line = marker.line,
+                            diagnosticIds = marker.diagnosticId?.let(::setOf),
+                            description = "source marker ${marker.render()}",
+                        )
+
+                    DiagnosticSeverity.WARNING ->
+                        ExpectedDiagnostic.Warning(
+                            file = marker.file,
+                            line = marker.line,
+                            diagnosticIds = marker.diagnosticId?.let(::setOf),
+                            description = "source marker ${marker.render()}",
+                        )
+                }
+            }
+        }
+    }
+
+    private fun parseSourceDiagnosticMarkers(sources: Map<String, String>): List<SourceDiagnosticMarker> =
         sources.entries.flatMap { (file, source) ->
             source.lineSequence().mapIndexedNotNull { index, line ->
                 val commentStart = line.indexOf("//")
@@ -879,25 +1231,13 @@ abstract class IntegrationTestSupport {
                     return@mapIndexedNotNull null
                 }
                 markers.map { marker ->
-                    when (marker.groupValues[1]) {
-                        "E" ->
-                            ExpectedDiagnostic.Error(
-                                file = file,
-                                line = index + 1,
-                                diagnosticIds = setOf(marker.groupValues[2]),
-                                description = "source marker ${marker.groupValues[1]}:${marker.groupValues[2]}",
-                            )
-
-                        "W" ->
-                            ExpectedDiagnostic.Warning(
-                                file = file,
-                                line = index + 1,
-                                diagnosticIds = setOf(marker.groupValues[2]),
-                                description = "source marker ${marker.groupValues[1]}:${marker.groupValues[2]}",
-                            )
-
-                        else -> error("Unsupported source diagnostic marker: ${marker.value}")
-                    }
+                    SourceDiagnosticMarker(
+                        label = marker.groupValues[1].ifEmpty { null },
+                        severity = parseDiagnosticSeverity(marker.groupValues[2]),
+                        diagnosticId = marker.groupValues[3].ifEmpty { null },
+                        file = file,
+                        line = index + 1,
+                    )
                 }
             }.flatten().toList()
         }
@@ -915,6 +1255,24 @@ abstract class IntegrationTestSupport {
         } else {
             diagnostics.joinToString(separator = "\n") { diagnostic -> diagnostic.toString() }
         }
+
+    private fun automaticNarrativeFragments(diagnosticIds: Set<String>?): List<String> =
+        when {
+            diagnosticIds == null -> emptyList()
+            TypeclassDiagnosticIds.INVALID_INSTANCE_DECL in diagnosticIds -> invalidInstanceNarrativeFragments()
+            TypeclassDiagnosticIds.INVALID_EQUIV_DECL in diagnosticIds -> invalidEquivNarrativeFragments()
+            TypeclassDiagnosticIds.CANNOT_DERIVE in diagnosticIds -> cannotDeriveNarrativeFragments()
+            TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE in diagnosticIds -> ambiguousNarrativeFragments()
+            else -> emptyList()
+        }
+
+    private fun invalidInstanceNarrativeFragments(): List<String> = listOf("why it failed", "how to fix")
+
+    private fun invalidEquivNarrativeFragments(): List<String> = listOf("why it failed", "how to fix")
+
+    private fun cannotDeriveNarrativeFragments(): List<String> = listOf("why it failed", "how to fix")
+
+    private fun ambiguousNarrativeFragments(): List<String> = listOf("why it failed", "how to fix", "candidates")
 
     private fun directJarCandidates(
         libsDirectory: Path,
@@ -964,6 +1322,46 @@ abstract class IntegrationTestSupport {
                     },
                 )
         }
+
+    protected fun expectedStructuredDiagnosticId(
+        diagnosticId: String,
+        headlineFragments: List<String> = emptyList(),
+        whyFragments: List<String> = emptyList(),
+        fixFragments: List<String> = emptyList(),
+        file: String? = null,
+        line: Int? = null,
+        phase: DiagnosticPhase? = null,
+        requireNarrative: Boolean = true,
+    ): ExpectedDiagnostic.Error =
+        ExpectedDiagnostic.Error(
+            diagnosticIds = setOf(diagnosticId),
+            phase = phase,
+            file = file,
+            line = line,
+            description =
+                buildString {
+                    append(diagnosticId)
+                    append(" headline=")
+                    append(headlineFragments)
+                    append(" why=")
+                    append(whyFragments)
+                    append(" fix=")
+                    append(fixFragments)
+                },
+            messagePredicate = { message ->
+                val narrative = parseTypeclassDiagnostic(message, diagnosticId)
+                if (requireNarrative && narrative == null) {
+                    false
+                } else {
+                    val headline = narrative?.headline?.lowercase() ?: message.lowercase()
+                    val why = narrative?.reason?.lowercase()
+                    val fix = narrative?.fix?.lowercase()
+                    headlineFragments.all { headline.contains(it.lowercase()) } &&
+                        whyFragments.all { fragment -> why?.contains(fragment.lowercase()) == true } &&
+                        fixFragments.all { fragment -> fix?.contains(fragment.lowercase()) == true }
+                }
+            },
+        )
 }
 
 data class CompilationArtifacts(
@@ -1080,7 +1478,34 @@ data class ReportedDiagnostic(
 private data class ParsedDiagnosticMessage(
     val message: String,
     val diagnosticId: String?,
+    val explicitDiagnosticId: Boolean,
 )
+
+private data class SourceDiagnosticMarker(
+    val label: String?,
+    val severity: DiagnosticSeverity,
+    val diagnosticId: String?,
+    val file: String,
+    val line: Int,
+) {
+    fun render(): String =
+        buildString {
+            label?.let {
+                append(it)
+                append('@')
+            }
+            append(
+                when (severity) {
+                    DiagnosticSeverity.ERROR -> 'E'
+                    DiagnosticSeverity.WARNING -> 'W'
+                },
+            )
+            diagnosticId?.let {
+                append(':')
+                append(it)
+            }
+        }
+}
 
 sealed class ExpectedDiagnostic private constructor(
     private val severity: DiagnosticSeverity,
@@ -1095,8 +1520,7 @@ sealed class ExpectedDiagnostic private constructor(
         actual.severity == severity &&
             matchesDiagnosticId(actual.diagnosticId) &&
             matchesPhase(actual.phase) &&
-            matchesFile(actual.file) &&
-            (line == null || actual.line == line) &&
+            matchesLocation(actual) &&
             messagePredicate(actual.message)
 
     private fun matchesDiagnosticId(actualDiagnosticId: String?): Boolean =
@@ -1115,6 +1539,18 @@ sealed class ExpectedDiagnostic private constructor(
         val normalizedExpected = file.replace('\\', '/')
         val normalizedActual = actualFile.replace('\\', '/')
         return normalizedActual == normalizedExpected || normalizedActual.endsWith("/$normalizedExpected")
+    }
+
+    private fun matchesLocation(actual: ReportedDiagnostic): Boolean {
+        // Some Kotlin-owned FIR diagnostics are emitted without a file/line even
+        // though the source test still points at the intended failing call site with
+        // an inline marker. Keep the locationless fallback only for those non-plugin
+        // errors; plugin-owned TC_* diagnostics are expected to carry a real source
+        // location and should be fixed at the emitter if they do not.
+        if (actual.file == null && actual.line == null) {
+            return actual.diagnosticId == null
+        }
+        return matchesFile(actual.file) && (line == null || actual.line == line)
     }
 
     override fun toString(): String =

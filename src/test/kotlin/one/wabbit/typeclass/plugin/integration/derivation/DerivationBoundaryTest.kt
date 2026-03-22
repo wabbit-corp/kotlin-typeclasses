@@ -418,7 +418,6 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("missing typeclass instance", "show"),
             expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.IR)),
             dependencies = listOf(modelDependency),
             unexpectedMessages = listOf("internal compiler error"),
@@ -483,13 +482,12 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
             fun main() {
                 val token: Token = Word(ShownString("clash"))
-                println(render(token))
+                println(render(token)) // E:TC_AMBIGUOUS_INSTANCE dependency exports both manual and derived Show<Token>
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("show"),
             expectedDiagnostics = listOf(expectedAmbiguousInstance("show")),
             dependencies = listOf(modelDependency),
             unexpectedMessages = listOf("internal compiler error"),
@@ -547,7 +545,6 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("missing typeclass instance", "eq"),
             expectedDiagnostics = listOf(expectedNoContextArgument("eq", phase = DiagnosticPhase.IR)),
             dependencies = dependencies,
             unexpectedMessages = listOf("internal compiler error"),

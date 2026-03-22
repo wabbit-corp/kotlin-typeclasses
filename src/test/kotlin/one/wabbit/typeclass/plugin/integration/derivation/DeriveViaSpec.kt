@@ -1,5 +1,6 @@
 package one.wabbit.typeclass.plugin.integration.derivation
 
+import one.wabbit.typeclass.plugin.invalidEquivSubclassing
 import one.wabbit.typeclass.plugin.integration.CompilerHarnessPlugin
 import one.wabbit.typeclass.plugin.integration.HarnessDependency
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
@@ -203,7 +204,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedCannotDerive("empty path"),
@@ -281,6 +281,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
             import one.wabbit.typeclass.DeriveVia
             import one.wabbit.typeclass.Equiv
+            import one.wabbit.typeclass.InternalTypeclassApi
             import one.wabbit.typeclass.Instance
             import one.wabbit.typeclass.Typeclass
             import one.wabbit.typeclass.summon
@@ -300,6 +301,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @DeriveVia(Show::class, ViaB::class)
             data class TaggedUserId(val value: Int)
 
+            @OptIn(InternalTypeclassApi::class)
             fun main() {
                 println(summon<Equiv<TaggedUserId, ViaB>>()) // E:TC_NO_CONTEXT_ARGUMENT TaggedUserId does not export Equiv without @DeriveEquiv
             }
@@ -307,7 +309,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics = listOf(expectedNoContextArgument()),
         )
     }
@@ -847,7 +848,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics = listOf(expectedCannotDerive("opaque or mutable nominal containers")),
         )
     }
@@ -858,22 +858,15 @@ class DeriveViaSpec : IntegrationTestSupport() {
             package demo
 
             import one.wabbit.typeclass.DeriveEquiv
-            import one.wabbit.typeclass.Equiv
-            import one.wabbit.typeclass.summon
 
             data class PlainIntBox(val value: Int)
 
             @DeriveEquiv(PlainIntBox::class) // E:TC_CANNOT_DERIVE generic DeriveEquiv targets are not supported yet
             data class GenericBox<A>(val value: A)
-
-            fun main() {
-                println(summon<Equiv<GenericBox<Int>, PlainIntBox>>())
-            }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics = listOf(expectedCannotDerive("monomorphic")),
         )
     }
@@ -902,18 +895,10 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
             @DeriveVia(Show::class, Foo::class) // E:TC_CANNOT_DERIVE generic DeriveVia targets are not supported yet
             data class GenericBox<A>(val value: A)
-
-            context(show: Show<A>)
-            fun <A> render(value: A): String = show.show(value)
-
-            fun main() {
-                println(render(GenericBox(1)))
-            }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics = listOf(expectedCannotDerive("monomorphic")),
         )
     }
@@ -967,7 +952,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("ambiguous", "show"),
             expectedDiagnostics = listOf(expectedAmbiguousInstance("show", "userid")),
         )
     }
@@ -1052,7 +1036,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedNoContextArgument(),
@@ -1094,7 +1077,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedCannotDerive("derive via", "positiveint"),
@@ -1122,7 +1104,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedCannotDerive("equiv", "statefulbox", "plainbox"),
@@ -1150,7 +1131,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedCannotDerive("equiv", "delegatedbox", "plainbox"),
@@ -1178,7 +1158,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedCannotDerive("equiv", "secondarybox", "plainbox"),
@@ -1627,7 +1606,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedCannotDerive("opaque or mutable nominal containers"),
@@ -1670,7 +1648,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedCannotDerive("opaque or mutable nominal containers"),
@@ -1717,7 +1694,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedCannotDerive("context parameters", "transported type parameter"),
@@ -1757,7 +1733,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedCannotDerive("type-parameter bounds", "transported type parameter"),
@@ -1796,7 +1771,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedCannotDerive("definitely-non-null", "intersection member types"),
@@ -1838,7 +1812,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedCannotDerive("recursive nominal transport shapes"),
@@ -1874,7 +1847,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedCannotDerive("equiv", "leftshape", "rightshape"),
@@ -1901,7 +1873,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedCannotDerive("equiv", "leftshape", "rightshape"),
@@ -1963,12 +1934,14 @@ class DeriveViaSpec : IntegrationTestSupport() {
             """
             package demo
 
+            import one.wabbit.typeclass.InternalTypeclassApi
             import one.wabbit.typeclass.Instance
 
             data class UserId(val value: Int)
 
+            @OptIn(InternalTypeclassApi::class)
             @Instance
-            object UserIdIntEquiv : one.wabbit.typeclass.Equiv<UserId, Int>() { // E:TC_INVALID_EQUIV_DECL Equiv is compiler-owned
+            object UserIdIntEquiv : one.wabbit.typeclass.Equiv<UserId, Int>() { // err@E:TC_INVALID_EQUIV_DECL Equiv is compiler-owned
                 override fun to(value: UserId): Int = value.value
                 override fun from(value: Int): UserId = UserId(value)
             }
@@ -1976,10 +1949,9 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("equiv", "compiler-owned"),
             expectedDiagnostics =
-                listOf(
-                    expectedDiagnosticId("TC_INVALID_EQUIV_DECL", "equiv", "compiler-owned"),
+                mapOf(
+                    "err" to invalidEquivSubclassing(),
                 ),
         )
     }
@@ -1993,9 +1965,12 @@ class DeriveViaSpec : IntegrationTestSupport() {
             """
             package demo
 
+            import one.wabbit.typeclass.InternalTypeclassApi
+
             data class UserId(val value: Int)
 
-            object SneakyEquiv : one.wabbit.typeclass.Equiv<UserId, Int>() { // E:TC_INVALID_EQUIV_DECL Equiv is compiler-owned
+            @OptIn(InternalTypeclassApi::class)
+            object SneakyEquiv : one.wabbit.typeclass.Equiv<UserId, Int>() { // err@E:TC_INVALID_EQUIV_DECL Equiv is compiler-owned
                 override fun to(value: UserId): Int = value.value
                 override fun from(value: Int): UserId = UserId(value)
             }
@@ -2003,10 +1978,9 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("equiv", "compiler-owned"),
             expectedDiagnostics =
-                listOf(
-                    expectedDiagnosticId("TC_INVALID_EQUIV_DECL", "equiv", "compiler-owned"),
+                mapOf(
+                    "err" to invalidEquivSubclassing(),
                 ),
         )
     }
@@ -2125,7 +2099,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedCannotDerive("derive via", "badiso", "userid"),
@@ -2175,7 +2148,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedCannotDerive("disconnected", "midfooiso"),
@@ -2236,7 +2208,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedCannotDerive("ambiguous", "bridgeiso", "both endpoints"),
@@ -2530,7 +2501,6 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     expectedCannotDerive("equiv", "positivebox", "plainbox"),

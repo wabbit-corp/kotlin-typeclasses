@@ -957,7 +957,6 @@ class ResolutionTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "show"),
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(messageRegex = "(?i)no context argument.*show"),
@@ -1007,7 +1006,6 @@ class ResolutionTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("ambiguous", "int"),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
         )
     }
@@ -1326,7 +1324,6 @@ class ResolutionTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("ambiguous", "jsonwriter"),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "bodyserializer")),
         )
     }
@@ -1498,8 +1495,7 @@ class ResolutionTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("missing", "big"),
-            expectedDiagnostics = listOf(expectedErrorContaining("missing", "show", "big")),
+            expectedDiagnostics = listOf(expectedNoContextArgument("show", "big", phase = DiagnosticPhase.IR)),
         )
     }
 
@@ -1642,7 +1638,6 @@ class ResolutionTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "foo"),
             expectedDiagnostics = listOf(expectedNoContextArgument("foo")),
         )
     }
@@ -1801,13 +1796,12 @@ class ResolutionTest : IntegrationTestSupport() {
             fun which(): String = summon<Show<Nothing>>().label()
 
             fun main() {
-                println(which()) // multiple broader contravariant instances match Show<Nothing>
+                println(which()) // E:TC_NO_CONTEXT_ARGUMENT multiple broader contravariant instances match Show<Nothing>
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("show", "nothing"),
             expectedDiagnostics = listOf(expectedNoContextArgument("show")),
         )
     }
@@ -1925,7 +1919,7 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 context(IntShow) {
                     context(StringListShow) {
-                        println(choose()) // A is inferred as both Int and String
+                        println(choose()) // E A is inferred as both Int and String
                     }
                 }
             }
@@ -1933,7 +1927,6 @@ class ResolutionTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("conflicting", "binding"),
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
@@ -1984,7 +1977,6 @@ class ResolutionTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "eq"),
             expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("eq")),
         )
     }
@@ -2386,7 +2378,6 @@ class ResolutionTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("ambiguous", "show"),
             expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("show")),
         )
     }

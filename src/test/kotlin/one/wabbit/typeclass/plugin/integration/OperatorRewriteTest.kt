@@ -328,15 +328,15 @@ class OperatorRewriteTest : IntegrationTestSupport() {
                 }
             }
 
-            context(binder: SlotBinder<A>)
+            context(binder: SlotBinder<A>) // E
             operator fun <A> A.provideDelegate(thisRef: Any?, property: KProperty<*>): A =
                 binder.bind(this, property.name)
 
-            context(reader: SlotReader<A>)
+            context(reader: SlotReader<A>) // E
             operator fun <A> A.getValue(thisRef: Any?, property: KProperty<*>): String =
                 reader.read(this, property.name)
 
-            context(writer: SlotWriter<A>)
+            context(writer: SlotWriter<A>) // E
             operator fun <A> A.setValue(thisRef: Any?, property: KProperty<*>, value: String) {
                 writer.write(this, property.name, value)
             }
@@ -355,7 +355,24 @@ class OperatorRewriteTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("context parameters on delegation operators are unsupported"),
+            expectedDiagnostics =
+                listOf(
+                    expectedErrorContaining(
+                        "context parameters on delegation operators are unsupported",
+                        file = "Sample.kt",
+                        line = 52,
+                    ),
+                    expectedErrorContaining(
+                        "context parameters on delegation operators are unsupported",
+                        file = "Sample.kt",
+                        line = 56,
+                    ),
+                    expectedErrorContaining(
+                        "context parameters on delegation operators are unsupported",
+                        file = "Sample.kt",
+                        line = 60,
+                    ),
+                ),
         )
     }
 

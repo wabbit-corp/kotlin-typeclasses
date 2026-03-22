@@ -1,5 +1,6 @@
 package one.wabbit.typeclass.plugin.integration.derivation
 
+import one.wabbit.typeclass.plugin.integration.DiagnosticPhase
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import kotlin.test.Test
 
@@ -675,7 +676,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $jsonReaderDeriverPrelude
 
-            @Derive(JsonReader::class)
+            @Derive(JsonReader::class) // E:TC_CANNOT_DERIVE covariant readers reject refined result heads here
             sealed interface Expr<A>
 
             @Derive(JsonReader::class)
@@ -685,15 +686,18 @@ class GADTDerivationTest : IntegrationTestSupport() {
             data object BoolLit : Expr<Boolean>
 
             fun main() {
-                val value: Expr<Int> = decode<Expr<Int>>("{}")
+                val value: Expr<Int> = decode<Expr<Int>>("{}") // E:TC_NO_CONTEXT_ARGUMENT no derived JsonReader<Expr<Int>> should exist after rejection
                 println(value)
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("conservative", "result head"),
-            expectedDiagnostics = listOf(expectedCannotDerive("conservative", "result head")),
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("conservative", "result head"),
+                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
+                ),
         )
     }
 
@@ -706,7 +710,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $codecDeriverPrelude
 
-            @Derive(Codec::class)
+            @Derive(Codec::class) // E:TC_CANNOT_DERIVE invariant codecs reject result-head refinements
             sealed interface Container<A>
 
             @Derive(Codec::class)
@@ -716,15 +720,18 @@ class GADTDerivationTest : IntegrationTestSupport() {
             data class Many<A>(val values: List<A>) : Container<List<A>>
 
             fun main() {
-                val value: Container<List<Int>> = roundTrip<Container<List<Int>>>("[]")
+                val value: Container<List<Int>> = roundTrip<Container<List<Int>>>("[]") // E:TC_NO_CONTEXT_ARGUMENT no derived Codec<Container<List<Int>>> should exist after rejection
                 println(value)
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("conservative", "result head"),
-            expectedDiagnostics = listOf(expectedCannotDerive("conservative", "result head")),
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("conservative", "result head"),
+                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
+                ),
         )
     }
 
@@ -877,16 +884,15 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $showDeriverPrelude
 
-            @Derive(Show::class)
+            @Derive(Show::class) // E:TC_CANNOT_DERIVE B is hidden from Packed<A>
             sealed interface Packed<A>
 
             @Derive(Show::class)
-            data class Hidden<A, B>(val value: B) : Packed<A> // B is hidden from Packed<A>
+            data class Hidden<A, B>(val value: B) : Packed<A>
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("not quantified", "admitted result head"),
             expectedDiagnostics = listOf(expectedCannotDerive("not quantified", "admitted result head")),
         )
     }
@@ -899,7 +905,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $showDeriverPrelude
 
-            @Derive(Show::class)
+            @Derive(Show::class) // E:TC_CANNOT_DERIVE B is hidden from Weird<A>
             sealed interface Weird<A>
 
             @Derive(Show::class)
@@ -909,12 +915,11 @@ class GADTDerivationTest : IntegrationTestSupport() {
             data class Leak<A, B>(
                 val left: Weird<A>,
                 val right: Weird<B>,
-            ) : Weird<A> // B is hidden from Weird<A>
+            ) : Weird<A>
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("not quantified", "admitted result head"),
             expectedDiagnostics = listOf(expectedCannotDerive("not quantified", "admitted result head")),
         )
     }
@@ -1025,7 +1030,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $constructorsDeriverPrelude
 
-            @Derive(Constructors::class)
+            @Derive(Constructors::class) // E:TC_CANNOT_DERIVE conservative-only policy should still reject refined result heads here
             sealed interface Expr<A>
 
             @Derive(Constructors::class)
@@ -1035,13 +1040,17 @@ class GADTDerivationTest : IntegrationTestSupport() {
             data object BoolLit : Expr<Boolean>
 
             fun main() {
-                println(caseNames<Expr<Int>>().joinToString())
+                println(caseNames<Expr<Int>>().joinToString()) // E:TC_NO_CONTEXT_ARGUMENT no derived Constructors<Expr<Int>> should exist after rejection
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("conservative", "result head"),
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("conservative", "result head"),
+                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
+                ),
         )
     }
 
@@ -1056,21 +1065,24 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $phantomTagDeriverPrelude
 
-            @Derive(Tag::class)
+            @Derive(Tag::class) // E:TC_CANNOT_DERIVE hidden subclass parameters remain contract-rejected today
             sealed interface Packed<A>
 
             @Derive(Tag::class)
             data class Hidden<A, B>(val value: B) : Packed<A>
 
             fun main() {
-                println(tagName<Packed<Int>>())
+                println(tagName<Packed<Int>>()) // E:TC_NO_CONTEXT_ARGUMENT no derived Tag<Packed<Int>> should exist after rejection
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("not quantified", "admitted result head"),
-            expectedDiagnostics = listOf(expectedCannotDerive("not quantified", "admitted result head")),
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("not quantified", "admitted result head"),
+                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
+                ),
         )
     }
 
@@ -1204,7 +1216,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $projectedSinkDeriverPrelude
 
-            @Derive(InvariantBoxSink::class)
+            @Derive(InvariantBoxSink::class) // E:TC_CANNOT_DERIVE invariant nesting keeps this in the conservative bucket
             sealed interface Expr<A>
 
             @Derive(InvariantBoxSink::class)
@@ -1215,13 +1227,17 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
             fun main() {
                 val boxed: Box<Expr<Int>> = Box(IntLit)
-                println(consumeInvariantBox(boxed))
+                println(consumeInvariantBox(boxed)) // E:TC_NO_CONTEXT_ARGUMENT no derived InvariantBoxSink<Expr<Int>> should exist after rejection
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("refine", "result head"),
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("conservative", "result head"),
+                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
+                ),
         )
     }
 
@@ -1235,7 +1251,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $projectedSinkDeriverPrelude
 
-            @Derive(ReverseProjectedSink::class)
+            @Derive(ReverseProjectedSink::class) // E:TC_CANNOT_DERIVE use-site in projections flip this back to the conservative bucket
             sealed interface Expr<A>
 
             @Derive(ReverseProjectedSink::class)
@@ -1246,13 +1262,17 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
             fun main() {
                 val boxed: Box<in Expr<Int>> = Box<Any?>(IntLit)
-                println(consumeProjectedIn(boxed))
+                println(consumeProjectedIn(boxed)) // E:TC_NO_CONTEXT_ARGUMENT no derived ReverseProjectedSink<Expr<Int>> should exist after rejection
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("refine", "result head"),
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("conservative", "result head"),
+                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
+                ),
         )
     }
 
@@ -1377,7 +1397,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 val proof: Same<X, A>,
             )
 
-            @Derive(Show::class)
+            @Derive(Show::class) // E:TC_CANNOT_DERIVE proof/equality-carrying constructor shapes are out of scope
             sealed interface Expr<A>
 
             @Derive(Show::class)
@@ -1386,7 +1406,10 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("proof", "equality", "hidden", "result head"),
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("proof/equality-carrying", "admitted result head"),
+                ),
         )
     }
 
@@ -1396,7 +1419,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $codecDeriverPrelude
 
-            @Derive(Codec::class)
+            @Derive(Codec::class) // E:TC_CANNOT_DERIVE only admissible sum cases should be derived
             sealed interface Expr<A>
 
             @Derive(Codec::class)
@@ -1406,15 +1429,18 @@ class GADTDerivationTest : IntegrationTestSupport() {
             data class Lit(val value: Int) : Expr<Int>
 
             fun main() {
-                val value: Expr<Int> = roundTrip<Expr<Int>>("ignored")
+                val value: Expr<Int> = roundTrip<Expr<Int>>("ignored") // E:TC_NO_CONTEXT_ARGUMENT no derived Codec<Expr<Int>> should exist after rejection
                 println(value)
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("conservative", "result head"),
-            expectedDiagnostics = listOf(expectedCannotDerive("conservative", "result head")),
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("conservative", "result head"),
+                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
+                ),
         )
     }
 }

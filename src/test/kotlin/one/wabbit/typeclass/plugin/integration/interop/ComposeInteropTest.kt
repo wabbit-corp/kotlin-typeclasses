@@ -396,7 +396,6 @@ class ComposeInteropTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("show", "int"),
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(

@@ -26,7 +26,6 @@ class HarnessDeterminismTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = failingSource,
-            expectedMessages = listOf("no context argument", "show"),
             expectedDiagnostics = listOf(expectedNoContextArgument("show")),
         )
 
@@ -114,7 +113,6 @@ class HarnessDeterminismTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = laterSource,
-            expectedMessages = listOf("no context argument", "show"),
             expectedDiagnostics = listOf(expectedNoContextArgument("show")),
         )
     }
@@ -245,11 +243,11 @@ class HarnessDeterminismTest : IntegrationTestSupport() {
             """
             package demo
 
-            import dep.Token
-            import dep.render
+            import dep.Token // E
+            import dep.render // E
 
             fun main() {
-                println(render(Token(11)))
+                println(render(Token(11))) // E
             }
             """.trimIndent()
 
@@ -261,8 +259,13 @@ class HarnessDeterminismTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = consumerSource,
-            expectedMessages = listOf("unresolved reference"),
-            expectedDiagnostics = emptyList(),
+            expectedDiagnostics =
+                listOf(
+                    expectedErrorContaining("unresolved reference", "dep", file = "Sample.kt", line = 3),
+                    expectedErrorContaining("unresolved reference", "dep", file = "Sample.kt", line = 4),
+                    expectedErrorContaining("unresolved reference", "render", file = "Sample.kt", line = 7),
+                    expectedErrorContaining("unresolved reference", "token", file = "Sample.kt", line = 7),
+                ),
             dependencies = emptyList(),
         )
     }

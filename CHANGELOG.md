@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Enrich plugin-owned diagnostics with explicit `Why it failed` / `How to fix` narratives for invalid `@Instance`, invalid `Equiv`, derivation failures, ambiguous instance selection, missing IR-context resolution, and builtin-evidence failures; add a shared parser/renderer model with round-trip tests for those narratives; and tighten the integration harness so negative tests assert parsed structured diagnostics instead of loose fragments.
 - Add `DerivationOptimizationSpec` as a detailed design suite for the planned derivation-optimization pass, covering local product/sum/enum specialization, recursive knot handling, `DeriveVia` transport fusion, and explicit no-inlining boundaries across compilation units and modules.
 - Enable reviewed builtin and overload-resolution regressions, remove star-projected context-parameter fixtures that are now considered prohibited, and move callable-reference and contextual-property blocked coverage into a dedicated `integration.blocked` package.
 - Match `GadtDerivationPolicy` by its full `one.wabbit.typeclass` identity in IR instead of by short-name coincidence, add the public runtime annotation surface for the policy override, and cover collisions with unrelated same-named annotations from other packages.

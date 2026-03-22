@@ -1,5 +1,12 @@
 package one.wabbit.typeclass.plugin.integration.derivation
 
+import one.wabbit.typeclass.plugin.cannotDeriveMissingEnumOverride
+import one.wabbit.typeclass.plugin.cannotDeriveOnlyUnaryTypeclasses
+import one.wabbit.typeclass.plugin.cannotDeriveConstructiveProductStoredPropertyMismatch
+import one.wabbit.typeclass.plugin.cannotDeriveRequiresPrimaryConstructor
+import one.wabbit.typeclass.plugin.cannotDeriveMissingRequiredDeriver
+import one.wabbit.typeclass.plugin.cannotDeriveUnsupportedShape
+import one.wabbit.typeclass.plugin.cannotDeriveWrongDeriverReturnType
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import one.wabbit.typeclass.plugin.integration.DiagnosticPhase
 import kotlin.test.Test
@@ -29,15 +36,14 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             requestedHeadOnlySource(
                 extraDeclarations =
                     """
-                    context(_: Eq<User>)
-                    fun requiresEq(): String = "eq"
-                    """,
-                mainBody = """println(requiresEq())""",
+        context(_: Eq<User>)
+        fun requiresEq(): String = "eq"
+        """,
+                mainBody = """println(requiresEq()) // E:TC_NO_CONTEXT_ARGUMENT only Show<User> is derived here, not Eq<User>""",
             )
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("eq", "user"),
             expectedDiagnostics = listOf(expectedNoContextArgument("eq")),
         )
     }
@@ -48,15 +54,14 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             requestedHeadOnlySource(
                 extraDeclarations =
                     """
-                    context(show: Show<A>)
-                    fun <A> render(value: A): String = show.show(value)
-                    """,
-                mainBody = """println(render<User?>(null))""",
+        context(show: Show<A>)
+        fun <A> render(value: A): String = show.show(value)
+        """,
+                mainBody = """println(render<User?>(null)) // E:TC_NO_CONTEXT_ARGUMENT @Derive(Show::class) for User does not imply Show<User?>""",
             )
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.IR)),
         )
     }
@@ -90,8 +95,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
-            expectedDiagnostics = listOf(expectedCannotDerive("exactly one type parameter")),
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(cannotDeriveOnlyUnaryTypeclasses()),
+                ),
         )
     }
 
@@ -130,8 +137,13 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("deriveProduct", "Show", "Eq"),
-            expectedDiagnostics = listOf(expectedCannotDerive("deriveProduct", "Show", "Eq", phase = null)),
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(
+                        cannotDeriveWrongDeriverReturnType("deriveProduct", "Show", "Eq"),
+                        phase = null,
+                    ),
+                ),
         )
     }
 
@@ -161,8 +173,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
-            expectedDiagnostics = listOf(expectedCannotDerive("deriveProduct", "Show")),
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(cannotDeriveWrongDeriverReturnType("deriveProduct", "Show")),
+                ),
         )
     }
 
@@ -210,8 +224,13 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("deriveSum", "Show", "Eq"),
-            expectedDiagnostics = listOf(expectedCannotDerive("deriveSum", "Show", "Eq", phase = null)),
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(
+                        cannotDeriveWrongDeriverReturnType("deriveSum", "Show", "Eq"),
+                        phase = null,
+                    ),
+                ),
         )
     }
 
@@ -250,8 +269,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
-            expectedDiagnostics = listOf(expectedCannotDerive("deriveSum", "Show")),
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(cannotDeriveWrongDeriverReturnType("deriveSum", "Show")),
+                ),
         )
     }
 
@@ -304,8 +325,13 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("deriveEnum", "Show", "Eq"),
-            expectedDiagnostics = listOf(expectedCannotDerive("deriveEnum", "Show", "Eq", phase = null)),
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(
+                        cannotDeriveWrongDeriverReturnType("deriveEnum", "Show", "Eq"),
+                        phase = null,
+                    ),
+                ),
         )
     }
 
@@ -350,8 +376,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
-            expectedDiagnostics = listOf(expectedCannotDerive("deriveEnum", "Show")),
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(cannotDeriveWrongDeriverReturnType("deriveEnum", "Show")),
+                ),
         )
     }
 
@@ -393,8 +421,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("deriveEnum", "enum classes"),
-            expectedDiagnostics = listOf(expectedCannotDerive("deriveEnum", "enum classes", phase = null)),
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(cannotDeriveMissingEnumOverride("Show"), phase = null),
+                ),
         )
     }
 
@@ -430,8 +460,17 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("ProductTypeclassDeriver", "sealed sums"),
-            expectedDiagnostics = listOf(expectedCannotDerive("ProductTypeclassDeriver", "sealed sums", phase = null)),
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(
+                        cannotDeriveMissingRequiredDeriver(
+                            typeclassName = "Show",
+                            requiredName = "TypeclassDeriver",
+                            detail = "ProductTypeclassDeriver only supports products, not sealed sums",
+                        ),
+                        phase = null,
+                    ),
+                ),
         )
     }
 
@@ -464,8 +503,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("sealed or final classes and objects"),
-            expectedDiagnostics = listOf(expectedCannotDerive("sealed or final classes and objects", phase = null)),
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(cannotDeriveUnsupportedShape(), phase = null),
+                ),
         )
     }
 
@@ -500,9 +541,13 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("constructor parameters", "stored properties"),
             expectedDiagnostics =
-                listOf(expectedCannotDerive("constructor parameters", "stored properties", phase = null)),
+                listOf(
+                    expectedTypeclassDiagnostic(
+                        cannotDeriveConstructiveProductStoredPropertyMismatch("demo/Stats"),
+                        phase = null,
+                    ),
+                ),
         )
     }
 
@@ -541,8 +586,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("primary constructor"),
-            expectedDiagnostics = listOf(expectedCannotDerive("primary constructor", phase = null)),
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(cannotDeriveRequiresPrimaryConstructor(), phase = null),
+                ),
         )
     }
 

@@ -18,13 +18,12 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             data class User(val name: String)
 
             fun main() {
-                println(summon<KSerializer<User>>().descriptor.serialName)
+                println(summon<KSerializer<User>>().descriptor.serialName) // E KSerializer should not be treated as a builtin typeclass when the flag is disabled
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
@@ -78,13 +77,12 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             fun proof(): String = "serializer-typeclass"
 
             fun main() {
-                println(proof())
+                println(proof()) // E KSerializer should not be recognized as a typeclass for IsTypeclassInstance when the flag is disabled
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
@@ -150,7 +148,6 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("serializer", "user"),
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
@@ -506,7 +503,6 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("star", "serializer"),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "value")),
             requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
@@ -532,7 +528,6 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "value"),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "value")),
             unexpectedMessages = listOf("reified target type", "builtin kserializer"),
             requiredPlugins = serializationPlugins,

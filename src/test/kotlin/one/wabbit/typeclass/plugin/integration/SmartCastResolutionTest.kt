@@ -197,7 +197,6 @@ class SmartCastResolutionTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "render(value)"),
             expectedDiagnostics = listOf(expectedNoContextArgument("show")),
         )
     }

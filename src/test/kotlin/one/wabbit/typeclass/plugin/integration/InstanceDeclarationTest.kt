@@ -1,5 +1,9 @@
 package one.wabbit.typeclass.plugin.integration
 
+import one.wabbit.typeclass.plugin.invalidInstanceExtensionFunction
+import one.wabbit.typeclass.plugin.invalidInstanceNonTypeclassPrerequisites
+import one.wabbit.typeclass.plugin.invalidInstanceRegularParameter
+import one.wabbit.typeclass.plugin.invalidInstanceStarProjectedPrerequisites
 import kotlin.test.Test
 
 class InstanceDeclarationTest : IntegrationTestSupport() {
@@ -26,7 +30,6 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("scope"),
             expectedDiagnostics =
                 listOf(
                     expectedInvalidInstanceDecl("top-level", "associated owners"),
@@ -71,7 +74,6 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "show"),
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(messageRegex = "(?i)(duplicate|no context argument)"),
@@ -102,7 +104,6 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("companion"),
             expectedDiagnostics =
                 listOf(
                     expectedInvalidInstanceDecl("companion", "top-level"),
@@ -132,8 +133,10 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("extension"),
-            expectedDiagnostics = listOf(expectedErrorContaining("extension")),
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(invalidInstanceExtensionFunction()),
+                ),
         )
     }
 
@@ -159,10 +162,9 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("regular parameter"),
             expectedDiagnostics =
                 listOf(
-                    ExpectedDiagnostic.Error(messageRegex = "(?i)(regular parameter|invalid @instance declaration|parameter)"),
+                    expectedTypeclassDiagnostic(invalidInstanceRegularParameter()),
                 ),
         )
     }
@@ -194,21 +196,14 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 object : Show<Box> {
                     override fun show(value: Box): String = prefix.value + show.show(value.value)
                 }
-
-            context(show: Show<A>)
-            fun <A> render(value: A): String = show.show(value)
-
-            fun main() {
-                context(Prefix("box=")) {
-                    println(render(Box(1)))
-                }
-            }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("invalid @instance declaration", "context", "typeclass"),
-            expectedDiagnostics = listOf(expectedErrorContaining("invalid @instance declaration", "typeclass")),
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(invalidInstanceNonTypeclassPrerequisites()),
+                ),
         )
     }
 
@@ -230,25 +225,20 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 override fun show(value: String): String = value
             }
 
-            @Instance
+            @Instance // E:TC_INVALID_INSTANCE_DECL @Instance functions must not depend on star-projected typeclass prerequisites
             context(_: Show<*>)
             fun listShow(): Show<List<String>> =
                 object : Show<List<String>> {
                     override fun show(value: List<String>): String = value.joinToString(",")
                 }
-
-            context(show: Show<A>)
-            fun <A> render(value: A): String = show.show(value)
-
-            fun main() {
-                println(render(listOf("a")))
-            }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("invalid @instance declaration", "star", "instance"),
-            expectedDiagnostics = listOf(expectedErrorContaining("invalid @instance declaration", "star")),
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(invalidInstanceStarProjectedPrerequisites()),
+                ),
         )
     }
 
@@ -275,27 +265,21 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 override fun show(value: String): String = value
             }
 
-            @Instance
+            @Instance // E:TC_INVALID_INSTANCE_DECL @Instance functions must not depend on definitely-non-null typeclass prerequisites
             context(_: Show<T & Any>)
             fun <T> boxShow(): Show<Box<T>> =
                 object : Show<Box<T>> {
                     override fun show(value: Box<T>): String = value.value.toString()
                 }
-
-            context(show: Show<A>)
-            fun <A> render(value: A): String = show.show(value)
-
-            fun main() {
-                println(render(Box("a")))
-            }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("invalid @instance declaration", "context", "instance"),
             expectedDiagnostics =
                 listOf(
-                    ExpectedDiagnostic.Error(messageRegex = "(?i)(invalid @instance declaration|definitely|instance)"),
+                    expectedExactInvalidInstanceDecl(
+                        why = "instance function typeclass prerequisites must not use definitely-non-null type arguments.",
+                    ),
                 ),
         )
     }
@@ -325,8 +309,12 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("associated", "owner"),
-            expectedDiagnostics = listOf(expectedErrorContaining("associated", "owner")),
+            expectedDiagnostics =
+                listOf(
+                    expectedExactInvalidInstanceDecl(
+                        why = "associated owner does not match the provided typeclass head or its type arguments.",
+                    ),
+                ),
         )
     }
 
@@ -351,8 +339,12 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("class"),
-            expectedDiagnostics = listOf(expectedErrorContaining("class")),
+            expectedDiagnostics =
+                listOf(
+                    expectedExactInvalidInstanceDecl(
+                        why = "class-based instances are not allowed; use an object.",
+                    ),
+                ),
         )
     }
 
@@ -378,8 +370,12 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("mutable", "property"),
-            expectedDiagnostics = listOf(expectedErrorContaining("mutable", "property")),
+            expectedDiagnostics =
+                listOf(
+                    expectedExactInvalidInstanceDecl(
+                        why = "mutable instance property declarations are not allowed.",
+                    ),
+                ),
         )
     }
 
@@ -402,8 +398,12 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("lateinit", "property"),
-            expectedDiagnostics = listOf(expectedErrorContaining("lateinit", "property")),
+            expectedDiagnostics =
+                listOf(
+                    expectedExactInvalidInstanceDecl(
+                        why = "lateinit instance property declarations are not allowed.",
+                    ),
+                ),
         )
     }
 
@@ -430,8 +430,12 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("getter", "property"),
-            expectedDiagnostics = listOf(expectedErrorContaining("getter", "property")),
+            expectedDiagnostics =
+                listOf(
+                    expectedExactInvalidInstanceDecl(
+                        why = "custom getter instance property declarations are not allowed.",
+                    ),
+                ),
         )
     }
 
@@ -457,8 +461,12 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("suspend"),
-            expectedDiagnostics = listOf(expectedErrorContaining("suspend")),
+            expectedDiagnostics =
+                listOf(
+                    expectedExactInvalidInstanceDecl(
+                        why = "suspend instance functions are not allowed.",
+                    ),
+                ),
         )
     }
 
@@ -482,7 +490,7 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             }
 
             class BadScope {
-                @Instance
+                @Instance // E:TC_INVALID_INSTANCE_DECL member @Instance declarations must remain invalid and must not affect resolution
                 fun badShow(): Show<Int> =
                     object : Show<Int> {
                         override fun show(value: Int): String = "bad:${'$'}value"
@@ -499,9 +507,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("companion"),
             unexpectedMessages = listOf("ambiguous"),
-            expectedDiagnostics = listOf(expectedErrorContaining("companion")),
+            expectedDiagnostics = listOf(expectedInvalidInstanceDecl("companion")),
         )
     }
 
@@ -526,7 +533,7 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
             class BadScope {
                 @Instance
-                object BadShow : Show<Int> {
+                object BadShow : Show<Int> { // E:TC_INVALID_INSTANCE_DECL nested @Instance declarations must remain invalid and must not affect resolution
                     override fun show(value: Int): String = "bad:${'$'}value"
                 }
             }
@@ -541,9 +548,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("companion"),
             unexpectedMessages = listOf("ambiguous"),
-            expectedDiagnostics = listOf(expectedErrorContaining("companion")),
+            expectedDiagnostics = listOf(expectedInvalidInstanceDecl("companion")),
         )
     }
 
@@ -576,8 +582,12 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("recursive"),
-            expectedDiagnostics = listOf(expectedErrorContaining("recursive")),
+            expectedDiagnostics =
+                listOf(
+                    expectedExactInvalidInstanceDecl(
+                        why = "direct recursive instance rule for demo/Show is not allowed.",
+                    ),
+                ),
         )
     }
 

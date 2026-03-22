@@ -44,17 +44,17 @@ internal object TypeclassErrorMessages : BaseDiagnosticRendererFactory() {
     override val MAP by KtDiagnosticFactoryToRendererMap("TypeclassErrors") { map ->
         map.put(
             TypeclassErrors.CANNOT_DERIVE,
-            "[${TypeclassDiagnosticIds.CANNOT_DERIVE}] Cannot derive: {0}",
+            "[${TypeclassDiagnosticIds.CANNOT_DERIVE}] {0}",
             CommonRenderers.STRING,
         )
         map.put(
             TypeclassErrors.INVALID_INSTANCE_DECLARATION,
-            "[${TypeclassDiagnosticIds.INVALID_INSTANCE_DECL}] Invalid @Instance declaration: {0}",
+            "[${TypeclassDiagnosticIds.INVALID_INSTANCE_DECL}] {0}",
             CommonRenderers.STRING,
         )
         map.put(
             TypeclassErrors.INVALID_EQUIV_DECLARATION,
-            "[${TypeclassDiagnosticIds.INVALID_EQUIV_DECL}] Invalid Equiv declaration: {0}",
+            "[${TypeclassDiagnosticIds.INVALID_EQUIV_DECL}] {0}",
             CommonRenderers.STRING,
         )
     }

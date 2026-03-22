@@ -133,7 +133,6 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             sources = sources,
-            expectedMessages = listOf("invalid @instance declaration", "same file", "show", "alphaid"),
             expectedDiagnostics = listOf(expectedInvalidInstanceDecl("same file", "show", "alphaid")),
         )
     }
@@ -213,7 +212,6 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             sources = sources,
-            expectedMessages = listOf("invalid @instance declaration", "same file", "show", "box", "alphaid"),
             expectedDiagnostics = listOf(expectedInvalidInstanceDecl("same file", "show", "box", "alphaid")),
         )
     }
@@ -259,7 +257,6 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "show"),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
             dependencies = listOf(dependency),
         )
@@ -364,7 +361,6 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "show"),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
             dependencies = listOf(dependency),
         )

@@ -34,7 +34,6 @@ class RuntimeTypeBuiltinMaterializationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "witness"),
             expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("witness")),
             unexpectedMessages = listOf("exact known ktype"),
         )
@@ -109,7 +108,6 @@ class RuntimeTypeBuiltinMaterializationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "witness"),
             expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("witness")),
             unexpectedMessages = listOf("exact semantic type"),
         )
@@ -184,7 +182,6 @@ class RuntimeTypeBuiltinMaterializationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "witness"),
             expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("witness")),
             unexpectedMessages = listOf("builtin kserializer", "reified target type"),
             requiredPlugins = listOf(CompilerHarnessPlugin.Serialization),

@@ -315,11 +315,13 @@ private class TypeclassIrCallTransformer(
                             }
 
                         is ResolutionSearchResult.Ambiguous -> {
-                            val message =
-                                "Ambiguous typeclass instance for ${goal.render()} in $currentScopeIdentity." +
-                                    " Candidates: ${result.matchingPlans.joinToString { it.renderForDiagnostic() }}"
                             reportTypeclassResolutionFailure(
-                                message = message,
+                                message =
+                                    ambiguousTypeclassInstanceDiagnostic(
+                                        goal = goal.render(),
+                                        scope = currentScopeIdentity,
+                                        candidates = result.matchingPlans.map { it.renderForDiagnostic() },
+                                    ),
                                 diagnosticId = TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE,
                                 location = currentDeclaration.compilerMessageLocation(fallbackCall),
                             )
@@ -327,10 +329,12 @@ private class TypeclassIrCallTransformer(
                         }
 
                         is ResolutionSearchResult.Missing -> {
-                            val message =
-                                "Missing typeclass instance for ${goal.render()} in $currentScopeIdentity"
                             reportTypeclassResolutionFailure(
-                                message = message,
+                                message =
+                                    missingTypeclassInstanceDiagnostic(
+                                        goal = goal.render(),
+                                        scope = currentScopeIdentity,
+                                    ),
                                 diagnosticId = TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT,
                                 location = currentDeclaration.compilerMessageLocation(fallbackCall),
                             )
@@ -338,9 +342,12 @@ private class TypeclassIrCallTransformer(
                         }
 
                         is ResolutionSearchResult.Recursive -> {
-                            val message = "Recursive typeclass resolution for ${goal.render()} in $currentScopeIdentity"
                             reportTypeclassResolutionFailure(
-                                message = message,
+                                message =
+                                    recursiveTypeclassResolutionDiagnostic(
+                                        goal = goal.render(),
+                                        scope = currentScopeIdentity,
+                                    ),
                                 diagnosticId = TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT,
                                 location = currentDeclaration.compilerMessageLocation(fallbackCall),
                             )
@@ -1766,8 +1773,14 @@ private fun IrPluginContext.reportTypeclassError(
     diagnosticId: String? = null,
     location: CompilerMessageSourceLocation? = null,
 ) {
+    val enrichedMessage =
+        when (diagnosticId) {
+            TypeclassDiagnosticIds.CANNOT_DERIVE -> enrichCannotDeriveDiagnostic(message)
+            TypeclassDiagnosticIds.INVALID_BUILTIN_EVIDENCE -> enrichInvalidBuiltinEvidenceDiagnostic(message)
+            else -> message
+        }
     val renderedMessage =
-        diagnosticId?.let { id -> "[$id] $message" } ?: message
+        diagnosticId?.let { id -> "[$id] $enrichedMessage" } ?: enrichedMessage
     messageCollector.report(CompilerMessageSeverity.ERROR, renderedMessage, location)
 }
 

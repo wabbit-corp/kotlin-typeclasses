@@ -53,7 +53,6 @@ class EqualityProofTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("same", "int", "string"),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "same")),
         )
     }
@@ -106,7 +105,6 @@ class EqualityProofTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("notsame", "int"),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "notsame")),
         )
     }
@@ -122,13 +120,12 @@ class EqualityProofTest : IntegrationTestSupport() {
             fun <A, B> provenDifferent(): String = "different"
 
             fun main() {
-                println(provenDifferent<Int, Int>())
+                println(provenDifferent<Int, Int>()) // E:TC_NO_CONTEXT_ARGUMENT Int is not provably different from Int
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("notsame", "int"),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "notsame")),
         )
     }
@@ -149,7 +146,6 @@ class EqualityProofTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("notsame", "prove"),
             expectedDiagnostics = listOf(expectedErrorContaining("notsame")),
         )
     }
@@ -192,7 +188,6 @@ class EqualityProofTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("sametypeconstructor", "list", "set"),
             expectedDiagnostics =
                 listOf(expectedErrorContaining("no context argument", "sametypeconstructor")),
         )

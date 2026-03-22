@@ -39,7 +39,6 @@ class NullabilityProofTest : IntegrationTestSupport() {
     @Test fun rejectsNullableAndNotNullableProofsWhenNullabilityIsUnknownOrWrong() {
         fun assertNullabilityFailure(
             declaration: String,
-            expectedMessageFragments: List<String>,
         ) {
             val source =
                 """
@@ -59,7 +58,6 @@ class NullabilityProofTest : IntegrationTestSupport() {
 
             assertDoesNotCompile(
                 source = source,
-                expectedMessages = expectedMessageFragments,
                 expectedDiagnostics =
                     listOf(
                         ExpectedDiagnostic.Error(messageRegex = "(?i)(nullable|notnullable)"),
@@ -72,14 +70,12 @@ class NullabilityProofTest : IntegrationTestSupport() {
             fun <T> impossibleNullable(): String =
                 needsNullable<T>() // E:TC_NO_CONTEXT_ARGUMENT the compiler cannot prove that T admits null
             """.trimIndent(),
-            expectedMessageFragments = listOf("Nullable"),
         )
         assertNullabilityFailure(
             """
             fun <T> impossibleNotNullable(): String =
                 needsNotNullable<T>() // E:TC_NO_CONTEXT_ARGUMENT the compiler cannot prove that T excludes null
             """.trimIndent(),
-            expectedMessageFragments = listOf("NotNullable"),
         )
         assertNullabilityFailure(
             """
@@ -87,7 +83,6 @@ class NullabilityProofTest : IntegrationTestSupport() {
                 println(needsNullable<String>()) // E:TC_NO_CONTEXT_ARGUMENT String is not nullable
             }
             """.trimIndent(),
-            expectedMessageFragments = listOf("Nullable", "String"),
         )
         assertNullabilityFailure(
             """
@@ -95,7 +90,6 @@ class NullabilityProofTest : IntegrationTestSupport() {
                 println(needsNotNullable<String?>()) // E:TC_NO_CONTEXT_ARGUMENT String? is nullable
             }
             """.trimIndent(),
-            expectedMessageFragments = listOf("missing typeclass instance", "NotNullable", "String"),
         )
     }
 

@@ -478,7 +478,7 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
                 }
             }
 
-            @Derive(Show::class)
+            @Derive(Show::class) // E:TC_CANNOT_DERIVE generic sealed subclasses are not admissible for non-generic roots
             sealed interface Expr
 
             data class Lit<T>(val value: T) : Expr
@@ -490,7 +490,6 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("cannot derive", "lit"),
             expectedDiagnostics = listOf(expectedCannotDerive("lit")),
         )
     }

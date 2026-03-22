@@ -1093,7 +1093,6 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("show", "int"),
             expectedDiagnostics = listOf(expectedErrorContaining("show")),
         )
     }

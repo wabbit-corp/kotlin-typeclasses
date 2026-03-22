@@ -73,7 +73,7 @@ internal class TypeclassFirCheckersExtension(
                 if (declaration.directlyExtendsEquiv()) {
                     reportInvalidEquiv(
                         declaration,
-                        "Equiv is compiler-owned; users must not subclass it directly",
+                        invalidEquivSubclassing(),
                     )
                     return
                 }
@@ -81,7 +81,7 @@ internal class TypeclassFirCheckersExtension(
                     return
                 }
                 if (declaration.classKind != ClassKind.OBJECT) {
-                    reportInvalid(declaration, "class-based instances are not allowed; use an object")
+                    reportInvalid(declaration, invalidInstanceClassBased())
                     return
                 }
 
@@ -102,17 +102,17 @@ internal class TypeclassFirCheckersExtension(
                 }
                 when {
                     declaration.receiverParameter != null -> {
-                        reportInvalid(declaration, "extension instance functions are not allowed")
+                        reportInvalid(declaration, invalidInstanceExtensionFunction())
                         return
                     }
 
                     declaration.valueParameters.isNotEmpty() -> {
-                        reportInvalid(declaration, "instance functions cannot declare a regular parameter")
+                        reportInvalid(declaration, invalidInstanceRegularParameter())
                         return
                     }
 
                     declaration.status.isSuspend -> {
-                        reportInvalid(declaration, "suspend instance functions are not allowed")
+                        reportInvalid(declaration, invalidInstanceSuspendFunction())
                         return
                     }
                 }
@@ -121,7 +121,7 @@ internal class TypeclassFirCheckersExtension(
                 if (providedTypes.validTypes.any(::isEquivType)) {
                     reportInvalidEquiv(
                         declaration,
-                        "Equiv is compiler-owned and cannot be published as an @Instance",
+                        invalidEquivPublishedInstance(),
                     )
                     return
                 }
@@ -144,22 +144,22 @@ internal class TypeclassFirCheckersExtension(
                 }
                 when {
                     declaration.receiverParameter != null -> {
-                        reportInvalid(declaration, "extension instance properties are not allowed")
+                        reportInvalid(declaration, invalidInstanceExtensionProperty())
                         return
                     }
 
                     declaration.status.isLateInit -> {
-                        reportInvalid(declaration, "lateinit instance property declarations are not allowed")
+                        reportInvalid(declaration, invalidInstanceLateinitProperty())
                         return
                     }
 
                     declaration.isVar -> {
-                        reportInvalid(declaration, "mutable instance property declarations are not allowed")
+                        reportInvalid(declaration, invalidInstanceMutableProperty())
                         return
                     }
 
                     declaration.getter?.body != null -> {
-                        reportInvalid(declaration, "custom getter instance property declarations are not allowed")
+                        reportInvalid(declaration, invalidInstanceCustomGetterProperty())
                         return
                     }
                 }
@@ -168,7 +168,7 @@ internal class TypeclassFirCheckersExtension(
                 if (providedTypes.validTypes.any(::isEquivType)) {
                     reportInvalidEquiv(
                         declaration,
-                        "Equiv is compiler-owned and cannot be published as an @Instance",
+                        invalidEquivPublishedInstance(),
                     )
                     return
                 }
@@ -196,18 +196,12 @@ internal class TypeclassFirCheckersExtension(
     ) {
         when {
             providedTypes.invalidTypes.isNotEmpty() -> {
-                reportInvalid(
-                    declaration,
-                    "non-@Typeclass intermediate supertypes cannot provide inherited typeclass instances",
-                )
+                reportInvalid(declaration, invalidInstanceNonTypeclassSupertypes())
                 return
             }
 
             providedTypes.validTypes.isEmpty() -> {
-                reportInvalid(
-                    declaration,
-                    "@Instance declarations must provide a @Typeclass type",
-                )
+                reportInvalid(declaration, invalidInstanceMustProvideTypeclassType())
                 return
             }
         }
@@ -215,26 +209,17 @@ internal class TypeclassFirCheckersExtension(
         when {
             ownerContext.isTopLevel -> {
                 if (!declaration.isLegalTopLevelInstanceLocation(session, providedTypes)) {
-                    reportInvalid(
-                        declaration,
-                        "top-level orphan instance declarations must be declared in the same file as one of: ${providedTypes.topLevelInstanceHostDisplayNames().joinToString()}",
-                    )
+                    reportInvalid(declaration, invalidInstanceTopLevelOrphan(providedTypes.topLevelInstanceHostDisplayNames().toList()))
                 }
             }
             !ownerContext.isCompanionScope -> {
-                reportInvalid(
-                    declaration,
-                    "instance declarations must be top-level or live in a companion of the provided typeclass head or one of its associated owners",
-                )
+                reportInvalid(declaration, invalidInstanceWrongScopeCompanion())
             }
 
             else -> {
                 providedTypes.validTypes.forEach { providedType ->
                     if (ownerContext.associatedOwner !in sharedState.allowedAssociatedOwnersForProvidedType(session, providedType)) {
-                        reportInvalid(
-                            declaration,
-                            "associated owner does not match the provided typeclass head or its type arguments",
-                        )
+                        reportInvalid(declaration, invalidInstanceAssociatedOwnerMismatch())
                         return
                     }
                 }
@@ -249,7 +234,18 @@ internal class TypeclassFirCheckersExtension(
         declaration.contextParameters.firstNotNullOfOrNull { parameter ->
             invalidInstancePrerequisiteMessage(parameter.returnTypeRef.coneType)
         }?.let { message ->
-            reportInvalid(declaration, message)
+            reportInvalid(
+                declaration,
+                when (message) {
+                    "instance function context parameters must be typeclass prerequisites" ->
+                        invalidInstanceNonTypeclassPrerequisites()
+                    "instance function typeclass prerequisites must not use star projections" ->
+                        invalidInstanceStarProjectedPrerequisites()
+                    "instance function typeclass prerequisites must not use definitely-non-null type arguments" ->
+                        invalidInstanceDefinitelyNotNullPrerequisites()
+                    else -> invalidInstanceDiagnostic(message)
+                },
+            )
             return
         }
 
@@ -265,7 +261,7 @@ internal class TypeclassFirCheckersExtension(
             }
             reportInvalid(
                 declaration,
-                "instance type parameter ${parameter.displayName} must appear in the provided type, not only prerequisites",
+                invalidInstanceTypeParameterOnlyInPrerequisites(parameter.displayName),
             )
             return
         }
@@ -276,10 +272,7 @@ internal class TypeclassFirCheckersExtension(
             }
         }
         if (recursiveProvidedType != null) {
-            reportInvalid(
-                declaration,
-                "direct recursive instance rule for ${recursiveProvidedType.renderForMessage()} is not allowed",
-            )
+            reportInvalid(declaration, invalidInstanceDirectRecursive(recursiveProvidedType.renderForMessage()))
         }
     }
 
@@ -288,10 +281,7 @@ internal class TypeclassFirCheckersExtension(
         declaration: FirRegularClass,
     ) {
         if (!declaration.supportsDeriveShape()) {
-            reportCannotDerive(
-                declaration,
-                "@Derive is only supported on sealed or final classes and objects",
-            )
+            reportCannotDerive(declaration, cannotDeriveUnsupportedShape())
             return
         }
         if (
@@ -302,20 +292,14 @@ internal class TypeclassFirCheckersExtension(
                 .filterIsInstance<FirConstructor>()
                 .none { constructor -> constructor.isPrimary }
         ) {
-            reportCannotDerive(
-                declaration,
-                "constructive product derivation requires a primary constructor",
-            )
+            reportCannotDerive(declaration, cannotDeriveRequiresPrimaryConstructor())
             return
         }
 
         declaration.derivedTypeclassIds(session).forEach { typeclassIdString ->
             val typeclassId = runCatching { ClassId.fromString(typeclassIdString) }.getOrNull() ?: return@forEach
             if (typeclassTypeParameterCount(typeclassId, session) != 1) {
-                reportCannotDerive(
-                    declaration,
-                    "@Derive currently only supports typeclasses with exactly one type parameter",
-                )
+                reportCannotDerive(declaration, cannotDeriveOnlyUnaryTypeclasses())
                 return
             }
             val requiredDeriverInterface = declaration.requiredDeriverInterfaceForDeriveShape()
@@ -332,16 +316,13 @@ internal class TypeclassFirCheckersExtension(
                     }
                 reportCannotDerive(
                     declaration,
-                    message,
+                    cannotDeriveDiagnostic(message),
                 )
                 return@forEach
             }
             declaration.requiredDeriveMethodNameForDeriveShape()?.let { deriveMethodName ->
                 if (!typeclassCompanionDeclaresDeriveMethod(typeclassId, deriveMethodName, session)) {
-                    reportCannotDerive(
-                        declaration,
-                        "${typeclassId.shortClassName.asString()} companion must override $deriveMethodName to derive enum classes",
-                    )
+                    reportCannotDerive(declaration, cannotDeriveMissingEnumOverride(typeclassId.shortClassName.asString()))
                 }
             }
         }
@@ -355,7 +336,7 @@ internal class TypeclassFirCheckersExtension(
             if (declaration.typeParameters.isNotEmpty()) {
                 reportCannotDerive(
                     annotation,
-                    "@DeriveVia only supports monomorphic classes for now",
+                    cannotDeriveDiagnostic("@DeriveVia only supports monomorphic classes for now"),
                 )
                 return@forEach
             }
@@ -363,7 +344,7 @@ internal class TypeclassFirCheckersExtension(
             if (typeclassTypeParameterCount(typeclassId, session)?.let { it >= 1 } != true) {
                 reportCannotDerive(
                     annotation,
-                    "DeriveVia requires a typeclass with at least one type parameter",
+                    cannotDeriveDiagnostic("DeriveVia requires a typeclass with at least one type parameter"),
                 )
             }
         }
@@ -377,7 +358,7 @@ internal class TypeclassFirCheckersExtension(
             if (declaration.typeParameters.isNotEmpty()) {
                 reportCannotDerive(
                     annotation,
-                    "@DeriveEquiv only supports monomorphic classes for now",
+                    cannotDeriveDiagnostic("@DeriveEquiv only supports monomorphic classes for now"),
                 )
                 return@forEach
             }
@@ -385,7 +366,7 @@ internal class TypeclassFirCheckersExtension(
             if (session.regularClassSymbolOrNull(otherClassId)?.fir?.typeParameters?.isEmpty() != true) {
                 reportCannotDerive(
                     annotation,
-                    "@DeriveEquiv only supports monomorphic classes for now",
+                    cannotDeriveDiagnostic("@DeriveEquiv only supports monomorphic classes for now"),
                 )
             }
         }
@@ -418,7 +399,14 @@ internal class TypeclassFirCheckersExtension(
                     if (typeclassId.asString() !in declaredReturnConstructors) {
                         reportCannotDerive(
                             function,
-                            "$deriveMethodName must return ${typeclassId.shortClassName.asString()}<...>; found ${declaredReturnConstructors.joinToString { classifierId -> classifierId.shortClassNameOrSelf() }}",
+                            cannotDeriveWrongDeriverReturnType(
+                                methodName = deriveMethodName,
+                                typeclassName = typeclassId.shortClassName.asString(),
+                                foundTypeclassName =
+                                    declaredReturnConstructors.joinToString { classifierId ->
+                                        classifierId.shortClassNameOrSelf()
+                                    },
+                            ),
                         )
                     }
                     return@forEach
@@ -432,7 +420,10 @@ internal class TypeclassFirCheckersExtension(
                         }
                         reportCannotDerive(
                             function,
-                            "$deriveMethodName must return ${typeclassId.shortClassName.asString()}<...>",
+                            cannotDeriveWrongDeriverReturnType(
+                                methodName = deriveMethodName,
+                                typeclassName = typeclassId.shortClassName.asString(),
+                            ),
                         )
                         return
                     }
@@ -441,7 +432,14 @@ internal class TypeclassFirCheckersExtension(
                     }
                     reportCannotDerive(
                         function,
-                        "$deriveMethodName must return ${typeclassId.shortClassName.asString()}<...>; found ${knownTypeclassConstructors.joinToString { classifierId -> classifierId.shortClassNameOrSelf() }}",
+                        cannotDeriveWrongDeriverReturnType(
+                            methodName = deriveMethodName,
+                            typeclassName = typeclassId.shortClassName.asString(),
+                            foundTypeclassName =
+                                knownTypeclassConstructors.joinToString { classifierId ->
+                                    classifierId.shortClassNameOrSelf()
+                                },
+                        ),
                     )
                     return
                 }
@@ -452,36 +450,76 @@ internal class TypeclassFirCheckersExtension(
     private fun reportInvalid(
         declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
         message: String,
+    ) = reportInvalid(declaration, invalidInstanceDiagnostic(message))
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportInvalid(
+        declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
+        narrative: TypeclassDiagnostic,
     ) {
         val source = declaration.source ?: return
-        reporter.reportOn(source, TypeclassErrors.INVALID_INSTANCE_DECLARATION, message)
+        reporter.reportOn(
+            source,
+            TypeclassErrors.INVALID_INSTANCE_DECLARATION,
+            narrative.renderBody(),
+        )
     }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
     private fun reportInvalidEquiv(
         declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
         message: String,
+    ) = reportInvalidEquiv(declaration, invalidEquivDiagnostic(message))
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportInvalidEquiv(
+        declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
+        narrative: TypeclassDiagnostic,
     ) {
         val source = declaration.source ?: return
-        reporter.reportOn(source, TypeclassErrors.INVALID_EQUIV_DECLARATION, message)
+        reporter.reportOn(
+            source,
+            TypeclassErrors.INVALID_EQUIV_DECLARATION,
+            narrative.renderBody(),
+        )
     }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
     private fun reportCannotDerive(
         declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
         message: String,
+    ) = reportCannotDerive(declaration, cannotDeriveDiagnostic(message))
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportCannotDerive(
+        declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
+        narrative: TypeclassDiagnostic,
     ) {
         val source = declaration.source ?: return
-        reporter.reportOn(source, TypeclassErrors.CANNOT_DERIVE, message)
+        reporter.reportOn(
+            source,
+            TypeclassErrors.CANNOT_DERIVE,
+            narrative.renderBody(),
+        )
     }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
     private fun reportCannotDerive(
         annotation: FirAnnotation,
         message: String,
+    ) = reportCannotDerive(annotation, cannotDeriveDiagnostic(message))
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportCannotDerive(
+        annotation: FirAnnotation,
+        narrative: TypeclassDiagnostic,
     ) {
         val source = annotation.source ?: return
-        reporter.reportOn(source, TypeclassErrors.CANNOT_DERIVE, message)
+        reporter.reportOn(
+            source,
+            TypeclassErrors.CANNOT_DERIVE,
+            narrative.renderBody(),
+        )
     }
 
     private fun invalidInstancePrerequisiteMessage(type: ConeKotlinType): String? =

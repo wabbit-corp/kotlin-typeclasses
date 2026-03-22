@@ -49,7 +49,6 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "value"),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "value")),
             unexpectedMessages = listOf("exact known ktype"),
         )
@@ -459,7 +458,6 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "value"),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "value")),
             unexpectedMessages = listOf("exact semantic type"),
         )

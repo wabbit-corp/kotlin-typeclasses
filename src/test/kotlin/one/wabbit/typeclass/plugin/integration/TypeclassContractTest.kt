@@ -280,7 +280,6 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             sources = sources,
-            expectedMessages = listOf("no context argument"),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
         )
     }
@@ -325,7 +324,6 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("ambiguous typeclass instance"),
             expectedDiagnostics = listOf(expectedAmbiguousInstance("show")),
         )
     }
@@ -353,8 +351,12 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("typeclass"),
-            expectedDiagnostics = listOf(expectedErrorContaining("typeclass")),
+            expectedDiagnostics =
+                listOf(
+                    expectedExactInvalidInstanceDecl(
+                        why = "non-@Typeclass intermediate supertypes cannot provide inherited typeclass instances.",
+                    ),
+                ),
         )
     }
 
@@ -500,13 +502,12 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun use(): Int = monoid.empty()
 
             fun main() {
-                println(use())
+                println(use()) // E ambiguous inherited intermediate typeclass instances should stay visible here
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "monoid"),
             expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("monoid")),
         )
     }
@@ -588,7 +589,6 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("type parameter", "prerequisite"),
             expectedDiagnostics = listOf(expectedErrorContaining("type parameter", "prerequisite")),
         )
     }
@@ -618,7 +618,6 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("recursive"),
             expectedDiagnostics = listOf(expectedErrorContaining("recursive")),
         )
     }
@@ -748,7 +747,6 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             sources = sources,
-            expectedMessages = listOf("invalid @instance declaration", "same file", "featureflag"),
             expectedDiagnostics = listOf(expectedInvalidInstanceDecl("same file", "featureflag")),
         )
     }
@@ -828,7 +826,6 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "show"),
             expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("show")),
         )
     }
@@ -882,7 +879,6 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             sources = unstableSources,
-            expectedMessages = listOf("invalid @instance declaration", "same file", "show"),
             expectedDiagnostics = listOf(expectedInvalidInstanceDecl("same file", "show")),
         )
     }
@@ -930,7 +926,6 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("ambiguous typeclass instance"),
             expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("show")),
         )
     }
@@ -1050,17 +1045,12 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun <A> same(a: A): Boolean = true
 
             fun main() {
-                println(same(1))
+                println(same(1)) // E non-typeclass contexts should not be resolved implicitly
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages =
-                listOf(
-                    "No context argument",
-                    "Eq",
-                ),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "eq")),
         )
     }
@@ -1090,17 +1080,12 @@ class TypeclassContractTest : IntegrationTestSupport() {
             }
 
             fun main() {
-                println(SomeItemComponent(Curse(true)))
+                println(SomeItemComponent(Curse(true))) // E missing companion @Instance should surface as an unresolved context
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages =
-                listOf(
-                    "No context argument",
-                    "SomeItemComponent",
-                ),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "itemcomponenttype")),
         )
     }
@@ -1151,7 +1136,6 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             sources = sources,
-            expectedMessages = listOf("invalid @instance declaration", "same file", "show"),
             expectedDiagnostics = listOf(expectedInvalidInstanceDecl("same file", "show")),
         )
     }
@@ -1173,10 +1157,11 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun <A> render(value: A): String = show.show(value)
 
             fun main() {
-                @Instance
-                object LocalIntShow : Show<Int> {
-                    override fun show(value: Int): String = "int:${'$'}value"
-                }
+                @Instance // E:TC_INVALID_INSTANCE_DECL local @Instance declarations should not be auto-discovered
+                fun localIntShow(): Show<Int> =
+                    object : Show<Int> {
+                        override fun show(value: Int): String = "int:${'$'}value"
+                    }
 
                 println(render(1)) // E:TC_NO_CONTEXT_ARGUMENT local @Instance declarations should not be auto-discovered
             }
@@ -1184,8 +1169,11 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "render(1)"),
-            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
+            expectedDiagnostics =
+                listOf(
+                    expectedInvalidInstanceDecl("top-level orphan"),
+                    expectedNoContextArgument(),
+                ),
         )
     }
 
@@ -1225,7 +1213,6 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             sources = sources,
-            expectedMessages = listOf("no context argument"),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
         )
     }
@@ -1258,13 +1245,12 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun render(): String = "value"
 
             fun main() {
-                println(render())
+                println(render()) // E ambiguous implicit contexts should remain visible to the frontend
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "show"),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
         )
     }
@@ -1306,13 +1292,12 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun use(): String = "ok"
 
             fun main() {
-                println(use())
+                println(use()) // E recursive implicit contexts should remain visible to the frontend
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("no context argument", "foo"),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "foo")),
         )
     }

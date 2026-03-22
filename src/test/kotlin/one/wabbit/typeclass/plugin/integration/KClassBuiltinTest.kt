@@ -12,13 +12,12 @@ class KClassBuiltinTest : IntegrationTestSupport() {
             import one.wabbit.typeclass.summon
 
             fun main() {
-                println(summon<KClass<Int>>())
+                println(summon<KClass<Int>>()) // E KClass should not be treated as a builtin typeclass when the flag is disabled
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
@@ -62,13 +61,12 @@ class KClassBuiltinTest : IntegrationTestSupport() {
             fun proof(): String = "kclass-typeclass"
 
             fun main() {
-                println(proof())
+                println(proof()) // E KClass should not be recognized as a typeclass for IsTypeclassInstance when the flag is disabled
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = emptyList(),
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
@@ -179,7 +177,6 @@ class KClassBuiltinTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("kclass", "concrete"),
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
@@ -198,8 +195,8 @@ class KClassBuiltinTest : IntegrationTestSupport() {
             import kotlin.reflect.KClass
             import one.wabbit.typeclass.summon
 
-            inline fun <reified T> impossible(): KClass<T> =
-                summon<KClass<T>>() // KClass proofs only exist for non-nullable runtime-available types
+            inline fun <reified T> impossible(): KClass<T> = // E nullable T is out of bounds for KClass<T>
+                summon<KClass<T>>() // E KClass proofs only exist for non-nullable runtime-available types
 
             fun main() {
                 println(impossible<String?>())
@@ -208,7 +205,6 @@ class KClassBuiltinTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("kclass", "non-null"),
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(

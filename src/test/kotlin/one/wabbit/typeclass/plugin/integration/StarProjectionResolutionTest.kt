@@ -24,7 +24,6 @@ class StarProjectionResolutionTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf(),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
         )
     }

@@ -24,7 +24,6 @@ class TypeclassMetaProofTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedMessages = listOf("typeclass", "list"),
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "istypeclassinstance")),
         )
     }

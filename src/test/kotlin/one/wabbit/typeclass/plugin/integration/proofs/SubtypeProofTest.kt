@@ -61,7 +61,6 @@ class SubtypeProofTest : IntegrationTestSupport() {
     @Test fun rejectsSubtypeProofForInvariantOrUnrelatedTypes() {
         fun assertSubtypeFailure(
             callSite: String,
-            expectedMessageFragments: List<String>,
             expectedDiagnostic: ExpectedDiagnostic,
         ) {
             val source =
@@ -83,24 +82,20 @@ class SubtypeProofTest : IntegrationTestSupport() {
 
             assertDoesNotCompile(
                 source = source,
-                expectedMessages = expectedMessageFragments,
                 expectedDiagnostics = listOf(expectedDiagnostic),
             )
         }
 
         assertSubtypeFailure(
             """println(provenSubtype<Invariant<String>, Invariant<Any>>()) // E:TC_NO_CONTEXT_ARGUMENT Invariant is invariant""",
-            expectedMessageFragments = listOf("no context argument", "Subtype"),
             expectedDiagnostic = expectedErrorContaining("no context argument", "subtype"),
         )
         assertSubtypeFailure(
             """println(provenSubtype<Contravariant<Int>, Contravariant<Any>>()) // E:TC_NO_CONTEXT_ARGUMENT contravariance reverses the direction""",
-            expectedMessageFragments = listOf("no context argument", "Subtype"),
             expectedDiagnostic = expectedNoContextArgument("subtype"),
         )
         assertSubtypeFailure(
             """println(provenSubtype<String, Int>()) // E:TC_NO_CONTEXT_ARGUMENT unrelated types""",
-            expectedMessageFragments = listOf("no context argument", "Subtype"),
             expectedDiagnostic = expectedNoContextArgument("subtype"),
         )
     }
@@ -207,7 +202,6 @@ class SubtypeProofTest : IntegrationTestSupport() {
     @Test fun rejectsStrictSubtypeProofForEqualAliasAndUnrelatedTypes() {
         fun assertStrictSubtypeFailure(
             callSite: String,
-            expectedMessageFragments: List<String>,
             expectedDiagnostic: ExpectedDiagnostic,
         ) {
             val source =
@@ -228,19 +222,16 @@ class SubtypeProofTest : IntegrationTestSupport() {
 
             assertDoesNotCompile(
                 source = source,
-                expectedMessages = expectedMessageFragments,
                 expectedDiagnostics = listOf(expectedDiagnostic),
             )
         }
 
         assertStrictSubtypeFailure(
             """println(provenStrictSubtype<Int, Age>()) // E:TC_NO_CONTEXT_ARGUMENT aliases are equal, not a proper subtype""",
-            expectedMessageFragments = listOf("no context argument", "StrictSubtype"),
             expectedDiagnostic = expectedErrorContaining("no context argument", "strictsubtype"),
         )
         assertStrictSubtypeFailure(
             """println(provenStrictSubtype<String, Int>()) // E:TC_NO_CONTEXT_ARGUMENT unrelated types""",
-            expectedMessageFragments = listOf("no context argument", "StrictSubtype"),
             expectedDiagnostic = expectedNoContextArgument("strictsubtype"),
         )
     }
