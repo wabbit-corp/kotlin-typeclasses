@@ -1,4 +1,7 @@
-@file:OptIn(org.jetbrains.kotlin.DeprecatedForRemovalCompilerApi::class)
+@file:OptIn(
+    org.jetbrains.kotlin.DeprecatedForRemovalCompilerApi::class,
+    org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI::class,
+)
 
 package one.wabbit.typeclass.plugin
 
@@ -40,6 +43,7 @@ internal data class DeriveEquivRequest(
     val annotation: IrConstructorCall,
 )
 
+@OptIn(org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI::class)
 internal fun IrClass.deriveViaRequests(pluginContext: IrPluginContext): List<DeriveViaRequest> =
     annotations
         .filter { annotation ->
@@ -78,6 +82,7 @@ internal fun IrClass.deriveViaRequests(pluginContext: IrPluginContext): List<Der
             DeriveViaRequest(typeclassId = typeclassId, path = path, annotation = annotation)
         }
 
+@OptIn(org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI::class)
 internal fun IrClass.deriveEquivRequests(): List<DeriveEquivRequest> =
     annotations
         .filter { annotation ->
@@ -93,8 +98,10 @@ internal fun IrClass.deriveEquivRequests(): List<DeriveEquivRequest> =
             DeriveEquivRequest(otherClassId, annotation)
         }
 
+@OptIn(org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI::class)
 internal fun IrClass.isEquivTypeclass(): Boolean = hasAnnotation(EQUIV_CLASS_ID)
 
+@OptIn(org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI::class)
 internal fun IrClass.findIsoMethods(): Pair<IrSimpleFunction, IrSimpleFunction>? {
     val toMethod =
         declarations
