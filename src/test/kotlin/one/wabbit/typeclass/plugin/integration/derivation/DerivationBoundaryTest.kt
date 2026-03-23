@@ -425,6 +425,185 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun incompleteSealedHierarchyInAnotherFilePreventsRootDerivationEvenForSupportedCases() {
+        val sources =
+            mapOf(
+                "shared/Show.kt" to showTypeclassSource(packageName = "shared"),
+                "shared/NoShow.kt" to
+                    """
+                    package shared
+
+                    data class NoShow(val value: String)
+                    """.trimIndent(),
+                "shared/Token.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Derive
+
+                    @Derive(Show::class)
+                    sealed interface Token
+                    """.trimIndent(),
+                "shared/Word.kt" to
+                    """
+                    package shared
+
+                    data class Word(val value: NoShow) : Token
+                    """.trimIndent(),
+                "shared/End.kt" to
+                    """
+                    package shared
+
+                    object End : Token
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import shared.End
+                    import shared.Token
+                    import shared.render
+
+                    fun main() {
+                        val token: Token = End
+                        println(render(token)) // E:TC_NO_CONTEXT_ARGUMENT incomplete sealed hierarchy in another file blocks Show<Token> export
+                    }
+                    """.trimIndent(),
+            )
+
+        assertDoesNotCompile(
+            sources = sources,
+            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.FIR)),
+            unexpectedMessages = listOf("internal compiler error"),
+        )
+    }
+
+    @Test
+    fun incompleteSealedHierarchyInAnotherModulePreventsConsumerUseOfEvenSupportedCases() {
+        val typeclassDependency =
+            HarnessDependency(
+                name = "dep-show-missing-case-supported-root",
+                sources = mapOf("dep/Show.kt" to showTypeclassSource(packageName = "dep")),
+            )
+        val modelDependency =
+            HarnessDependency(
+                name = "model-missing-case-supported-root",
+                dependencies = listOf(typeclassDependency),
+                sources =
+                    mapOf(
+                        "model/NoShow.kt" to
+                            """
+                            package model
+
+                            data class NoShow(val value: String)
+                            """.trimIndent(),
+                        "model/Token.kt" to
+                            """
+                            package model
+
+                            import dep.Show
+                            import one.wabbit.typeclass.Derive
+
+                            @Derive(Show::class)
+                            sealed interface Token
+                            """.trimIndent(),
+                        "model/Word.kt" to
+                            """
+                            package model
+
+                            data class Word(val value: NoShow) : Token
+                            """.trimIndent(),
+                        "model/End.kt" to
+                            """
+                            package model
+
+                            object End : Token
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.render
+            import model.End
+            import model.Token
+
+            fun main() {
+                val token: Token = End
+                println(render(token)) // E:TC_NO_CONTEXT_ARGUMENT unsupported dependency case must prevent Show<Token> export
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.IR)),
+            dependencies = listOf(modelDependency),
+            unexpectedMessages = listOf("internal compiler error"),
+        )
+    }
+
+    @Test
+    fun manualInstanceInAnotherFileConflictsWithDerivedRootInstance() {
+        val sources =
+            mapOf(
+                "shared/Show.kt" to
+                    showTypeclassSource(
+                        packageName = "shared",
+                        extraDeclarations =
+                            """
+                            @Instance
+                            object TokenShow : Show<Token> {
+                                override fun show(value: Token): String = "manual"
+                            }
+                            """.trimIndent(),
+                    ),
+                "shared/ShownString.kt" to shownStringSource("shared"),
+                "shared/Token.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Derive
+
+                    @Derive(Show::class)
+                    sealed interface Token
+                    """.trimIndent(),
+                "shared/Word.kt" to
+                    """
+                    package shared
+
+                    data class Word(val value: ShownString) : Token
+                    """.trimIndent(),
+                "shared/End.kt" to
+                    """
+                    package shared
+
+                    object End : Token
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import shared.ShownString
+                    import shared.Token
+                    import shared.Word
+                    import shared.render
+
+                    fun main() {
+                        val token: Token = Word(ShownString("clash"))
+                        println(render(token)) // E:TC_AMBIGUOUS_INSTANCE legal manual instance in another file conflicts with derived Show<Token>
+                    }
+                    """.trimIndent(),
+            )
+
+        assertDoesNotCompile(
+            sources = sources,
+            expectedDiagnostics = listOf(expectedAmbiguousInstance("show")),
+            unexpectedMessages = listOf("internal compiler error"),
+        )
+    }
+
+    @Test
     fun consumerModuleGetsAmbiguityWhenDependencyExportsManualAndDerivedSealedInstances() {
         val typeclassDependency =
             HarnessDependency(
@@ -551,6 +730,60 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
         )
     }
 
+    @Test
+    fun workingDerivedHeadAcrossFilesStillWorksWhenAnotherHeadIsMissing() {
+        val sources = localMultiHeadDerivationSources()
+
+        assertCompilesAndRuns(
+            sources = sources + ("demo/Main.kt" to
+                """
+                package demo
+
+                import shared.End
+                import shared.ShownString
+                import shared.Token
+                import shared.Word
+                import shared.render
+
+                fun main() {
+                    val word: Token = Word(ShownString("ok"))
+                    println(render(word))
+                    println(render(End))
+                }
+                """.trimIndent()),
+            expectedStdout =
+                """
+                Word(value=ok)
+                End()
+                """.trimIndent(),
+            mainClass = "demo.MainKt",
+        )
+    }
+
+    @Test
+    fun missingSecondDerivedHeadAcrossFilesReportsOnlyTheMissingHead() {
+        val sources = localMultiHeadDerivationSources()
+
+        assertDoesNotCompile(
+            sources = sources + ("demo/Main.kt" to
+                """
+                package demo
+
+                import shared.ShownString
+                import shared.Token
+                import shared.Word
+                import shared.same
+
+                fun main() {
+                    val word: Token = Word(ShownString("ok"))
+                    println(same(word, word)) // E:TC_NO_CONTEXT_ARGUMENT missing second derived head across files
+                }
+                """.trimIndent()),
+            expectedDiagnostics = listOf(expectedNoContextArgument("eq", phase = DiagnosticPhase.FIR)),
+            unexpectedMessages = listOf("internal compiler error"),
+        )
+    }
+
     private fun multiHeadDerivationDependencies(): List<HarnessDependency> {
         val typeclassDependency =
             HarnessDependency(
@@ -595,10 +828,39 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
             )
         return listOf(modelDependency)
     }
+
+    private fun localMultiHeadDerivationSources(): Map<String, String> =
+        mapOf(
+            "shared/Show.kt" to showTypeclassSource(packageName = "shared"),
+            "shared/Eq.kt" to eqTypeclassSource(packageName = "shared"),
+            "shared/ShownString.kt" to shownStringSource("shared"),
+            "shared/Token.kt" to
+                """
+                package shared
+
+                import one.wabbit.typeclass.Derive
+
+                @Derive(Show::class, Eq::class)
+                sealed interface Token
+                """.trimIndent(),
+            "shared/Word.kt" to
+                """
+                package shared
+
+                data class Word(val value: ShownString) : Token
+                """.trimIndent(),
+            "shared/End.kt" to
+                """
+                package shared
+
+                object End : Token
+                """.trimIndent(),
+        )
 }
 
 private fun showTypeclassSource(
     packageName: String,
+    extraDeclarations: String = "",
 ): String =
     """
     package $packageName
@@ -642,6 +904,8 @@ private fun showTypeclassSource(
                 }
         }
     }
+
+    $extraDeclarations
 
     context(show: Show<A>)
     fun <A> render(value: A): String = show.show(value)

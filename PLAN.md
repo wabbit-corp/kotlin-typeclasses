@@ -89,15 +89,26 @@ Deduplicated open work from `REVIEW2.md`, `REVIEW3.md`, and `REVIEW4.md`.
 
 ## P1: Correctness and Semantic Gaps
 
-- [ ] Add negative derivation-boundary coverage for missing or incomplete boundary shapes.
-  - [ ] Missing sealed case in another file.
-  - [ ] Missing sealed case in another module.
-- [ ] Add negative derivation-boundary coverage for conflicts.
-  - [ ] Manual instance in another file conflicting with a derived instance.
-  - [ ] Manual instance in another module conflicting with a derived instance.
-- [ ] Add derivation-boundary coverage for multiple `@Derive(...)` heads on the same type.
-  - [ ] Mixed success/failure semantics in one file boundary.
-  - [ ] Mixed success/failure semantics across module boundaries.
+- [x] Add negative derivation-boundary coverage for missing or incomplete boundary shapes.
+  - [x] Missing sealed case in another file.
+  - [x] Missing sealed case in another module.
+  - Detailed notes:
+    - Added a same-compilation split-file regression proving a bad sealed case in another file prevents exporting the root derived instance even when the consumer only uses a supported case.
+    - Added the matching dependency-module regression proving a bad dependency-side sealed case blocks `Show<Token>` export for a supported root-typed consumer use.
+    - Kept the stronger existing dependency-side missing-field-evidence regression that exercises the failing case directly.
+- [x] Add negative derivation-boundary coverage for conflicts.
+  - [x] Manual instance in another file conflicting with a derived instance.
+  - [x] Manual instance in another module conflicting with a derived instance.
+  - Detailed notes:
+    - Added a same-module split-file ambiguity regression using a legal top-level instance in the typeclass file to conflict with a derived sealed-root instance.
+    - Reused the existing dependency-module companion-export ambiguity regression for the cross-module conflict case.
+    - Deliberately did not extend this pass to top-level same-file dependency exports, because that remains the separate open policy item in P0.
+- [x] Add derivation-boundary coverage for multiple `@Derive(...)` heads on the same type.
+  - [x] Mixed success/failure semantics in one file boundary.
+  - [x] Mixed success/failure semantics across module boundaries.
+  - Detailed notes:
+    - Added the split-file same-compilation pair proving `Show<Token>` still works while `Eq<Token>` stays unavailable.
+    - Kept the existing dependency-module pair proving the same partial success/failure contract across module boundaries.
 - [ ] Add more helper-scope smart-cast coverage.
   - [ ] `takeIf` or equivalent scoping helper.
 - [ ] Add planner/integration coverage for longer recursive cycles such as `A -> B -> C -> A`.
