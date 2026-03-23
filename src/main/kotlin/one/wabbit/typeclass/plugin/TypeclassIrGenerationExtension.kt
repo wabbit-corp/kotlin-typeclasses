@@ -69,6 +69,7 @@ import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.declarations.IrProperty
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.declarations.IrTypeParameter
+import org.jetbrains.kotlin.ir.declarations.IrVariable
 import org.jetbrains.kotlin.ir.declarations.IrValueParameter
 import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.expressions.IrClassReference
@@ -138,23 +139,64 @@ private class TypeclassIrCallTransformer(
     private val deriverReturnValidationCache: MutableMap<IrSimpleFunction, Boolean> = linkedMapOf()
     private val declarationStack = ArrayDeque<IrDeclarationBase>()
     private val functionStack = ArrayDeque<IrFunction>()
+    private val traceScopeStack = ArrayDeque<TypeclassTraceScope>()
+
+    override fun visitFile(declaration: IrFile): IrFile {
+        val traceScope = declaration.traceScopeOrNull()
+        if (traceScope != null) {
+            traceScopeStack.addLast(traceScope)
+        }
+        val transformed = super.visitFile(declaration) as IrFile
+        if (traceScope != null) {
+            traceScopeStack.removeLast()
+        }
+        return transformed
+    }
 
     override fun visitDeclaration(declaration: IrDeclarationBase): IrStatement {
         if (declaration is IrFunction) {
             return super.visitDeclaration(declaration)
         }
+        val traceScope = declaration.traceScopeOrNull()
+        if (traceScope != null) {
+            traceScopeStack.addLast(traceScope)
+        }
         declarationStack.addLast(declaration)
         val transformed = super.visitDeclaration(declaration)
         declarationStack.removeLast()
+        if (traceScope != null) {
+            traceScopeStack.removeLast()
+        }
         return transformed
     }
 
     override fun visitFunction(declaration: IrFunction): IrStatement {
+        val traceScope = declaration.traceScopeOrNull()
+        if (traceScope != null) {
+            traceScopeStack.addLast(traceScope)
+        }
         declarationStack.addLast(declaration)
         functionStack.addLast(declaration)
         val transformed = super.visitFunction(declaration)
         functionStack.removeLast()
         declarationStack.removeLast()
+        if (traceScope != null) {
+            traceScopeStack.removeLast()
+        }
+        return transformed
+    }
+
+    override fun visitVariable(declaration: IrVariable): IrStatement {
+        val traceScope = declaration.traceScopeOrNull()
+        if (traceScope != null) {
+            traceScopeStack.addLast(traceScope)
+        }
+        declarationStack.addLast(declaration)
+        val transformed = super.visitVariable(declaration)
+        declarationStack.removeLast()
+        if (traceScope != null) {
+            traceScopeStack.removeLast()
+        }
         return transformed
     }
 
@@ -242,8 +284,9 @@ private class TypeclassIrCallTransformer(
         message: String,
         diagnosticId: String? = null,
         location: CompilerMessageSourceLocation? = null,
+        supplementalMessage: String? = null,
     ) {
-        pluginContext.reportTypeclassError(message, diagnosticId, location)
+        pluginContext.reportTypeclassError(message, diagnosticId, location, supplementalMessage)
     }
 
     private fun ResolutionPlan.renderForDiagnostic(): String =
@@ -267,6 +310,8 @@ private class TypeclassIrCallTransformer(
     ): IrExpression {
         val typeArgumentMap = inferredOriginalTypeArguments.substitutionBySymbol
         val currentScopeIdentity = currentFunction?.renderIdentity() ?: currentDeclaration.renderIdentity()
+        val diagnosticLocation = currentDeclaration.compilerMessageLocation(fallbackCall)
+        val traceActivation = resolveTraceActivation(traceScopeStack.toList(), configuration.traceMode)
         val planner =
             TypeclassResolutionPlanner(
                 ruleProvider = { goal: TcType ->
@@ -298,10 +343,28 @@ private class TypeclassIrCallTransformer(
                         type = substitutedGoalType,
                         typeParameterBySymbol = visibleTypeParameters.bySymbol,
                     ) ?: error("Unsupported typeclass goal type ${substitutedGoalType.render()} in ${original.callableId}")
-                val result = planner.resolve(goal, localContextTypes)
+                val tracedResult =
+                    traceActivation?.let { activation ->
+                        planner.resolveWithTrace(goal, localContextTypes, activation.mode.explainsAlternatives)
+                    }
+                val result = tracedResult?.result ?: planner.resolve(goal, localContextTypes)
                 val expression =
                     when (result) {
-                        is ResolutionSearchResult.Success ->
+                        is ResolutionSearchResult.Success -> {
+                            if (traceActivation?.mode?.tracesSuccesses == true && tracedResult != null) {
+                                pluginContext.reportTypeclassTrace(
+                                    renderResolutionTrace(
+                                        trace = tracedResult.trace,
+                                        activation = traceActivation,
+                                        location = diagnosticLocation,
+                                        localContextLabels =
+                                            localContexts.mapIndexed { index, context ->
+                                                "${context.displayName} (local context[$index])"
+                                            },
+                                    ),
+                                    diagnosticLocation,
+                                )
+                            }
                             irBlock(resultType = substitutedGoalType) {
                                 +buildExpressionForPlan(
                                     plan = result.plan,
@@ -310,9 +373,10 @@ private class TypeclassIrCallTransformer(
                                     localContexts = localContexts,
                                     visibleTypeParameters = visibleTypeParameters,
                                     recursiveDerivedResolvers = linkedMapOf(),
-                                    diagnosticLocation = currentDeclaration.compilerMessageLocation(fallbackCall),
+                                    diagnosticLocation = diagnosticLocation,
                                 )
                             }
+                        }
 
                         is ResolutionSearchResult.Ambiguous -> {
                             reportTypeclassResolutionFailure(
@@ -323,7 +387,21 @@ private class TypeclassIrCallTransformer(
                                         candidates = result.matchingPlans.map { it.renderForDiagnostic() },
                                     ),
                                 diagnosticId = TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE,
-                                location = currentDeclaration.compilerMessageLocation(fallbackCall),
+                                location = diagnosticLocation,
+                                supplementalMessage =
+                                    if (traceActivation != null && tracedResult != null) {
+                                        renderResolutionTrace(
+                                            trace = tracedResult.trace,
+                                            activation = traceActivation,
+                                            location = diagnosticLocation,
+                                            localContextLabels =
+                                                localContexts.mapIndexed { index, context ->
+                                                    "${context.displayName} (local context[$index])"
+                                                },
+                                        )
+                                    } else {
+                                        null
+                                    },
                             )
                             return fallbackCall
                         }
@@ -336,7 +414,21 @@ private class TypeclassIrCallTransformer(
                                         scope = currentScopeIdentity,
                                     ),
                                 diagnosticId = TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT,
-                                location = currentDeclaration.compilerMessageLocation(fallbackCall),
+                                location = diagnosticLocation,
+                                supplementalMessage =
+                                    if (traceActivation != null && tracedResult != null) {
+                                        renderResolutionTrace(
+                                            trace = tracedResult.trace,
+                                            activation = traceActivation,
+                                            location = diagnosticLocation,
+                                            localContextLabels =
+                                                localContexts.mapIndexed { index, context ->
+                                                    "${context.displayName} (local context[$index])"
+                                                },
+                                        )
+                                    } else {
+                                        null
+                                    },
                             )
                             return fallbackCall
                         }
@@ -349,7 +441,21 @@ private class TypeclassIrCallTransformer(
                                         scope = currentScopeIdentity,
                                     ),
                                 diagnosticId = TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT,
-                                location = currentDeclaration.compilerMessageLocation(fallbackCall),
+                                location = diagnosticLocation,
+                                supplementalMessage =
+                                    if (traceActivation != null && tracedResult != null) {
+                                        renderResolutionTrace(
+                                            trace = tracedResult.trace,
+                                            activation = traceActivation,
+                                            location = diagnosticLocation,
+                                            localContextLabels =
+                                                localContexts.mapIndexed { index, context ->
+                                                    "${context.displayName} (local context[$index])"
+                                                },
+                                        )
+                                    } else {
+                                        null
+                                    },
                             )
                             return fallbackCall
                         }
@@ -1762,6 +1868,7 @@ private fun IrPluginContext.reportTypeclassError(
     message: String,
     diagnosticId: String? = null,
     location: CompilerMessageSourceLocation? = null,
+    supplementalMessage: String? = null,
 ) {
     val enrichedMessage =
         when (diagnosticId) {
@@ -1771,7 +1878,149 @@ private fun IrPluginContext.reportTypeclassError(
         }
     val renderedMessage =
         diagnosticId?.let { id -> "[$id] $enrichedMessage" } ?: enrichedMessage
-    messageCollector.report(CompilerMessageSeverity.ERROR, renderedMessage, location)
+    val finalMessage =
+        if (supplementalMessage != null) {
+            "$renderedMessage\n$supplementalMessage"
+        } else {
+            renderedMessage
+        }
+    messageCollector.report(CompilerMessageSeverity.ERROR, finalMessage, location)
+}
+
+private fun IrPluginContext.reportTypeclassTrace(
+    message: String,
+    location: CompilerMessageSourceLocation? = null,
+) {
+    messageCollector.report(CompilerMessageSeverity.INFO, message, location)
+}
+
+private fun IrPluginContext.reportCannotDeriveWithTrace(
+    owner: IrClass,
+    configuration: TypeclassConfiguration,
+    goal: String,
+    message: String,
+    location: CompilerMessageSourceLocation? = null,
+    extraLines: List<String> = emptyList(),
+) {
+    reportTypeclassError(
+        message = message,
+        diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+        location = location,
+        supplementalMessage =
+            owner.derivationTraceActivation(configuration)?.let { activation ->
+                renderDerivationTrace(
+                    goal = goal,
+                    activation = activation,
+                    location = location,
+                    lines = listOf("reason: $message") + extraLines,
+                )
+            },
+    )
+}
+
+private fun IrPluginContext.reportDerivationSuccessTrace(
+    owner: IrClass,
+    configuration: TypeclassConfiguration,
+    goal: String,
+    location: CompilerMessageSourceLocation? = null,
+    extraLines: List<String> = emptyList(),
+) {
+    val activation = owner.derivationTraceActivation(configuration) ?: return
+    if (!activation.mode.tracesSuccesses) {
+        return
+    }
+    reportTypeclassTrace(
+        renderDerivationTrace(
+            goal = goal,
+            activation = activation,
+            location = location,
+            lines = extraLines,
+        ),
+        location = location,
+    )
+}
+
+private fun IrFile.traceScopeOrNull(): TypeclassTraceScope? =
+    annotations.firstNotNullOfOrNull { annotation -> annotation.debugTypeclassTraceScope(kind = "file", label = fileEntry.name.substringAfterLast('/')) }
+
+private fun IrDeclarationBase.traceScopeOrNull(): TypeclassTraceScope? =
+    annotations.firstNotNullOfOrNull { annotation ->
+        annotation.debugTypeclassTraceScope(
+            kind =
+                when (this) {
+                    is IrClass -> if (isObject) "object" else "class"
+                    is IrProperty -> "property"
+                    is IrVariable -> "local variable"
+                    is IrFunction -> "function"
+                    else -> "declaration"
+                },
+            label =
+                when (this) {
+                    is IrClass -> classId?.asString() ?: name.asString()
+                    is IrProperty -> name.asString()
+                    is IrVariable -> name.asString()
+                    is IrFunction -> renderIdentity()
+                    else -> renderIdentity()
+                },
+        )
+    }
+
+private fun org.jetbrains.kotlin.ir.expressions.IrConstructorCall.debugTypeclassTraceScope(
+    kind: String,
+    label: String,
+): TypeclassTraceScope? {
+    val annotationClass = symbol.owner.parentAsClass
+    if (annotationClass.classId != DEBUG_TYPECLASS_RESOLUTION_ANNOTATION_CLASS_ID) {
+        return null
+    }
+    return TypeclassTraceScope(
+        mode = debugTypeclassTraceMode() ?: TypeclassTraceMode.FAILURES,
+        kind = kind,
+        label = label,
+    )
+}
+
+private fun org.jetbrains.kotlin.ir.expressions.IrConstructorCall.debugTypeclassTraceMode(): TypeclassTraceMode? {
+    val annotationClass = symbol.owner.parentAsClass
+    if (annotationClass.classId != DEBUG_TYPECLASS_RESOLUTION_ANNOTATION_CLASS_ID) {
+        return null
+    }
+    return when (val modeArgument = getValueArgument(0)) {
+        null -> TypeclassTraceMode.FAILURES
+        is org.jetbrains.kotlin.ir.expressions.IrGetEnumValue ->
+            modeArgument.symbol.owner.takeIf { enumEntry ->
+                enumEntry.parentAsClass.classId == TYPECLASS_TRACE_MODE_CLASS_ID
+            }?.name?.asString()?.let { entryName ->
+                when (entryName) {
+                    "INHERIT" -> TypeclassTraceMode.INHERIT
+                    "DISABLED" -> TypeclassTraceMode.DISABLED
+                    "FAILURES" -> TypeclassTraceMode.FAILURES
+                    "FAILURES_AND_ALTERNATIVES" -> TypeclassTraceMode.FAILURES_AND_ALTERNATIVES
+                    "ALL" -> TypeclassTraceMode.ALL
+                    "ALL_AND_ALTERNATIVES" -> TypeclassTraceMode.ALL_AND_ALTERNATIVES
+                    else -> null
+                }
+            }
+
+        else -> null
+    }
+}
+
+private fun IrClass.derivationTraceActivation(configuration: TypeclassConfiguration): TypeclassTraceActivation? {
+    val scopes = mutableListOf<TypeclassTraceScope>()
+    var current: IrDeclarationParent? = this
+    while (current != null) {
+        when (current) {
+            is IrDeclarationBase -> current.traceScopeOrNull()?.let(scopes::add)
+            is IrFile -> current.traceScopeOrNull()?.let(scopes::add)
+        }
+        current =
+            when (current) {
+                is IrDeclaration -> current.parent
+                else -> null
+            }
+    }
+    return resolveTraceActivation(scopes.asReversed(), configuration.traceMode)
 }
 
 private fun IrDeclarationBase.compilerMessageLocation(element: IrElement? = null): CompilerMessageSourceLocation? {
@@ -2698,10 +2947,13 @@ private class IrModuleScanner(
         subclassesBySuper: Map<String, Set<String>>,
     ): List<ResolvedRule> {
         val targetClassId = classId ?: return emptyList()
+        val rootGoal = "${typeclassId.asString()}<${targetClassId.asString()}>"
         if (!supportsDeriveShape()) {
-            pluginContext.reportTypeclassError(
+            pluginContext.reportCannotDeriveWithTrace(
+                owner = this,
+                configuration = configuration,
+                goal = rootGoal,
                 message = "@Derive is only supported on sealed or final classes and objects",
-                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                 location = compilerMessageLocation(),
             )
             return emptyList()
@@ -2711,9 +2963,11 @@ private class IrModuleScanner(
             return emptyList()
         }
         if (typeclassInterface.typeParameters.size != 1) {
-            pluginContext.reportTypeclassError(
+            pluginContext.reportCannotDeriveWithTrace(
+                owner = this,
+                configuration = configuration,
+                goal = rootGoal,
                 message = "@Derive currently only supports typeclasses with exactly one type parameter",
-                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                 location = compilerMessageLocation(),
             )
             return emptyList()
@@ -2736,7 +2990,7 @@ private class IrModuleScanner(
         val derivedSpecs =
             when {
                 kind == ClassKind.ENUM_CLASS ->
-                    buildDerivedEnumShape()?.let { shape ->
+                    buildDerivedEnumShape(rootGoal)?.let { shape ->
                         listOf(
                             DerivedRuleSpec(
                                 targetType = targetType,
@@ -2751,10 +3005,11 @@ private class IrModuleScanner(
                         typeclassInterface = typeclassInterface,
                         rootTargetType = targetType,
                         subclassesBySuper = subclassesBySuper,
+                        rootGoal = rootGoal,
                     )
 
                 else ->
-                    buildDerivedProductShape(typeParameterBySymbol)?.let { shape ->
+                    buildDerivedProductShape(typeParameterBySymbol, rootGoal)?.let { shape ->
                         listOf(
                             DerivedRuleSpec(
                                 targetType = targetType,
@@ -2782,9 +3037,11 @@ private class IrModuleScanner(
                         } else {
                             "${typeclassId.shortClassName.asString()} companion must implement $requiredName to derive products"
                         }
-                    pluginContext.reportTypeclassError(
+                    pluginContext.reportCannotDeriveWithTrace(
+                        owner = this,
+                        configuration = configuration,
+                        goal = rootGoal,
                         message = message,
-                        diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                         location = compilerMessageLocation(),
                     )
                     return emptyList()
@@ -2804,9 +3061,11 @@ private class IrModuleScanner(
                 } else {
                     "Typeclass deriver ${deriverCompanion.classIdOrFail.asString()} is missing ${deriveMethodContract.methodName}"
                 }
-            pluginContext.reportTypeclassError(
+            pluginContext.reportCannotDeriveWithTrace(
+                owner = this,
+                configuration = configuration,
+                goal = rootGoal,
                 message = message,
-                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                 location = compilerMessageLocation(),
             )
             return emptyList()
@@ -2854,6 +3113,7 @@ private class IrModuleScanner(
 
     private fun IrClass.toDerivedEquivRules(): List<ResolvedRule> {
         val targetClassId = classId ?: return emptyList()
+        val fallbackGoal = "${EQUIV_CLASS_ID.asString()}<${targetClassId.asString()},?>"
         val explicitRequests = deriveEquivRequests()
         val generatedRequests = generatedDerivedMetadata().filterIsInstance<GeneratedDerivedMetadata.DeriveEquiv>()
         val preferExplicitRequests = origin != IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB && explicitRequests.isNotEmpty()
@@ -2873,9 +3133,11 @@ private class IrModuleScanner(
             }.distinctBy { (otherClassId, _) -> otherClassId.asString() }
         if (typeParameters.isNotEmpty()) {
             requestSpecs.forEach { (_, location) ->
-                pluginContext.reportTypeclassError(
+                pluginContext.reportCannotDeriveWithTrace(
+                    owner = this,
+                    configuration = configuration,
+                    goal = fallbackGoal,
                     message = "@DeriveEquiv only supports monomorphic classes for now",
-                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                     location = location,
                 )
             }
@@ -2887,9 +3149,11 @@ private class IrModuleScanner(
                 pluginContext.referenceClass(otherClassId)?.owner
                     ?: return@mapNotNull null
             if (otherClass.typeParameters.isNotEmpty()) {
-                pluginContext.reportTypeclassError(
+                pluginContext.reportCannotDeriveWithTrace(
+                    owner = this,
+                    configuration = configuration,
+                    goal = "${EQUIV_CLASS_ID.asString()}<${targetClassId.asString()},${otherClassId.asString()}>",
                     message = "@DeriveEquiv only supports monomorphic classes for now",
-                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                     location = location,
                 )
                 return@mapNotNull null
@@ -2897,10 +3161,12 @@ private class IrModuleScanner(
             val plans =
                 planner.planEquiv(symbol.defaultType, otherClass.symbol.defaultType)
                     ?: run {
-                        pluginContext.reportTypeclassError(
+                        pluginContext.reportCannotDeriveWithTrace(
+                            owner = this,
+                            configuration = configuration,
+                            goal = "${EQUIV_CLASS_ID.asString()}<${targetClassId.asString()},${otherClassId.asString()}>",
                             message =
                                 "Cannot derive Equiv between ${targetClassId.asString()} and ${otherClassId.asString()}",
-                            diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                             location = location,
                         )
                         return@mapNotNull null
@@ -2987,9 +3253,11 @@ private class IrModuleScanner(
             }
         if (typeParameters.isNotEmpty()) {
             requestSpecs.forEach { (_, _, location) ->
-                pluginContext.reportTypeclassError(
+                pluginContext.reportCannotDeriveWithTrace(
+                    owner = this,
+                    configuration = configuration,
+                    goal = "derive-via:${targetClassId.asString()}",
                     message = "@DeriveVia only supports monomorphic classes for now",
-                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                     location = location,
                 )
             }
@@ -2997,10 +3265,13 @@ private class IrModuleScanner(
         }
         val planner = DirectTransportPlanner(pluginContext)
         return requestSpecs.flatMap { (typeclassId, path, location) ->
+            val rootGoal = "${typeclassId.asString()}<${targetClassId.asString()}>"
             if (path.isEmpty()) {
-                pluginContext.reportTypeclassError(
+                pluginContext.reportCannotDeriveWithTrace(
+                    owner = this,
+                    configuration = configuration,
+                    goal = rootGoal,
                     message = "Cannot derive via an empty path",
-                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                     location = location,
                 )
                 return@flatMap emptyList()
@@ -3010,17 +3281,21 @@ private class IrModuleScanner(
                 return@flatMap emptyList()
             }
             if (typeclassInterface.typeParameters.isEmpty()) {
-                pluginContext.reportTypeclassError(
+                pluginContext.reportCannotDeriveWithTrace(
+                    owner = this,
+                    configuration = configuration,
+                    goal = rootGoal,
                     message = "DeriveVia requires a typeclass with at least one type parameter",
-                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                     location = location,
                 )
                 return@flatMap emptyList()
             }
             typeclassInterface.validateDeriveViaTransportability()?.let { message ->
-                pluginContext.reportTypeclassError(
+                pluginContext.reportCannotDeriveWithTrace(
+                    owner = this,
+                    configuration = configuration,
+                    goal = rootGoal,
                     message = message,
-                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                     location = location,
                 )
                 return@flatMap emptyList()
@@ -3028,9 +3303,11 @@ private class IrModuleScanner(
             val resolvedPath =
                 planner.resolveViaPath(symbol.defaultType, path)
                     .getOrElse { error ->
-                        pluginContext.reportTypeclassError(
+                        pluginContext.reportCannotDeriveWithTrace(
+                            owner = this,
+                            configuration = configuration,
+                            goal = rootGoal,
                             message = error.message ?: "Failed to resolve DeriveVia path",
-                            diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                             location = location,
                         )
                         return@flatMap emptyList()
@@ -3039,13 +3316,26 @@ private class IrModuleScanner(
                 TcType.Constructor(targetClassId.asString(), emptyList())
             val viaTypeModel =
                 irTypeToModel(resolvedPath.viaType, emptyMap()) ?: run {
-                    pluginContext.reportTypeclassError(
+                    pluginContext.reportCannotDeriveWithTrace(
+                        owner = this,
+                        configuration = configuration,
+                        goal = rootGoal,
                         message = "DeriveVia terminal type must be representable as a typeclass goal",
-                        diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                         location = location,
                     )
                     return@flatMap emptyList()
                 }
+            pluginContext.reportDerivationSuccessTrace(
+                owner = this,
+                configuration = configuration,
+                goal = rootGoal,
+                location = location,
+                extraLines =
+                    listOf(
+                        "authored path: ${path.joinToString(" -> ") { segment -> segment.traceRender() }}",
+                        "normalized plan: ${resolvedPath.forwardPlan.traceRender()}",
+                    ),
+            )
             expandDerivedTypeclassIds(
                 typeclassId = typeclassId,
                 previousWereTypeclass = true,
@@ -3093,6 +3383,7 @@ private class IrModuleScanner(
 
     private fun IrClass.buildDerivedProductShape(
         typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
+        rootGoal: String,
     ): DerivedShape.Product? {
         val fields =
             structuralProperties().mapNotNull { property ->
@@ -3109,10 +3400,12 @@ private class IrModuleScanner(
         }
         val constructor = primaryConstructorOrNull()
         if (constructor == null) {
-            pluginContext.reportTypeclassError(
+            pluginContext.reportCannotDeriveWithTrace(
+                owner = this,
+                configuration = configuration,
+                goal = rootGoal,
                 message =
                     "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires a primary constructor",
-                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                 location = compilerMessageLocation(),
             )
             return null
@@ -3120,10 +3413,12 @@ private class IrModuleScanner(
         val constructorParameterNames = constructor.valueParameters.map { parameter -> parameter.name.asString() }
         val fieldNames = fields.map(DerivedField::name)
         if (constructorParameterNames != fieldNames) {
-            pluginContext.reportTypeclassError(
+            pluginContext.reportCannotDeriveWithTrace(
+                owner = this,
+                configuration = configuration,
+                goal = rootGoal,
                 message =
                     "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires constructor parameters to exactly match stored properties",
-                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                 location = compilerMessageLocation(),
             )
             return null
@@ -3135,6 +3430,7 @@ private class IrModuleScanner(
         typeclassInterface: IrClass,
         rootTargetType: TcType.Constructor,
         subclassesBySuper: Map<String, Set<String>>,
+        rootGoal: String,
     ): List<DerivedRuleSpec>? {
         val directSubclasses = subclassesBySuper[classIdOrFail.asString()].orEmpty()
         if (directSubclasses.isEmpty()) {
@@ -3146,10 +3442,12 @@ private class IrModuleScanner(
                 subclass.buildDerivedSumCaseInfo(this)
             }
         if (caseInfos.size != directSubclasses.size) {
-            pluginContext.reportTypeclassError(
+            pluginContext.reportCannotDeriveWithTrace(
+                owner = this,
+                configuration = configuration,
+                goal = rootGoal,
                 message =
                     "Cannot derive ${classIdOrFail.asString()} because one or more sealed subclasses cannot be expressed from the sealed root's type parameters",
-                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                 location = compilerMessageLocation(),
             )
             return null
@@ -3210,9 +3508,11 @@ private class IrModuleScanner(
                 val message =
                     admissions.mapNotNull(CaseAdmission::rejectionMessage).firstOrNull()
                         ?: "Cannot derive ${classIdOrFail.asString()} because one or more sealed subclasses require result-head refinements beyond the conservative admissibility policy"
-                pluginContext.reportTypeclassError(
+                pluginContext.reportCannotDeriveWithTrace(
+                    owner = this,
+                    configuration = configuration,
+                    goal = rootGoal,
                     message = message,
-                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                     location = compilerMessageLocation(),
                 )
                 return null
@@ -3239,20 +3539,24 @@ private class IrModuleScanner(
                 }
             }
         if (unrecoverableCaseMessage != null) {
-            pluginContext.reportTypeclassError(
+            pluginContext.reportCannotDeriveWithTrace(
+                owner = this,
+                configuration = configuration,
+                goal = rootGoal,
                 message = unrecoverableCaseMessage,
-                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                 location = compilerMessageLocation(),
             )
             return null
         }
 
         if (specs.isEmpty()) {
-            pluginContext.reportTypeclassError(
+            pluginContext.reportCannotDeriveWithTrace(
+                owner = this,
+                configuration = configuration,
+                goal = rootGoal,
                 message =
                     firstRejectionMessages.firstOrNull()
                         ?: "Cannot derive ${classIdOrFail.asString()} because no sealed subclasses are admissible for the requested typeclass",
-                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                 location = compilerMessageLocation(),
             )
             return null
@@ -3261,7 +3565,9 @@ private class IrModuleScanner(
         return specs
     }
 
-    private fun IrClass.buildDerivedEnumShape(): DerivedShape.Enum? {
+    private fun IrClass.buildDerivedEnumShape(
+        rootGoal: String,
+    ): DerivedShape.Enum? {
         val entries =
             declarations.filterIsInstance<IrEnumEntry>().map { entry ->
                 DerivedEnumEntry(
@@ -3270,9 +3576,11 @@ private class IrModuleScanner(
                 )
             }
         if (entries.isEmpty()) {
-            pluginContext.reportTypeclassError(
+            pluginContext.reportCannotDeriveWithTrace(
+                owner = this,
+                configuration = configuration,
+                goal = rootGoal,
                 message = "Cannot derive ${classIdOrFail.asString()} because enum derivation requires at least one enum entry",
-                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                 location = compilerMessageLocation(),
             )
             return null
@@ -4460,6 +4768,7 @@ private data class VisibleTypeParameters(
 private data class LocalTypeclassContext(
     val expression: IrBuilderWithScope.() -> IrExpression,
     val providedType: TcType,
+    val displayName: String,
 )
 
 private data class RecursiveDerivedResolver(
@@ -4837,6 +5146,7 @@ private fun collectLocalContexts(
                             LocalTypeclassContext(
                                 expression = { irGet(parameter) },
                                 providedType = providedType,
+                                displayName = parameter.name.asString(),
                             ),
                         )
                     }
@@ -4848,6 +5158,7 @@ private fun collectLocalContexts(
                             LocalTypeclassContext(
                                 expression = { irGet(parameter) },
                                 providedType = providedType,
+                                displayName = parameter.name.asString(),
                             ),
                         )
                     }

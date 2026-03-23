@@ -27,7 +27,28 @@ internal class TypeclassResolutionPlanner(
             inProgress = linkedSetOf(),
             allowedRecursiveGoals = linkedSetOf(),
             freshCounter = 0,
+            traceOptions = null,
         ).result
+
+    fun resolveWithTrace(
+        desiredType: TcType,
+        localContextTypes: List<TcType>,
+        explainAlternatives: Boolean = false,
+    ): TracedResolutionSearchResult {
+        val internal =
+            resolveInternal(
+                desiredType = desiredType,
+                localContextTypes = localContextTypes,
+                inProgress = linkedSetOf(),
+                allowedRecursiveGoals = linkedSetOf(),
+                freshCounter = 0,
+                traceOptions = TraceOptions(explainAlternatives = explainAlternatives),
+            )
+        return TracedResolutionSearchResult(
+            result = internal.result,
+            trace = requireNotNull(internal.trace) { "Tracing requested but no trace was produced" },
+        )
+    }
 
     private fun resolveInternal(
         desiredType: TcType,
@@ -35,6 +56,7 @@ internal class TypeclassResolutionPlanner(
         inProgress: LinkedHashSet<String>,
         allowedRecursiveGoals: LinkedHashSet<String>,
         freshCounter: Int,
+        traceOptions: TraceOptions?,
     ): InternalResolution {
         val normalizedDesired = desiredType.normalizedKey()
         if (!inProgress.add(normalizedDesired)) {
@@ -44,25 +66,96 @@ internal class TypeclassResolutionPlanner(
                 } else {
                     ResolutionSearchResult.Recursive(desiredType)
                 }
-            return InternalResolution(recursiveResult, freshCounter)
+            return InternalResolution(
+                result = recursiveResult,
+                freshCounter = freshCounter,
+                trace =
+                    traceOptions?.let {
+                        ResolutionTrace(
+                            goal = desiredType,
+                            localContextCandidates = emptyList(),
+                            ruleCandidates = emptyList(),
+                            rulesState = ResolutionTraceRulesState.SEARCHED,
+                            result = recursiveResult,
+                        )
+                    },
+            )
         }
 
         try {
+            val exactLocalMatchIndexes = linkedSetOf<Int>()
             val localMatches =
                 localContextTypes.mapIndexedNotNull { index, localType ->
                     if (desiredType != localType) {
                         return@mapIndexedNotNull null
                     }
+                    exactLocalMatchIndexes += index
                     ResolutionPlan.LocalContext(index = index, providedType = desiredType)
                 }
 
             if (localMatches.isNotEmpty()) {
-                return InternalResolution(localMatches.toSearchResult(desiredType), freshCounter)
+                val localResult = localMatches.toSearchResult(desiredType)
+                return InternalResolution(
+                    result = localResult,
+                    freshCounter = freshCounter,
+                    trace =
+                        traceOptions?.let { options ->
+                            ResolutionTrace(
+                                goal = desiredType,
+                                localContextCandidates =
+                                    localContextTypes.mapIndexed { index, localType ->
+                                        ResolutionTraceCandidate(
+                                            identity = "local-context[$index]",
+                                            family = ResolutionTraceCandidateFamily.LOCAL_CONTEXT,
+                                            state =
+                                                when {
+                                                    index !in exactLocalMatchIndexes -> ResolutionTraceCandidateState.REJECTED
+                                                    localMatches.size == 1 -> ResolutionTraceCandidateState.SELECTED
+                                                    else -> ResolutionTraceCandidateState.MATCHED
+                                                },
+                                            providedType = localType,
+                                            reason =
+                                                if (index in exactLocalMatchIndexes) {
+                                                    null
+                                                } else {
+                                                    mismatchReason(desiredType, localType)
+                                                },
+                                        )
+                                    },
+                                ruleCandidates =
+                                    if (options.explainAlternatives) {
+                                        explainRuleAlternatives(desiredType, freshCounter)
+                                    } else {
+                                        emptyList()
+                                    },
+                                rulesState =
+                                    if (options.explainAlternatives) {
+                                        ResolutionTraceRulesState.SEARCHED
+                                    } else {
+                                        ResolutionTraceRulesState.NOT_EXPLORED_AFTER_LOCAL_CONTEXT_RESULT
+                                    },
+                                result = localResult,
+                            )
+                        },
+                )
             }
 
             val successfulCandidates = mutableListOf<SuccessfulCandidate>()
             var sawRecursiveCandidate = false
             var nextFreshCounter = freshCounter
+            val tracedRuleCandidates = mutableListOf<ResolutionTraceCandidate>()
+            val tracedLocalCandidates =
+                traceOptions?.let {
+                    localContextTypes.mapIndexed { index, localType ->
+                        ResolutionTraceCandidate(
+                            identity = "local-context[$index]",
+                            family = ResolutionTraceCandidateFamily.LOCAL_CONTEXT,
+                            state = ResolutionTraceCandidateState.REJECTED,
+                            providedType = localType,
+                            reason = mismatchReason(desiredType, localType),
+                        )
+                    }
+                }.orEmpty()
 
             ruleProvider(desiredType).forEach { rule ->
                 val instantiatedRule = instantiateRule(rule, nextFreshCounter)
@@ -77,16 +170,31 @@ internal class TypeclassResolutionPlanner(
                     ).unify(
                         desiredType,
                         instantiatedRule.rule.providedType,
-                    ) ?: return@forEach
+                    )
+                if (substitution == null) {
+                    if (traceOptions != null) {
+                        tracedRuleCandidates +=
+                            ResolutionTraceCandidate(
+                                identity = instantiatedRule.rule.id,
+                                family = resolutionTraceCandidateFamily(instantiatedRule.rule.id),
+                                state = ResolutionTraceCandidateState.REJECTED,
+                                providedType = instantiatedRule.rule.providedType,
+                                reason = mismatchReason(desiredType, instantiatedRule.rule.providedType),
+                            )
+                    }
+                    return@forEach
+                }
 
                 val appliedRule = instantiatedRule.rule.apply(substitution)
                 val appliedLocals = localContextTypes.map { it.substitute(substitution) }
 
                 val prerequisitePlans = mutableListOf<ResolutionPlan>()
+                val prerequisiteTraces = mutableListOf<ResolutionTrace>()
                 var candidateFreshCounter = nextFreshCounter
                 val recursiveGoalKey = appliedRule.providedType.normalizedKey()
                 val addedRecursiveGoal =
                     appliedRule.supportsRecursiveResolution && allowedRecursiveGoals.add(recursiveGoalKey)
+                var rejectionReason: String? = null
 
                 try {
                     for (prerequisiteType in appliedRule.prerequisiteTypes) {
@@ -97,16 +205,27 @@ internal class TypeclassResolutionPlanner(
                                 inProgress = inProgress,
                                 allowedRecursiveGoals = allowedRecursiveGoals,
                                 freshCounter = candidateFreshCounter,
+                                traceOptions = traceOptions,
                             )
                         candidateFreshCounter = nested.freshCounter
+                        nested.trace?.let(prerequisiteTraces::add)
                         when (val nestedResult = nested.result) {
                             is ResolutionSearchResult.Success -> prerequisitePlans += nestedResult.plan
                             is ResolutionSearchResult.Recursive -> {
                                 sawRecursiveCandidate = true
+                                rejectionReason = "recursive prerequisite ${nestedResult.desiredType.render()}"
                                 return@forEach
                             }
 
-                            else -> return@forEach
+                            is ResolutionSearchResult.Missing -> {
+                                rejectionReason = "missing prerequisite ${nestedResult.desiredType.render()}"
+                                return@forEach
+                            }
+
+                            is ResolutionSearchResult.Ambiguous -> {
+                                rejectionReason = "ambiguous prerequisite ${nestedResult.desiredType.render()}"
+                                return@forEach
+                            }
                         }
                     }
                 } finally {
@@ -115,7 +234,32 @@ internal class TypeclassResolutionPlanner(
                     }
                 }
 
+                if (rejectionReason != null) {
+                    if (traceOptions != null) {
+                        tracedRuleCandidates +=
+                            ResolutionTraceCandidate(
+                                identity = appliedRule.id,
+                                family = resolutionTraceCandidateFamily(appliedRule.id),
+                                state = ResolutionTraceCandidateState.REJECTED,
+                                providedType = appliedRule.providedType,
+                                reason = rejectionReason,
+                                prerequisiteTraces = prerequisiteTraces,
+                            )
+                    }
+                    return@forEach
+                }
+
                 nextFreshCounter = candidateFreshCounter
+                if (traceOptions != null) {
+                    tracedRuleCandidates +=
+                        ResolutionTraceCandidate(
+                            identity = appliedRule.id,
+                            family = resolutionTraceCandidateFamily(appliedRule.id),
+                            state = ResolutionTraceCandidateState.MATCHED,
+                            providedType = appliedRule.providedType,
+                            prerequisiteTraces = prerequisiteTraces,
+                        )
+                }
                 successfulCandidates +=
                     SuccessfulCandidate(
                         priority = appliedRule.priority,
@@ -139,9 +283,74 @@ internal class TypeclassResolutionPlanner(
                     sawRecursiveCandidate -> ResolutionSearchResult.Recursive(desiredType)
                     else -> ResolutionSearchResult.Missing(desiredType)
                 }
-            return InternalResolution(result, nextFreshCounter)
+            val selectedLocalIndex =
+                ((result as? ResolutionSearchResult.Success)?.plan as? ResolutionPlan.LocalContext)?.index
+            val selectedRuleId =
+                ((result as? ResolutionSearchResult.Success)?.plan as? ResolutionPlan.ApplyRule)?.ruleId
+            return InternalResolution(
+                result = result,
+                freshCounter = nextFreshCounter,
+                trace =
+                    traceOptions?.let {
+                        ResolutionTrace(
+                            goal = desiredType,
+                            localContextCandidates =
+                                tracedLocalCandidates.map { candidate ->
+                                    if (candidate.identity == "local-context[$selectedLocalIndex]") {
+                                        candidate.copy(state = ResolutionTraceCandidateState.SELECTED, reason = null)
+                                    } else {
+                                        candidate
+                                    }
+                                },
+                            ruleCandidates =
+                                tracedRuleCandidates.map { candidate ->
+                                    if (candidate.identity == selectedRuleId) {
+                                        candidate.copy(state = ResolutionTraceCandidateState.SELECTED)
+                                    } else {
+                                        candidate
+                                    }
+                                },
+                            rulesState = ResolutionTraceRulesState.SEARCHED,
+                            result = result,
+                        )
+                    },
+            )
         } finally {
             inProgress.remove(normalizedDesired)
+        }
+    }
+
+    private fun explainRuleAlternatives(
+        desiredType: TcType,
+        freshCounter: Int,
+    ): List<ResolutionTraceCandidate> {
+        var nextFreshCounter = freshCounter
+        return ruleProvider(desiredType).map { rule ->
+            val instantiatedRule = instantiateRule(rule, nextFreshCounter)
+            nextFreshCounter = instantiatedRule.nextFreshCounter
+            val substitution =
+                Unifier(
+                    bindableVariableIds =
+                        instantiatedRule.rule.typeParameters.mapTo(linkedSetOf(), TcTypeParameter::id).apply {
+                            addAll(bindableDesiredVariableIds)
+                        },
+                ).unify(
+                    desiredType,
+                    instantiatedRule.rule.providedType,
+                )
+            val appliedRule = substitution?.let(instantiatedRule.rule::apply) ?: instantiatedRule.rule
+            ResolutionTraceCandidate(
+                identity = appliedRule.id,
+                family = resolutionTraceCandidateFamily(appliedRule.id),
+                state = ResolutionTraceCandidateState.EXPLAINED_NOT_SEARCHED,
+                providedType = appliedRule.providedType,
+                reason =
+                    if (substitution == null) {
+                        mismatchReason(desiredType, appliedRule.providedType)
+                    } else {
+                        "would match the requested goal"
+                    },
+            )
         }
     }
 
@@ -214,11 +423,16 @@ internal sealed interface ResolutionSearchResult {
 private data class InternalResolution(
     val result: ResolutionSearchResult,
     val freshCounter: Int,
+    val trace: ResolutionTrace? = null,
 )
 
 private data class InstantiatedRule(
     val rule: InstanceRule,
     val nextFreshCounter: Int,
+)
+
+private data class TraceOptions(
+    val explainAlternatives: Boolean,
 )
 
 private fun List<SuccessfulCandidate>.toCandidateSearchResult(desiredType: TcType): ResolutionSearchResult =
@@ -237,6 +451,11 @@ private fun List<SuccessfulCandidate>.toCandidateSearchResult(desiredType: TcTyp
             }
         }
     }
+
+private fun mismatchReason(
+    @Suppress("UNUSED_PARAMETER") desiredType: TcType,
+    @Suppress("UNUSED_PARAMETER") candidateType: TcType,
+): String = "not applicable due to head mismatch"
 
 private data class Substitution(
     val bindings: Map<String, TcType>,

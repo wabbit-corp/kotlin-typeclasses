@@ -27,12 +27,22 @@ internal class TypeclassCommandLineProcessor : CommandLineProcessor {
             allowMultipleOccurrences = true,
         )
 
+    private val traceModeOption =
+        CliOption(
+            optionName = "typeclassTraceMode",
+            valueDescription = "<inherit|disabled|failures|failures-and-alternatives|all|all-and-alternatives>",
+            description = "Controls scoped typeclass-resolution tracing.",
+            required = false,
+            allowMultipleOccurrences = true,
+        )
+
     override val pluginId: String = TYPECLASS_PLUGIN_ID
 
     override val pluginOptions: Collection<AbstractCliOption> =
         listOf(
             builtinKClassTypeclassOption,
             builtinKSerializerTypeclassOption,
+            traceModeOption,
         )
 
     override fun processOption(
@@ -53,6 +63,12 @@ internal class TypeclassCommandLineProcessor : CommandLineProcessor {
                     parseBuiltinMode(option.optionName, value),
                 )
 
+            traceModeOption.optionName ->
+                configuration.put(
+                    TypeclassConfigurationKeys.TRACE_MODE,
+                    parseTraceMode(option.optionName, value),
+                )
+
             else -> throw CliOptionProcessingException("Unknown option ${option.optionName}")
         }
     }
@@ -63,6 +79,16 @@ internal class TypeclassCommandLineProcessor : CommandLineProcessor {
     ): TypeclassBuiltinMode =
         try {
             TypeclassBuiltinMode.parse(optionName, value)
+        } catch (error: IllegalArgumentException) {
+            throw CliOptionProcessingException(error.message ?: "Invalid value '$value' for option '$optionName'")
+        }
+
+    private fun parseTraceMode(
+        optionName: String,
+        value: String,
+    ): TypeclassTraceMode =
+        try {
+            TypeclassTraceMode.parse(optionName, value)
         } catch (error: IllegalArgumentException) {
             throw CliOptionProcessingException(error.message ?: "Invalid value '$value' for option '$optionName'")
         }

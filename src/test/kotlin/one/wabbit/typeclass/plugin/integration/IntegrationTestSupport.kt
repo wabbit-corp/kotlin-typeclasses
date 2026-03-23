@@ -17,6 +17,7 @@ import kotlin.io.path.createTempDirectory
 import kotlin.io.path.writeText
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.net.URI
@@ -65,6 +66,25 @@ abstract class IntegrationTestSupport {
             compilerArguments = compilerArguments,
         )
     }
+
+    protected fun compileSourceResult(
+        source: String,
+        requiredPlugins: List<CompilerHarnessPlugin> = emptyList(),
+        pluginOptions: List<String> = emptyList(),
+        dependencies: List<HarnessDependency> = emptyList(),
+        useTypeclassPlugin: Boolean = true,
+        enableContextParameters: Boolean = true,
+        compilerArguments: List<String> = emptyList(),
+    ): CompilationResult =
+        compileSourceInternal(
+            sources = mapOf("Sample.kt" to source),
+            requiredPlugins = requiredPlugins,
+            pluginOptions = pluginOptions,
+            dependencies = dependencies,
+            useTypeclassPlugin = useTypeclassPlugin,
+            enableContextParameters = enableContextParameters,
+            compilerArguments = compilerArguments,
+        )
 
     protected fun assertDoesNotCompile(
         source: String,
@@ -594,6 +614,60 @@ abstract class IntegrationTestSupport {
         val exitCode = process.waitFor()
         assertEquals(0, exitCode, stdout)
         assertEquals(expectedStdout.trim(), stdout.trim())
+    }
+
+    protected fun runCompiledMain(
+        artifacts: CompilationArtifacts,
+        mainClass: String,
+    ): String {
+        val javaExecutable = Path.of(System.getProperty("java.home"), "bin", "java").toAbsolutePath().toString()
+        val process =
+            ProcessBuilder(
+                javaExecutable,
+                "-cp",
+                (listOf(artifacts.outputDir) + artifacts.runtimeClasspathEntries)
+                    .joinToString(separator = java.io.File.pathSeparator) { path -> path.toAbsolutePath().toString() },
+                mainClass,
+            ).redirectErrorStream(true)
+                .start()
+        val stdout = process.inputStream.readAllBytes().toString(Charsets.UTF_8)
+        val exitCode = process.waitFor()
+        assertEquals(0, exitCode, stdout)
+        return stdout.trim()
+    }
+
+    protected fun assertOutputContains(
+        output: String,
+        vararg fragments: String,
+    ) {
+        fragments.forEach { fragment ->
+            assertTrue(
+                output.contains(fragment),
+                buildString {
+                    appendLine("Expected compiler output to contain:")
+                    appendLine(fragment)
+                    appendLine("Full output:")
+                    append(output)
+                },
+            )
+        }
+    }
+
+    protected fun assertOutputNotContains(
+        output: String,
+        vararg fragments: String,
+    ) {
+        fragments.forEach { fragment ->
+            assertFalse(
+                output.contains(fragment),
+                buildString {
+                    appendLine("Expected compiler output not to contain:")
+                    appendLine(fragment)
+                    appendLine("Full output:")
+                    append(output)
+                },
+            )
+        }
     }
 
     protected fun compileSource(

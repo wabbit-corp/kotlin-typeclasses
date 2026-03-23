@@ -11,6 +11,8 @@ internal const val INSTANCE_ANNOTATION_FQ_NAME: String = "one.wabbit.typeclass.I
 internal const val DERIVE_ANNOTATION_FQ_NAME: String = "one.wabbit.typeclass.Derive"
 internal const val DERIVE_VIA_ANNOTATION_FQ_NAME: String = "one.wabbit.typeclass.DeriveVia"
 internal const val DERIVE_EQUIV_ANNOTATION_FQ_NAME: String = "one.wabbit.typeclass.DeriveEquiv"
+internal const val DEBUG_TYPECLASS_RESOLUTION_ANNOTATION_FQ_NAME: String = "one.wabbit.typeclass.DebugTypeclassResolution"
+internal const val TYPECLASS_TRACE_MODE_FQ_NAME: String = "one.wabbit.typeclass.TypeclassTraceMode"
 internal const val GADT_DERIVATION_POLICY_ANNOTATION_FQ_NAME: String = "one.wabbit.typeclass.GadtDerivationPolicy"
 internal const val GADT_DERIVATION_MODE_FQ_NAME: String = "one.wabbit.typeclass.GadtDerivationMode"
 internal const val GENERATED_WRAPPER_ANNOTATION_FQ_NAME: String = "one.wabbit.typeclass.GeneratedTypeclassWrapper"
@@ -56,6 +58,9 @@ internal val INSTANCE_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(FqName(INS
 internal val DERIVE_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(FqName(DERIVE_ANNOTATION_FQ_NAME))
 internal val DERIVE_VIA_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(FqName(DERIVE_VIA_ANNOTATION_FQ_NAME))
 internal val DERIVE_EQUIV_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(FqName(DERIVE_EQUIV_ANNOTATION_FQ_NAME))
+internal val DEBUG_TYPECLASS_RESOLUTION_ANNOTATION_CLASS_ID: ClassId =
+    ClassId.topLevel(FqName(DEBUG_TYPECLASS_RESOLUTION_ANNOTATION_FQ_NAME))
+internal val TYPECLASS_TRACE_MODE_CLASS_ID: ClassId = ClassId.topLevel(FqName(TYPECLASS_TRACE_MODE_FQ_NAME))
 internal val DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID: ClassId =
     DERIVE_VIA_ANNOTATION_CLASS_ID.createNestedClassId(Name.identifier("Container"))
 internal val DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID: ClassId =
