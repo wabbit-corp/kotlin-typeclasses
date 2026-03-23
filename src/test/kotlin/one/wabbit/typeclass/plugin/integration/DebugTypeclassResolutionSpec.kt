@@ -15,12 +15,12 @@ import kotlin.test.Test
  *   * which prerequisite subgoals were searched while resolving a larger request
  * - A global mode-based compiler option such as `typeclassTraceMode=<mode>` is still useful for
  *   whole-project debugging, but it is too blunt for ordinary use. Most people want to trace one
- *   file, one function, or one expression without turning the build log into soup.
+ *   file, one function, or one property/local initializer without turning the build log into soup.
  *
  * Proposed public surface:
  * - Add a source-retained annotation:
  *
- *   `@Target(FILE, CLASS, FUNCTION, PROPERTY, LOCAL_VARIABLE, EXPRESSION)`
+ *   `@Target(FILE, CLASS, FUNCTION, PROPERTY, LOCAL_VARIABLE)`
  *   `@Retention(SOURCE)`
  *   `enum class TypeclassTraceMode {`
  *   `  INHERIT,`
@@ -79,9 +79,10 @@ import kotlin.test.Test
  * - Function scope:
  *   `@DebugTypeclassResolution fun use()`
  *   traces roots inside that function body, including local lambdas and local functions.
- * - Expression scope:
- *   `@DebugTypeclassResolution render(user)`
- *   traces only the roots required by that expression subtree.
+ * - Expression scope is intentionally out of scope for now.
+ *   FIR retains expression annotations, but the current IR pipeline does not preserve them in a
+ *   form that makes scoped request-root tracing straightforward without a separate source-range
+ *   bridge. The supported fine-grained substitute is local-variable scope.
  * - Ordinary declaration note:
  *   annotating a function, class, object, property, or local variable traces roots inside that
  *   declaration's own lexical body. It does not automatically trace caller-side resolution of that
@@ -212,7 +213,7 @@ import kotlin.test.Test
  *   * `assertSuccessTraceContains(...)`
  *   * `assertNoSuccessTraceForSite(...)`
  */
-@Ignore("Spec-only: scoped typeclass-resolution tracing is not implemented yet")
+@Ignore("Spec-only: active tracing coverage lives in DebugTypeclassResolutionTest")
 class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
     @Test
     fun fileScopedTracingExplainsMissingInstanceFailuresAcrossTheWholeFile() {
@@ -421,43 +422,6 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
 
         // Intended future trace:
         // - only the root inside `tracedUse()` is traced
-        assertDoesNotCompile(
-            source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                ),
-        )
-    }
-
-    @Test
-    fun expressionScopedTracingTargetsOnlyTheAnnotatedExpressionSubtree() {
-        val source =
-            """
-            package demo
-
-            import one.wabbit.typeclass.DebugTypeclassResolution
-            import one.wabbit.typeclass.Typeclass
-
-            @Typeclass
-            interface Show<A> {
-                fun show(value: A): String
-            }
-
-            context(show: Show<A>)
-            fun <A> render(value: A): String = show.show(value)
-
-            data class User(val id: Int)
-
-            fun main() {
-                println(@DebugTypeclassResolution render(User(1))) // E:TC_NO_CONTEXT_ARGUMENT
-                println(render(User(2))) // E:TC_NO_CONTEXT_ARGUMENT
-            }
-            """.trimIndent()
-
-        // Intended future trace:
-        // - only the first `render(User(1))` root is traced
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =

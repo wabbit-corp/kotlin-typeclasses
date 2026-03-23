@@ -10,7 +10,7 @@ import kotlin.test.Test
  * `INHERIT`, `DISABLED`, nested re-enable, declaration-local mute, bare nested reset behavior, and
  * future interaction with a global trace mode.
  */
-@Ignore("Spec-only: scoped typeclass-resolution tracing is not implemented yet")
+@Ignore("Spec-only: active tracing coverage lives in DebugTypeclassResolutionTest")
 class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
     @Test
     fun propertyScopeParticipatesInNearestScopePrecedence() {
@@ -36,16 +36,18 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             class Screen {
                 @DebugTypeclassResolution(mode = TypeclassTraceMode.DISABLED)
                 val rendered: String
-                    get() =
+                    get() {
                         @DebugTypeclassResolution(mode = TypeclassTraceMode.FAILURES)
-                        render(User(1)) // E:TC_NO_CONTEXT_ARGUMENT
+                        val retraced = render(User(1)) // E:TC_NO_CONTEXT_ARGUMENT
+                        return retraced
+                    }
             }
             """.trimIndent()
 
         // Intended future trace:
         // - class scope would trace by default
         // - property scope mutes the getter root
-        // - the nested expression explicitly re-enables failure tracing for just its subtree
+        // - the nested local variable explicitly re-enables failure tracing for its initializer
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics = listOf(expectedNoContextArgument(phase = DiagnosticPhase.IR)),
@@ -184,10 +186,10 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
 
             @DebugTypeclassResolution(mode = TypeclassTraceMode.DISABLED)
             fun outer(): String {
-                val stillMuted =
-                    @DebugTypeclassResolution(mode = TypeclassTraceMode.INHERIT) needEqInt() // E:TC_NO_CONTEXT_ARGUMENT
-                val retraced =
-                    @DebugTypeclassResolution(mode = TypeclassTraceMode.FAILURES) needEqString() // E:TC_NO_CONTEXT_ARGUMENT
+                @DebugTypeclassResolution(mode = TypeclassTraceMode.INHERIT)
+                val stillMuted = needEqInt() // E:TC_NO_CONTEXT_ARGUMENT
+                @DebugTypeclassResolution(mode = TypeclassTraceMode.FAILURES)
+                val retraced = needEqString() // E:TC_NO_CONTEXT_ARGUMENT
                 return stillMuted + retraced
             }
 
@@ -200,8 +202,8 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
 
         // Intended future trace:
         // - `DISABLED` is a barrier for inherited behavior
-        // - the `INHERIT` expression therefore stays muted
-        // - only the explicit `FAILURES` re-enable emits a trace
+        // - the `INHERIT` local variable therefore stays muted
+        // - only the explicit `FAILURES` local variable re-enable emits a trace
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
@@ -256,7 +258,7 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
     }
 
     @Test
-    fun innerExpressionCanDisableTracingInsideAnOtherwiseTracedFunction() {
+    fun innerLocalVariableCanDisableTracingInsideAnOtherwiseTracedFunction() {
         val source =
             """
             package demo
@@ -270,8 +272,8 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
 
             @DebugTypeclassResolution
             fun useBoth(): String {
-                val muted =
-                    @DebugTypeclassResolution(mode = TypeclassTraceMode.DISABLED) missingInt() // E:TC_NO_CONTEXT_ARGUMENT
+                @DebugTypeclassResolution(mode = TypeclassTraceMode.DISABLED)
+                val muted = missingInt() // E:TC_NO_CONTEXT_ARGUMENT
                 val traced = missingString() // E:TC_NO_CONTEXT_ARGUMENT
                 return muted + traced
             }
@@ -285,7 +287,7 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
 
         // Intended future trace:
         // - the outer function enables failure tracing
-        // - the nested expression mutes only its own subtree
+        // - the nested local variable mutes only its own initializer
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
@@ -297,7 +299,7 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
     }
 
     @Test
-    fun innerExpressionCanReEnableTracingInsideAnOtherwiseMutedFunction() {
+    fun innerLocalVariableCanReEnableTracingInsideAnOtherwiseMutedFunction() {
         val source =
             """
             package demo
@@ -312,8 +314,8 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             @DebugTypeclassResolution(mode = TypeclassTraceMode.DISABLED)
             fun useBoth(): String {
                 val muted = missingInt() // E:TC_NO_CONTEXT_ARGUMENT
-                val retraced =
-                    @DebugTypeclassResolution(mode = TypeclassTraceMode.FAILURES) missingString() // E:TC_NO_CONTEXT_ARGUMENT
+                @DebugTypeclassResolution(mode = TypeclassTraceMode.FAILURES)
+                val retraced = missingString() // E:TC_NO_CONTEXT_ARGUMENT
                 return muted + retraced
             }
 
@@ -326,7 +328,7 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
 
         // Intended future trace:
         // - the outer function mutes tracing
-        // - the nested expression explicitly re-enables it for its subtree only
+        // - the nested local variable explicitly re-enables it for its own initializer
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
