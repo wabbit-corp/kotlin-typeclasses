@@ -624,7 +624,7 @@ private data class ResolutionIndex(
                     rootTypeParameterVariances = rootTypeParameterVariances,
                     subclassId = subclassId,
                     session = session,
-                ) ?: return true
+                ) ?: return@all true
             val prerequisiteGoal =
                 TcType.Constructor(
                     classifierId = typeclassId,

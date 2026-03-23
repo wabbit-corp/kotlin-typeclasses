@@ -3385,8 +3385,23 @@ private class IrModuleScanner(
         typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
         rootGoal: String,
     ): DerivedShape.Product? {
+        val storedProperties = structuralProperties()
+        storedProperties.firstOrNull { property ->
+            property.visibility != DescriptorVisibilities.PUBLIC ||
+                property.getter?.visibility != DescriptorVisibilities.PUBLIC
+        }?.let { nonPublicProperty ->
+            pluginContext.reportCannotDeriveWithTrace(
+                owner = this,
+                configuration = configuration,
+                goal = rootGoal,
+                message =
+                    "constructive product derivation requires public stored properties; ${renderClassName()}.${nonPublicProperty.name.asString()} is not public.",
+                location = compilerMessageLocation(),
+            )
+            return null
+        }
         val fields =
-            structuralProperties().mapNotNull { property ->
+            storedProperties.mapNotNull { property ->
                 val getter = property.getter ?: return@mapNotNull null
                 val fieldType = irTypeToModel(getter.returnType, typeParameterBySymbol) ?: return@mapNotNull null
                 DerivedField(
@@ -3406,6 +3421,17 @@ private class IrModuleScanner(
                 goal = rootGoal,
                 message =
                     "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires a primary constructor",
+                location = compilerMessageLocation(),
+            )
+            return null
+        }
+        if (constructor.visibility != DescriptorVisibilities.PUBLIC) {
+            pluginContext.reportCannotDeriveWithTrace(
+                owner = this,
+                configuration = configuration,
+                goal = rootGoal,
+                message =
+                    "constructive product derivation requires a public primary constructor for ${renderClassName()}.",
                 location = compilerMessageLocation(),
             )
             return null

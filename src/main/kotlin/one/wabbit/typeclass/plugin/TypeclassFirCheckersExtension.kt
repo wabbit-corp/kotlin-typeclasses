@@ -37,14 +37,18 @@ import org.jetbrains.kotlin.fir.expressions.FirAnnotation
 import org.jetbrains.kotlin.fir.expressions.FirAnonymousObjectExpression
 import org.jetbrains.kotlin.fir.expressions.FirExpression
 import org.jetbrains.kotlin.fir.expressions.FirFunctionCall
+import org.jetbrains.kotlin.fir.expressions.FirPropertyAccessExpression
 import org.jetbrains.kotlin.fir.expressions.FirReturnExpression
+import org.jetbrains.kotlin.fir.expressions.FirResolvedQualifier
 import org.jetbrains.kotlin.fir.references.FirErrorNamedReference
 import org.jetbrains.kotlin.fir.references.FirResolvedErrorReference
+import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
 import org.jetbrains.kotlin.fir.resolve.providers.firProvider
 import org.jetbrains.kotlin.fir.resolve.calls.AmbiguousContextArgument
 import org.jetbrains.kotlin.fir.resolve.calls.NoContextArgument
 import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeInapplicableCandidateError
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirNamedFunctionSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirValueParameterSymbol
@@ -782,18 +786,55 @@ private fun FirSimpleFunction.knownDeriverReturnExpressions(): List<FirExpressio
 private fun FirExpression.knownReturnedTypeclassConstructors(
     session: FirSession,
     configuration: TypeclassConfiguration,
-): List<String> =
-    when (this) {
-        is FirAnonymousObjectExpression ->
-            anonymousObject.superTypeRefs
-                .mapNotNull { typeRef ->
-                    val classifierId = typeRef.coneType.lowerBoundIfFlexible().classId?.asString() ?: return@mapNotNull null
-                    classifierId.takeIf { configuration.supportsReturnedTypeclassClassifierId(it, session) }
-                }
-                .distinct()
-
-        else -> emptyList()
+): List<String> {
+    val knownConstructors = linkedSetOf<String>()
+    safeResolvedOrInferredTypeOrNull(session)?.let { resolvedType ->
+        listOf(resolvedType)
+            .expandProvidedTypes(session, emptyMap(), configuration)
+            .validTypes
+            .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
+            .forEach(knownConstructors::add)
     }
+    implementationClassIdForKnownReturn(session)?.let { implementationClassId ->
+        knownTypeclassConstructorsForImplementation(implementationClassId, session, configuration)
+            .forEach(knownConstructors::add)
+    }
+    if (this is FirAnonymousObjectExpression) {
+        anonymousObject.superTypeRefs
+            .mapNotNull { typeRef ->
+                val classifierId = typeRef.coneType.lowerBoundIfFlexible().classId?.asString() ?: return@mapNotNull null
+                classifierId.takeIf { configuration.supportsReturnedTypeclassClassifierId(it, session) }
+            }.forEach(knownConstructors::add)
+    }
+    return knownConstructors.toList()
+}
+
+private fun FirExpression.implementationClassIdForKnownReturn(
+    session: FirSession,
+): ClassId? =
+    when (this) {
+        is FirResolvedQualifier -> symbol?.classId ?: classId
+        is FirFunctionCall ->
+            ((calleeReference as? FirResolvedNamedReference)?.resolvedSymbol as? FirCallableSymbol<*>)?.callableId?.classId
+        is FirPropertyAccessExpression ->
+            ((calleeReference as? FirResolvedNamedReference)?.resolvedSymbol as? FirCallableSymbol<*>)?.resolvedReturnType
+                ?.lowerBoundIfFlexible()
+                ?.classId
+        else -> null
+    }?.takeUnless(ClassId::isLocal)
+
+private fun knownTypeclassConstructorsForImplementation(
+    implementationClassId: ClassId,
+    session: FirSession,
+    configuration: TypeclassConfiguration,
+): List<String> {
+    val classSymbol = session.regularClassSymbolOrNull(implementationClassId) ?: return emptyList()
+    return classSymbol.fir.declaredOrResolvedSuperTypes()
+        .expandProvidedTypes(session, emptyMap(), configuration)
+        .validTypes
+        .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
+        .distinct()
+}
 
 private fun TypeclassConfiguration.supportsReturnedTypeclassClassifierId(
     classifierId: String,

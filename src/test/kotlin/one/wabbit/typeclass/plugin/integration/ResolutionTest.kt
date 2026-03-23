@@ -746,6 +746,53 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun infersTypeArgumentsFromReceiverBackedTypeclassContext() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface ItemComponentType<A> {
+                fun label(): String
+            }
+
+            data class Curse(val soulbound: Boolean) {
+                companion object {
+                    @Instance
+                    val itemComponentType =
+                        object : ItemComponentType<Curse> {
+                            override fun label(): String = "curse"
+                    }
+                }
+            }
+
+            context(type: ItemComponentType<Type>)
+            fun <Type> choose(): String {
+                return "derived:${'$'}{type.label()}"
+            }
+
+            fun choose(): String = "plain"
+
+            fun <Type> ItemComponentType<Type>.renderFromReceiver(): String {
+                return choose()
+            }
+
+            fun main() {
+                with(Curse.itemComponentType) {
+                    println(renderFromReceiver())
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "derived:curse",
+        )
+    }
+
     @Test fun preservesNullabilityWhenResolvingGenericInstances() {
         val source =
             """
@@ -1675,6 +1722,73 @@ class ResolutionTest : IntegrationTestSupport() {
 
             fun main() {
                 println(choose(Some(Payload("x"))))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain",
+        )
+    }
+
+    @Test fun unhandledGenericSealedSubclassesDoNotMakeConcreteRootsLookDerivable() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+            import one.wabbit.typeclass.matches
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : TypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+
+                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String {
+                                require(value != null)
+                                val matchingCase = metadata.cases.single { candidate -> candidate.matches(value) }
+                                val caseShow = matchingCase.instance as Show<Any?>
+                                return caseShow.show(value)
+                            }
+                        }
+                }
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = value.toString()
+            }
+
+            data class Payload(val raw: String)
+
+            @Derive(Show::class)
+            sealed interface Expr<out A>
+
+            data class Broken<A>(val value: A) : Expr<List<A>>
+
+            data class Lit(val payload: Payload) : Expr<Int>
+
+            object End : Expr<Nothing>
+
+            context(_: Show<Expr<Int>>)
+            fun choose(value: Expr<Int>): String = "derived"
+
+            fun choose(value: Expr<Int>): String = "plain"
+
+            fun main() {
+                println(choose(Lit(Payload("x"))))
             }
             """.trimIndent()
 

@@ -11,17 +11,20 @@ closed until there is:
 ### 1. Fix FIR sealed-derivation false positives caused by non-local return inside `all { ... }`
 
 Checklist:
-- [ ] Add a regression that proves `ResolutionIndex.canDeriveSealedGoalFromTarget(...)` currently over-accepts when one subclass cannot produce a usable sealed case type.
-- [ ] Cover the user-visible consequence in FIR masking / overload selection so the bug is pinned at the language level, not only at the helper level.
-- [ ] Replace the non-local `return true` inside the `subclassIds.all { ... }` lambda with correct per-subclass failure handling.
-- [ ] Re-verify the existing sealed-derivation FIR masking regressions after the fix.
+- [x] Add a regression that proves `ResolutionIndex.canDeriveSealedGoalFromTarget(...)` currently over-accepts when one subclass cannot produce a usable sealed case type.
+- [x] Cover the user-visible consequence in FIR masking / overload selection so the bug is pinned at the language level, not only at the helper level.
+- [x] Replace the non-local `return true` inside the `subclassIds.all { ... }` lambda with correct per-subclass failure handling.
+- [x] Re-verify the existing sealed-derivation FIR masking regressions after the fix.
 
 Detailed notes:
 - The specific hazard is in `TypeclassPluginSharedState.kt`, `ResolutionIndex.canDeriveSealedGoalFromTarget`.
 - Today this code path contains `deriveSealedCaseType(...) ?: return true` inside an inline `all { ... }` lambda, which returns from the enclosing function rather than “skipping” the current subclass.
 - That means one unhandled subclass can incorrectly turn the whole sealed root into “derivable = true”.
 - Because `sharedState.canDeriveGoal(...)` feeds FIR context stripping, this can recreate the exact phase skew the earlier review already found: FIR hides a required context and IR later cannot actually derive it.
-- The desired contract is conservative: if any direct sealed subclass cannot be converted into a valid case type for the root derivation check, FIR must not treat the sealed goal as derivable.
+- Completed in this pass:
+  - Added `unhandledGenericSealedSubclassesDoNotMakeConcreteRootsLookDerivable`.
+  - Changed the inline-lambda bug from a non-local success return to per-subclass skipping, so FIR now evaluates the remaining expressible cases instead of short-circuiting the whole sealed root to derivable.
+  - Re-verified the targeted FIR masking regression plus representative GADT derivation success/failure cases to keep the fix conservative without suppressing legitimate IR-side sealed derivation.
 
 ### 2. Unify product/sum deriver contracts between FIR validation and FIR/IR codegen lookup
 
@@ -44,47 +47,60 @@ Detailed notes:
 ### 3. Bring FIR deriver return-shape validation up to parity with IR for `Any`-typed returns
 
 Checklist:
-- [ ] Add declaration-site regressions for `deriveProduct(...): Any = ExistingInstanceObject`.
-- [ ] Add declaration-site regressions for `deriveProduct(...): Any = SomeImpl(...)`.
-- [ ] Extend FIR `knownReturnedTypeclassConstructors(...)` recognition to the same concrete return-expression shapes IR already accepts.
-- [ ] Re-verify that truly wrong-return-type derivers still fail with the intended FIR diagnostic.
+- [x] Add declaration-site regressions for `deriveProduct(...): Any = ExistingInstanceObject`.
+- [x] Add declaration-site regressions for `deriveProduct(...): Any = SomeImpl(...)`.
+- [x] Extend FIR `knownReturnedTypeclassConstructors(...)` recognition to the same concrete return-expression shapes IR already accepts.
+- [x] Re-verify that truly wrong-return-type derivers still fail with the intended FIR diagnostic.
 
 Detailed notes:
 - The FIR-side validation in `TypeclassFirCheckersExtension.validateTypeclassDeriverCompanionContracts` falls back to `knownReturnedTypeclassConstructors(...)`.
 - That FIR helper currently only recognizes `FirAnonymousObjectExpression`.
 - IR-side validation is broader and already accepts concrete object values and constructor calls.
 - This creates a direct correctness split: FIR rejects code that the rest of the plugin treats as valid and that the diagnostic text itself says should be allowed.
-- The desired contract is parity: if IR accepts a known-safe return-expression shape for an `Any` return type, FIR must validate the same shape.
+- Completed in this pass:
+  - Added `deriveProductMayReturnAnExistingInstanceObjectThroughAny`.
+  - Added `deriveProductMayReturnAConcreteConstructorCallThroughAny`.
+  - Extended FIR return-shape recognition to inspect resolved return implementations for named object values and constructor-call results, not just anonymous objects.
+  - Re-verified the focused regressions while keeping the existing wrong-return-type negative coverage intact.
 
 ### 4. Make derived product metadata visibility-safe
 
 Checklist:
-- [ ] Add regressions for `@Derive` on products with private stored properties.
-- [ ] Add regressions for `@Derive` on products with private primary constructors.
-- [ ] Decide whether the intended policy is “reject non-public product shapes” or “emit metadata lambdas inside an allowed scope”.
-- [ ] Align derived product metadata generation with the chosen visibility policy.
-- [ ] Re-verify existing constructive product/value-class derivation coverage after the change.
+- [x] Add regressions for `@Derive` on products with private stored properties.
+- [x] Add regressions for `@Derive` on products with private primary constructors.
+- [x] Decide whether the intended policy is “reject non-public product shapes” or “emit metadata lambdas inside an allowed scope”.
+- [x] Align derived product metadata generation with the chosen visibility policy.
+- [x] Re-verify existing constructive product/value-class derivation coverage after the change.
 
 Detailed notes:
 - `TypeclassIrGenerationExtension.buildDerivedProductShape` currently accepts stored properties and the primary constructor without visibility filtering.
 - `buildProductFieldAccessor` emits direct getter calls.
 - `buildProductConstructor` emits direct constructor calls.
 - That can synthesize illegal accesses when derivation metadata is materialized from outside the target type’s visibility boundary.
-- The transport planner already treats structural products conservatively with respect to visibility, so derivation metadata should obey the same rule rather than generating illegal IR.
+- Completed in this pass:
+  - Added `constructiveProductDerivationRejectsPrivateStoredProperties`.
+  - Added `constructiveProductDerivationRejectsPrivatePrimaryConstructors`.
+  - Chose the simpler conservative policy: reject non-public product shapes instead of trying to synthesize metadata lambdas inside privileged scopes.
+  - Added IR-side visibility gates for stored-property getters and primary constructors so derived product metadata can no longer emit illegal accesses.
+  - Re-verified the focused constructive product regressions and the full suite.
 
 ### 5. Include extension-receiver evidence in FIR type-argument inference
 
 Checklist:
-- [ ] Add a regression where a generic call can only infer `T` from receiver-backed typeclass evidence.
-- [ ] Add the matching control case using an ordinary context parameter to prove FIR and IR should behave the same.
-- [ ] Extend `TypeclassFirCallTypeInference.inferFunctionTypeArgumentsFromCallSite(...)` to mine enclosing receiver-backed typeclass evidence alongside context parameters.
-- [ ] Re-verify FIR refinement / overload-selection behavior for receiver-scoped contextual environments.
+- [x] Add a regression where a generic call can only infer `T` from receiver-backed typeclass evidence.
+- [x] Add the matching control case using an ordinary context parameter to prove FIR and IR should behave the same.
+- [x] Extend `TypeclassFirCallTypeInference.inferFunctionTypeArgumentsFromCallSite(...)` to mine enclosing receiver-backed typeclass evidence alongside context parameters.
+- [x] Re-verify FIR refinement / overload-selection behavior for receiver-scoped contextual environments.
 
 Detailed notes:
 - `TypeclassFirCallTypeInference.inferFunctionTypeArgumentsFromCallSite` currently mines only `containingFunction?.fir?.contextParameters` as local evidence for contextual inference.
 - The enclosing receiver parameter is omitted there, even though `buildTypeContext()` and the IR path already treat receiver evidence as available.
 - That creates a receiver-vs-context-parameter skew in FIR: the same logical evidence can refine or infer type arguments in IR, but be invisible to FIR when it is supplied via the receiver.
-- The desired contract is parity: receiver-backed typeclass evidence should participate in FIR type-argument inference anywhere the rest of the pipeline already treats that receiver as available local evidence.
+- Completed in this pass:
+  - Tightened the receiver-backed regression so overload selection really depends on type inference from the enclosing typeclass receiver.
+  - Kept the existing ordinary context-parameter case as the control specimen.
+  - Extended FIR call-site inference to mine enclosing typeclass receivers alongside context parameters.
+  - Re-verified the focused receiver-backed regression, the sealed masking regressions it interacts with, and the full suite.
 
 ## Completed Review Remediation
 

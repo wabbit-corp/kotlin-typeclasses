@@ -324,6 +324,101 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun deriveProductMayReturnAnExistingInstanceObjectThroughAny() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : ProductTypeclassDeriver {
+                    private object ExistingShow : Show<Any?> {
+                        override fun show(value: Any?): String = "existing"
+                    }
+
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any = ExistingShow
+                }
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            @Derive(Show::class)
+            data class Box(val value: Int)
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(Box(1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "existing",
+        )
+    }
+
+    @Test
+    fun deriveProductMayReturnAConcreteConstructorCallThroughAny() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+
+            class ShowImpl(private val typeName: String) : Show<Any?> {
+                override fun show(value: Any?): String = typeName
+            }
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : ProductTypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        ShowImpl(metadata.typeName)
+                }
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            @Derive(Show::class)
+            data class Box(val value: Int)
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(Box(1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "demo.Box",
+        )
+    }
+
+    @Test
     fun deriveSumMustReturnTheRequestedTypeclassConstructorWhenStaticallyKnown() {
         val source =
             """
@@ -732,6 +827,84 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             expectedDiagnostics =
                 listOf(
                     expectedTypeclassDiagnostic(cannotDeriveRequiresPrimaryConstructor(), phase = null),
+                ),
+        )
+    }
+
+    @Test
+    fun constructiveProductDerivationRejectsPrivateStoredProperties() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : ProductTypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+                }
+            }
+
+            @Derive(Show::class) // E:TC_CANNOT_DERIVE
+            data class Secret(private val value: Int)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedExactCannotDerive(
+                        "constructive product derivation requires public stored properties; demo.Secret.value is not public.",
+                        phase = null,
+                    ),
+                ),
+        )
+    }
+
+    @Test
+    fun constructiveProductDerivationRejectsPrivatePrimaryConstructors() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : ProductTypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+                }
+            }
+
+            @Derive(Show::class) // E:TC_CANNOT_DERIVE
+            data class Secret private constructor(val value: Int)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedExactCannotDerive(
+                        "constructive product derivation requires a public primary constructor for demo.Secret.",
+                        phase = null,
+                    ),
                 ),
         )
     }

@@ -105,10 +105,17 @@ internal fun inferFunctionTypeArgumentsFromCallSite(
     }
 
     val localContextTypes =
-        containingFunction?.fir?.contextParameters.orEmpty()
-            .mapNotNull { parameter ->
-                parameter.returnTypeRef.coneType.takeIf { sharedState.isTypeclassType(session, it) }
-            }
+        buildList {
+            containingFunction?.fir?.receiverParameter?.typeRef?.coneType
+                ?.takeIf { receiverType -> sharedState.isTypeclassType(session, receiverType) }
+                ?.let(::add)
+            addAll(
+                containingFunction?.fir?.contextParameters.orEmpty()
+                    .mapNotNull { parameter ->
+                        parameter.returnTypeRef.coneType.takeIf { sharedState.isTypeclassType(session, it) }
+                    },
+            )
+        }
 
     function.contextParameters.forEach { parameter ->
         localContextTypes.forEach { localContextType ->
