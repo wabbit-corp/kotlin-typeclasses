@@ -1,7 +1,8 @@
 package one.wabbit.typeclass.plugin.integration
 
-import kotlin.test.Ignore
+import org.jetbrains.kotlin.cli.common.ExitCode
 import kotlin.test.Test
+import kotlin.test.assertEquals
 
 /**
  * Supplemental edge-case spec for mode precedence in scoped typeclass-resolution tracing.
@@ -10,8 +11,9 @@ import kotlin.test.Test
  * `INHERIT`, `DISABLED`, nested re-enable, declaration-local mute, bare nested reset behavior, and
  * future interaction with a global trace mode.
  */
-@Ignore("Spec-only: active tracing coverage lives in DebugTypeclassResolutionTest")
 class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
+    private fun String.countOccurrences(fragment: String): Int = split(fragment).size - 1
+
     @Test
     fun propertyScopeParticipatesInNearestScopePrecedence() {
         val source =
@@ -19,39 +21,46 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             package demo
 
             import one.wabbit.typeclass.DebugTypeclassResolution
-            import one.wabbit.typeclass.TypeclassTraceMode
+            import one.wabbit.typeclass.Instance
             import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassTraceMode
+            import one.wabbit.typeclass.summon
 
             @Typeclass
             interface Show<A> {
-                fun show(value: A): String
+                fun label(): String
             }
 
-            context(show: Show<A>)
-            fun <A> render(value: A): String = show.show(value)
+            @Instance
+            object IntShow : Show<Int> {
+                override fun label(): String = "int"
+            }
 
-            data class User(val id: Int)
-
-            @DebugTypeclassResolution
+            @DebugTypeclassResolution(mode = TypeclassTraceMode.ALL)
             class Screen {
                 @DebugTypeclassResolution(mode = TypeclassTraceMode.DISABLED)
                 val rendered: String
                     get() {
-                        @DebugTypeclassResolution(mode = TypeclassTraceMode.FAILURES)
-                        val retraced = render(User(1)) // E:TC_NO_CONTEXT_ARGUMENT
+                        @DebugTypeclassResolution(mode = TypeclassTraceMode.ALL)
+                        val retraced = summon<Show<Int>>().label()
                         return retraced
                     }
             }
+
+            fun main() {
+                println(Screen().rendered)
+            }
             """.trimIndent()
 
-        // Intended future trace:
-        // - class scope would trace by default
-        // - property scope mutes the getter root
-        // - the nested local variable explicitly re-enables failure tracing for its initializer
-        assertDoesNotCompile(
-            source = source,
-            expectedDiagnostics = listOf(expectedNoContextArgument(phase = DiagnosticPhase.IR)),
+        val result = compileSourceResult(source)
+        assertEquals(ExitCode.OK, result.exitCode, result.stdout)
+        assertEquals(1, result.stdout.countOccurrences("[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"), result.stdout)
+        assertOutputContains(
+            result.stdout,
+            "[TC_TRACE] traced scope: local variable retraced",
         )
+        assertOutputNotContains(result.stdout, "[TC_TRACE] traced scope: property rendered")
+        assertEquals("int", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
 
     @Test
@@ -61,42 +70,45 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             package demo
 
             import one.wabbit.typeclass.DebugTypeclassResolution
-            import one.wabbit.typeclass.TypeclassTraceMode
+            import one.wabbit.typeclass.Instance
             import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassTraceMode
+            import one.wabbit.typeclass.summon
 
             @Typeclass
-            interface Eq<A>
+            interface Show<A> {
+                fun label(): String
+            }
 
-            @DebugTypeclassResolution
+            @Instance
+            object IntShow : Show<Int> {
+                override fun label(): String = "int"
+            }
+
+            @DebugTypeclassResolution(mode = TypeclassTraceMode.ALL)
             fun demo(): String {
                 @DebugTypeclassResolution(mode = TypeclassTraceMode.DISABLED)
-                val muted = needEqInt() // E:TC_NO_CONTEXT_ARGUMENT
+                val muted = summon<Show<Int>>().label()
 
-                @DebugTypeclassResolution(mode = TypeclassTraceMode.FAILURES)
-                val retraced = needEqString() // E:TC_NO_CONTEXT_ARGUMENT
+                @DebugTypeclassResolution(mode = TypeclassTraceMode.ALL)
+                val retraced = summon<Show<Int>>().label()
 
                 return muted + retraced
             }
 
-            context(_: Eq<Int>)
-            fun needEqInt(): String = "int"
-
-            context(_: Eq<String>)
-            fun needEqString(): String = "string"
+            fun main() {
+                println(demo())
+            }
             """.trimIndent()
 
-        // Intended future trace:
-        // - the function enables tracing
-        // - the first local variable mutes its initializer
-        // - the second local variable re-enables tracing for its own initializer
-        assertDoesNotCompile(
-            source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                ),
+        val result = compileSourceResult(source)
+        assertEquals(ExitCode.OK, result.exitCode, result.stdout)
+        assertEquals(1, result.stdout.countOccurrences("[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"), result.stdout)
+        assertOutputContains(
+            result.stdout,
+            "[TC_TRACE] traced scope: local variable retraced",
         )
+        assertEquals("intint", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
 
     @Test
@@ -104,32 +116,44 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
         val source =
             """
             @file:one.wabbit.typeclass.DebugTypeclassResolution(
-                mode = one.wabbit.typeclass.TypeclassTraceMode.FAILURES
+                mode = one.wabbit.typeclass.TypeclassTraceMode.ALL
             )
 
             package demo
 
             import one.wabbit.typeclass.DebugTypeclassResolution
-            import one.wabbit.typeclass.TypeclassTraceMode
+            import one.wabbit.typeclass.Instance
             import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassTraceMode
+            import one.wabbit.typeclass.summon
 
             @Typeclass
-            interface Eq<A>
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun label(): String = "int"
+            }
 
             @DebugTypeclassResolution(mode = TypeclassTraceMode.INHERIT)
-            fun inheritedTrace(): String = needEqInt() // E:TC_NO_CONTEXT_ARGUMENT
+            fun inheritedTrace(): String = summon<Show<Int>>().label()
 
-            context(_: Eq<Int>)
-            fun needEqInt(): String = "int"
+            fun main() {
+                println(inheritedTrace())
+            }
             """.trimIndent()
 
-        // Intended future trace:
-        // - `INHERIT` is explicit defer-to-parent
-        // - the file-level failure-tracing mode therefore applies here
-        assertDoesNotCompile(
-            source = source,
-            expectedDiagnostics = listOf(expectedNoContextArgument(phase = DiagnosticPhase.IR)),
+        val result = compileSourceResult(source)
+        assertEquals(ExitCode.OK, result.exitCode, result.stdout)
+        assertOutputContains(
+            result.stdout,
+            "[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>",
+            "[TC_TRACE] effective mode: ALL",
+            "[TC_TRACE] traced scope: file Sample.kt",
         )
+        assertEquals("int", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
 
     @Test
@@ -162,13 +186,10 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             }
             """.trimIndent()
 
-        // Intended future trace:
-        // - ambient tracing is disabled in this suite unless stated otherwise
-        // - `mode = INHERIT` therefore does not force a success trace on
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int",
-        )
+        val result = compileSourceResult(source)
+        assertEquals(ExitCode.OK, result.exitCode, result.stdout)
+        assertOutputNotContains(result.stdout, "[TC_TRACE]")
+        assertEquals("int", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
 
     @Test
@@ -178,40 +199,43 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             package demo
 
             import one.wabbit.typeclass.DebugTypeclassResolution
-            import one.wabbit.typeclass.TypeclassTraceMode
+            import one.wabbit.typeclass.Instance
             import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassTraceMode
+            import one.wabbit.typeclass.summon
 
             @Typeclass
-            interface Eq<A>
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun label(): String = "int"
+            }
 
             @DebugTypeclassResolution(mode = TypeclassTraceMode.DISABLED)
             fun outer(): String {
                 @DebugTypeclassResolution(mode = TypeclassTraceMode.INHERIT)
-                val stillMuted = needEqInt() // E:TC_NO_CONTEXT_ARGUMENT
-                @DebugTypeclassResolution(mode = TypeclassTraceMode.FAILURES)
-                val retraced = needEqString() // E:TC_NO_CONTEXT_ARGUMENT
+                val stillMuted = summon<Show<Int>>().label()
+                @DebugTypeclassResolution(mode = TypeclassTraceMode.ALL)
+                val retraced = summon<Show<Int>>().label()
                 return stillMuted + retraced
             }
 
-            context(_: Eq<Int>)
-            fun needEqInt(): String = "int"
-
-            context(_: Eq<String>)
-            fun needEqString(): String = "string"
+            fun main() {
+                println(outer())
+            }
             """.trimIndent()
 
-        // Intended future trace:
-        // - `DISABLED` is a barrier for inherited behavior
-        // - the `INHERIT` local variable therefore stays muted
-        // - only the explicit `FAILURES` local variable re-enable emits a trace
-        assertDoesNotCompile(
-            source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                ),
+        val result = compileSourceResult(source)
+        assertEquals(ExitCode.OK, result.exitCode, result.stdout)
+        assertEquals(1, result.stdout.countOccurrences("[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"), result.stdout)
+        assertOutputContains(
+            result.stdout,
+            "[TC_TRACE] traced scope: local variable retraced",
         )
+        assertEquals("intint", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
 
     @Test
@@ -247,14 +271,10 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             }
             """.trimIndent()
 
-        // Intended future trace:
-        // - file scope would trace successes because it is in `ALL`
-        // - the bare nested annotation is not neutral inheritance
-        // - it resets the nested scope to `FAILURES`, so the successful inner root emits no trace
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int",
-        )
+        val result = compileSourceResult(source)
+        assertEquals(ExitCode.OK, result.exitCode, result.stdout)
+        assertOutputNotContains(result.stdout, "[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>")
+        assertEquals("int", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
 
     @Test
@@ -264,38 +284,42 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             package demo
 
             import one.wabbit.typeclass.DebugTypeclassResolution
-            import one.wabbit.typeclass.TypeclassTraceMode
+            import one.wabbit.typeclass.Instance
             import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassTraceMode
+            import one.wabbit.typeclass.summon
 
             @Typeclass
-            interface Show<A>
+            interface Show<A> {
+                fun label(): String
+            }
 
-            @DebugTypeclassResolution
+            @Instance
+            object IntShow : Show<Int> {
+                override fun label(): String = "int"
+            }
+
+            @DebugTypeclassResolution(mode = TypeclassTraceMode.ALL)
             fun useBoth(): String {
                 @DebugTypeclassResolution(mode = TypeclassTraceMode.DISABLED)
-                val muted = missingInt() // E:TC_NO_CONTEXT_ARGUMENT
-                val traced = missingString() // E:TC_NO_CONTEXT_ARGUMENT
+                val muted = summon<Show<Int>>().label()
+                val traced = summon<Show<Int>>().label()
                 return muted + traced
             }
 
-            context(_: Show<Int>)
-            fun missingInt(): String = "int"
-
-            context(_: Show<String>)
-            fun missingString(): String = "string"
+            fun main() {
+                println(useBoth())
+            }
             """.trimIndent()
 
-        // Intended future trace:
-        // - the outer function enables failure tracing
-        // - the nested local variable mutes only its own initializer
-        assertDoesNotCompile(
-            source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                ),
+        val result = compileSourceResult(source)
+        assertEquals(ExitCode.OK, result.exitCode, result.stdout)
+        assertEquals(1, result.stdout.countOccurrences("[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"), result.stdout)
+        assertOutputContains(
+            result.stdout,
+            "[TC_TRACE] traced scope: function",
         )
+        assertEquals("intint", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
 
     @Test
@@ -305,38 +329,42 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             package demo
 
             import one.wabbit.typeclass.DebugTypeclassResolution
-            import one.wabbit.typeclass.TypeclassTraceMode
+            import one.wabbit.typeclass.Instance
             import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassTraceMode
+            import one.wabbit.typeclass.summon
 
             @Typeclass
-            interface Show<A>
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun label(): String = "int"
+            }
 
             @DebugTypeclassResolution(mode = TypeclassTraceMode.DISABLED)
             fun useBoth(): String {
-                val muted = missingInt() // E:TC_NO_CONTEXT_ARGUMENT
-                @DebugTypeclassResolution(mode = TypeclassTraceMode.FAILURES)
-                val retraced = missingString() // E:TC_NO_CONTEXT_ARGUMENT
+                val muted = summon<Show<Int>>().label()
+                @DebugTypeclassResolution(mode = TypeclassTraceMode.ALL)
+                val retraced = summon<Show<Int>>().label()
                 return muted + retraced
             }
 
-            context(_: Show<Int>)
-            fun missingInt(): String = "int"
-
-            context(_: Show<String>)
-            fun missingString(): String = "string"
+            fun main() {
+                println(useBoth())
+            }
             """.trimIndent()
 
-        // Intended future trace:
-        // - the outer function mutes tracing
-        // - the nested local variable explicitly re-enables it for its own initializer
-        assertDoesNotCompile(
-            source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                ),
+        val result = compileSourceResult(source)
+        assertEquals(ExitCode.OK, result.exitCode, result.stdout)
+        assertEquals(1, result.stdout.countOccurrences("[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"), result.stdout)
+        assertOutputContains(
+            result.stdout,
+            "[TC_TRACE] traced scope: local variable retraced",
         )
+        assertEquals("intint", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
 
     @Test
@@ -385,13 +413,10 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             data class Lit<T>(val value: T) : Expr
             """.trimIndent()
 
-        // Intended future trace:
-        // - file scope would ordinarily trace the derivation failure
-        // - declaration-local `DISABLED` suppresses that derivation-root trace
-        assertDoesNotCompile(
-            source = source,
-            expectedDiagnostics = listOf(expectedCannotDerive(phase = DiagnosticPhase.IR)),
-        )
+        val result = compileSourceResult(source)
+        assertEquals(ExitCode.COMPILATION_ERROR, result.exitCode, result.stdout)
+        assertOutputContains(result.stdout, "[TC_CANNOT_DERIVE]")
+        assertOutputNotContains(result.stdout, "[TC_TRACE]")
     }
 
     @Test
@@ -423,37 +448,23 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
 
             @DebugTypeclassResolution(mode = TypeclassTraceMode.DISABLED)
             fun locallyMuted(): String {
-                val ok = summon<Show<Int>>().label()
-                val boom = hiddenFailure() // E:TC_NO_CONTEXT_ARGUMENT
-                return ok + boom
+                return summon<Show<Int>>().label()
             }
 
             @DebugTypeclassResolution(mode = TypeclassTraceMode.ALL_AND_ALTERNATIVES)
             fun locallyVerbose(): String {
-                val ok = summon<Show<Int>>().label()
-                val boom = verboseFailure() // E:TC_NO_CONTEXT_ARGUMENT
-                return ok + boom
+                return summon<Show<Int>>().label()
             }
 
-            context(_: Show<String>)
-            fun hiddenFailure(): String = "hidden"
-
-            context(_: Show<String>)
-            fun verboseFailure(): String = "verbose"
+            fun main() {
+                println(locallyMuted() + "/" + locallyVerbose())
+            }
             """.trimIndent()
 
-        // Intended future trace:
-        // - future harness should compile this fixture with global mode `FAILURES`
-        // - `locallyMuted` still suppresses both its success and failure traces
-        // - `locallyVerbose` proves the upward override too by upgrading from global `FAILURES` to
-        //   local `ALL_AND_ALTERNATIVES`
-        assertDoesNotCompile(
-            source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                ),
-        )
+        val result = compileSourceResult(source, pluginOptions = listOf("typeclassTraceMode=failures"))
+        assertEquals(ExitCode.OK, result.exitCode, result.stdout)
+        assertEquals(1, result.stdout.countOccurrences("[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"), result.stdout)
+        assertOutputContains(result.stdout, "[TC_TRACE] effective mode: ALL_AND_ALTERNATIVES")
+        assertEquals("int/int", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
 }
