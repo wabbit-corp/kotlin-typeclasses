@@ -146,7 +146,12 @@ internal class TypeclassFirFunctionCallRefinementExtension(
             val resolution = planner.resolve(goalModel, typeContext.directlyAvailableContextModels)
             when (resolution) {
                 is ResolutionSearchResult.Success -> true
-                is ResolutionSearchResult.Missing -> sharedState.canDeriveGoal(session, goalModel)
+                is ResolutionSearchResult.Missing ->
+                    sharedState.canDeriveGoal(
+                        session = session,
+                        goal = goalModel,
+                        availableContexts = typeContext.directlyAvailableContextModels,
+                    )
                 else -> false
             }
         }

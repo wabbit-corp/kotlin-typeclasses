@@ -9,6 +9,7 @@ import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.getAnnotationsByClassId
+import org.jetbrains.kotlin.fir.declarations.getKClassArgument
 import org.jetbrains.kotlin.fir.declarations.getStringArgument
 import org.jetbrains.kotlin.fir.expressions.FirAnnotation
 import org.jetbrains.kotlin.fir.expressions.FirAnnotationCall
@@ -27,8 +28,17 @@ import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.name.SpecialNames
 
+internal enum class DeriveMethodContract(
+    val methodName: String,
+    val metadataClassId: ClassId,
+) {
+    PRODUCT("deriveProduct", PRODUCT_TYPECLASS_METADATA_CLASS_ID),
+    SUM("deriveSum", SUM_TYPECLASS_METADATA_CLASS_ID),
+    ENUM("deriveEnum", ENUM_TYPECLASS_METADATA_CLASS_ID),
+}
+
 internal fun FirRegularClass.supportedDerivedTypeclassIds(session: FirSession): Set<String> {
-    val generatedIds = generatedDerivedTypeclassIds(session)
+    val generatedIds = generatedDerivedMetadata(session).mapTo(linkedSetOf()) { metadata -> metadata.typeclassId.asString() }
     val explicitIds =
         if (!supportsDeriveShape()) {
             emptySet()
@@ -101,7 +111,18 @@ internal fun FirRegularClass.requiredDeriveMethodNameForDeriveShape(): String? =
         else -> null
     }
 
+internal fun FirRegularClass.requiredDeriveMethodContractForDeriveShape(): DeriveMethodContract? =
+    when {
+        classKind == ClassKind.ENUM_CLASS -> DeriveMethodContract.ENUM
+        else -> null
+    }
+
 internal fun FirRegularClass.generatedDerivedTypeclassIds(session: FirSession): Set<String> {
+    val ownerId = symbol.classId.asString()
+    return generatedDerivedMetadata(session).mapTo(linkedSetOf()) { metadata -> metadata.typeclassId.asString() }
+}
+
+internal fun FirRegularClass.generatedDerivedMetadata(session: FirSession): List<GeneratedDerivedMetadata> {
     val ownerId = symbol.classId.asString()
     val generatedAnnotations =
         buildList {
@@ -116,7 +137,7 @@ internal fun FirRegularClass.generatedDerivedTypeclassIds(session: FirSession): 
                     annotationClassId = GENERATED_INSTANCE_ANNOTATION_CONTAINER_CLASS_ID,
                     session = session,
                 )
-                    .flatMap { annotation -> annotation.containedGeneratedInstanceAnnotations() },
+                    .flatMap { annotation -> annotation.containedAnnotationArguments() },
             )
         }.ifEmpty {
             buildList {
@@ -133,19 +154,19 @@ internal fun FirRegularClass.generatedDerivedTypeclassIds(session: FirSession): 
                         .filter { annotation ->
                             annotation.annotationTypeRef.coneType.classId == GENERATED_INSTANCE_ANNOTATION_CONTAINER_CLASS_ID
                         }.flatMap { annotation ->
-                            annotation.containedGeneratedInstanceAnnotations()
+                            annotation.containedAnnotationArguments()
                         },
                 )
             }
         }
-    return generatedAnnotations.mapNotNullTo(linkedSetOf()) { annotation ->
-        val typeclassId = annotation.getStringArgumentCompat("typeclassId", session)
-        val targetId = annotation.getStringArgumentCompat("targetId", session)
-        val kind = annotation.getStringArgumentCompat("kind", session)
-        typeclassId?.takeIf {
-            kind in setOf("derive", "derive-via", "derive-equiv") &&
-                (targetId == null || targetId == ownerId)
-        }
+    return generatedAnnotations.mapNotNull { annotation ->
+        decodeGeneratedDerivedMetadata(
+            typeclassId = annotation.getStringArgumentCompat("typeclassId", session),
+            targetId = annotation.getStringArgumentCompat("targetId", session),
+            kind = annotation.getStringArgumentCompat("kind", session),
+            payload = annotation.getStringArgumentCompat("payload", session),
+            expectedOwnerId = ownerId,
+        )
     }
 }
 
@@ -177,38 +198,77 @@ internal fun FirRegularClass.resolvedAnnotationsByClassId(
         .getAnnotationsByClassId(annotationClassId, session)
 }
 
-private fun FirAnnotation.containedGeneratedInstanceAnnotations(): List<FirAnnotation> {
+internal fun FirRegularClass.resolvedRepeatableAnnotationsByClassId(
+    annotationClassId: ClassId,
+    containerClassId: ClassId,
+    session: FirSession,
+): List<FirAnnotation> =
+    buildList {
+        addAll(resolvedAnnotationsByClassId(annotationClassId, session))
+        addAll(
+            resolvedAnnotationsByClassId(containerClassId, session)
+                .flatMap { annotation -> annotation.containedAnnotationArguments() },
+        )
+    }
+
+private fun FirAnnotation.containedAnnotationArguments(): List<FirAnnotation> {
     val valueArgument = findArgumentByName(Name.identifier("value")) ?: return emptyList()
     return valueArgument.unwrapVarargValue().filterIsInstance<FirAnnotation>()
 }
 
-internal fun FirAnnotation.getClassIdArgument(name: String): ClassId? =
-    findArgumentByName(Name.identifier(name))
-        ?.unwrapVarargValue()
-        .orEmpty()
-        .ifEmpty { findArgumentByName(Name.identifier(name))?.let(::listOf).orEmpty() }
-        .asSequence()
-        .filterIsInstance<org.jetbrains.kotlin.fir.expressions.FirExpression>()
-        .mapNotNull { expression ->
-            when (expression) {
-                is org.jetbrains.kotlin.fir.expressions.FirGetClassCall ->
-                    expression.argument.resolvedType.lowerBoundIfFlexible().classId
+internal fun FirAnnotation.getClassIdArgument(
+    name: String,
+    session: FirSession,
+): ClassId? =
+    getKClassArgument(Name.identifier(name), session)?.lowerBoundIfFlexible()?.classId
+        ?: findArgumentByName(Name.identifier(name))
+            ?.unwrapVarargValue()
+            .orEmpty()
+            .ifEmpty { findArgumentByName(Name.identifier(name))?.let(::listOf).orEmpty() }
+            .asSequence()
+            .filterIsInstance<org.jetbrains.kotlin.fir.expressions.FirExpression>()
+            .mapNotNull { expression ->
+                when (expression) {
+                    is org.jetbrains.kotlin.fir.expressions.FirGetClassCall ->
+                        expression.argument.resolvedType.lowerBoundIfFlexible().classId
 
-                else -> expression.resolvedType.lowerBoundIfFlexible().classId
-            }
-        }.firstOrNull()
+                    else -> expression.resolvedType.lowerBoundIfFlexible().classId
+                }
+            }.firstOrNull()
 
 internal fun FirRegularClass.deriveViaTypeclassIds(session: FirSession): Set<String> =
-    resolvedAnnotationsByClassId(DERIVE_VIA_ANNOTATION_CLASS_ID, session)
-        .mapNotNullTo(linkedSetOf()) { annotation ->
-            annotation.getClassIdArgument("typeclass")?.asString()
-        }
+    buildSet {
+        addAll(
+            resolvedRepeatableAnnotationsByClassId(
+                annotationClassId = DERIVE_VIA_ANNOTATION_CLASS_ID,
+                containerClassId = DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID,
+                session = session,
+            )
+                .mapNotNull { annotation -> annotation.getClassIdArgument("typeclass", session)?.asString() },
+        )
+        addAll(
+            generatedDerivedMetadata(session)
+                .filterIsInstance<GeneratedDerivedMetadata.DeriveVia>()
+                .map { metadata -> metadata.typeclassId.asString() },
+        )
+    }
 
 internal fun FirRegularClass.deriveEquivRequests(session: FirSession): Set<String> =
-    resolvedAnnotationsByClassId(DERIVE_EQUIV_ANNOTATION_CLASS_ID, session)
-        .mapNotNullTo(linkedSetOf()) { annotation ->
-            annotation.getClassIdArgument("otherClass")?.asString()
-        }
+    buildSet {
+        addAll(
+            resolvedRepeatableAnnotationsByClassId(
+                annotationClassId = DERIVE_EQUIV_ANNOTATION_CLASS_ID,
+                containerClassId = DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID,
+                session = session,
+            )
+                .mapNotNull { annotation -> annotation.getClassIdArgument("otherClass", session)?.asString() },
+        )
+        addAll(
+            generatedDerivedMetadata(session)
+                .filterIsInstance<GeneratedDerivedMetadata.DeriveEquiv>()
+                .map { metadata -> metadata.otherClassId.asString() },
+        )
+    }
 
 internal fun typeclassSupportsDeriveShape(
     typeclassId: ClassId,
@@ -224,10 +284,20 @@ internal fun typeclassCompanionDeclaresDeriveMethod(
     deriveMethodName: String,
     session: FirSession,
 ): Boolean {
-    val companionSymbol = typeclassCompanionSymbol(typeclassId, session) ?: return false
-    return companionSymbol.fir.declarations
-        .filterIsInstance<FirSimpleFunction>()
-        .any { function -> function.name.asString() == deriveMethodName }
+    val contract = DeriveMethodContract.entries.firstOrNull { candidate -> candidate.methodName == deriveMethodName } ?: return false
+    return typeclassCompanionResolveDeriveMethod(typeclassId, contract, session) != null
+}
+
+internal fun typeclassCompanionResolveDeriveMethod(
+    typeclassId: ClassId,
+    contract: DeriveMethodContract,
+    session: FirSession,
+): FirSimpleFunction? {
+    val companionSymbol = typeclassCompanionSymbol(typeclassId, session) ?: return null
+    if (contract !in companionSymbol.implementedDeriveMethodContracts(session)) {
+        return null
+    }
+    return companionSymbol.resolveDeriveMethod(contract)
 }
 
 private fun typeclassCompanionSymbol(
@@ -288,3 +358,25 @@ internal fun FirRegularClassSymbol.implementsInterface(
         }
     }
 }
+
+internal fun FirRegularClassSymbol.implementedDeriveMethodContracts(
+    session: FirSession,
+): Set<DeriveMethodContract> =
+    buildSet {
+        if (implementsInterface(TYPECLASS_DERIVER_CLASS_ID, session, linkedSetOf())) {
+            addAll(DeriveMethodContract.entries)
+        } else if (implementsInterface(PRODUCT_TYPECLASS_DERIVER_CLASS_ID, session, linkedSetOf())) {
+            add(DeriveMethodContract.PRODUCT)
+        }
+    }
+
+internal fun FirRegularClassSymbol.resolveDeriveMethod(
+    contract: DeriveMethodContract,
+): FirSimpleFunction? =
+    fir.declarations
+        .filterIsInstance<FirSimpleFunction>()
+        .singleOrNull { function ->
+            function.name.asString() == contract.methodName &&
+                function.valueParameters.size == 1 &&
+                function.valueParameters.single().returnTypeRef.coneType.lowerBoundIfFlexible().classId == contract.metadataClassId
+        }

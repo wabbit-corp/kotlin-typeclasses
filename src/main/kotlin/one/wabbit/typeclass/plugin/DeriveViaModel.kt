@@ -46,9 +46,8 @@ internal data class DeriveEquivRequest(
 @OptIn(org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI::class)
 internal fun IrClass.deriveViaRequests(pluginContext: IrPluginContext): List<DeriveViaRequest> =
     annotations
-        .filter { annotation ->
-            annotation.symbol.owner.parentAsClass.classId == DERIVE_VIA_ANNOTATION_CLASS_ID
-        }.mapNotNull { annotation ->
+        .flatMap { annotation -> annotation.flattenRepeatableAnnotations(DERIVE_VIA_ANNOTATION_CLASS_ID, DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID) }
+        .mapNotNull { annotation ->
             val typeclassId =
                 (annotation.getValueArgument(0) as? IrClassReference)
                     ?.classType
@@ -85,9 +84,8 @@ internal fun IrClass.deriveViaRequests(pluginContext: IrPluginContext): List<Der
 @OptIn(org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI::class)
 internal fun IrClass.deriveEquivRequests(): List<DeriveEquivRequest> =
     annotations
-        .filter { annotation ->
-            annotation.symbol.owner.parentAsClass.classId == DERIVE_EQUIV_ANNOTATION_CLASS_ID
-        }.mapNotNull { annotation ->
+        .flatMap { annotation -> annotation.flattenRepeatableAnnotations(DERIVE_EQUIV_ANNOTATION_CLASS_ID, DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID) }
+        .mapNotNull { annotation ->
             val otherClassId =
                 (annotation.getValueArgument(0) as? IrClassReference)
                     ?.classType
@@ -97,6 +95,25 @@ internal fun IrClass.deriveEquivRequests(): List<DeriveEquivRequest> =
                     ?: return@mapNotNull null
             DeriveEquivRequest(otherClassId, annotation)
         }
+
+private fun IrConstructorCall.flattenRepeatableAnnotations(
+    annotationClassId: ClassId,
+    containerClassId: ClassId,
+): List<IrConstructorCall> =
+    when (symbol.owner.parentAsClass.classId) {
+        annotationClassId -> listOf(this)
+        containerClassId ->
+            ((getValueArgument(0) as? IrVararg)?.elements.orEmpty())
+                .mapNotNull { element ->
+                    when (element) {
+                        is IrSpreadElement -> element.expression as? IrConstructorCall
+                        is IrExpression -> element as? IrConstructorCall
+                        else -> null
+                    }
+                }
+
+        else -> emptyList()
+    }
 
 @OptIn(org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI::class)
 internal fun IrClass.isEquivTypeclass(): Boolean = hasAnnotation(EQUIV_CLASS_ID)

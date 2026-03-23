@@ -1208,17 +1208,7 @@ private class TypeclassIrCallTransformer(
                         lambdaParent = metadataLambdaParent,
                     )
             }
-        val deriveMethodName =
-            when (reference.shape) {
-                is DerivedShape.Product -> "deriveProduct"
-                is DerivedShape.Sum -> "deriveSum"
-                is DerivedShape.Enum -> "deriveEnum"
-            }
-        val deriveMethod =
-            reference.deriverCompanion.declarations
-                .filterIsInstance<IrSimpleFunction>()
-                .singleOrNull { function -> function.name.asString() == deriveMethodName }
-                ?: error("Typeclass deriver ${reference.deriverCompanion.classIdOrFail} is missing $deriveMethodName")
+        val deriveMethod = reference.deriveMethod
         if (!validateKnownDeriverReturnTypeclass(reference.deriverCompanion.parentAsClass, deriveMethod)) {
             return irAs(irNull(), resultType)
         }
@@ -2443,7 +2433,7 @@ private class IrModuleScanner(
             return
         }
         classesById[classKey] = declaration
-        declaredDerivationsByClassId.putIfAbsent(classKey, declaration.supportedDerivedTypeclassIds())
+        declaredDerivationsByClassId.putIfAbsent(classKey, declaration.shapeDerivedTypeclassIds())
         classInfoById[classKey] =
             VisibleClassHierarchyInfo(
                 superClassifiers =
@@ -2517,7 +2507,7 @@ private class IrModuleScanner(
         when (declaration) {
             is IrClass -> {
                 declaration.classId?.let { classId ->
-                    val supportedDerivedTypeclassIds = declaration.supportedDerivedTypeclassIds()
+                    val supportedDerivedTypeclassIds = declaration.shapeDerivedTypeclassIds()
                     val generatedDerivedMetadataEntries = declaration.generatedDerivedMetadataEntries()
                     classesById[classId.asString()] = declaration
                     declaredDerivationsByClassId[classId.asString()] = supportedDerivedTypeclassIds
@@ -2799,18 +2789,20 @@ private class IrModuleScanner(
                     )
                     return emptyList()
                 }
-        val deriveMethodName =
+        val deriveMethodContract =
             when (representativeShape) {
-                is DerivedShape.Product -> "deriveProduct"
-                is DerivedShape.Sum -> "deriveSum"
-                is DerivedShape.Enum -> "deriveEnum"
+                is DerivedShape.Product -> DeriveMethodContract.PRODUCT
+                is DerivedShape.Sum -> DeriveMethodContract.SUM
+                is DerivedShape.Enum -> DeriveMethodContract.ENUM
             }
-        if (deriverCompanion.declarations.filterIsInstance<IrSimpleFunction>().none { function -> function.name.asString() == deriveMethodName }) {
+        val deriveMethod =
+            deriverCompanion.resolveDeriveMethod(deriveMethodContract)
+                ?: run {
             val message =
                 if (representativeShape is DerivedShape.Enum) {
                     "${typeclassId.shortClassName.asString()} companion must override deriveEnum to derive enum classes"
                 } else {
-                    "Typeclass deriver ${deriverCompanion.classIdOrFail.asString()} is missing $deriveMethodName"
+                    "Typeclass deriver ${deriverCompanion.classIdOrFail.asString()} is missing ${deriveMethodContract.methodName}"
                 }
             pluginContext.reportTypeclassError(
                 message = message,
@@ -2850,6 +2842,7 @@ private class IrModuleScanner(
                         RuleReference.Derived(
                             targetClass = this,
                             deriverCompanion = deriverCompanion,
+                            deriveMethod = deriveMethod,
                             shape = spec.shape,
                             ruleTypeParameters = spec.ruleTypeParameters,
                         ),
@@ -2861,26 +2854,43 @@ private class IrModuleScanner(
 
     private fun IrClass.toDerivedEquivRules(): List<ResolvedRule> {
         val targetClassId = classId ?: return emptyList()
+        val explicitRequests = deriveEquivRequests()
+        val generatedRequests = generatedDerivedMetadata().filterIsInstance<GeneratedDerivedMetadata.DeriveEquiv>()
+        val preferExplicitRequests = origin != IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB && explicitRequests.isNotEmpty()
+        val requestSpecs =
+            if (preferExplicitRequests) {
+                explicitRequests.map { request ->
+                    request.otherClassId to compilerMessageLocation(request.annotation)
+                }
+            } else if (generatedRequests.isNotEmpty()) {
+                generatedRequests.map { metadata ->
+                    metadata.otherClassId to compilerMessageLocation()
+                }
+            } else {
+                explicitRequests.map { request ->
+                    request.otherClassId to compilerMessageLocation(request.annotation)
+                }
+            }.distinctBy { (otherClassId, _) -> otherClassId.asString() }
         if (typeParameters.isNotEmpty()) {
-            deriveEquivRequests().forEach { request ->
+            requestSpecs.forEach { (_, location) ->
                 pluginContext.reportTypeclassError(
                     message = "@DeriveEquiv only supports monomorphic classes for now",
                     diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                    location = compilerMessageLocation(request.annotation),
+                    location = location,
                 )
             }
             return emptyList()
         }
         val planner = DirectTransportPlanner(pluginContext)
-        return deriveEquivRequests().mapNotNull { request ->
+        return requestSpecs.mapNotNull { (otherClassId, location) ->
             val otherClass =
-                pluginContext.referenceClass(request.otherClassId)?.owner
+                pluginContext.referenceClass(otherClassId)?.owner
                     ?: return@mapNotNull null
             if (otherClass.typeParameters.isNotEmpty()) {
                 pluginContext.reportTypeclassError(
                     message = "@DeriveEquiv only supports monomorphic classes for now",
                     diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                    location = compilerMessageLocation(request.annotation),
+                    location = location,
                 )
                 return@mapNotNull null
             }
@@ -2889,16 +2899,16 @@ private class IrModuleScanner(
                     ?: run {
                         pluginContext.reportTypeclassError(
                             message =
-                                "Cannot derive Equiv between ${targetClassId.asString()} and ${request.otherClassId.asString()}",
+                                "Cannot derive Equiv between ${targetClassId.asString()} and ${otherClassId.asString()}",
                             diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                            location = compilerMessageLocation(request.annotation),
+                            location = location,
                         )
                         return@mapNotNull null
                     }
             ResolvedRule(
                 rule =
                     InstanceRule(
-                        id = "derived-equiv:${targetClassId.asString()}:${request.otherClassId.asString()}",
+                        id = "derived-equiv:${targetClassId.asString()}:${otherClassId.asString()}",
                         typeParameters = emptyList(),
                         providedType =
                             TcType.Constructor(
@@ -2906,7 +2916,7 @@ private class IrModuleScanner(
                                 arguments =
                                     listOf(
                                         TcType.Constructor(targetClassId.asString(), emptyList()),
-                                        TcType.Constructor(request.otherClassId.asString(), emptyList()),
+                                        TcType.Constructor(otherClassId.asString(), emptyList()),
                                     ),
                             ),
                         prerequisiteTypes = emptyList(),
@@ -2925,27 +2935,77 @@ private class IrModuleScanner(
 
     private fun IrClass.toDeriveViaRules(): List<ResolvedRule> {
         val targetClassId = classId ?: return emptyList()
+        val explicitRequests = deriveViaRequests(pluginContext)
+        val generatedRequests = generatedDerivedMetadata().filterIsInstance<GeneratedDerivedMetadata.DeriveVia>()
+        val preferExplicitRequests = origin != IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB && explicitRequests.isNotEmpty()
+        val requestSpecs =
+            (if (preferExplicitRequests) {
+                explicitRequests.map { request ->
+                    Triple(
+                        request.typeclassId,
+                        request.path,
+                        compilerMessageLocation(request.annotation),
+                    )
+                }
+            } else if (generatedRequests.isNotEmpty()) {
+                generatedRequests.map { metadata ->
+                    Triple(
+                        metadata.typeclassId,
+                        metadata.path.map { segment ->
+                            when (segment.kind) {
+                                GeneratedDeriveViaPathSegment.Kind.WAYPOINT ->
+                                    DeriveViaPathSegment.Waypoint(segment.classId)
+
+                                GeneratedDeriveViaPathSegment.Kind.PINNED_ISO ->
+                                    DeriveViaPathSegment.PinnedIso(segment.classId)
+                            }
+                        },
+                        compilerMessageLocation(),
+                    )
+                }
+            } else {
+                explicitRequests.map { request ->
+                    Triple(
+                        request.typeclassId,
+                        request.path,
+                        compilerMessageLocation(request.annotation),
+                    )
+                }
+            }).distinctBy { (typeclassId, path, _) ->
+                buildString {
+                    append(typeclassId.asString())
+                    append(':')
+                    append(path.joinToString("|") { segment ->
+                        val prefix =
+                            when (segment) {
+                                is DeriveViaPathSegment.Waypoint -> "W"
+                                is DeriveViaPathSegment.PinnedIso -> "I"
+                            }
+                        "$prefix:${segment.classId.asString()}"
+                    })
+                }
+            }
         if (typeParameters.isNotEmpty()) {
-            deriveViaRequests(pluginContext).forEach { request ->
+            requestSpecs.forEach { (_, _, location) ->
                 pluginContext.reportTypeclassError(
                     message = "@DeriveVia only supports monomorphic classes for now",
                     diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                    location = compilerMessageLocation(request.annotation),
+                    location = location,
                 )
             }
             return emptyList()
         }
         val planner = DirectTransportPlanner(pluginContext)
-        return deriveViaRequests(pluginContext).flatMap { request ->
-            if (request.path.isEmpty()) {
+        return requestSpecs.flatMap { (typeclassId, path, location) ->
+            if (path.isEmpty()) {
                 pluginContext.reportTypeclassError(
                     message = "Cannot derive via an empty path",
                     diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                    location = compilerMessageLocation(request.annotation),
+                    location = location,
                 )
                 return@flatMap emptyList()
             }
-            val typeclassInterface = pluginContext.referenceClass(request.typeclassId)?.owner ?: return@flatMap emptyList()
+            val typeclassInterface = pluginContext.referenceClass(typeclassId)?.owner ?: return@flatMap emptyList()
             if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID)) {
                 return@flatMap emptyList()
             }
@@ -2953,7 +3013,7 @@ private class IrModuleScanner(
                 pluginContext.reportTypeclassError(
                     message = "DeriveVia requires a typeclass with at least one type parameter",
                     diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                    location = compilerMessageLocation(request.annotation),
+                    location = location,
                 )
                 return@flatMap emptyList()
             }
@@ -2961,17 +3021,17 @@ private class IrModuleScanner(
                 pluginContext.reportTypeclassError(
                     message = message,
                     diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                    location = compilerMessageLocation(request.annotation),
+                    location = location,
                 )
                 return@flatMap emptyList()
             }
             val resolvedPath =
-                planner.resolveViaPath(symbol.defaultType, request.path)
+                planner.resolveViaPath(symbol.defaultType, path)
                     .getOrElse { error ->
                         pluginContext.reportTypeclassError(
                             message = error.message ?: "Failed to resolve DeriveVia path",
                             diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                            location = compilerMessageLocation(request.annotation),
+                            location = location,
                         )
                         return@flatMap emptyList()
                     }
@@ -2982,12 +3042,12 @@ private class IrModuleScanner(
                     pluginContext.reportTypeclassError(
                         message = "DeriveVia terminal type must be representable as a typeclass goal",
                         diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                        location = compilerMessageLocation(request.annotation),
+                        location = location,
                     )
                     return@flatMap emptyList()
                 }
             expandDerivedTypeclassIds(
-                typeclassId = request.typeclassId,
+                typeclassId = typeclassId,
                 previousWereTypeclass = true,
                 visited = linkedSetOf(),
             ).mapNotNull { expandedTypeclassId ->
@@ -3012,7 +3072,7 @@ private class IrModuleScanner(
                 ResolvedRule(
                     rule =
                         InstanceRule(
-                            id = "derived-via:${expandedTypeclassId.asString()}:${targetClassId.asString()}:${request.path.joinToString("|") { it.classId.asString() }}",
+                            id = "derived-via:${expandedTypeclassId.asString()}:${targetClassId.asString()}:${path.joinToString("|") { it.classId.asString() }}",
                             typeParameters = prefixParameters,
                             providedType = providedType,
                             prerequisiteTypes = listOf(prerequisiteType),
@@ -3304,23 +3364,24 @@ private class IrModuleScanner(
     }
 
     private fun IrClass.derivedTypeclassIds(): Set<ClassId> {
-        val annotation =
-            annotations.firstOrNull { constructorCall ->
+        return annotations
+            .filter { constructorCall ->
                 constructorCall.symbol.owner.parentAsClass.classId == DERIVE_ANNOTATION_CLASS_ID
-            } ?: return emptySet()
-        val values = annotation.getValueArgument(0) as? IrVararg ?: return emptySet()
-        return values.elements.mapNotNullTo(linkedSetOf()) { element ->
-            val expression =
-                when (element) {
-                    is IrSpreadElement -> element.expression
-                    is IrExpression -> element
-                    else -> null
-                } ?: return@mapNotNullTo null
-            val classReference = expression as? IrClassReference ?: return@mapNotNullTo null
-            val classId = classReference.classType.classOrNull?.owner?.classId ?: return@mapNotNullTo null
-            val typeclassClass = pluginContext.referenceClass(classId)?.owner ?: return@mapNotNullTo null
-            classId.takeIf { typeclassClass.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID) }
-        }
+            }.flatMapTo(linkedSetOf()) { annotation ->
+                val values = annotation.getValueArgument(0) as? IrVararg ?: return@flatMapTo emptyList()
+                values.elements.mapNotNull { element ->
+                    val expression =
+                        when (element) {
+                            is IrSpreadElement -> element.expression
+                            is IrExpression -> element
+                            else -> null
+                        } ?: return@mapNotNull null
+                    val classReference = expression as? IrClassReference ?: return@mapNotNull null
+                    val classId = classReference.classType.classOrNull?.owner?.classId ?: return@mapNotNull null
+                    val typeclassClass = pluginContext.referenceClass(classId)?.owner ?: return@mapNotNull null
+                    classId.takeIf { typeclassClass.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID) }
+                }
+            }
     }
 
     private fun IrClass.findDeriverCompanion(requiredInterface: ClassId): IrClass? =
@@ -3329,35 +3390,86 @@ private class IrModuleScanner(
                 declaration.implementsInterface(requiredInterface, linkedSetOf())
         }
 
-    private fun IrClass.supportedDerivedTypeclassIds(): Set<ClassId> =
+    private fun IrClass.shapeDerivedTypeclassIds(): Set<ClassId> =
         buildSet {
-            addAll(generatedDerivedTypeclassIds())
+            addAll(
+                generatedDerivedMetadata()
+                    .filterIsInstance<GeneratedDerivedMetadata.Derive>()
+                    .map { metadata -> metadata.typeclassId },
+            )
             addAll(derivedTypeclassIds())
         }
 
-    private fun IrClass.generatedDerivedMetadataEntries(): List<Pair<ClassId, String>> =
+    private fun IrClass.generatedDerivedMetadataEntries(): List<GeneratedDerivedMetadata> =
         buildList {
-            supportedDerivedTypeclassIds().forEach { typeclassId ->
-                add(typeclassId to "derive")
+            derivedTypeclassIds().forEach { typeclassId ->
+                expandDerivedTypeclassIds(
+                    typeclassId = typeclassId,
+                    previousWereTypeclass = true,
+                    visited = linkedSetOf(),
+                ).forEach { expandedTypeclassId ->
+                    add(
+                        GeneratedDerivedMetadata.Derive(
+                            typeclassId = expandedTypeclassId,
+                            targetId = classIdOrFail,
+                        ),
+                    )
+                }
             }
             deriveViaRequests(pluginContext).forEach { request ->
-                add(request.typeclassId to "derive-via")
+                expandDerivedTypeclassIds(
+                    typeclassId = request.typeclassId,
+                    previousWereTypeclass = true,
+                    visited = linkedSetOf(),
+                ).forEach { expandedTypeclassId ->
+                    add(
+                        GeneratedDerivedMetadata.DeriveVia(
+                            typeclassId = expandedTypeclassId,
+                            targetId = classIdOrFail,
+                            path =
+                                request.path.map { segment ->
+                                    when (segment) {
+                                        is DeriveViaPathSegment.Waypoint ->
+                                            GeneratedDeriveViaPathSegment(
+                                                kind = GeneratedDeriveViaPathSegment.Kind.WAYPOINT,
+                                                classId = segment.classId,
+                                            )
+
+                                        is DeriveViaPathSegment.PinnedIso ->
+                                            GeneratedDeriveViaPathSegment(
+                                                kind = GeneratedDeriveViaPathSegment.Kind.PINNED_ISO,
+                                                classId = segment.classId,
+                                            )
+                                    }
+                                },
+                        ),
+                    )
+                }
             }
-            if (deriveEquivRequests().isNotEmpty()) {
-                add(EQUIV_CLASS_ID to "derive-equiv")
+            deriveEquivRequests().forEach { request ->
+                add(
+                    GeneratedDerivedMetadata.DeriveEquiv(
+                        targetId = classIdOrFail,
+                        otherClassId = request.otherClassId,
+                    ),
+                )
             }
         }
 
     private fun IrClass.generatedDerivedTypeclassIds(): Set<ClassId> =
+        generatedDerivedMetadata().mapTo(linkedSetOf()) { metadata -> metadata.typeclassId }
+
+    private fun IrClass.generatedDerivedMetadata(): List<GeneratedDerivedMetadata> =
         annotations
             .flatMap { annotation -> annotation.flattenGeneratedInstanceAnnotations() }
-            .mapNotNullTo(linkedSetOf()) { annotation ->
-                val typeclassId = (annotation.getValueArgument(0) as? IrConst)?.value as? String
-                val targetId = (annotation.getValueArgument(1) as? IrConst)?.value as? String
-                val kind = (annotation.getValueArgument(2) as? IrConst)?.value as? String
-                typeclassId
-                    ?.takeIf { kind == "derive" && (targetId == null || targetId == classIdOrFail.asString()) }
-                    ?.let(ClassId::fromString)
+            .mapNotNull { annotation ->
+                decodeGeneratedDerivedMetadata(
+                    typeclassId = (annotation.getValueArgument(0) as? IrConst)?.value as? String,
+                    targetId = (annotation.getValueArgument(1) as? IrConst)?.value as? String,
+                    kind = (annotation.getValueArgument(2) as? IrConst)?.value as? String,
+                    payload = (annotation.getValueArgument(3) as? IrConst)?.value as? String,
+                    expectedOwnerId = classIdOrFail.asString(),
+                )
             }
 
     private fun IrConstructorCall.flattenGeneratedInstanceAnnotations(): List<IrConstructorCall> =
@@ -3365,46 +3477,36 @@ private class IrModuleScanner(
             GENERATED_INSTANCE_ANNOTATION_CLASS_ID -> listOf(this)
             GENERATED_INSTANCE_ANNOTATION_CONTAINER_CLASS_ID ->
                 ((getValueArgument(0) as? IrVararg)?.elements.orEmpty())
-                    .mapNotNull { element -> element as? IrConstructorCall }
+                    .mapNotNull { element ->
+                        when (element) {
+                            is IrSpreadElement -> element.expression as? IrConstructorCall
+                            is IrExpression -> element as? IrConstructorCall
+                            else -> null
+                        }
+                    }
             else -> emptyList()
         }
 
     private fun IrClass.recordGeneratedDerivedTypeclassMetadata(
-        directEntries: List<Pair<ClassId, String>>,
+        directEntries: List<GeneratedDerivedMetadata>,
     ) {
         val annotationClass = pluginContext.referenceClass(GENERATED_INSTANCE_ANNOTATION_CLASS_ID)?.owner ?: return
         val annotationConstructor = annotationClass.primaryConstructorOrNull() ?: return
         val existingEntries =
-            annotations
-                .flatMap { annotation -> annotation.flattenGeneratedInstanceAnnotations() }
-                .mapNotNullTo(linkedSetOf()) { annotation ->
-                    val typeclassId = (annotation.getValueArgument(0) as? IrConst)?.value as? String
-                    val targetId = (annotation.getValueArgument(1) as? IrConst)?.value as? String
-                    val kind = (annotation.getValueArgument(2) as? IrConst)?.value as? String
-                    val actualTypeclassId =
-                        typeclassId
-                            ?.takeIf { targetId == null || targetId == classIdOrFail.asString() }
-                            ?.let(ClassId::fromString)
-                            ?: return@mapNotNullTo null
-                    actualTypeclassId.asString() to kind.orEmpty()
-                }
+            generatedDerivedMetadata().toSet()
         val builder = DeclarationIrBuilder(pluginContext, symbol, startOffset, endOffset)
         directEntries
-            .flatMapTo(linkedSetOf()) { (typeclassId, kind) ->
-                expandDerivedTypeclassIds(
-                    typeclassId = typeclassId,
-                    previousWereTypeclass = true,
-                    visited = linkedSetOf(),
-                ).map { expandedTypeclassId -> expandedTypeclassId to kind }
-            }.filterNot { (typeclassId, kind) -> (typeclassId.asString() to kind) in existingEntries }
-            .forEach { (typeclassId, kind) ->
+            .filterNot(existingEntries::contains)
+            .forEach { metadata ->
+                val encoded = metadata.encode()
                 annotations +=
                     builder
                         .irCallConstructor(annotationConstructor.symbol, emptyList())
                         .apply {
-                            putValueArgument(0, builder.irString(typeclassId.asString()))
-                            putValueArgument(1, builder.irString(classIdOrFail.asString()))
-                            putValueArgument(2, builder.irString(kind))
+                            putValueArgument(0, builder.irString(encoded.typeclassId))
+                            putValueArgument(1, builder.irString(encoded.targetId))
+                            putValueArgument(2, builder.irString(encoded.kind))
+                            putValueArgument(3, builder.irString(encoded.payload))
                         }
             }
     }
@@ -3827,6 +3929,7 @@ private sealed interface RuleReference {
     data class Derived(
         val targetClass: IrClass,
         val deriverCompanion: IrClass,
+        val deriveMethod: IrSimpleFunction,
         val shape: DerivedShape,
         val ruleTypeParameters: List<TcTypeParameter>,
     ) : RuleReference
@@ -4488,6 +4591,30 @@ internal fun IrClass.implementsInterface(
             superOwner.implementsInterface(targetInterface, visited)
         }
     }
+}
+
+private fun IrClass.implementedDeriveMethodContracts(): Set<DeriveMethodContract> =
+    buildSet {
+        if (implementsInterface(TYPECLASS_DERIVER_CLASS_ID, linkedSetOf())) {
+            addAll(DeriveMethodContract.entries)
+        } else if (implementsInterface(PRODUCT_TYPECLASS_DERIVER_CLASS_ID, linkedSetOf())) {
+            add(DeriveMethodContract.PRODUCT)
+        }
+    }
+
+private fun IrClass.resolveDeriveMethod(
+    contract: DeriveMethodContract,
+): IrSimpleFunction? {
+    if (contract !in implementedDeriveMethodContracts()) {
+        return null
+    }
+    return declarations
+        .filterIsInstance<IrSimpleFunction>()
+        .singleOrNull { function ->
+            function.name.asString() == contract.methodName &&
+                function.valueParameters.size == 1 &&
+                function.valueParameters.single().type.classOrNull?.owner?.classId == contract.metadataClassId
+        }
 }
 
 private fun IrClass.renderClassName(): String = classId?.asFqNameString() ?: name.asString()

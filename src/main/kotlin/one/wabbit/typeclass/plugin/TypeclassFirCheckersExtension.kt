@@ -340,7 +340,7 @@ internal class TypeclassFirCheckersExtension(
                 )
                 return@forEach
             }
-            val typeclassId = annotation.getClassIdArgument("typeclass") ?: return@forEach
+            val typeclassId = annotation.getClassIdArgument("typeclass", session) ?: return@forEach
             if (typeclassTypeParameterCount(typeclassId, session)?.let { it >= 1 } != true) {
                 reportCannotDerive(
                     annotation,
@@ -362,7 +362,7 @@ internal class TypeclassFirCheckersExtension(
                 )
                 return@forEach
             }
-            val otherClassId = annotation.getClassIdArgument("otherClass") ?: return@forEach
+            val otherClassId = annotation.getClassIdArgument("otherClass", session) ?: return@forEach
             if (session.regularClassSymbolOrNull(otherClassId)?.fir?.typeParameters?.isEmpty() != true) {
                 reportCannotDerive(
                     annotation,
@@ -382,13 +382,12 @@ internal class TypeclassFirCheckersExtension(
                 .singleOrNull { nested -> nested.symbol.classId.shortClassName == SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT }
                 ?: return
         val typeclassId = declaration.symbol.classId
-        companion.declarations
-            .filterIsInstance<FirSimpleFunction>()
-            .forEach { function ->
-                val deriveMethodName = function.name.asString()
-                if (deriveMethodName != "deriveProduct" && deriveMethodName != "deriveSum" && deriveMethodName != "deriveEnum") {
-                    return@forEach
+        val deriveMethods =
+            companion.symbol.implementedDeriveMethodContracts(session)
+                .mapNotNull { contract ->
+                    companion.symbol.resolveDeriveMethod(contract)?.let { function -> contract.methodName to function }
                 }
+        deriveMethods.forEach { (deriveMethodName, function) ->
                 val declaredReturnConstructors =
                     listOf(function.returnTypeRef.coneType)
                         .expandProvidedTypes(session, emptyMap(), sharedState.configuration)

@@ -1,82 +1,70 @@
 # Plan
 
-## Compiler Review Remediation
+## Current Review Remediation
 
-Tasks below are derived directly from the latest compiler review and are meant to be
-closed only after a targeted regression test exists, the behavior is verified, and
-the code is either fixed or the review claim is explicitly proven stale.
+Tasks below are derived directly from the current compiler review and should only be
+closed after a targeted regression test exists, the behavior is re-verified, and the
+implementation is either fixed or the review claim is explicitly proven stale.
 
-### 1. Fix `DeriveViaTransport` recursion bookkeeping
+### 1. Stop FIR from stripping typeclass contexts before actual solvability is proven
 
-- [x] Add a regression that transports repeated sibling shapes through `DirectTransportPlanner.synthesize`.
-  - [x] Use a shape equivalent to `P1(A, A) -> P2(B, B)` so sibling reuse hits the same `(A, B)` pair twice.
-  - [x] Verified that the old planner falsely reported recursion/derivation failure.
-- [x] Add a regression that validates `DeriveVia` transportability for repeated sibling nominal shapes.
-  - [x] Use a transported member type with two sibling occurrences of the same structural transported wrapper.
-  - [x] Verified that `transportabilityViolation` falsely reported recursive nominal transport shapes.
-- [x] Replace the global visited-set behavior with stack-aware recursion tracking and/or memoization.
-- [x] Re-run the new regressions plus the full `DeriveVia` suite.
+Detailed notes:
+- The core bug is phase skew: FIR currently treats some calls as context-free because the target head is derivable in principle, even when no actual instance can be constructed in scope.
+- The desired contract is “if FIR strips a context, IR must be able to build the same plan without inventing new evidence later.”
+- Completed in this pass:
+  - Added `missingDerivedPrerequisitesDoNotBiasFirOverloadSelection`.
+  - Added `missingDerivedPrerequisitesForSealedSumsDoNotBiasFirOverloadSelection`.
+  - Added `missingDerivedPrerequisitesForGenericSealedSumsDoNotBiasFirOverloadSelection`.
+  - Tightened FIR masking so direct-owner product derivation checks actual prerequisite solvability against available contexts instead of a pure shape heuristic.
+  - Tightened the same FIR masking path for reproduced same-source sealed roots, including the simple generic sealed-sum case, so missing case prerequisites no longer bias overload resolution while binary/GADT-heavy sealed derivation stays on the older conservative path.
+  - Re-verified the focused regressions, broader resolution / derivation suites, and the full test suite.
 
-### 2. Unify FIR and IR derivability checks
+### 2. Unify generated derivation metadata and precise cross-module reconstruction
 
-- [x] Add a regression proving `@DeriveEquiv(B::class)` on `A` is accepted when resolving `Equiv<A, B>`.
-- [x] Add a regression proving `@Derive` on `Foo` does not make `TC<Foo?>` look derivable.
-- [x] Add a regression for unsupported generic `@DeriveEquiv` / `@DeriveVia` targets.
-  - [x] Verified that these unsupported shapes need declaration-site diagnostics instead of silent IR dropping.
-- [x] Add a regression for `@Derive` on a non-unary typeclass.
-  - [x] Verified and fixed declaration-site diagnosis for unsupported arity.
-- [x] Replace `ResolutionIndex.canDeriveGoal` heuristics with a derivation model that matches actual rule generation.
-  - [x] `Equiv` ownership and transported-slot logic now follow actual generated-rule ownership more closely, with precise derive-equiv targets when available and a binary-dependency fallback for exported generated metadata.
-  - [x] Nullability, generic targets, and unsupported typeclass arities are now rejected consistently enough for rule generation and diagnostics; the nullable `Show<Foo?>` regression remains IR-reported today, so the test pins the current phase explicitly.
-- [x] Re-run the new derivability regressions plus the full suite.
+Detailed notes:
+- The architectural problem is split-brain metadata: FIR currently has broader generated-metadata visibility than IR, while `Equiv` target precision can collapse to “owner supports Equiv at all.”
+- The desired contract is “binary metadata alone must be enough to decide and reconstruct the same derived rule in both phases.”
+- Completed in this pass:
+  - Added `dependencyDeriveEquivDoesNotMakeUnrelatedTargetsLookDerivable`.
+  - Added downstream consumer regressions for dependency-exported `@DeriveVia`, including both plain-waypoint and pinned-`Iso` boundary shapes.
+  - Switched FIR-side `Equiv` acceptance to require a precise target match instead of the older “owner supports Equiv at all” fallback.
+  - Fixed FIR binary annotation argument recovery so dependency `@DeriveEquiv(otherClass = ...)` requests are read precisely from compiled annotations.
+  - Re-verified that dependency consumers can directly use exported `DeriveVia` and `DeriveEquiv` instances across module boundaries on the supported authoring path.
+  - Added a shared `GeneratedDerivedMetadata` codec with round-trip tests for `derive`, `derive-via`, and `derive-equiv`.
+  - Extended `GeneratedTypeclassInstance` metadata with a precise `payload` field so binary markers preserve `derive-equiv` targets and `derive-via` authored path segments.
+  - Switched FIR and IR binary reconstruction to the same decoded marker model, while still falling back to authored annotations for source declarations and older/incomplete metadata.
+  - Fixed IR generated-marker flattening and binary reconstruction for repeatable `DeriveVia` / `DeriveEquiv` containers.
+  - Re-verified `GeneratedDerivedMetadataTest`, `DeriveViaSpec`, and the full test suite.
 
-### 3. Preserve the full terminal `via` type in `DeriveVia`
+### 3. Replace name-only deriver discovery with contract-resolved methods
 
-- [x] Add a regression for `DeriveVia` through a nullable terminal type such as `String?`.
-- [x] Add a regression for `DeriveVia` through a parameterized terminal type such as `List<Int>`.
-- [x] Add a regression for `DeriveVia` through a function-shaped terminal type if the path solver admits one.
-- [x] Change `toDeriveViaRules` so the prerequisite goal uses the full model from `resolvedPath.viaType`.
-- [x] Re-run the new `DeriveVia` regressions plus the full suite.
+Detailed notes:
+- The current failure mode is brittle happy-path logic: FIR checks “a method with this name exists,” while IR later does `singleOrNull { name == ... }` and can mis-handle helpers or overloads.
+- The desired contract is “only the actual override that fulfills the deriver interface counts as the derive method.”
+- Completed in this pass:
+  - Added helper-overload regressions for product and enum derivation.
+  - Replaced name-only deriver discovery with contract-resolved methods in FIR and IR.
+  - Carried the resolved derive-method identity into IR rule references instead of re-searching by name later.
 
-### 4. Make `DeriveVia` adapters and validation see inherited abstract members
+### 4. Restrict FIR deriver validation to actual deriver-interface overrides
 
-- [x] Add a regression where the requested typeclass extends another typeclass with inherited abstract members.
-  - [x] Verified transportability validation sees the inherited surface.
-  - [x] Verified generated adapters implement inherited abstract members.
-- [x] Record the review claim as already fixed/stale rather than landing redundant backend churn.
-- [x] Re-run the inheritance regression plus the full `DeriveVia` suite.
+Detailed notes:
+- The current checker is over-eager: any companion helper whose name matches `deriveProduct` / `deriveSum` / `deriveEnum` is treated as if it were a deriver override.
+- The desired contract is “deriver validation is opt-in through the implemented deriver interfaces, not through method spelling alone.”
+- Completed in this pass:
+  - Added a positive regression for helper methods named like derivers on plain `@Typeclass` companions.
+  - Limited FIR validation to real deriver-interface overrides instead of bare helper-name matches.
+  - Re-verified the derivation capability suite and the full test suite.
 
-### 5. Scope recursive admissibility to the active rule
+### 5. Stop scanning the whole classpath twice per FIR session
 
-- [x] Add a planner-level regression where one rule for a goal supports recursion and another does not.
-  - [x] Verified the non-recursive rule previously inherited recursive legality from the unrelated recursive candidate.
-- [x] The planner-level regression was sufficient; no extra integration regression was needed.
-- [x] Change `TypeclassResolutionPlanner.resolveInternal` so recursion is admitted only for the currently active rule path.
-- [x] Re-run planner tests and the full suite.
-
-### 6. Strengthen deriver return-type validation
-
-- [x] Add a regression where a typeclass companion declares `deriveProduct(...): Any = 42`.
-- [x] Add matching regressions for `deriveSum` and `deriveEnum` if they are validated through the same code path.
-- [x] Change FIR validation so declared deriver return types must expand to the owning typeclass constructor.
-- [x] Change IR validation to use the same declared-return-type rule when the declared return type is informative, and only enforce body-expression checks when IR can actually recognize the returned constructor shape.
-- [x] Re-run the new validation regressions plus the full suite.
-
-### 7. Resolve the `TypeId` semantic/doc mismatch
-
-- [x] Review the existing implementation and docs.
-- [x] Decide to weaken the docs rather than claim a stronger reflective canonicalization than the runtime currently implements.
-  - [x] Update the sibling runtime `Proofs.kt` documentation locally so reflective fallback ids are allowed to retain reflective type-parameter names for non-concrete `KType` values.
-- [x] No plugin-repo tests changed here because the runtime tree is outside this git repo; the plugin proof tests still passed unchanged.
-
-### 8. Review smaller claims from the same review and either fix or explicitly close them as stale
-
-- [x] Check `IrType.satisfiesExpectedContextType` for generic-supertype substitution errors.
-  - [x] Added a focused explicit-context regression and confirmed that the broader explicit-context frontend path is still blocked before that backend check can be isolated; kept the regression ignored with that note, and tightened the IR-side matching logic in the meantime.
-- [x] Audit unsupported derivation sites that are currently silently ignored.
-  - [x] Generic/non-monomorphic `@DeriveVia` / `@DeriveEquiv` targets and non-unary `@Derive` heads now report `TC_CANNOT_DERIVE` instead of being silently dropped.
-- [x] Record which review claims were already fixed before this pass.
-  - [x] The inherited-abstract-member `DeriveVia` claim was already stale; the new regressions proved the existing backend already handled it.
+Detailed notes:
+- This is primarily a performance and architecture fault, not just a micro-optimization.
+- The desired contract is “the plugin should not walk every package, callable, and classifier twice just to find the small subset relevant to contextual resolution.”
+- Completed in this pass:
+  - Extracted a shared FIR discovery seam (`scanTopLevelDeclarations`) and unit-tested it in `TypeclassDiscoveryScanTest`.
+  - Replaced the separate source/rule world scans with one shared discovery pass that feeds both collectors.
+  - Re-verified the affected integration suites and the full test suite.
 
 ## Existing Backlog
 

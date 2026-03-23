@@ -56,6 +56,10 @@ internal val INSTANCE_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(FqName(INS
 internal val DERIVE_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(FqName(DERIVE_ANNOTATION_FQ_NAME))
 internal val DERIVE_VIA_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(FqName(DERIVE_VIA_ANNOTATION_FQ_NAME))
 internal val DERIVE_EQUIV_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(FqName(DERIVE_EQUIV_ANNOTATION_FQ_NAME))
+internal val DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID: ClassId =
+    DERIVE_VIA_ANNOTATION_CLASS_ID.createNestedClassId(Name.identifier("Container"))
+internal val DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID: ClassId =
+    DERIVE_EQUIV_ANNOTATION_CLASS_ID.createNestedClassId(Name.identifier("Container"))
 internal val GADT_DERIVATION_POLICY_ANNOTATION_CLASS_ID: ClassId =
     ClassId.topLevel(FqName(GADT_DERIVATION_POLICY_ANNOTATION_FQ_NAME))
 internal val GADT_DERIVATION_MODE_CLASS_ID: ClassId = ClassId.topLevel(FqName(GADT_DERIVATION_MODE_FQ_NAME))

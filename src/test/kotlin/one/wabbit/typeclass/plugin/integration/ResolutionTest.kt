@@ -1,5 +1,6 @@
 package one.wabbit.typeclass.plugin.integration
 
+import one.wabbit.typeclass.plugin.TypeclassDiagnosticIds
 import org.junit.Ignore
 import kotlin.test.Test
 
@@ -1279,6 +1280,49 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun missingDerivedPrerequisitesDoNotBiasFirOverloadSelection() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : ProductTypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+                }
+            }
+
+            data class Missing(val value: String)
+
+            @Derive(Show::class)
+            data class User(val value: Missing)
+
+            context(_: Show<User>)
+            fun choose(value: User): String = "derived"
+
+            fun choose(value: User): String = "plain"
+
+            fun main() {
+                println(choose(User(Missing("x"))))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain",
+        )
+    }
+
     @Test fun reportsNestedAmbiguityFromPrerequisiteResolution() {
         val source =
             """
@@ -1495,7 +1539,148 @@ class ResolutionTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedNoContextArgument("show", "big", phase = DiagnosticPhase.IR)),
+            expectedDiagnostics =
+                listOf(
+                    expectedDiagnosticId(
+                        TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT,
+                        "show",
+                        phase = DiagnosticPhase.FIR,
+                    ),
+                ),
+        )
+    }
+
+    @Test fun missingDerivedPrerequisitesForSealedSumsDoNotBiasFirOverloadSelection() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+            import one.wabbit.typeclass.get
+            import one.wabbit.typeclass.matches
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : TypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String {
+                                require(value != null)
+                                return metadata.typeName.substringAfterLast('.')
+                            }
+                        }
+
+                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String {
+                                require(value != null)
+                                val matchingCase = metadata.cases.single { candidate -> candidate.matches(value) }
+                                val caseShow = matchingCase.instance as Show<Any?>
+                                return caseShow.show(value)
+                            }
+                        }
+                }
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = value.toString()
+            }
+
+            data class Payload(val raw: String)
+
+            @Derive(Show::class)
+            sealed interface Token
+
+            data class Word(val value: Payload) : Token
+
+            object End : Token
+
+            context(_: Show<Token>)
+            fun choose(value: Token): String = "derived"
+
+            fun choose(value: Token): String = "plain"
+
+            fun main() {
+                println(choose(Word(Payload("x"))))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain",
+        )
+    }
+
+    @Test fun missingDerivedPrerequisitesForGenericSealedSumsDoNotBiasFirOverloadSelection() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+            import one.wabbit.typeclass.matches
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : TypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+
+                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String {
+                                require(value != null)
+                                val matchingCase = metadata.cases.single { candidate -> candidate.matches(value) }
+                                val caseShow = matchingCase.instance as Show<Any?>
+                                return caseShow.show(value)
+                            }
+                        }
+                }
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = value.toString()
+            }
+
+            data class Payload(val raw: String)
+
+            @Derive(Show::class)
+            sealed class Option<out A>
+
+            data class Some<A>(val value: A) : Option<A>()
+
+            object None : Option<Nothing>()
+
+            context(_: Show<Option<Payload>>)
+            fun choose(value: Option<Payload>): String = "derived"
+
+            fun choose(value: Option<Payload>): String = "plain"
+
+            fun main() {
+                println(choose(Some(Payload("x"))))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain",
         )
     }
 

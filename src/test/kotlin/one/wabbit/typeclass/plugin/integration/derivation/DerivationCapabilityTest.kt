@@ -73,6 +73,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             package demo
 
             import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.Instance
             import one.wabbit.typeclass.ProductTypeclassDeriver
             import one.wabbit.typeclass.ProductTypeclassMetadata
             import one.wabbit.typeclass.Typeclass
@@ -98,6 +99,148 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             expectedDiagnostics =
                 listOf(
                     expectedTypeclassDiagnostic(cannotDeriveOnlyUnaryTypeclasses()),
+                ),
+        )
+    }
+
+    @Test
+    fun helperMethodsNamedLikeDeriversDoNotTriggerValidationOnPlainTypeclassCompanions() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object {
+                    fun deriveProduct(debug: String): String = "debug:${'$'}debug"
+                }
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            context(show: Show<Int>)
+            fun renderInt(): String = show.show(1)
+
+            fun main() {
+                println(renderInt())
+                println(Show.deriveProduct("ok"))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                int:1
+                debug:ok
+                """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun helperOverloadsNamedLikeDeriversDoNotBreakActualDerivation() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : ProductTypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+
+                    fun deriveProduct(debug: String): String = "debug:${'$'}debug"
+                }
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            @Derive(Show::class)
+            data class Box(val value: Int)
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(Box(1)))
+                println(Show.deriveProduct("ok"))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                demo.Box
+                debug:ok
+                """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun helperDeriveEnumOverloadsDoNotCountAsTheRequiredEnumOverride() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : TypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+
+                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+
+                    fun deriveEnum(debug: String): String = "debug:${'$'}debug"
+                }
+            }
+
+            @Derive(Show::class) // E:TC_CANNOT_DERIVE helper deriveEnum overloads do not satisfy the enum override contract
+            enum class Mode {
+                ON,
+                OFF,
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(cannotDeriveMissingEnumOverride("Show")),
                 ),
         )
     }

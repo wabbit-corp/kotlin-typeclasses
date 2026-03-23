@@ -384,6 +384,76 @@ class DeriveViaSpec : IntegrationTestSupport() {
     }
 
     // Exact intended semantics:
+    // - once a dependency module exports a class annotated with @DeriveVia, downstream consumer modules
+    //   must be able to use the resulting derived typeclass instance directly.
+    // - this exercises binary/cross-module DeriveVia reconstruction at the actual consumer request site,
+    //   not just inside the module that authored the annotation.
+    @Test fun consumerModuleCanUseDependencyDeriveViaAcrossDependencyModules() {
+        val moduleA =
+            HarnessDependency(
+                name = "derivevia-consumer-boundary-a",
+                sources =
+                    mapOf(
+                        "depa/Show.kt" to showTypeclassSource("depa"),
+                        "depa/Foo.kt" to
+                            """
+                            package depa
+
+                            import one.wabbit.typeclass.Instance
+
+                            @JvmInline
+                            value class Foo(val value: Int) {
+                                companion object {
+                                    @Instance
+                                    val show: Show<Foo> =
+                                        object : Show<Foo> {
+                                            override fun show(value: Foo): String = "foo:${'$'}{value.value}"
+                                        }
+                                }
+                            }
+                            """.trimIndent(),
+                    ),
+            )
+        val moduleB =
+            HarnessDependency(
+                name = "derivevia-consumer-boundary-b",
+                dependencies = listOf(moduleA),
+                sources =
+                    mapOf(
+                        "depb/UserId.kt" to
+                            """
+                            package depb
+
+                            import depa.Foo
+                            import depa.Show
+                            import one.wabbit.typeclass.DeriveVia
+
+                            @JvmInline
+                            @DeriveVia(Show::class, Foo::class)
+                            value class UserId(val value: Int)
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import depa.render
+            import depb.UserId
+
+            fun main() {
+                println(render(UserId(12)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "foo:12",
+            dependencies = listOf(moduleB),
+        )
+    }
+
+    // Exact intended semantics:
     // - pinned Iso path segments may live in an upstream dependency module.
     // - The deriving module may still rely on transient local Equiv glue to reach the pinned segment
     //   while compiling against that upstream module.
@@ -474,6 +544,95 @@ class DeriveViaSpec : IntegrationTestSupport() {
     }
 
     // Exact intended semantics:
+    // - downstream consumer modules must also be able to use dependency-exported DeriveVia instances whose
+    //   path includes a pinned upstream Iso object.
+    // - this exercises binary DeriveVia reconstruction for the less trivial pinned-Iso boundary shape.
+    @Test fun consumerModuleCanUseDependencyDeriveViaWithPinnedIsoAcrossDependencyModules() {
+        val moduleA =
+            HarnessDependency(
+                name = "derivevia-consumer-pinned-a",
+                sources =
+                    mapOf(
+                        "depa/Show.kt" to showTypeclassSource("depa"),
+                        "depa/Foo.kt" to
+                            """
+                            package depa
+
+                            import one.wabbit.typeclass.Instance
+
+                            @JvmInline
+                            value class Foo(val value: Int) {
+                                companion object {
+                                    @Instance
+                                    val show: Show<Foo> =
+                                        object : Show<Foo> {
+                                            override fun show(value: Foo): String = "foo:${'$'}{value.value}"
+                                        }
+                                }
+                            }
+                            """.trimIndent(),
+                        "depa/Token.kt" to
+                            """
+                            package depa
+
+                            data class Token(val raw: Int)
+                            """.trimIndent(),
+                        "depa/TokenFooIso.kt" to
+                            """
+                            package depa
+
+                            import one.wabbit.typeclass.Iso
+
+                            object TokenFooIso : Iso<Token, Foo> {
+                                override fun to(value: Token): Foo = Foo(value.raw)
+
+                                override fun from(value: Foo): Token = Token(value.value)
+                            }
+                            """.trimIndent(),
+                    ),
+            )
+        val moduleB =
+            HarnessDependency(
+                name = "derivevia-consumer-pinned-b",
+                dependencies = listOf(moduleA),
+                sources =
+                    mapOf(
+                        "depb/UserId.kt" to
+                            """
+                            package depb
+
+                            import depa.Show
+                            import depa.Token
+                            import depa.TokenFooIso
+                            import one.wabbit.typeclass.DeriveVia
+
+                            @JvmInline
+                            @DeriveVia(Show::class, TokenFooIso::class)
+                            value class UserId(val value: Token)
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import depa.Token
+            import depa.render
+            import depb.UserId
+
+            fun main() {
+                println(render(UserId(Token(21))))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "foo:21",
+            dependencies = listOf(moduleB),
+        )
+    }
+
+    // Exact intended semantics:
     // - @DeriveEquiv(A::class) compiled in module B should export a summonable Equiv<B, A>,
     //   even when A itself is declared in a different upstream module.
     @Test fun consumerModuleCanSummonDependencyDeriveEquivAcrossDependencyModules() {
@@ -533,6 +692,71 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 A(value=7)
                 B(value=8)
                 """.trimIndent(),
+            dependencies = listOf(moduleB),
+        )
+    }
+
+    @Test fun dependencyDeriveEquivDoesNotMakeUnrelatedTargetsLookDerivable() {
+        val moduleA =
+            HarnessDependency(
+                name = "deriveequiv-target-precision-a",
+                sources =
+                    mapOf(
+                        "depa/A.kt" to
+                            """
+                            package depa
+
+                            data class A(val value: Int)
+                            """.trimIndent(),
+                        "depa/C.kt" to
+                            """
+                            package depa
+
+                            data class C(val value: Int)
+                            """.trimIndent(),
+                    ),
+            )
+        val moduleB =
+            HarnessDependency(
+                name = "deriveequiv-target-precision-b",
+                dependencies = listOf(moduleA),
+                sources =
+                    mapOf(
+                        "depb/B.kt" to
+                            """
+                            package depb
+
+                            import depa.A
+                            import one.wabbit.typeclass.DeriveEquiv
+
+                            @DeriveEquiv(A::class)
+                            data class B(val value: Int)
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import depa.C
+            import depb.B
+            import one.wabbit.typeclass.Equiv
+            import one.wabbit.typeclass.InternalTypeclassApi
+
+            @OptIn(InternalTypeclassApi::class)
+            context(_: Equiv<B, C>)
+            fun choose(value: B): String = "equiv"
+
+            fun choose(value: B): String = "plain"
+
+            fun main() {
+                println(choose(B(1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain",
             dependencies = listOf(moduleB),
         )
     }
