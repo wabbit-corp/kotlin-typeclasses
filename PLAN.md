@@ -187,9 +187,14 @@ Deduplicated open work from `REVIEW2.md`, `REVIEW3.md`, and `REVIEW4.md`.
 
 ## P0: Policy and Coherence
 
-- [ ] Decide the remaining orphan-location edge case for heads like `TC<Foo, Boo<Baz>>`.
-  - [ ] Decide whether `Baz.kt`-style nested-argument ownership is legal.
-  - [ ] Lock the answer down with active tests.
+- [x] Decide the remaining orphan-location edge case for heads like `TC<Foo, Boo<Baz>>`.
+  - [x] Decide whether `Baz.kt`-style nested-argument ownership is legal.
+  - [x] Lock the answer down with active tests.
+  - Detailed notes:
+    - Chosen policy: top-level orphan ownership is computed from the declaration’s own provided head only, including nested declared arguments, and does not expand through entailed supertypes.
+    - So `TC<Foo, Boo<Baz>>` may be hosted with `TC`, `Foo`, `Boo`, or `Baz`.
+    - But `Ord<Foo>` in `Eq.kt` stays illegal even though `Ord<Foo>` entails `Eq<Foo>` for resolution.
+    - Added active import-visibility regressions for legal `Baz.kt` and `Boo.kt` hosts plus illegal `Qux.kt` and entailed-supertype `Eq.kt` hosts.
 - [ ] Decide whether legal same-file top-level exported instances in dependency modules are part of the intended public model.
   - [ ] If yes, add an active dependency-module regression.
   - [ ] If no, add a negative declaration/resolution test instead.
@@ -256,7 +261,7 @@ Deduplicated open work from `REVIEW2.md`, `REVIEW3.md`, and `REVIEW4.md`.
 ## P4: Test Organization and Suite Hygiene
 
 - [ ] Standardize on `kotlin.test.Ignore`.
-- [ ] Revisit ignored import-visibility cases only after orphan-location policy is final.
+- [ ] Revisit remaining ignored import-visibility cases now that orphan-location policy is final.
 
 ## P5: Small Machinery and Unit-Test Gaps
 

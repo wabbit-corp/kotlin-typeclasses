@@ -2825,8 +2825,9 @@ private class IrModuleScanner(
         if (!irInstanceOwnerContext(this).isIndexableScope) {
             return emptyList()
         }
-        val providedTypes = superTypes.providedTypeExpansion(emptyMap(), configuration).validTypes
-        if (associatedOwner == null && !isLegalTopLevelInstanceLocation(providedTypes, classesById)) {
+        val providedTypeExpansion = superTypes.providedTypeExpansion(emptyMap(), configuration)
+        val providedTypes = providedTypeExpansion.validTypes
+        if (associatedOwner == null && !isLegalTopLevelInstanceLocation(providedTypeExpansion.declaredTypes, classesById)) {
             return emptyList()
         }
         return providedTypes.map { providedType ->
@@ -2880,8 +2881,9 @@ private class IrModuleScanner(
             return emptyList()
         }
 
-        val providedTypes = listOf(returnType).providedTypeExpansion(typeParameterBySymbol, configuration).validTypes
-        if (associatedOwner == null && !isLegalTopLevelInstanceLocation(providedTypes, classesById)) {
+        val providedTypeExpansion = listOf(returnType).providedTypeExpansion(typeParameterBySymbol, configuration)
+        val providedTypes = providedTypeExpansion.validTypes
+        if (associatedOwner == null && !isLegalTopLevelInstanceLocation(providedTypeExpansion.declaredTypes, classesById)) {
             return emptyList()
         }
         return providedTypes.map { providedType ->
@@ -2919,8 +2921,9 @@ private class IrModuleScanner(
         if (getter.extensionReceiverParameter != null) {
             return emptyList()
         }
-        val providedTypes = listOf(backingFieldOrGetterType()).providedTypeExpansion(emptyMap(), configuration).validTypes
-        if (associatedOwner == null && !isLegalTopLevelInstanceLocation(providedTypes, classesById)) {
+        val providedTypeExpansion = listOf(backingFieldOrGetterType()).providedTypeExpansion(emptyMap(), configuration)
+        val providedTypes = providedTypeExpansion.validTypes
+        if (associatedOwner == null && !isLegalTopLevelInstanceLocation(providedTypeExpansion.declaredTypes, classesById)) {
             return emptyList()
         }
         return providedTypes.map { providedType ->
@@ -5291,9 +5294,13 @@ private fun Iterable<IrType>.providedTypeExpansion(
     typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
     configuration: TypeclassConfiguration,
 ): ProvidedTypeExpansion {
+    val declaredTypes = linkedMapOf<String, TcType>()
     val validTypes = linkedMapOf<String, TcType>()
     val invalidTypes = linkedMapOf<String, TcType>()
     for (type in this) {
+        type.declaredProvidedTypeOrNull(typeParameterBySymbol, configuration)?.let { declaredType ->
+            declaredTypes.putIfAbsent(declaredType.render(), declaredType)
+        }
         val expansion =
             type.providedTypeExpansion(
                 typeParameterBySymbol = typeParameterBySymbol,
@@ -5309,9 +5316,19 @@ private fun Iterable<IrType>.providedTypeExpansion(
         }
     }
     return ProvidedTypeExpansion(
+        declaredTypes = declaredTypes.values.toList(),
         validTypes = validTypes.values.toList(),
         invalidTypes = invalidTypes.values.toList(),
     )
+}
+
+private fun IrType.declaredProvidedTypeOrNull(
+    typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
+    configuration: TypeclassConfiguration,
+): TcType? {
+    val simpleType = this as? IrSimpleType ?: return null
+    val currentType = irTypeToModel(this, typeParameterBySymbol) ?: return null
+    return currentType.takeIf { simpleType.isTypeclassType(configuration) }
 }
 
 private fun IrType.providedTypeExpansion(
@@ -5320,14 +5337,14 @@ private fun IrType.providedTypeExpansion(
     previousWereTypeclass: Boolean,
     visited: Set<String>,
 ): ProvidedTypeExpansion {
-    val simpleType = this as? IrSimpleType ?: return ProvidedTypeExpansion(emptyList(), emptyList())
-    val currentType = irTypeToModel(this, typeParameterBySymbol) ?: return ProvidedTypeExpansion(emptyList(), emptyList())
+    val simpleType = this as? IrSimpleType ?: return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
+    val currentType = irTypeToModel(this, typeParameterBySymbol) ?: return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
     val visitKey = currentType.render()
     if (visitKey in visited) {
-        return ProvidedTypeExpansion(emptyList(), emptyList())
+        return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
     }
 
-    val classSymbol = simpleType.classOrNull ?: return ProvidedTypeExpansion(emptyList(), emptyList())
+    val classSymbol = simpleType.classOrNull ?: return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
     val currentIsTypeclass = isTypeclassType(configuration)
     val validTypes = linkedMapOf<String, TcType>()
     val invalidTypes = linkedMapOf<String, TcType>()
@@ -5368,6 +5385,7 @@ private fun IrType.providedTypeExpansion(
     }
 
     return ProvidedTypeExpansion(
+        declaredTypes = emptyList(),
         validTypes = validTypes.values.toList(),
         invalidTypes = invalidTypes.values.toList(),
     )

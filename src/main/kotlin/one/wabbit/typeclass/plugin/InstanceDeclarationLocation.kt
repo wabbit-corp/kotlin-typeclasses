@@ -21,7 +21,7 @@ import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.name.ClassId
 
 internal fun ProvidedTypeExpansion.topLevelInstanceHostDisplayNames(): Set<String> =
-    validTypes.flatMapTo(linkedSetOf()) { type ->
+    declaredTypes.flatMapTo(linkedSetOf()) { type ->
         type.referencedClassifierIds().map(::classifierDisplayName)
     }
 
@@ -31,7 +31,7 @@ internal fun FirDeclaration.isLegalTopLevelInstanceLocation(
 ): Boolean {
     val declarationPath = sourceFilePath(session) ?: return false
     val allowedPaths =
-        providedTypes.validTypes.flatMapTo(linkedSetOf()) { type ->
+        providedTypes.declaredTypes.flatMapTo(linkedSetOf()) { type ->
             type.referencedClassifierIds().mapNotNull { classifierId ->
                 session.classifierSourceFilePath(classifierId)
             }

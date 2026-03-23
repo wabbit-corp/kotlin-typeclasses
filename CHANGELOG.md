@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Finalize the remaining orphan-location edge case for top-level `@Instance` declarations: declared nested head arguments like `TC<Foo, Boo<Baz>>` now make `Baz.kt` and `Boo.kt` legal hosts, but entailed supertypes such as `Eq<Foo>` from a declared `Ord<Foo>` no longer confer orphan-host ownership.
 - Support inherited/default typeclass-deriver methods end to end: FIR and IR now resolve `deriveProduct`, `deriveSum`, and `deriveEnum` through implemented deriver superinterfaces instead of only scanning companion-local declarations, and the derivation capability suite now covers inherited product/sum/enum defaults directly.
 - Fix the latest FIR/IR review regressions around derivation and inference: sealed-root FIR masking no longer short-circuits to derivable on the first unexpressible subclass, FIR deriver validation now accepts `Any`-typed object/constructor return shapes that IR already supports, constructive product derivation rejects non-public stored properties and private primary constructors instead of emitting illegal accesses, and receiver-backed typeclass evidence now participates in FIR call-site type inference.
 - Emit traced FIR-side `[TC_NO_CONTEXT_ARGUMENT]` diagnostics for ordinary missing-context call roots under `@DebugTypeclassResolution`, so `FAILURES` / `FAILURES_AND_ALTERNATIVES` now explain missing evidence even when Kotlin aborts before IR and the living tracing spec can assert failure-side traces directly.

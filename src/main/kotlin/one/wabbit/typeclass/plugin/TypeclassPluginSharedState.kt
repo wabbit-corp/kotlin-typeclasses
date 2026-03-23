@@ -1300,6 +1300,7 @@ private fun isPotentiallySerializableType(
 }
 
 internal data class ProvidedTypeExpansion(
+    val declaredTypes: List<TcType>,
     val validTypes: List<TcType>,
     val invalidTypes: List<TcType>,
 )
@@ -1330,7 +1331,7 @@ internal fun FirSimpleFunction.instanceProvidedTypes(
     session: FirSession,
     configuration: TypeclassConfiguration = TypeclassConfiguration(),
 ): ProvidedTypeExpansion {
-    val returnType = resolvedReturnConeTypeOrNull() ?: return ProvidedTypeExpansion(emptyList(), emptyList())
+    val returnType = resolvedReturnConeTypeOrNull() ?: return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
     val typeParameters =
         typeParameters.mapIndexed { index, typeParameter ->
             TcTypeParameter(
@@ -1360,7 +1361,7 @@ internal fun FirProperty.instanceProvidedTypes(
     session: FirSession,
     configuration: TypeclassConfiguration = TypeclassConfiguration(),
 ): ProvidedTypeExpansion {
-    val returnType = resolvedReturnConeTypeOrNull() ?: return ProvidedTypeExpansion(emptyList(), emptyList())
+    val returnType = resolvedReturnConeTypeOrNull() ?: return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
     return listOf(returnType).expandProvidedTypes(
         session = session,
         typeParameterBySymbol = emptyMap(),
@@ -1638,9 +1639,13 @@ internal fun Iterable<ConeKotlinType>.expandProvidedTypes(
     typeParameterBySymbol: Map<FirTypeParameterSymbol, TcTypeParameter>,
     configuration: TypeclassConfiguration = TypeclassConfiguration(),
 ): ProvidedTypeExpansion {
+    val declaredTypes = linkedMapOf<String, TcType>()
     val validTypes = linkedMapOf<String, TcType>()
     val invalidTypes = linkedMapOf<String, TcType>()
     for (type in this) {
+        type.declaredProvidedTypeOrNull(session, typeParameterBySymbol, configuration)?.let { declaredType ->
+            declaredTypes.putIfAbsent(declaredType.render(), declaredType)
+        }
         val expansion =
             type.expandProvidedTypes(
                 session = session,
@@ -1657,9 +1662,32 @@ internal fun Iterable<ConeKotlinType>.expandProvidedTypes(
         }
     }
     return ProvidedTypeExpansion(
+        declaredTypes = declaredTypes.values.toList(),
         validTypes = validTypes.values.toList(),
         invalidTypes = invalidTypes.values.toList(),
     )
+}
+
+private fun ConeKotlinType.declaredProvidedTypeOrNull(
+    session: FirSession,
+    typeParameterBySymbol: Map<FirTypeParameterSymbol, TcTypeParameter>,
+    configuration: TypeclassConfiguration,
+): TcType? {
+    val lowered = approximateIntegerLiteralType().lowerBoundIfFlexible() as? ConeClassLikeType ?: return null
+    val currentType = coneTypeToModel(lowered, typeParameterBySymbol) ?: return null
+    val classId = lowered.lookupTag.classId
+    if (classId.isLocal) {
+        return null
+    }
+    val classSymbol =
+        try {
+            session.symbolProvider.getClassLikeSymbolByClassId(classId) as? FirRegularClassSymbol
+        } catch (_: IllegalArgumentException) {
+            null
+        } ?: return null
+    val currentIsTypeclass =
+        configuration.isBuiltinTypeclass(classId) || classSymbol.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)
+    return currentType.takeIf { currentIsTypeclass }
 }
 
 private fun ConeKotlinType.expandProvidedTypes(
@@ -1670,24 +1698,24 @@ private fun ConeKotlinType.expandProvidedTypes(
     visited: Set<String>,
 ): ProvidedTypeExpansion {
     val lowered = approximateIntegerLiteralType().lowerBoundIfFlexible() as? ConeClassLikeType
-        ?: return ProvidedTypeExpansion(emptyList(), emptyList())
+        ?: return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
     val currentType = coneTypeToModel(lowered, typeParameterBySymbol)
-        ?: return ProvidedTypeExpansion(emptyList(), emptyList())
+        ?: return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
     val visitKey = currentType.render()
     if (visitKey in visited) {
-        return ProvidedTypeExpansion(emptyList(), emptyList())
+        return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
     }
 
     val classId = lowered.lookupTag.classId
     if (classId.isLocal) {
-        return ProvidedTypeExpansion(emptyList(), emptyList())
+        return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
     }
     val classSymbol =
         try {
             session.symbolProvider.getClassLikeSymbolByClassId(classId) as? FirRegularClassSymbol
         } catch (_: IllegalArgumentException) {
             null
-        } ?: return ProvidedTypeExpansion(emptyList(), emptyList())
+        } ?: return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
 
     val currentIsTypeclass =
         configuration.isBuiltinTypeclass(classId) || classSymbol.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)
@@ -1725,6 +1753,7 @@ private fun ConeKotlinType.expandProvidedTypes(
         }
     }
     return ProvidedTypeExpansion(
+        declaredTypes = emptyList(),
         validTypes = validTypes.values.toList(),
         invalidTypes = invalidTypes.values.toList(),
     )
