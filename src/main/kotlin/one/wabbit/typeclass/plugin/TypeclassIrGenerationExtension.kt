@@ -4943,14 +4943,57 @@ private fun IrClass.resolveDeriveMethod(
     if (contract !in implementedDeriveMethodContracts()) {
         return null
     }
-    return declarations
+    val directMethod = declaredDeriveMethod(contract)
+    if (directMethod != null) {
+        return directMethod
+    }
+    return resolveInheritedDeriveMethod(contract, linkedSetOf())
+}
+
+private fun IrClass.resolveInheritedDeriveMethod(
+    contract: DeriveMethodContract,
+    visited: MutableSet<String>,
+): IrSimpleFunction? {
+    val currentClassId = classIdOrFail.asString()
+    if (!visited.add(currentClassId)) {
+        return null
+    }
+    val matches =
+        superTypes
+            .mapNotNull { superType -> superType.classOrNull?.owner }
+            .mapNotNull { superOwner ->
+                superOwner.declaredDeriveMethod(contract)
+                    ?: superOwner.resolveInheritedDeriveMethod(contract, visited)
+            }.distinctBy { function ->
+                function.symbol.signature?.toString()
+                    ?: function.name.asString()
+            }
+    return matches.singleOrNull()
+}
+
+private fun IrClass.declaredDeriveMethod(
+    contract: DeriveMethodContract,
+): IrSimpleFunction? =
+    declarations
         .filterIsInstance<IrSimpleFunction>()
         .singleOrNull { function ->
-            function.name.asString() == contract.methodName &&
+            function.isConcreteDeriveImplementation(owner = this, contract = contract) &&
+                function.name.asString() == contract.methodName &&
                 function.valueParameters.size == 1 &&
                 function.valueParameters.single().type.classOrNull?.owner?.classId == contract.metadataClassId
         }
-}
+
+private fun IrSimpleFunction.isConcreteDeriveImplementation(
+    owner: IrClass,
+    contract: DeriveMethodContract,
+): Boolean =
+    !isTypeclassDeriverEnumSentinel(owner, contract) &&
+        (body != null || (owner.origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB && modality != Modality.ABSTRACT))
+
+private fun isTypeclassDeriverEnumSentinel(
+    owner: IrClass,
+    contract: DeriveMethodContract,
+): Boolean = contract == DeriveMethodContract.ENUM && owner.classId == TYPECLASS_DERIVER_CLASS_ID
 
 private fun IrClass.renderClassName(): String = classId?.asFqNameString() ?: name.asString()
 

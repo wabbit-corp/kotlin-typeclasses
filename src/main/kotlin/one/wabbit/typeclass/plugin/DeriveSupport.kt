@@ -297,7 +297,7 @@ internal fun typeclassCompanionResolveDeriveMethod(
     if (contract !in companionSymbol.implementedDeriveMethodContracts(session)) {
         return null
     }
-    return companionSymbol.resolveDeriveMethod(contract)
+    return companionSymbol.resolveDeriveMethod(contract, session)
 }
 
 private fun typeclassCompanionSymbol(
@@ -372,11 +372,56 @@ internal fun FirRegularClassSymbol.implementedDeriveMethodContracts(
 
 internal fun FirRegularClassSymbol.resolveDeriveMethod(
     contract: DeriveMethodContract,
+    session: FirSession,
+): FirSimpleFunction? {
+    val directMethod = declaredDeriveMethod(contract)
+    if (directMethod != null) {
+        return directMethod
+    }
+    return resolveInheritedDeriveMethod(contract, session, linkedSetOf())
+}
+
+private fun FirRegularClassSymbol.resolveInheritedDeriveMethod(
+    contract: DeriveMethodContract,
+    session: FirSession,
+    visited: MutableSet<String>,
+): FirSimpleFunction? {
+    if (!visited.add(classId.asString())) {
+        return null
+    }
+    val matches =
+        fir.declaredOrResolvedSuperTypes()
+            .mapNotNull { superType -> superType.lowerBoundIfFlexible().classId }
+            .mapNotNull { superClassId -> session.regularClassSymbolOrNull(superClassId) }
+            .mapNotNull { superSymbol ->
+                superSymbol.declaredDeriveMethod(contract)
+                    ?: superSymbol.resolveInheritedDeriveMethod(contract, session, visited)
+            }.distinctBy { function ->
+                function.symbol.callableId.toString()
+            }
+    return matches.singleOrNull()
+}
+
+private fun FirRegularClassSymbol.declaredDeriveMethod(
+    contract: DeriveMethodContract,
 ): FirSimpleFunction? =
     fir.declarations
         .filterIsInstance<FirSimpleFunction>()
         .singleOrNull { function ->
-            function.name.asString() == contract.methodName &&
+            function.isConcreteDeriveImplementation(owner = fir, contract = contract) &&
+                function.name.asString() == contract.methodName &&
                 function.valueParameters.size == 1 &&
                 function.valueParameters.single().returnTypeRef.coneType.lowerBoundIfFlexible().classId == contract.metadataClassId
         }
+
+private fun FirSimpleFunction.isConcreteDeriveImplementation(
+    owner: FirRegularClass,
+    contract: DeriveMethodContract,
+): Boolean =
+    !isTypeclassDeriverEnumSentinel(owner, contract) &&
+        (body != null || (owner.source == null && status.modality != Modality.ABSTRACT))
+
+private fun isTypeclassDeriverEnumSentinel(
+    owner: FirRegularClass,
+    contract: DeriveMethodContract,
+): Boolean = contract == DeriveMethodContract.ENUM && owner.symbol.classId == TYPECLASS_DERIVER_CLASS_ID

@@ -29,11 +29,11 @@ Detailed notes:
 ### 2. Unify product/sum deriver contracts between FIR validation and FIR/IR codegen lookup
 
 Checklist:
-- [ ] Decide the intended policy for inherited/default `deriveProduct` / `deriveSum` implementations on deriver companions.
-- [ ] Add regressions for companions that satisfy `ProductTypeclassDeriver` / `TypeclassDeriver` only through inherited or default interface methods.
-- [ ] If inherited/default methods are supported, teach both FIR and IR derive-method resolution to resolve the actual inherited implementation instead of only scanning declared methods.
-- [ ] If inherited/default methods are not supported, tighten FIR validation so the declaration-side contract matches later codegen lookup.
-- [ ] Re-verify enum/product/sum derivation diagnostics so all shapes enforce the same contract.
+- [x] Decide the intended policy for inherited/default `deriveProduct` / `deriveSum` implementations on deriver companions.
+- [x] Add regressions for companions that satisfy `ProductTypeclassDeriver` / `TypeclassDeriver` only through inherited or default interface methods.
+- [x] If inherited/default methods are supported, teach both FIR and IR derive-method resolution to resolve the actual inherited implementation instead of only scanning declared methods.
+- [x] If inherited/default methods are not supported, tighten FIR validation so the declaration-side contract matches later codegen lookup.
+- [x] Re-verify enum/product/sum derivation diagnostics so all shapes enforce the same contract.
 
 Detailed notes:
 - FIR shape validation currently only requires an explicit override for enums via `requiredDeriveMethodNameForDeriveShape()`.
@@ -42,7 +42,14 @@ Detailed notes:
   - `DeriveSupport.kt`, `FirRegularClassSymbol.resolveDeriveMethod`
   - `TypeclassIrGenerationExtension.kt`, `IrClass.resolveDeriveMethod`
 - So the advertised declaration contract and the codegen contract differ today.
-- The desired contract is “what passes declaration validation is exactly what codegen can invoke,” with no FIR/IR split over inherited defaults.
+- The chosen contract is “support inherited/default deriver methods”; what passes declaration validation must be invokable by codegen whether the implementation is declared directly on the companion or inherited from a deriver superinterface.
+- Completed in this pass:
+  - Added `deriveProductMayUseInheritedDefaultImplementation`.
+  - Added `deriveSumMayUseInheritedDefaultImplementation`.
+  - Added `deriveEnumMayUseInheritedDefaultImplementation`.
+  - Taught FIR derive-method resolution to walk implemented deriver interfaces and find the unique inherited implementation with a real body.
+  - Taught IR derive-method resolution to do the same, so validation and codegen now share the same inherited/default contract.
+  - Re-verified the focused inherited-default regressions and then the broader derivation/full-suite coverage.
 
 ### 3. Bring FIR deriver return-shape validation up to parity with IR for `Any`-typed returns
 
@@ -110,63 +117,69 @@ implementation is either fixed or the review claim is explicitly proven stale.
 
 ### 1. Stop FIR from stripping typeclass contexts before actual solvability is proven
 
+Checklist:
+- [x] Add `missingDerivedPrerequisitesDoNotBiasFirOverloadSelection`.
+- [x] Add `missingDerivedPrerequisitesForSealedSumsDoNotBiasFirOverloadSelection`.
+- [x] Add `missingDerivedPrerequisitesForGenericSealedSumsDoNotBiasFirOverloadSelection`.
+- [x] Tighten FIR masking so direct-owner product derivation checks actual prerequisite solvability against available contexts instead of a pure shape heuristic.
+- [x] Tighten the same FIR masking path for reproduced same-source sealed roots, including the simple generic sealed-sum case.
+- [x] Re-verify the focused regressions, broader resolution / derivation suites, and the full test suite.
+
 Detailed notes:
 - The core bug is phase skew: FIR currently treats some calls as context-free because the target head is derivable in principle, even when no actual instance can be constructed in scope.
 - The desired contract is “if FIR strips a context, IR must be able to build the same plan without inventing new evidence later.”
-- Completed in this pass:
-  - Added `missingDerivedPrerequisitesDoNotBiasFirOverloadSelection`.
-  - Added `missingDerivedPrerequisitesForSealedSumsDoNotBiasFirOverloadSelection`.
-  - Added `missingDerivedPrerequisitesForGenericSealedSumsDoNotBiasFirOverloadSelection`.
-  - Tightened FIR masking so direct-owner product derivation checks actual prerequisite solvability against available contexts instead of a pure shape heuristic.
-  - Tightened the same FIR masking path for reproduced same-source sealed roots, including the simple generic sealed-sum case, so missing case prerequisites no longer bias overload resolution while binary/GADT-heavy sealed derivation stays on the older conservative path.
-  - Re-verified the focused regressions, broader resolution / derivation suites, and the full test suite.
+- This pass completed the product and reproduced same-source sealed masking fixes while leaving binary/GADT-heavy sealed derivation on the older conservative path.
 
 ### 2. Unify generated derivation metadata and precise cross-module reconstruction
+
+Checklist:
+- [x] Add `dependencyDeriveEquivDoesNotMakeUnrelatedTargetsLookDerivable`.
+- [x] Add downstream consumer regressions for dependency-exported `@DeriveVia`, including both plain-waypoint and pinned-`Iso` boundary shapes.
+- [x] Switch FIR-side `Equiv` acceptance to require a precise target match instead of the older “owner supports Equiv at all” fallback.
+- [x] Fix FIR binary annotation argument recovery so dependency `@DeriveEquiv(otherClass = ...)` requests are read precisely from compiled annotations.
+- [x] Add a shared `GeneratedDerivedMetadata` codec with round-trip tests for `derive`, `derive-via`, and `derive-equiv`.
+- [x] Extend `GeneratedTypeclassInstance` metadata with a precise `payload` field so binary markers preserve `derive-equiv` targets and `derive-via` authored path segments.
+- [x] Switch FIR and IR binary reconstruction to the same decoded marker model, while still falling back to authored annotations for source declarations and older/incomplete metadata.
+- [x] Fix IR generated-marker flattening and binary reconstruction for repeatable `DeriveVia` / `DeriveEquiv` containers.
+- [x] Re-verify `GeneratedDerivedMetadataTest`, `DeriveViaSpec`, and the full test suite.
 
 Detailed notes:
 - The architectural problem is split-brain metadata: FIR currently has broader generated-metadata visibility than IR, while `Equiv` target precision can collapse to “owner supports Equiv at all.”
 - The desired contract is “binary metadata alone must be enough to decide and reconstruct the same derived rule in both phases.”
-- Completed in this pass:
-  - Added `dependencyDeriveEquivDoesNotMakeUnrelatedTargetsLookDerivable`.
-  - Added downstream consumer regressions for dependency-exported `@DeriveVia`, including both plain-waypoint and pinned-`Iso` boundary shapes.
-  - Switched FIR-side `Equiv` acceptance to require a precise target match instead of the older “owner supports Equiv at all” fallback.
-  - Fixed FIR binary annotation argument recovery so dependency `@DeriveEquiv(otherClass = ...)` requests are read precisely from compiled annotations.
-  - Re-verified that dependency consumers can directly use exported `DeriveVia` and `DeriveEquiv` instances across module boundaries on the supported authoring path.
-  - Added a shared `GeneratedDerivedMetadata` codec with round-trip tests for `derive`, `derive-via`, and `derive-equiv`.
-  - Extended `GeneratedTypeclassInstance` metadata with a precise `payload` field so binary markers preserve `derive-equiv` targets and `derive-via` authored path segments.
-  - Switched FIR and IR binary reconstruction to the same decoded marker model, while still falling back to authored annotations for source declarations and older/incomplete metadata.
-  - Fixed IR generated-marker flattening and binary reconstruction for repeatable `DeriveVia` / `DeriveEquiv` containers.
-  - Re-verified `GeneratedDerivedMetadataTest`, `DeriveViaSpec`, and the full test suite.
+- The boundary regressions also confirmed that supported dependency consumers can use exported `DeriveVia` / `DeriveEquiv` instances across module boundaries on the intended authoring path.
 
 ### 3. Replace name-only deriver discovery with contract-resolved methods
+
+Checklist:
+- [x] Add helper-overload regressions for product and enum derivation.
+- [x] Replace name-only deriver discovery with contract-resolved methods in FIR and IR.
+- [x] Carry the resolved derive-method identity into IR rule references instead of re-searching by name later.
 
 Detailed notes:
 - The current failure mode is brittle happy-path logic: FIR checks “a method with this name exists,” while IR later does `singleOrNull { name == ... }` and can mis-handle helpers or overloads.
 - The desired contract is “only the actual override that fulfills the deriver interface counts as the derive method.”
-- Completed in this pass:
-  - Added helper-overload regressions for product and enum derivation.
-  - Replaced name-only deriver discovery with contract-resolved methods in FIR and IR.
-  - Carried the resolved derive-method identity into IR rule references instead of re-searching by name later.
 
 ### 4. Restrict FIR deriver validation to actual deriver-interface overrides
+
+Checklist:
+- [x] Add a positive regression for helper methods named like derivers on plain `@Typeclass` companions.
+- [x] Limit FIR validation to real deriver-interface overrides instead of bare helper-name matches.
+- [x] Re-verify the derivation capability suite and the full test suite.
 
 Detailed notes:
 - The current checker is over-eager: any companion helper whose name matches `deriveProduct` / `deriveSum` / `deriveEnum` is treated as if it were a deriver override.
 - The desired contract is “deriver validation is opt-in through the implemented deriver interfaces, not through method spelling alone.”
-- Completed in this pass:
-  - Added a positive regression for helper methods named like derivers on plain `@Typeclass` companions.
-  - Limited FIR validation to real deriver-interface overrides instead of bare helper-name matches.
-  - Re-verified the derivation capability suite and the full test suite.
 
 ### 5. Stop scanning the whole classpath twice per FIR session
+
+Checklist:
+- [x] Extract a shared FIR discovery seam (`scanTopLevelDeclarations`) and unit-test it in `TypeclassDiscoveryScanTest`.
+- [x] Replace the separate source/rule world scans with one shared discovery pass that feeds both collectors.
+- [x] Re-verify the affected integration suites and the full test suite.
 
 Detailed notes:
 - This is primarily a performance and architecture fault, not just a micro-optimization.
 - The desired contract is “the plugin should not walk every package, callable, and classifier twice just to find the small subset relevant to contextual resolution.”
-- Completed in this pass:
-  - Extracted a shared FIR discovery seam (`scanTopLevelDeclarations`) and unit-tested it in `TypeclassDiscoveryScanTest`.
-  - Replaced the separate source/rule world scans with one shared discovery pass that feeds both collectors.
-  - Re-verified the affected integration suites and the full test suite.
 
 ## Existing Backlog
 

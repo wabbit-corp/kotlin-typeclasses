@@ -569,7 +569,7 @@ internal class TypeclassFirCheckersExtension(
         val deriveMethods =
             companion.symbol.implementedDeriveMethodContracts(session)
                 .mapNotNull { contract ->
-                    companion.symbol.resolveDeriveMethod(contract)?.let { function -> contract.methodName to function }
+                    companion.symbol.resolveDeriveMethod(contract, session)?.let { function -> contract.methodName to function }
                 }
         deriveMethods.forEach { (deriveMethodName, function) ->
                 val declaredReturnConstructors =

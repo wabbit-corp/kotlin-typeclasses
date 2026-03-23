@@ -199,6 +199,182 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun deriveProductMayUseInheritedDefaultImplementation() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+
+            interface SharedShowDeriver : ProductTypeclassDeriver {
+                override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                    object : Show<Any?> {
+                        override fun show(value: Any?): String = metadata.typeName
+                    }
+            }
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : SharedShowDeriver
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            @Derive(Show::class)
+            data class Box(val value: Int)
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(Box(1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "demo.Box",
+        )
+    }
+
+    @Test
+    fun deriveSumMayUseInheritedDefaultImplementation() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+            import one.wabbit.typeclass.matches
+
+            interface SharedShowDeriver : TypeclassDeriver {
+                override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                    object : Show<Any?> {
+                        override fun show(value: Any?): String = metadata.typeName
+                    }
+
+                override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                    object : Show<Any?> {
+                        override fun show(value: Any?): String {
+                            require(value != null)
+                            val matchingCase = metadata.cases.single { candidate -> candidate.matches(value) }
+                            val caseShow = matchingCase.instance as Show<Any?>
+                            return caseShow.show(value)
+                        }
+                    }
+            }
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : SharedShowDeriver
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = value.toString()
+            }
+
+            @Derive(Show::class)
+            sealed interface Token
+
+            @Derive(Show::class)
+            data class Count(val value: Int) : Token
+
+            @Derive(Show::class)
+            data object End : Token
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(Count(1) as Token))
+                println(render(End as Token))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                demo.Count
+                demo.End
+                """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun deriveEnumMayUseInheritedDefaultImplementation() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.EnumTypeclassMetadata
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+
+            interface SharedShowDeriver : TypeclassDeriver {
+                override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                    object : Show<Any?> {
+                        override fun show(value: Any?): String = metadata.typeName
+                    }
+
+                override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                    object : Show<Any?> {
+                        override fun show(value: Any?): String = metadata.typeName
+                    }
+
+                override fun deriveEnum(metadata: EnumTypeclassMetadata): Any =
+                    object : Show<Any?> {
+                        override fun show(value: Any?): String = metadata.typeName
+                    }
+            }
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : SharedShowDeriver
+            }
+
+            @Derive(Show::class)
+            enum class Priority {
+                LOW,
+                HIGH,
+            }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(Priority.LOW))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "demo.Priority",
+        )
+    }
+
+    @Test
     fun helperDeriveEnumOverloadsDoNotCountAsTheRequiredEnumOverride() {
         val source =
             """
