@@ -8,7 +8,10 @@ package one.wabbit.typeclass.plugin
 
 import one.wabbit.typeclass.plugin.model.TcType
 import one.wabbit.typeclass.plugin.model.TcTypeParameter
+import one.wabbit.typeclass.plugin.model.ResolutionSearchResult
+import one.wabbit.typeclass.plugin.model.TypeclassResolutionPlanner
 import one.wabbit.typeclass.plugin.model.normalizedKey
+import one.wabbit.typeclass.plugin.model.render
 import one.wabbit.typeclass.plugin.model.references
 import org.jetbrains.kotlin.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.diagnostics.reportOn
@@ -33,9 +36,18 @@ import org.jetbrains.kotlin.fir.expressions.FirAnonymousFunctionExpression
 import org.jetbrains.kotlin.fir.expressions.FirAnnotation
 import org.jetbrains.kotlin.fir.expressions.FirAnonymousObjectExpression
 import org.jetbrains.kotlin.fir.expressions.FirExpression
+import org.jetbrains.kotlin.fir.expressions.FirFunctionCall
 import org.jetbrains.kotlin.fir.expressions.FirReturnExpression
+import org.jetbrains.kotlin.fir.references.FirErrorNamedReference
+import org.jetbrains.kotlin.fir.references.FirResolvedErrorReference
 import org.jetbrains.kotlin.fir.resolve.providers.firProvider
+import org.jetbrains.kotlin.fir.resolve.calls.AmbiguousContextArgument
+import org.jetbrains.kotlin.fir.resolve.calls.NoContextArgument
+import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeInapplicableCandidateError
+import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirNamedFunctionSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirValueParameterSymbol
 import org.jetbrains.kotlin.fir.types.coneType
 import org.jetbrains.kotlin.fir.types.ConeClassLikeType
 import org.jetbrains.kotlin.fir.types.ConeDefinitelyNotNullType
@@ -97,6 +109,7 @@ internal class TypeclassFirCheckersExtension(
         object : FirSimpleFunctionChecker(MppCheckerKind.Common) {
             context(context: CheckerContext, reporter: DiagnosticReporter)
             override fun check(declaration: FirSimpleFunction) {
+                maybeReportFunctionBodyResolutionTrace(declaration)
                 if (!declaration.hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
                     return
                 }
@@ -187,6 +200,173 @@ internal class TypeclassFirCheckersExtension(
             override val simpleFunctionCheckers: Set<FirSimpleFunctionChecker> = setOf(simpleFunctionChecker)
             override val propertyCheckers: Set<FirPropertyChecker> = setOf(propertyChecker)
         }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun maybeReportFunctionBodyResolutionTrace(
+        declaration: FirSimpleFunction,
+    ) {
+        val activation =
+            context.resolveTypeclassTraceActivation(
+                currentContainer = declaration,
+                globalMode = sharedState.configuration.traceMode,
+            ) ?: return
+        val containingFunctions =
+            buildList {
+                addAll(context.containingDeclarations.mapNotNull { symbol -> symbol.firFunctionOrNull() })
+                add(declaration)
+            }
+        val typeContext =
+            buildFirTypeclassResolutionContext(
+                session = session,
+                sharedState = sharedState,
+                containingFunctions = containingFunctions,
+                calleeTypeParameters = emptyList(),
+            )
+        declaration.body?.acceptChildren(
+            object : FirDefaultVisitorVoid() {
+                override fun visitElement(element: FirElement) {
+                    element.acceptChildren(this)
+                }
+
+                override fun visitFunction(function: FirFunction) {
+                    return
+                }
+
+                override fun visitAnonymousFunctionExpression(anonymousFunctionExpression: FirAnonymousFunctionExpression) {
+                    return
+                }
+
+                override fun visitRegularClass(regularClass: FirRegularClass) {
+                    return
+                }
+
+                override fun visitFunctionCall(functionCall: FirFunctionCall) {
+                    maybeReportResolutionTraceForFunctionCall(
+                        functionCall = functionCall,
+                        declaration = declaration,
+                        activation = activation,
+                        typeContext = typeContext,
+                    )
+                    functionCall.acceptChildren(this)
+                }
+            },
+        )
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun maybeReportResolutionTraceForFunctionCall(
+        functionCall: FirFunctionCall,
+        declaration: FirSimpleFunction,
+        activation: TypeclassTraceActivation,
+        typeContext: FirTypeclassResolutionContext,
+    ) {
+        val reference = functionCall.calleeReference
+        val referenceDiagnostic =
+            when (reference) {
+                is FirResolvedErrorReference -> reference.diagnostic
+                is FirErrorNamedReference -> reference.diagnostic
+                else -> return
+            }
+        val inapplicableCandidate = referenceDiagnostic as? ConeInapplicableCandidateError ?: return
+        val targetParameterSymbol: FirValueParameterSymbol
+        val resolvedFunction: FirNamedFunctionSymbol =
+            inapplicableCandidate.candidate.symbol as? FirNamedFunctionSymbol ?: return
+        val candidateDiagnostic =
+            inapplicableCandidate.candidate.diagnostics.firstOrNull { diagnostic ->
+                diagnostic is NoContextArgument || diagnostic is AmbiguousContextArgument
+            }
+        targetParameterSymbol =
+            when (candidateDiagnostic) {
+                is NoContextArgument -> candidateDiagnostic.symbol
+                is AmbiguousContextArgument -> candidateDiagnostic.symbol
+                else -> return
+            }
+        val function = resolvedFunction.fir
+        if (function.origin.generated) {
+            return
+        }
+        if (function.hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
+            return
+        }
+        val targetParameter =
+            function.contextParameters.firstOrNull { parameter ->
+                parameter.symbol == targetParameterSymbol
+            } ?: return
+        val inferredTypeArguments =
+            inferFunctionTypeArgumentsFromCallSite(
+                session = session,
+                functionCall = functionCall,
+                resolvedFunction = resolvedFunction,
+                containingFunction = declaration.symbol,
+                sharedState = sharedState,
+            )
+        val substitutedType =
+            substituteInferredTypes(
+                type = targetParameter.returnTypeRef.coneType,
+                substitutions = inferredTypeArguments,
+                session = session,
+            )
+        if (!sharedState.isTypeclassType(session, substitutedType)) {
+            return
+        }
+        val goal =
+            coneTypeToModel(substitutedType, typeContext.typeParameterModels)
+                ?: return
+        val planner =
+            TypeclassResolutionPlanner(
+                ruleProvider = { desiredGoal ->
+                    sharedState.rulesForGoal(
+                        session = session,
+                        goal = desiredGoal,
+                        canMaterializeVariable = typeContext.runtimeMaterializableVariableIds::contains,
+                    )
+                },
+                bindableDesiredVariableIds = typeContext.bindableVariableIds,
+            )
+        val tracedResult =
+            planner.resolveWithTrace(
+                desiredType = goal,
+                localContextTypes = typeContext.directlyAvailableContextModels,
+                explainAlternatives = activation.mode.explainsAlternatives,
+            )
+        when (tracedResult.result) {
+            is ResolutionSearchResult.Missing ->
+                reportNoContextArgumentWithTrace(
+                    expression = functionCall,
+                    narrative =
+                        TypeclassDiagnostic.NoContextArgument(
+                            goal = goal.render().replace('/', '.'),
+                            scope = "",
+                        ),
+                    trace =
+                        renderResolutionTrace(
+                            trace = tracedResult.trace,
+                            activation = activation,
+                            location = null,
+                            localContextLabels = typeContext.directlyAvailableContextLabels,
+                        ),
+                )
+            is ResolutionSearchResult.Recursive ->
+                reportNoContextArgumentWithTrace(
+                    expression = functionCall,
+                    narrative =
+                        TypeclassDiagnostic.NoContextArgument(
+                            goal = goal.render().replace('/', '.'),
+                            scope = "",
+                            recursive = true,
+                        ),
+                    trace =
+                        renderResolutionTrace(
+                            trace = tracedResult.trace,
+                            activation = activation,
+                            location = null,
+                            localContextLabels = typeContext.directlyAvailableContextLabels,
+                        ),
+                )
+            is ResolutionSearchResult.Ambiguous -> Unit
+            is ResolutionSearchResult.Success -> Unit
+        }
+    }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
     private fun validateAssociatedScope(
@@ -520,6 +700,22 @@ internal class TypeclassFirCheckersExtension(
             narrative.renderBody(),
         )
     }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportNoContextArgumentWithTrace(
+        expression: FirExpression,
+        narrative: TypeclassDiagnostic.NoContextArgument,
+        trace: String,
+    ) {
+        val source = expression.source ?: return
+        reporter.reportOn(
+            source,
+            TypeclassErrors.NO_CONTEXT_ARGUMENT,
+            "${narrative.renderBody()}\n$trace",
+        )
+    }
+
+    private fun FirBasedSymbol<*>.firFunctionOrNull(): FirFunction? = fir as? FirFunction
 
     private fun invalidInstancePrerequisiteMessage(type: ConeKotlinType): String? =
         when {

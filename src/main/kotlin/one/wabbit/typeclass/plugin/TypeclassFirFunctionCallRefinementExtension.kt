@@ -6,7 +6,6 @@
 package one.wabbit.typeclass.plugin
 
 import one.wabbit.typeclass.plugin.model.ResolutionSearchResult
-import one.wabbit.typeclass.plugin.model.TcTypeParameter
 import one.wabbit.typeclass.plugin.model.TypeclassResolutionPlanner
 import one.wabbit.typeclass.plugin.model.unifyTypes
 import org.jetbrains.kotlin.fir.originalOrSelf
@@ -218,60 +217,18 @@ internal class TypeclassFirFunctionCallRefinementExtension(
     private fun buildTypeContext(
         callInfo: CallInfo,
         symbol: FirNamedFunctionSymbol,
-    ): FirTypeContext {
-        val containingFunctions = callInfo.containingDeclarations.filterIsInstance<FirFunction>()
-        val typeParameterModels = linkedMapOf<FirTypeParameterSymbol, TcTypeParameter>()
-        containingFunctions.forEachIndexed { declarationIndex, declaration ->
-            declaration.typeParameters.forEachIndexed { typeParameterIndex, typeParameter ->
-                typeParameterModels.getOrPut(typeParameter.symbol) {
-                    TcTypeParameter(
-                        id = "containing:$declarationIndex:$typeParameterIndex:${typeParameter.symbol.name.asString()}",
-                        displayName = typeParameter.symbol.name.asString(),
-                    )
-                }
-            }
-        }
-        val bindableVariableIds =
-            symbol.fir.typeParameters.mapIndexedTo(linkedSetOf()) { typeParameterIndex, typeParameter ->
-                typeParameterModels.getOrPut(typeParameter.symbol) {
-                    TcTypeParameter(
-                        id = "callee:${symbol.callableId}:$typeParameterIndex:${typeParameter.symbol.name.asString()}",
-                        displayName = typeParameter.symbol.name.asString(),
-                    )
-                }.id
-            }
-        val directlyAvailableContextTypes =
-            containingFunctions.flatMap { declaration ->
-                buildList {
-                    declaration.receiverParameter?.typeRef?.coneType
-                        ?.takeIf { type -> sharedState.isTypeclassType(session, type) }
-                        ?.let(::add)
-                    declaration.contextParameters.mapNotNullTo(this) { parameter ->
-                        parameter.returnTypeRef.coneType.takeIf { type -> sharedState.isTypeclassType(session, type) }
-                    }
-                }
-            }
-        val directlyAvailableContextModels =
-            directlyAvailableContextTypes
-                .expandProvidedTypes(session = session, typeParameterBySymbol = typeParameterModels)
-                .validTypes
-        val runtimeMaterializableVariableIds =
-            typeParameterModels.mapNotNullTo(linkedSetOf()) { (symbol, parameter) ->
-                parameter.id.takeIf { symbol.fir.isReified }
-            }
-        return FirTypeContext(
-            typeParameterModels = typeParameterModels,
-            bindableVariableIds = bindableVariableIds,
-            directlyAvailableContextTypes = directlyAvailableContextTypes,
-            directlyAvailableContextModels = directlyAvailableContextModels,
-            runtimeMaterializableVariableIds = runtimeMaterializableVariableIds,
+    ): FirTypeclassResolutionContext =
+        buildFirTypeclassResolutionContext(
+            session = session,
+            sharedState = sharedState,
+            containingFunctions = callInfo.containingDeclarations.filterIsInstance<FirFunction>(),
+            calleeTypeParameters = symbol.fir.typeParameters.map { typeParameter -> typeParameter.symbol },
         )
-    }
 
     private fun inferFunctionTypeArguments(
         callInfo: CallInfo,
         symbol: FirNamedFunctionSymbol,
-        typeContext: FirTypeContext,
+        typeContext: FirTypeclassResolutionContext,
     ): Map<FirTypeParameterSymbol, org.jetbrains.kotlin.fir.types.ConeKotlinType> {
         val containingFunction =
             callInfo.containingDeclarations.filterIsInstance<FirSimpleFunction>().lastOrNull()?.symbol
@@ -439,13 +396,4 @@ internal class TypeclassFirFunctionCallRefinementExtension(
             )
         }
     }
-
 }
-
-private data class FirTypeContext(
-    val typeParameterModels: Map<FirTypeParameterSymbol, TcTypeParameter>,
-    val bindableVariableIds: Set<String>,
-    val directlyAvailableContextTypes: List<org.jetbrains.kotlin.fir.types.ConeKotlinType>,
-    val directlyAvailableContextModels: List<one.wabbit.typeclass.plugin.model.TcType>,
-    val runtimeMaterializableVariableIds: Set<String>,
-)

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Emit traced FIR-side `[TC_NO_CONTEXT_ARGUMENT]` diagnostics for ordinary missing-context call roots under `@DebugTypeclassResolution`, so `FAILURES` / `FAILURES_AND_ALTERNATIVES` now explain missing evidence even when Kotlin aborts before IR and the living tracing spec can assert failure-side traces directly.
 - Implement scoped typeclass-resolution tracing behind `@DebugTypeclassResolution` and the mode-based `typeclassTraceMode` compiler option: successful roots now emit `[TC_TRACE]` `INFO` messages, plugin-owned failure/ambiguity/derivation errors can carry supplemental trace blocks, and focused integration coverage now exercises success tracing, derivation tracing, mode precedence, and deterministic candidate reporting.
 - Promote the implemented tracing behavior into `DebugTypeclassResolutionSpec` and `DebugTypeclassResolutionPrecedenceSpec` directly, retire the separate duplicate tracing test suite, and leave only the still-unimplemented tracing edges individually ignored inside the living spec files.
 - Add `DebugTypeclassResolutionSpec` as a detailed design suite for a future scoped resolution-tracing facility, covering file/class/function/property/local-variable scopes, nearest-scope precedence, success-vs-failure tracing, deterministic ambiguity traces, derivation-specific trace content, `DeriveVia` path explanations, and cross-module external-rule reporting boundaries.

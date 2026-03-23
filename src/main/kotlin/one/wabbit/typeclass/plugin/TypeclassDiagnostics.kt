@@ -37,6 +37,15 @@ internal object TypeclassErrors : KtDiagnosticsContainer() {
             TypeclassErrorMessages,
         )
 
+    val NO_CONTEXT_ARGUMENT =
+        KtDiagnosticFactory1<String>(
+            TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT,
+            Severity.ERROR,
+            SourceElementPositioningStrategies.DEFAULT,
+            PsiElement::class,
+            TypeclassErrorMessages,
+        )
+
     override fun getRendererFactory(): BaseDiagnosticRendererFactory = TypeclassErrorMessages
 }
 
@@ -55,6 +64,11 @@ internal object TypeclassErrorMessages : BaseDiagnosticRendererFactory() {
         map.put(
             TypeclassErrors.INVALID_EQUIV_DECLARATION,
             "[${TypeclassDiagnosticIds.INVALID_EQUIV_DECL}] {0}",
+            CommonRenderers.STRING,
+        )
+        map.put(
+            TypeclassErrors.NO_CONTEXT_ARGUMENT,
+            "[${TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT}] {0}",
             CommonRenderers.STRING,
         )
     }

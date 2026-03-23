@@ -522,7 +522,6 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
     }
 
     @Test
-    @Ignore("Failure-side no-context trace transport is not implemented yet")
     fun failureTracingCanExplainAlternativesInModeFailuresAndAlternatives() {
         val source =
             """
@@ -558,7 +557,7 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
             "[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>",
             "[TC_TRACE] effective mode: FAILURES_AND_ALTERNATIVES",
             "demo.AnyShow",
-            "explained but not searched; not applicable due to head mismatch",
+            "rejected; not applicable due to head mismatch",
             "[TC_TRACE] result: failure",
         )
     }
