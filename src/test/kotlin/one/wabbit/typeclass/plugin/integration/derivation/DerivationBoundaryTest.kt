@@ -212,6 +212,64 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun consumerModuleCanUseLeafTypedInstancesSynthesizedFromDependencyRootDerivation() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-root-derived-leaf-typed",
+                sources =
+                    mapOf(
+                        "dep/Show.kt" to showTypeclassSource(packageName = "dep"),
+                        "dep/ShownString.kt" to shownStringSource("dep"),
+                        "dep/Token.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.Derive
+
+                            @Derive(Show::class)
+                            sealed interface Token
+                            """.trimIndent(),
+                        "dep/Word.kt" to
+                            """
+                            package dep
+
+                            data class Word(val value: ShownString) : Token
+                            """.trimIndent(),
+                        "dep/End.kt" to
+                            """
+                            package dep
+
+                            object End : Token
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.End
+            import dep.ShownString
+            import dep.Word
+            import dep.render
+
+            fun main() {
+                println(render(Word(ShownString("leaf"))))
+                println(render(End))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                Word(value=leaf)
+                End()
+                """.trimIndent(),
+            dependencies = listOf(dependency),
+        )
+    }
+
+    @Test
     fun consumerModuleCanUseDerivedGenericSealedInstancesFromDependencyModules() {
         val dependency =
             HarnessDependency(

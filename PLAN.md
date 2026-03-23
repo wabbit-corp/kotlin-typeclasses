@@ -199,9 +199,20 @@ Deduplicated open work from `REVIEW2.md`, `REVIEW3.md`, and `REVIEW4.md`.
   - [ ] If yes, add an active dependency-module regression.
   - [ ] If no, add a negative declaration/resolution test instead.
 - [ ] Decide root-only vs leaf `@Derive` semantics.
-  - [ ] Decide whether root-only is the intended contract.
-  - [ ] Decide whether leaf-only or mixed root+leaf annotation styles are also supported.
-  - [ ] Express that contract consistently across files and modules.
+  - [x] Decide whether root-only is the intended contract.
+  - [x] Decide whether leaf-only or mixed root+leaf annotation styles are also supported.
+  - [x] Express that contract consistently across files and modules.
+  - Detailed notes:
+    - Chosen contract:
+      - root `@Derive` on a sealed hierarchy derives the root/sum instance and implicitly synthesizes the leaf/case instances needed to build it;
+      - leaf `@Derive` remains legal and derives that leaf as a standalone final class/object/enum;
+      - leaf-only derivation does not imply root derivation;
+      - mixed root + leaf is legal and behaves as the union of goals, deduped by typeclass head rather than becoming ambiguous.
+    - Added active derivation coverage for:
+      - root-only sealed derivation resolving both the root and leaf-typed calls,
+      - leaf-only derivation resolving the leaf but not the sealed root,
+      - mixed root + leaf derivation remaining idempotent,
+      - cross-module leaf-typed use of rules synthesized from dependency-side root derivation.
 - [ ] Decide global builtin override semantics.
   - [ ] Decide semantics for explicit global serializer evidence vs synthetic builtin serializer evidence.
   - [ ] Decide semantics for explicit user-defined builtin-shaped rules competing with synthetic builtin materialization.

@@ -6,6 +6,242 @@ import kotlin.test.Test
 class DerivationSurfaceTest : IntegrationTestSupport() {
     // Root derivation contracts: the annotated sealed root must be sufficient
     // for the requested typeclass.
+    @Test fun rootOnlySealedDerivationResolvesBothRootAndNeededLeafRules() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+            import one.wabbit.typeclass.get
+            import one.wabbit.typeclass.matches
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : TypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String {
+                                require(value != null)
+                                val renderedFields =
+                                    metadata.fields.joinToString(", ") { field ->
+                                        val fieldValue = field.get(value)
+                                        val fieldShow = field.instance as Show<Any?>
+                                        "${'$'}{field.name}=${'$'}{fieldShow.show(fieldValue)}"
+                                    }
+                                val typeName = metadata.typeName.substringAfterLast('.')
+                                return "${'$'}typeName(${'$'}renderedFields)"
+                            }
+                        }
+
+                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String {
+                                require(value != null)
+                                val matchingCase = metadata.cases.single { candidate -> candidate.matches(value) }
+                                val caseShow = matchingCase.instance as Show<Any?>
+                                return caseShow.show(value)
+                            }
+                        }
+                }
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = value.toString()
+            }
+
+            @Derive(Show::class)
+            sealed interface Token
+
+            data class Number(val value: Int) : Token
+
+            object End : Token
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                val root: Token = Number(1)
+                println(render(root))
+                println(render(Number(2)))
+                println(render(End))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                Number(value=1)
+                Number(value=2)
+                End()
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun leafOnlyDerivationResolvesLeafButNotSealedRoot() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+            import one.wabbit.typeclass.get
+            import one.wabbit.typeclass.matches
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : TypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String {
+                                require(value != null)
+                                val renderedFields =
+                                    metadata.fields.joinToString(", ") { field ->
+                                        val fieldValue = field.get(value)
+                                        val fieldShow = field.instance as Show<Any?>
+                                        "${'$'}{field.name}=${'$'}{fieldShow.show(fieldValue)}"
+                                    }
+                                val typeName = metadata.typeName.substringAfterLast('.')
+                                return "${'$'}typeName(${'$'}renderedFields)"
+                            }
+                        }
+
+                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String {
+                                require(value != null)
+                                val matchingCase = metadata.cases.single { candidate -> candidate.matches(value) }
+                                val caseShow = matchingCase.instance as Show<Any?>
+                                return caseShow.show(value)
+                            }
+                        }
+                }
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = value.toString()
+            }
+
+            sealed interface Token
+
+            @Derive(Show::class)
+            data class Number(val value: Int) : Token
+
+            object End : Token
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(Number(2)))
+                val root: Token = Number(1)
+                println(render(root)) // E:TC_NO_CONTEXT_ARGUMENT leaf-only derivation must not imply Show<Token>
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedNoContextArgument("show")),
+        )
+    }
+
+    @Test fun mixedRootAndLeafDerivationIsIdempotentNotAmbiguous() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+            import one.wabbit.typeclass.get
+            import one.wabbit.typeclass.matches
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : TypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String {
+                                require(value != null)
+                                val renderedFields =
+                                    metadata.fields.joinToString(", ") { field ->
+                                        val fieldValue = field.get(value)
+                                        val fieldShow = field.instance as Show<Any?>
+                                        "${'$'}{field.name}=${'$'}{fieldShow.show(fieldValue)}"
+                                    }
+                                val typeName = metadata.typeName.substringAfterLast('.')
+                                return "${'$'}typeName(${'$'}renderedFields)"
+                            }
+                        }
+
+                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String {
+                                require(value != null)
+                                val matchingCase = metadata.cases.single { candidate -> candidate.matches(value) }
+                                val caseShow = matchingCase.instance as Show<Any?>
+                                return caseShow.show(value)
+                            }
+                        }
+                }
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = value.toString()
+            }
+
+            @Derive(Show::class)
+            sealed interface Token
+
+            @Derive(Show::class)
+            data class Number(val value: Int) : Token
+
+            @Derive(Show::class)
+            object End : Token
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                val root: Token = Number(1)
+                println(render(root))
+                println(render(Number(2)))
+                println(render(End))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                Number(value=1)
+                Number(value=2)
+                End()
+                """.trimIndent(),
+        )
+    }
+
     @Test fun derivesSealedInterfaces() {
         val source =
             """
