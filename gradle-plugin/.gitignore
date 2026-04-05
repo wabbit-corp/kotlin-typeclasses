@@ -7,9 +7,6 @@ Thumbs.db
 !**/src/main/**/build/
 !**/src/test/**/build/
 /.kotlin
-**/.kotlin/
-/.intellijPlatform/
-**/.intellijPlatform/
 /kotlin-js-store
 local.properties
 /settings.local.gradle.kts

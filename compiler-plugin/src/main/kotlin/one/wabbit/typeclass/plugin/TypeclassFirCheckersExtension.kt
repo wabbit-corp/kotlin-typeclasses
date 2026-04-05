@@ -1,0 +1,932 @@
+@file:OptIn(
+    org.jetbrains.kotlin.fir.declarations.DirectDeclarationsAccess::class,
+    org.jetbrains.kotlin.fir.symbols.SymbolInternals::class,
+    org.jetbrains.kotlin.fir.expressions.UnresolvedExpressionTypeAccess::class,
+)
+
+package one.wabbit.typeclass.plugin
+
+import one.wabbit.typeclass.plugin.model.TcType
+import one.wabbit.typeclass.plugin.model.TcTypeParameter
+import one.wabbit.typeclass.plugin.model.ResolutionSearchResult
+import one.wabbit.typeclass.plugin.model.TypeclassResolutionPlanner
+import one.wabbit.typeclass.plugin.model.normalizedKey
+import one.wabbit.typeclass.plugin.model.render
+import one.wabbit.typeclass.plugin.model.references
+import org.jetbrains.kotlin.diagnostics.DiagnosticReporter
+import org.jetbrains.kotlin.diagnostics.reportOn
+import org.jetbrains.kotlin.descriptors.ClassKind
+import org.jetbrains.kotlin.descriptors.Modality
+import org.jetbrains.kotlin.fir.FirSession
+import org.jetbrains.kotlin.fir.analysis.checkers.MppCheckerKind
+import org.jetbrains.kotlin.fir.analysis.checkers.context.CheckerContext
+import org.jetbrains.kotlin.fir.analysis.checkers.declaration.DeclarationCheckers
+import org.jetbrains.kotlin.fir.analysis.checkers.declaration.FirDeclarationChecker
+import org.jetbrains.kotlin.fir.analysis.checkers.declaration.FirPropertyChecker
+import org.jetbrains.kotlin.fir.analysis.checkers.declaration.FirRegularClassChecker
+import org.jetbrains.kotlin.fir.analysis.extensions.FirAdditionalCheckersExtension
+import org.jetbrains.kotlin.fir.FirElement
+import org.jetbrains.kotlin.fir.declarations.FirConstructor
+import org.jetbrains.kotlin.fir.declarations.FirFunction
+import org.jetbrains.kotlin.fir.declarations.FirProperty
+import org.jetbrains.kotlin.fir.declarations.FirRegularClass
+import org.jetbrains.kotlin.fir.declarations.hasAnnotation
+import org.jetbrains.kotlin.fir.expressions.FirAnonymousFunctionExpression
+import org.jetbrains.kotlin.fir.expressions.FirAnnotation
+import org.jetbrains.kotlin.fir.expressions.FirAnonymousObjectExpression
+import org.jetbrains.kotlin.fir.expressions.FirExpression
+import org.jetbrains.kotlin.fir.expressions.FirFunctionCall
+import org.jetbrains.kotlin.fir.expressions.FirPropertyAccessExpression
+import org.jetbrains.kotlin.fir.expressions.FirReturnExpression
+import org.jetbrains.kotlin.fir.expressions.FirResolvedQualifier
+import org.jetbrains.kotlin.fir.references.FirErrorNamedReference
+import org.jetbrains.kotlin.fir.references.FirResolvedErrorReference
+import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
+import org.jetbrains.kotlin.fir.resolve.providers.firProvider
+import org.jetbrains.kotlin.fir.resolve.calls.AmbiguousContextArgument
+import org.jetbrains.kotlin.fir.resolve.calls.NoContextArgument
+import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeInapplicableCandidateError
+import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirNamedFunctionSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirValueParameterSymbol
+import org.jetbrains.kotlin.fir.types.coneType
+import org.jetbrains.kotlin.fir.types.ConeClassLikeType
+import org.jetbrains.kotlin.fir.types.ConeDefinitelyNotNullType
+import org.jetbrains.kotlin.fir.types.ConeIntersectionType
+import org.jetbrains.kotlin.fir.types.ConeKotlinType
+import org.jetbrains.kotlin.fir.types.classId
+import org.jetbrains.kotlin.fir.types.ConeStarProjection
+import org.jetbrains.kotlin.fir.types.lowerBoundIfFlexible
+import org.jetbrains.kotlin.fir.types.type
+import org.jetbrains.kotlin.fir.visitors.FirDefaultVisitorVoid
+import org.jetbrains.kotlin.name.CallableId
+import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.name.SpecialNames
+
+internal class TypeclassFirCheckersExtension(
+    session: FirSession,
+    private val sharedState: TypeclassPluginSharedState,
+) : FirAdditionalCheckersExtension(session) {
+    private val regularClassChecker =
+        object : FirRegularClassChecker(MppCheckerKind.Common) {
+            context(context: CheckerContext, reporter: DiagnosticReporter)
+            override fun check(declaration: FirRegularClass) {
+                if (declaration.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)) {
+                    validateTypeclassDeriverCompanionContracts(declaration)
+                }
+                if (declaration.hasAnnotation(DERIVE_ANNOTATION_CLASS_ID, session)) {
+                    validateDeriveDeclaration(declaration)
+                }
+                if (declaration.hasAnnotation(DERIVE_VIA_ANNOTATION_CLASS_ID, session)) {
+                    validateDeriveViaDeclarations(declaration)
+                }
+                if (declaration.hasAnnotation(DERIVE_EQUIV_ANNOTATION_CLASS_ID, session)) {
+                    validateDeriveEquivDeclarations(declaration)
+                }
+                if (declaration.directlyExtendsEquiv()) {
+                    reportInvalidEquiv(
+                        declaration,
+                        invalidEquivSubclassing(),
+                    )
+                    return
+                }
+                if (!declaration.hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
+                    return
+                }
+                if (declaration.classKind != ClassKind.OBJECT) {
+                    reportInvalid(declaration, invalidInstanceClassBased())
+                    return
+                }
+
+                validateAssociatedScope(
+                    ownerContext = firInstanceOwnerContext(session, declaration.symbol.classId),
+                    providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration),
+                    declaration = declaration,
+                )
+            }
+        }
+
+    private val simpleFunctionChecker =
+        object : FirDeclarationChecker<FirTypeclassFunctionDeclaration>(MppCheckerKind.Common) {
+            context(context: CheckerContext, reporter: DiagnosticReporter)
+            override fun check(declaration: FirTypeclassFunctionDeclaration) {
+                maybeReportFunctionBodyResolutionTrace(declaration)
+                if (!declaration.hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
+                    return
+                }
+                when {
+                    declaration.receiverParameter != null -> {
+                        reportInvalid(declaration, invalidInstanceExtensionFunction())
+                        return
+                    }
+
+                    declaration.valueParameters.isNotEmpty() -> {
+                        reportInvalid(declaration, invalidInstanceRegularParameter())
+                        return
+                    }
+
+                    declaration.status.isSuspend -> {
+                        reportInvalid(declaration, invalidInstanceSuspendFunction())
+                        return
+                    }
+                }
+
+                val providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration)
+                if (providedTypes.validTypes.any(::isEquivType)) {
+                    reportInvalidEquiv(
+                        declaration,
+                        invalidEquivPublishedInstance(),
+                    )
+                    return
+                }
+
+                validateAssociatedScope(
+                    ownerContext = firInstanceOwnerContext(session, declaration.symbol.callableId),
+                    providedTypes = providedTypes,
+                    declaration = declaration,
+                )
+                validateFunctionRuleSemantics(declaration)
+            }
+        }
+
+    private val propertyChecker =
+        object : FirPropertyChecker(MppCheckerKind.Common) {
+            context(context: CheckerContext, reporter: DiagnosticReporter)
+            override fun check(declaration: FirProperty) {
+                if (!declaration.hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
+                    return
+                }
+                when {
+                    declaration.receiverParameter != null -> {
+                        reportInvalid(declaration, invalidInstanceExtensionProperty())
+                        return
+                    }
+
+                    declaration.status.isLateInit -> {
+                        reportInvalid(declaration, invalidInstanceLateinitProperty())
+                        return
+                    }
+
+                    declaration.isVar -> {
+                        reportInvalid(declaration, invalidInstanceMutableProperty())
+                        return
+                    }
+
+                    declaration.getter?.body != null -> {
+                        reportInvalid(declaration, invalidInstanceCustomGetterProperty())
+                        return
+                    }
+                }
+
+                val providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration)
+                if (providedTypes.validTypes.any(::isEquivType)) {
+                    reportInvalidEquiv(
+                        declaration,
+                        invalidEquivPublishedInstance(),
+                    )
+                    return
+                }
+
+                validateAssociatedScope(
+                    ownerContext = firInstanceOwnerContext(session, declaration.symbol.callableId),
+                    providedTypes = providedTypes,
+                    declaration = declaration,
+                )
+            }
+        }
+
+    override val declarationCheckers: DeclarationCheckers =
+        object : DeclarationCheckers() {
+            override val regularClassCheckers: Set<FirRegularClassChecker> = setOf(regularClassChecker)
+            override val simpleFunctionCheckers: Set<FirDeclarationChecker<FirTypeclassFunctionDeclaration>> = setOf(simpleFunctionChecker)
+            override val propertyCheckers: Set<FirPropertyChecker> = setOf(propertyChecker)
+        }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun maybeReportFunctionBodyResolutionTrace(
+        declaration: FirTypeclassFunctionDeclaration,
+    ) {
+        val activation =
+            context.resolveTypeclassTraceActivation(
+                currentContainer = declaration,
+                globalMode = sharedState.configuration.traceMode,
+            ) ?: return
+        val containingFunctions =
+            buildList {
+                addAll(context.containingDeclarations.mapNotNull { symbol -> symbol.firFunctionOrNull() })
+                add(declaration)
+            }
+        val typeContext =
+            buildFirTypeclassResolutionContext(
+                session = session,
+                sharedState = sharedState,
+                containingFunctions = containingFunctions,
+                calleeTypeParameters = emptyList(),
+            )
+        declaration.body?.acceptChildren(
+            object : FirDefaultVisitorVoid() {
+                override fun visitElement(element: FirElement) {
+                    element.acceptChildren(this)
+                }
+
+                override fun visitFunction(function: FirFunction) {
+                    return
+                }
+
+                override fun visitAnonymousFunctionExpression(anonymousFunctionExpression: FirAnonymousFunctionExpression) {
+                    return
+                }
+
+                override fun visitRegularClass(regularClass: FirRegularClass) {
+                    return
+                }
+
+                override fun visitFunctionCall(functionCall: FirFunctionCall) {
+                    maybeReportResolutionTraceForFunctionCall(
+                        functionCall = functionCall,
+                        declaration = declaration,
+                        activation = activation,
+                        typeContext = typeContext,
+                    )
+                    functionCall.acceptChildren(this)
+                }
+            },
+        )
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun maybeReportResolutionTraceForFunctionCall(
+        functionCall: FirFunctionCall,
+        declaration: FirTypeclassFunctionDeclaration,
+        activation: TypeclassTraceActivation,
+        typeContext: FirTypeclassResolutionContext,
+    ) {
+        val reference = functionCall.calleeReference
+        val referenceDiagnostic =
+            when (reference) {
+                is FirResolvedErrorReference -> reference.diagnostic
+                is FirErrorNamedReference -> reference.diagnostic
+                else -> return
+            }
+        val inapplicableCandidate = referenceDiagnostic as? ConeInapplicableCandidateError ?: return
+        val targetParameterSymbol: FirValueParameterSymbol
+        val resolvedFunction: FirNamedFunctionSymbol =
+            inapplicableCandidate.candidate.symbol as? FirNamedFunctionSymbol ?: return
+        val candidateDiagnostic =
+            inapplicableCandidate.candidate.diagnostics.firstOrNull { diagnostic ->
+                diagnostic is NoContextArgument || diagnostic is AmbiguousContextArgument
+            }
+        targetParameterSymbol =
+            when (candidateDiagnostic) {
+                is NoContextArgument -> candidateDiagnostic.symbol
+                is AmbiguousContextArgument -> candidateDiagnostic.symbol
+                else -> return
+            }
+        val function = resolvedFunction.fir
+        if (function.origin.generated) {
+            return
+        }
+        if (function.hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
+            return
+        }
+        val targetParameter =
+            function.contextParameters.firstOrNull { parameter ->
+                parameter.symbol == targetParameterSymbol
+            } ?: return
+        val inferredTypeArguments =
+            inferFunctionTypeArgumentsFromCallSite(
+                session = session,
+                functionCall = functionCall,
+                resolvedFunction = resolvedFunction,
+                containingFunction = declaration.symbol,
+                sharedState = sharedState,
+            )
+        val substitutedType =
+            substituteInferredTypes(
+                type = targetParameter.returnTypeRef.coneType,
+                substitutions = inferredTypeArguments,
+                session = session,
+            )
+        if (!sharedState.isTypeclassType(session, substitutedType)) {
+            return
+        }
+        val goal =
+            coneTypeToModel(substitutedType, typeContext.typeParameterModels)
+                ?: return
+        val planner =
+            TypeclassResolutionPlanner(
+                ruleProvider = { desiredGoal ->
+                    sharedState.rulesForGoal(
+                        session = session,
+                        goal = desiredGoal,
+                        canMaterializeVariable = typeContext.runtimeMaterializableVariableIds::contains,
+                    )
+                },
+                bindableDesiredVariableIds = typeContext.bindableVariableIds,
+            )
+        val tracedResult =
+            planner.resolveWithTrace(
+                desiredType = goal,
+                localContextTypes = typeContext.directlyAvailableContextModels,
+                explainAlternatives = activation.mode.explainsAlternatives,
+            )
+        when (tracedResult.result) {
+            is ResolutionSearchResult.Missing ->
+                reportNoContextArgumentWithTrace(
+                    expression = functionCall,
+                    narrative =
+                        TypeclassDiagnostic.NoContextArgument(
+                            goal = goal.render().replace('/', '.'),
+                            scope = "",
+                        ),
+                    trace =
+                        renderResolutionTrace(
+                            trace = tracedResult.trace,
+                            activation = activation,
+                            location = null,
+                            localContextLabels = typeContext.directlyAvailableContextLabels,
+                        ),
+                )
+            is ResolutionSearchResult.Recursive ->
+                reportNoContextArgumentWithTrace(
+                    expression = functionCall,
+                    narrative =
+                        TypeclassDiagnostic.NoContextArgument(
+                            goal = goal.render().replace('/', '.'),
+                            scope = "",
+                            recursive = true,
+                        ),
+                    trace =
+                        renderResolutionTrace(
+                            trace = tracedResult.trace,
+                            activation = activation,
+                            location = null,
+                            localContextLabels = typeContext.directlyAvailableContextLabels,
+                        ),
+                )
+            is ResolutionSearchResult.Ambiguous -> Unit
+            is ResolutionSearchResult.Success -> Unit
+        }
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun validateAssociatedScope(
+        ownerContext: InstanceOwnerContext,
+        providedTypes: ProvidedTypeExpansion,
+        declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
+    ) {
+        when {
+            providedTypes.invalidTypes.isNotEmpty() -> {
+                reportInvalid(declaration, invalidInstanceNonTypeclassSupertypes())
+                return
+            }
+
+            providedTypes.validTypes.isEmpty() -> {
+                reportInvalid(declaration, invalidInstanceMustProvideTypeclassType())
+                return
+            }
+        }
+
+        when {
+            ownerContext.isTopLevel -> {
+                if (!declaration.isLegalTopLevelInstanceLocation(session, providedTypes)) {
+                    reportInvalid(declaration, invalidInstanceTopLevelOrphan(providedTypes.topLevelInstanceHostDisplayNames().toList()))
+                }
+            }
+            !ownerContext.isCompanionScope -> {
+                reportInvalid(declaration, invalidInstanceWrongScopeCompanion())
+            }
+
+            else -> {
+                providedTypes.validTypes.forEach { providedType ->
+                    if (ownerContext.associatedOwner !in sharedState.allowedAssociatedOwnersForProvidedType(session, providedType)) {
+                        reportInvalid(declaration, invalidInstanceAssociatedOwnerMismatch())
+                        return
+                    }
+                }
+            }
+        }
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun validateFunctionRuleSemantics(
+        declaration: FirTypeclassFunctionDeclaration,
+    ) {
+        declaration.contextParameters.firstNotNullOfOrNull { parameter ->
+            invalidInstancePrerequisiteMessage(parameter.returnTypeRef.coneType)
+        }?.let { message ->
+            reportInvalid(
+                declaration,
+                when (message) {
+                    "instance function context parameters must be typeclass prerequisites" ->
+                        invalidInstanceNonTypeclassPrerequisites()
+                    "instance function typeclass prerequisites must not use star projections" ->
+                        invalidInstanceStarProjectedPrerequisites()
+                    "instance function typeclass prerequisites must not use definitely-non-null type arguments" ->
+                        invalidInstanceDefinitelyNotNullPrerequisites()
+                    else -> invalidInstanceDiagnostic(message)
+                },
+            )
+            return
+        }
+
+        val ruleShape = declaration.instanceFunctionRuleShape(session, sharedState) ?: return
+        val providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration)
+        if (providedTypes.validTypes.isEmpty()) {
+            return
+        }
+
+        ruleShape.typeParameters.forEach { parameter ->
+            if (ruleShape.declaredProvidedType.references(parameter.id)) {
+                return@forEach
+            }
+            reportInvalid(
+                declaration,
+                invalidInstanceTypeParameterOnlyInPrerequisites(parameter.displayName),
+            )
+            return
+        }
+
+        val recursiveProvidedType = providedTypes.validTypes.firstOrNull { providedType ->
+            ruleShape.prerequisites.any { prerequisite ->
+                prerequisite.normalizedKey() == providedType.normalizedKey()
+            }
+        }
+        if (recursiveProvidedType != null) {
+            reportInvalid(declaration, invalidInstanceDirectRecursive(recursiveProvidedType.renderForMessage()))
+        }
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun validateDeriveDeclaration(
+        declaration: FirRegularClass,
+    ) {
+        if (!declaration.supportsDeriveShape()) {
+            reportCannotDerive(declaration, cannotDeriveUnsupportedShape())
+            return
+        }
+        if (
+            declaration.classKind != ClassKind.OBJECT &&
+            declaration.classKind != ClassKind.ENUM_CLASS &&
+            declaration.status.modality != Modality.SEALED &&
+            declaration.declarations
+                .filterIsInstance<FirConstructor>()
+                .none { constructor -> constructor.isPrimary }
+        ) {
+            reportCannotDerive(declaration, cannotDeriveRequiresPrimaryConstructor())
+            return
+        }
+
+        declaration.derivedTypeclassIds(session).forEach { typeclassIdString ->
+            val typeclassId = runCatching { ClassId.fromString(typeclassIdString) }.getOrNull() ?: return@forEach
+            if (typeclassTypeParameterCount(typeclassId, session) != 1) {
+                reportCannotDerive(declaration, cannotDeriveOnlyUnaryTypeclasses())
+                return
+            }
+            val requiredDeriverInterface = declaration.requiredDeriverInterfaceForDeriveShape()
+            if (!typeclassSupportsDeriveShape(typeclassId, requiredDeriverInterface, session)) {
+                val requiredName = requiredDeriverInterface.shortClassName.asString()
+                val targetName = typeclassId.shortClassName.asString()
+                val message =
+                    if (declaration.classKind == ClassKind.ENUM_CLASS) {
+                        "$targetName companion must implement $requiredName; ProductTypeclassDeriver only supports products, not enums"
+                    } else if (requiredDeriverInterface == TYPECLASS_DERIVER_CLASS_ID) {
+                        "$targetName companion must implement $requiredName; ProductTypeclassDeriver only supports products, not sealed sums"
+                    } else {
+                        "$targetName companion must implement $requiredName to derive products"
+                    }
+                reportCannotDerive(
+                    declaration,
+                    cannotDeriveDiagnostic(message),
+                )
+                return@forEach
+            }
+            declaration.requiredDeriveMethodNameForDeriveShape()?.let { deriveMethodName ->
+                if (!typeclassCompanionDeclaresDeriveMethod(typeclassId, deriveMethodName, session)) {
+                    reportCannotDerive(declaration, cannotDeriveMissingEnumOverride(typeclassId.shortClassName.asString()))
+                }
+            }
+        }
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun validateDeriveViaDeclarations(
+        declaration: FirRegularClass,
+    ) {
+        declaration.resolvedAnnotationsByClassId(DERIVE_VIA_ANNOTATION_CLASS_ID, session).forEach { annotation ->
+            if (declaration.typeParameters.isNotEmpty()) {
+                reportCannotDerive(
+                    annotation,
+                    cannotDeriveDiagnostic("@DeriveVia only supports monomorphic classes for now"),
+                )
+                return@forEach
+            }
+            val typeclassId = annotation.getClassIdArgument("typeclass", session) ?: return@forEach
+            if (typeclassTypeParameterCount(typeclassId, session)?.let { it >= 1 } != true) {
+                reportCannotDerive(
+                    annotation,
+                    cannotDeriveDiagnostic("DeriveVia requires a typeclass with at least one type parameter"),
+                )
+            }
+        }
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun validateDeriveEquivDeclarations(
+        declaration: FirRegularClass,
+    ) {
+        declaration.resolvedAnnotationsByClassId(DERIVE_EQUIV_ANNOTATION_CLASS_ID, session).forEach { annotation ->
+            if (declaration.typeParameters.isNotEmpty()) {
+                reportCannotDerive(
+                    annotation,
+                    cannotDeriveDiagnostic("@DeriveEquiv only supports monomorphic classes for now"),
+                )
+                return@forEach
+            }
+            val otherClassId = annotation.getClassIdArgument("otherClass", session) ?: return@forEach
+            if (session.regularClassSymbolOrNull(otherClassId)?.fir?.typeParameters?.isEmpty() != true) {
+                reportCannotDerive(
+                    annotation,
+                    cannotDeriveDiagnostic("@DeriveEquiv only supports monomorphic classes for now"),
+                )
+            }
+        }
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun validateTypeclassDeriverCompanionContracts(
+        declaration: FirRegularClass,
+    ) {
+        val companion =
+            declaration.declarations
+                .filterIsInstance<FirRegularClass>()
+                .singleOrNull { nested -> nested.symbol.classId.shortClassName == SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT }
+                ?: return
+        val typeclassId = declaration.symbol.classId
+        val deriveMethods =
+            companion.symbol.implementedDeriveMethodContracts(session)
+                .mapNotNull { contract ->
+                    companion.symbol.resolveDeriveMethod(contract, session)?.let { function -> contract.methodName to function }
+                }
+        deriveMethods.forEach { (deriveMethodName, function) ->
+                val declaredReturnConstructors =
+                    listOf(function.returnTypeRef.coneType)
+                        .expandProvidedTypes(session, emptyMap(), sharedState.configuration)
+                        .validTypes
+                        .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
+                        .distinct()
+                if (declaredReturnConstructors.isNotEmpty()) {
+                    if (typeclassId.asString() !in declaredReturnConstructors) {
+                        reportCannotDerive(
+                            function,
+                            cannotDeriveWrongDeriverReturnType(
+                                methodName = deriveMethodName,
+                                typeclassName = typeclassId.shortClassName.asString(),
+                                foundTypeclassName =
+                                    declaredReturnConstructors.joinToString { classifierId ->
+                                        classifierId.shortClassNameOrSelf()
+                                    },
+                            ),
+                        )
+                    }
+                    return@forEach
+                }
+                function.knownDeriverReturnExpressions().forEach { expression ->
+                    val knownTypeclassConstructors =
+                        expression.knownReturnedTypeclassConstructors(session, sharedState.configuration)
+                    if (knownTypeclassConstructors.isEmpty()) {
+                        if (expression is FirAnonymousObjectExpression) {
+                            return@forEach
+                        }
+                        reportCannotDerive(
+                            function,
+                            cannotDeriveWrongDeriverReturnType(
+                                methodName = deriveMethodName,
+                                typeclassName = typeclassId.shortClassName.asString(),
+                            ),
+                        )
+                        return
+                    }
+                    if (typeclassId.asString() in knownTypeclassConstructors) {
+                        return@forEach
+                    }
+                    reportCannotDerive(
+                        function,
+                        cannotDeriveWrongDeriverReturnType(
+                            methodName = deriveMethodName,
+                            typeclassName = typeclassId.shortClassName.asString(),
+                            foundTypeclassName =
+                                knownTypeclassConstructors.joinToString { classifierId ->
+                                    classifierId.shortClassNameOrSelf()
+                                },
+                        ),
+                    )
+                    return
+                }
+            }
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportInvalid(
+        declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
+        message: String,
+    ) = reportInvalid(declaration, invalidInstanceDiagnostic(message))
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportInvalid(
+        declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
+        narrative: TypeclassDiagnostic,
+    ) {
+        val source = declaration.source ?: return
+        reporter.reportOn(
+            source,
+            TypeclassErrors.INVALID_INSTANCE_DECLARATION,
+            narrative.renderBody(),
+        )
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportInvalidEquiv(
+        declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
+        message: String,
+    ) = reportInvalidEquiv(declaration, invalidEquivDiagnostic(message))
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportInvalidEquiv(
+        declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
+        narrative: TypeclassDiagnostic,
+    ) {
+        val source = declaration.source ?: return
+        reporter.reportOn(
+            source,
+            TypeclassErrors.INVALID_EQUIV_DECLARATION,
+            narrative.renderBody(),
+        )
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportCannotDerive(
+        declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
+        message: String,
+    ) = reportCannotDerive(declaration, cannotDeriveDiagnostic(message))
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportCannotDerive(
+        declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
+        narrative: TypeclassDiagnostic,
+    ) {
+        val source = declaration.source ?: return
+        reporter.reportOn(
+            source,
+            TypeclassErrors.CANNOT_DERIVE,
+            narrative.renderBody(),
+        )
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportCannotDerive(
+        annotation: FirAnnotation,
+        message: String,
+    ) = reportCannotDerive(annotation, cannotDeriveDiagnostic(message))
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportCannotDerive(
+        annotation: FirAnnotation,
+        narrative: TypeclassDiagnostic,
+    ) {
+        val source = annotation.source ?: return
+        reporter.reportOn(
+            source,
+            TypeclassErrors.CANNOT_DERIVE,
+            narrative.renderBody(),
+        )
+    }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportNoContextArgumentWithTrace(
+        expression: FirExpression,
+        narrative: TypeclassDiagnostic.NoContextArgument,
+        trace: String,
+    ) {
+        val source = expression.source ?: return
+        reporter.reportOn(
+            source,
+            TypeclassErrors.NO_CONTEXT_ARGUMENT,
+            "${narrative.renderBody()}\n$trace",
+        )
+    }
+
+    private fun FirBasedSymbol<*>.firFunctionOrNull(): FirFunction? = fir as? FirFunction
+
+    private fun invalidInstancePrerequisiteMessage(type: ConeKotlinType): String? =
+        when {
+            !sharedState.isTypeclassType(session, type) ->
+                "instance function context parameters must be typeclass prerequisites"
+
+            containsStarProjection(type) ->
+                "instance function typeclass prerequisites must not use star projections"
+
+            containsDefinitelyNonNullOrIntersection(type) ->
+                "instance function typeclass prerequisites must not use definitely-non-null type arguments"
+
+            else -> null
+        }
+
+}
+
+private fun FirRegularClass.directlyExtendsEquiv(): Boolean =
+    superTypeRefs.any { superTypeRef ->
+        superTypeRef.coneType.classId == EQUIV_CLASS_ID
+    }
+
+private fun isEquivType(type: TcType): Boolean =
+    (type as? TcType.Constructor)?.classifierId == EQUIV_CLASS_ID.asString()
+
+private fun FirTypeclassFunctionDeclaration.knownDeriverReturnExpressions(): List<FirExpression> {
+    val expressions = linkedSetOf<FirExpression>()
+    val body = body ?: return emptyList()
+    body.statements.lastOrNull()?.let { statement ->
+        when (statement) {
+            is FirReturnExpression -> expressions += statement.result
+            is FirExpression -> expressions += statement
+        }
+    }
+    body.acceptChildren(
+        object : FirDefaultVisitorVoid() {
+            override fun visitElement(element: FirElement) {
+                element.acceptChildren(this)
+            }
+
+            override fun visitFunction(function: FirFunction) {
+                return
+            }
+
+            override fun visitAnonymousFunctionExpression(anonymousFunctionExpression: FirAnonymousFunctionExpression) {
+                return
+            }
+
+            override fun visitRegularClass(regularClass: FirRegularClass) {
+                return
+            }
+
+            override fun visitReturnExpression(returnExpression: FirReturnExpression) {
+                if (returnExpression.target.labeledElement === this@knownDeriverReturnExpressions) {
+                    expressions += returnExpression.result
+                }
+                returnExpression.result.acceptChildren(this)
+            }
+        },
+    )
+    return expressions.toList()
+}
+
+private fun FirExpression.knownReturnedTypeclassConstructors(
+    session: FirSession,
+    configuration: TypeclassConfiguration,
+): List<String> {
+    val knownConstructors = linkedSetOf<String>()
+    safeResolvedOrInferredTypeOrNull(session)?.let { resolvedType ->
+        listOf(resolvedType)
+            .expandProvidedTypes(session, emptyMap(), configuration)
+            .validTypes
+            .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
+            .forEach(knownConstructors::add)
+    }
+    implementationClassIdForKnownReturn(session)?.let { implementationClassId ->
+        knownTypeclassConstructorsForImplementation(implementationClassId, session, configuration)
+            .forEach(knownConstructors::add)
+    }
+    if (this is FirAnonymousObjectExpression) {
+        anonymousObject.superTypeRefs
+            .mapNotNull { typeRef ->
+                val classifierId = typeRef.coneType.lowerBoundIfFlexible().classId?.asString() ?: return@mapNotNull null
+                classifierId.takeIf { configuration.supportsReturnedTypeclassClassifierId(it, session) }
+            }.forEach(knownConstructors::add)
+    }
+    return knownConstructors.toList()
+}
+
+private fun FirExpression.implementationClassIdForKnownReturn(
+    session: FirSession,
+): ClassId? =
+    when (this) {
+        is FirResolvedQualifier -> symbol?.classId ?: classId
+        is FirFunctionCall ->
+            ((calleeReference as? FirResolvedNamedReference)?.resolvedSymbol as? FirCallableSymbol<*>)?.callableId?.classId
+        is FirPropertyAccessExpression ->
+            ((calleeReference as? FirResolvedNamedReference)?.resolvedSymbol as? FirCallableSymbol<*>)?.resolvedReturnType
+                ?.lowerBoundIfFlexible()
+                ?.classId
+        else -> null
+    }?.takeUnless(ClassId::isLocal)
+
+private fun knownTypeclassConstructorsForImplementation(
+    implementationClassId: ClassId,
+    session: FirSession,
+    configuration: TypeclassConfiguration,
+): List<String> {
+    val classSymbol = session.regularClassSymbolOrNull(implementationClassId) ?: return emptyList()
+    return classSymbol.fir.declaredOrResolvedSuperTypes()
+        .expandProvidedTypes(session, emptyMap(), configuration)
+        .validTypes
+        .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
+        .distinct()
+}
+
+private fun TypeclassConfiguration.supportsReturnedTypeclassClassifierId(
+    classifierId: String,
+    session: FirSession,
+): Boolean {
+    val classId = runCatching { ClassId.fromString(classifierId) }.getOrNull() ?: return false
+    if (isBuiltinTypeclass(classId)) {
+        return true
+    }
+    if (classId.isLocal) {
+        return false
+    }
+    val classSymbol =
+        try {
+            session.firProvider.symbolProvider.getClassLikeSymbolByClassId(classId) as? FirRegularClassSymbol
+        } catch (_: IllegalArgumentException) {
+            null
+        } ?: return false
+    return classSymbol.fir.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)
+}
+
+private fun String.shortClassNameOrSelf(): String =
+    runCatching { ClassId.fromString(this).shortClassName.asString() }.getOrDefault(this)
+
+private fun containsStarProjection(type: ConeKotlinType): Boolean {
+    val lowerBound = type.lowerBoundIfFlexible()
+    return when (lowerBound) {
+        is ConeClassLikeType ->
+            lowerBound.typeArguments.any { argument ->
+                argument is ConeStarProjection || argument.type?.let(::containsStarProjection) == true
+            }
+
+        is ConeDefinitelyNotNullType -> containsStarProjection(lowerBound.original)
+        else -> false
+    }
+}
+
+private fun containsDefinitelyNonNullOrIntersection(type: ConeKotlinType): Boolean {
+    val lowerBound = type.lowerBoundIfFlexible()
+    return when (lowerBound) {
+        is ConeDefinitelyNotNullType -> true
+        is ConeIntersectionType -> true
+        is ConeClassLikeType ->
+            lowerBound.typeArguments.any { argument ->
+                argument.type?.let(::containsDefinitelyNonNullOrIntersection) == true
+            }
+
+        else -> false
+    }
+}
+
+private data class InstanceFunctionRuleShape(
+    val typeParameters: List<TcTypeParameter>,
+    val declaredProvidedType: TcType,
+    val prerequisites: List<TcType>,
+)
+
+private fun FirTypeclassFunctionDeclaration.instanceFunctionRuleShape(
+    session: FirSession,
+    sharedState: TypeclassPluginSharedState,
+): InstanceFunctionRuleShape? {
+    val typeParameters =
+        typeParameters.mapIndexed { index, typeParameter ->
+            TcTypeParameter(
+                id = "fir-function:${symbol.callableId}:$index:${typeParameter.symbol.name.asString()}",
+                displayName = typeParameter.symbol.name.asString(),
+            )
+        }
+    val typeParameterBySymbol =
+        this.typeParameters.zip(typeParameters).associate { (typeParameter, parameter) ->
+            typeParameter.symbol to parameter
+        }
+    val declaredProvidedType = coneTypeToModel(returnTypeRef.coneType, typeParameterBySymbol) ?: return null
+    val prerequisites =
+        contextParameters.mapNotNull { parameter ->
+            parameter.returnTypeRef.coneType
+                .takeIf { type -> sharedState.isTypeclassType(session, type) }
+                ?.let { type -> coneTypeToModel(type, typeParameterBySymbol) }
+        }
+    if (prerequisites.size != contextParameters.size) {
+        return null
+    }
+    return InstanceFunctionRuleShape(
+        typeParameters = typeParameters,
+        declaredProvidedType = declaredProvidedType,
+        prerequisites = prerequisites,
+    )
+}
+
+private fun TcType.renderForMessage(): String =
+    when (this) {
+        TcType.StarProjection -> "*"
+        is TcType.Projected -> "${variance.label} ${type.renderForMessage()}"
+        is TcType.Constructor -> classifierId.substringAfterLast('.')
+        is TcType.Variable -> displayName
+    }

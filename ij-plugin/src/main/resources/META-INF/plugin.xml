@@ -1,0 +1,24 @@
+<idea-plugin>
+    <id>one.wabbit.typeclass.ide</id>
+    <name>Typeclass IDE Support</name>
+    <version>0.0.2</version>
+    <vendor email="wabbit@wabbit.one" url="https://wabbit.one">Wabbit Consulting Corporation</vendor>
+    <description>Enables IntelliJ-side support for one.wabbit kotlin-typeclasses projects by allowing the Kotlin IDE plugin to load the external compiler plugin registrar from imported compiler arguments.</description>
+    <change-notes>Initial release.</change-notes>
+    <extensions defaultExtensionNs="com.intellij">
+        <backgroundPostStartupActivity implementation="one.wabbit.typeclass.idea.TypeclassIdeSupportActivity" />
+        <notificationGroup id="TypeclassIdeSupport" displayType="BALLOON" />
+    </extensions>
+    <extensions defaultExtensionNs="org.jetbrains.kotlin">
+        <supportsKotlinPluginMode supportsK2="true" />
+    </extensions>
+    <actions>
+        <action id="one.wabbit.typeclass.idea.RefreshTypeclassIdeSupportAction" class="one.wabbit.typeclass.idea.RefreshTypeclassIdeSupportAction" text="Refresh Typeclass IDE Support" description="Re-scan Kotlin compiler arguments and enable typeclass IDE support for this project session.">
+            <add-to-group group-id="ToolsMenu" anchor="last" />
+        </action>
+    </actions>
+    <idea-version since-build="253" />
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.gradle</depends>
+    <depends>org.jetbrains.kotlin</depends>
+</idea-plugin>
