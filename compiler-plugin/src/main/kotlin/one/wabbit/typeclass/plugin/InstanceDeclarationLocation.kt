@@ -35,13 +35,10 @@ internal fun FirDeclaration.isLegalTopLevelInstanceLocation(
         // but their original source file path is no longer available here.
         // Trust the producing compilation to have enforced the top-level placement rule.
         ?: return source == null
-    val allowedPaths =
-        providedTypes.declaredTypes.flatMapTo(linkedSetOf()) { type ->
-            type.referencedClassifierIds().mapNotNull { classifierId ->
-                session.classifierSourceFilePath(classifierId)
-            }
+    return providedTypes.declaredTypes.isNotEmpty() &&
+        providedTypes.declaredTypes.all { declaredType ->
+            declarationPath in declaredType.topLevelInstanceHostPaths(session)
         }
-    return declarationPath in allowedPaths
 }
 
 internal fun IrDeclarationBase.isLegalTopLevelInstanceLocation(
@@ -49,14 +46,21 @@ internal fun IrDeclarationBase.isLegalTopLevelInstanceLocation(
     sourceClassesById: Map<String, IrClass>,
 ): Boolean {
     val declarationPath = containingIrFile()?.fileEntry?.name ?: return false
-    val allowedPaths =
-        providedTypes.flatMapTo(linkedSetOf()) { type ->
-            type.referencedClassifierIds().mapNotNull { classifierId ->
-                sourceClassesById[classifierId]?.containingIrFile()?.fileEntry?.name
-            }
+    return providedTypes.isNotEmpty() &&
+        providedTypes.all { providedType ->
+            declarationPath in providedType.topLevelInstanceHostPaths(sourceClassesById)
         }
-    return declarationPath in allowedPaths
 }
+
+private fun TcType.topLevelInstanceHostPaths(session: FirSession): Set<String> =
+    referencedClassifierIds().mapNotNullTo(linkedSetOf()) { classifierId ->
+        session.classifierSourceFilePath(classifierId)
+    }
+
+private fun TcType.topLevelInstanceHostPaths(sourceClassesById: Map<String, IrClass>): Set<String> =
+    referencedClassifierIds().mapNotNullTo(linkedSetOf()) { classifierId ->
+        sourceClassesById[classifierId]?.containingIrFile()?.fileEntry?.name
+    }
 
 private fun FirSession.classifierSourceFilePath(classifierId: String): String? {
     val classId = runCatching { ClassId.fromString(classifierId) }.getOrNull() ?: return null
@@ -78,7 +82,6 @@ private fun FirDeclaration.sourcePsiFilePath(): String? {
         when (sourceElement) {
             is KtPsiSourceElement -> sourceElement
             is KtLightSourceElement -> sourceElement.unwrapToKtPsiSourceElement()
-            else -> null
         } ?: return null
     val file = psiSource.psi.getContainingFile()
     return file.getVirtualFile()?.path ?: file.getOriginalFile().getVirtualFile()?.path ?: file.getName()

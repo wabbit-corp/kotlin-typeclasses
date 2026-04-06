@@ -811,4 +811,54 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             expectedStdout = "box",
         )
     }
+
+    @Test
+    fun rejectsTopLevelMultiHeadInstancesWhenAnyHeadIsOrphaned() {
+        val sources =
+            mapOf(
+                "demo/Show.kt" to
+                    """
+                    package demo
+
+                    import one.wabbit.typeclass.Instance
+                    import one.wabbit.typeclass.Typeclass
+
+                    @Typeclass
+                    interface Show<A> {
+                        fun show(value: A): String
+                    }
+
+                    @Instance
+                    object IntShowEq : Show<Int>, Eq<Int> { // E:TC_INVALID_INSTANCE_DECL one legal head must not launder a second orphan head
+                        override fun show(value: Int): String = "show:${'$'}value"
+
+                        override fun eq(left: Int, right: Int): Boolean = left == right
+                    }
+                    """.trimIndent(),
+                "demo/Eq.kt" to
+                    """
+                    package demo
+
+                    import one.wabbit.typeclass.Typeclass
+
+                    @Typeclass
+                    interface Eq<A> {
+                        fun eq(left: A, right: A): Boolean
+                    }
+                    """.trimIndent(),
+            )
+
+        assertDoesNotCompile(
+            sources = sources,
+            expectedDiagnostics =
+                listOf(
+                    expectedInvalidInstanceDecl(
+                        "top-level orphan",
+                        "same file as one of",
+                        "Show",
+                        "Eq",
+                    ),
+                ),
+        )
+    }
 }
