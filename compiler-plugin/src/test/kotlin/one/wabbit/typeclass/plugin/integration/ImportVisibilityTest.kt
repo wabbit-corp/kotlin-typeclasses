@@ -5,6 +5,48 @@ package one.wabbit.typeclass.plugin.integration
 import kotlin.test.Test
 
 class ImportVisibilityTest : IntegrationTestSupport() {
+    @Test fun privateTopLevelInstancesDoNotInfluenceIrContextualOverloadFallbackAcrossFiles() {
+        val sources =
+            mapOf(
+                "demo/Api.kt" to
+                    """
+                    package demo
+
+                    import one.wabbit.typeclass.Instance
+                    import one.wabbit.typeclass.Typeclass
+
+                    @Typeclass
+                    interface Show<A> {
+                        fun label(): String
+                    }
+
+                    @Instance
+                    private object HiddenIntShow : Show<Int> {
+                        override fun label(): String = "hidden"
+                    }
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    context(_: Show<Int>)
+                    fun render(value: Int): String = "context:${'$'}value"
+
+                    fun render(value: Int): String = "plain:${'$'}value"
+
+                    fun main() {
+                        println(render(1))
+                    }
+                    """.trimIndent(),
+            )
+
+        assertCompilesAndRuns(
+            sources = sources,
+            expectedStdout = "plain:1",
+            mainClass = "demo.MainKt",
+        )
+    }
+
     @Test fun topLevelInstancesDeclaredBesideTypeclassHeadsRemainUsable() {
         val sources =
             mapOf(
@@ -742,6 +784,61 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
+            dependencies = listOf(dependency),
+        )
+    }
+
+    @Test fun nonPublicDependencyAssociatedInstancesDoNotInfluenceIrContextualOverloadFallback() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-internal-associated-instance",
+                sources =
+                    mapOf(
+                        "dep/Api.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.Instance
+                            import one.wabbit.typeclass.Typeclass
+
+                            @Typeclass
+                            interface Show<A> {
+                                fun label(): String
+                            }
+
+                            data class Box(val value: Int) {
+                                companion object {
+                                    @Instance
+                                    internal val show: Show<Box> =
+                                        object : Show<Box> {
+                                            override fun label(): String = "hidden"
+                                        }
+                                }
+                            }
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.Box
+            import dep.Show
+
+            context(_: Show<Box>)
+            fun render(value: Box): String = "context:${'$'}{value.value}"
+
+            fun render(value: Box): String = "plain:${'$'}{value.value}"
+
+            fun main() {
+                println(render(Box(1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain:1",
+            mainClass = "demo.SampleKt",
             dependencies = listOf(dependency),
         )
     }

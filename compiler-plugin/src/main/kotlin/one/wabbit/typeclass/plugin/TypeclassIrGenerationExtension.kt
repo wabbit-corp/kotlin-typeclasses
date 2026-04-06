@@ -61,6 +61,7 @@ import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationBase
+import org.jetbrains.kotlin.ir.declarations.IrDeclarationWithVisibility
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationParent
 import org.jetbrains.kotlin.ir.declarations.IrEnumEntry
@@ -2308,6 +2309,17 @@ private fun IrExpression.knownReturnedTypeclassConstructorsOrEmpty(
 private fun String.shortClassNameOrSelf(): String =
     runCatching { ClassId.fromString(this).shortClassName.asString() }.getOrDefault(this)
 
+private fun IrDeclaration.isVisibleTypeclassRuleCandidate(): Boolean {
+    val visibleDeclaration = this as? IrDeclarationWithVisibility ?: return false
+    if (visibleDeclaration.visibility == DescriptorVisibilities.PRIVATE) {
+        return false
+    }
+    if (origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB && visibleDeclaration.visibility != DescriptorVisibilities.PUBLIC) {
+        return false
+    }
+    return true
+}
+
 private class IrRuleIndex private constructor(
     private val pluginContext: IrPluginContext,
     val configuration: TypeclassConfiguration,
@@ -2485,7 +2497,7 @@ private class IrRuleIndex private constructor(
         idPrefix: String,
         associatedOwner: ClassId,
     ): List<ResolvedRule> {
-        if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) || !irInstanceOwnerContext(this).isIndexableScope) {
+        if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) || !irInstanceOwnerContext(this).isIndexableScope || !isVisibleTypeclassRuleCandidate()) {
             return emptyList()
         }
         return superTypes.providedTypeExpansion(emptyMap(), configuration).validTypes.map { providedType ->
@@ -2511,7 +2523,7 @@ private class IrRuleIndex private constructor(
         idPrefix: String,
         associatedOwner: ClassId,
     ): List<ResolvedRule> {
-        if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) || !irInstanceOwnerContext(this).isIndexableScope) {
+        if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) || !irInstanceOwnerContext(this).isIndexableScope || !isVisibleTypeclassRuleCandidate()) {
             return emptyList()
         }
         if (extensionReceiverParameter != null) {
@@ -2559,7 +2571,7 @@ private class IrRuleIndex private constructor(
         idPrefix: String,
         associatedOwner: ClassId,
     ): List<ResolvedRule> {
-        if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) || !irInstanceOwnerContext(this).isIndexableScope) {
+        if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) || !irInstanceOwnerContext(this).isIndexableScope || !isVisibleTypeclassRuleCandidate()) {
             return emptyList()
         }
         val getter = getter ?: return emptyList()
@@ -3003,7 +3015,7 @@ private class IrModuleScanner(
         if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID)) {
             return emptyList()
         }
-        if (!irInstanceOwnerContext(this).isIndexableScope) {
+        if (!irInstanceOwnerContext(this).isIndexableScope || !isVisibleTypeclassRuleCandidate()) {
             return emptyList()
         }
         val providedTypeExpansion = superTypes.providedTypeExpansion(emptyMap(), configuration)
@@ -3037,7 +3049,7 @@ private class IrModuleScanner(
         if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID)) {
             return emptyList()
         }
-        if (!irInstanceOwnerContext(this).isIndexableScope) {
+        if (!irInstanceOwnerContext(this).isIndexableScope || !isVisibleTypeclassRuleCandidate()) {
             return emptyList()
         }
         if (extensionReceiverParameter != null) {
@@ -3095,7 +3107,7 @@ private class IrModuleScanner(
         if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID)) {
             return emptyList()
         }
-        if (!irInstanceOwnerContext(this).isIndexableScope) {
+        if (!irInstanceOwnerContext(this).isIndexableScope || !isVisibleTypeclassRuleCandidate()) {
             return emptyList()
         }
         val getter = getter ?: return emptyList()
