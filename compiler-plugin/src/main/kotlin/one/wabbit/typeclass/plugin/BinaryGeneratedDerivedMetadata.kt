@@ -87,8 +87,8 @@ private fun parseGeneratedDerivedMetadata(
                 visible: Boolean,
             ): AnnotationVisitor? =
                 when (descriptor) {
-                    generatedDescriptor -> generatedMetadataAnnotationVisitor(entries::add, ownerId)
-                    containerDescriptor -> generatedMetadataContainerVisitor(entries::add, ownerId, generatedDescriptor)
+                    generatedDescriptor -> generatedMetadataAnnotationVisitor(entries, ownerId)
+                    containerDescriptor -> generatedMetadataContainerVisitor(entries, ownerId, generatedDescriptor)
                     else -> null
                 }
         },
@@ -98,7 +98,7 @@ private fun parseGeneratedDerivedMetadata(
 }
 
 private fun generatedMetadataContainerVisitor(
-    addEntry: (GeneratedDerivedMetadata) -> Unit,
+    entries: MutableList<GeneratedDerivedMetadata>,
     ownerId: String,
     generatedDescriptor: String,
 ): AnnotationVisitor =
@@ -111,7 +111,7 @@ private fun generatedMetadataContainerVisitor(
                         descriptor: String,
                     ): AnnotationVisitor? =
                         if (descriptor == generatedDescriptor) {
-                            generatedMetadataAnnotationVisitor(addEntry, ownerId)
+                            generatedMetadataAnnotationVisitor(entries, ownerId)
                         } else {
                             null
                         }
@@ -122,7 +122,7 @@ private fun generatedMetadataContainerVisitor(
     }
 
 private fun generatedMetadataAnnotationVisitor(
-    addEntry: (GeneratedDerivedMetadata) -> Unit,
+    entries: MutableList<GeneratedDerivedMetadata>,
     ownerId: String,
 ): AnnotationVisitor =
     object : AnnotationVisitor(Opcodes.ASM9) {
@@ -144,13 +144,17 @@ private fun generatedMetadataAnnotationVisitor(
         }
 
         override fun visitEnd() {
-            decodeGeneratedDerivedMetadata(
+            val metadata =
+                decodeGeneratedDerivedMetadata(
                 typeclassId = typeclassId,
                 targetId = targetId,
                 kind = kind,
                 payload = payload,
                 expectedOwnerId = ownerId,
-            )?.let(addEntry)
+            )
+            if (metadata != null) {
+                entries += metadata
+            }
         }
     }
 

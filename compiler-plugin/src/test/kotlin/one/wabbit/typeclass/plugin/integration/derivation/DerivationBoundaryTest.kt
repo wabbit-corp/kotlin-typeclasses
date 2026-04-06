@@ -197,6 +197,86 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun invalidConstructiveProductShapeFailsAtFirUseSites() {
+        val sources =
+            mapOf(
+                "shared/Show.kt" to showTypeclassSource(packageName = "shared"),
+                "shared/ShownInt.kt" to shownIntSource("shared"),
+                "shared/Stats.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Derive
+
+                    @Derive(Show::class)
+                    class Stats(count: ShownInt) {
+                        val total: ShownInt = count
+                    }
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import shared.ShownInt
+                    import shared.Stats
+                    import shared.render
+
+                    fun main() {
+                        println(render(Stats(ShownInt(1)))) // E:TC_NO_CONTEXT_ARGUMENT invalid product derivation must not hide missing Show<Stats>
+                    }
+                    """.trimIndent(),
+            )
+
+        assertDoesNotCompile(
+            sources = sources,
+            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.FIR)),
+            unexpectedMessages = listOf("internal compiler error"),
+        )
+    }
+
+    @Test
+    fun unrecoverableSealedCaseTypeFailsAtFirUseSites() {
+        val sources =
+            mapOf(
+                "shared/Show.kt" to showTypeclassSource(packageName = "shared"),
+                "shared/Expr.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Derive
+
+                    @Derive(Show::class)
+                    sealed interface Expr
+                    """.trimIndent(),
+                "shared/Lit.kt" to
+                    """
+                    package shared
+
+                    data class Lit<T>(val value: T) : Expr
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import shared.Expr
+                    import shared.Lit
+                    import shared.render
+
+                    fun main() {
+                        val expr: Expr = Lit(1)
+                        println(render(expr)) // E:TC_NO_CONTEXT_ARGUMENT unrecoverable sealed cases must not look derivable in FIR
+                    }
+                    """.trimIndent(),
+            )
+
+        assertDoesNotCompile(
+            sources = sources,
+            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.FIR)),
+            unexpectedMessages = listOf("internal compiler error"),
+        )
+    }
+
+    @Test
     fun consumerModuleCanUseDerivedSealedInstancesFromDependencyModules() {
         val dependency =
             HarnessDependency(

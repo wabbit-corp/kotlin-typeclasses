@@ -17,6 +17,7 @@ import one.wabbit.typeclass.plugin.model.isExactTypeIdentity
 import one.wabbit.typeclass.plugin.model.isProvablyNotNullable
 import one.wabbit.typeclass.plugin.model.isProvablyNullable
 import one.wabbit.typeclass.plugin.model.normalizedKey
+import one.wabbit.typeclass.plugin.model.referencedVariableIds
 import one.wabbit.typeclass.plugin.model.render
 import one.wabbit.typeclass.plugin.model.substituteType
 import one.wabbit.typeclass.plugin.model.unifyTypes
@@ -736,45 +737,13 @@ private data class ResolutionIndex(
             return emptyList()
         }
         if (declaration.status.modality == Modality.SEALED) {
-            val rootClassId = declaration.symbol.classId
-            val subclassIds =
-                buildSet {
-                    addAll(
-                        classInfoById
-                            .filterValues { info -> rootClassId.asString() in info.superClassifiers }
-                            .keys,
-                    )
-                    addAll(
-                        declaration
-                            .getSealedClassInheritors(session)
-                            .map(ClassId::asString),
-                    )
-                }
-            if (subclassIds.isEmpty()) {
-                return null
-            }
-            val caseTypes =
-                subclassIds.map { subclassId ->
-                    deriveSealedCaseType(
-                        rootClassId = rootClassId,
-                        rootTargetType = targetType,
-                        rootTypeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.symbol.fir.variance },
-                        subclassId = subclassId,
-                        session = session,
-                    ) ?: return null
-                }
-            return caseTypes.map { caseType ->
-                TcType.Constructor(
-                    classifierId = directTypeclassId,
-                    arguments = listOf(caseType),
-                )
-            }
+            return exactSealedShapeDerivedPrerequisiteGoals(
+                directTypeclassId = directTypeclassId,
+                targetType = targetType,
+                declaration = declaration,
+                session = session,
+            )
         }
-        val constructor =
-            declaration.declarations
-                .filterIsInstance<org.jetbrains.kotlin.fir.declarations.FirConstructor>()
-                .singleOrNull { candidate -> candidate.isPrimary }
-                ?: return null
         val ruleTypeParameters =
             declaration.typeParameters.mapIndexed { index, typeParameter ->
                 TcTypeParameter(
@@ -789,8 +758,34 @@ private data class ResolutionIndex(
         val appliedBindings =
             ruleTypeParameters.zip(targetType.arguments)
                 .associate { (parameter, appliedType) -> parameter.id to appliedType }
-        return constructor.valueParameters.map { parameter ->
-            val fieldType = coneTypeToModel(parameter.returnTypeRef.coneType, typeParameterBySymbol) ?: return null
+        val constructor =
+            declaration.declarations
+                .filterIsInstance<org.jetbrains.kotlin.fir.declarations.FirConstructor>()
+                .singleOrNull { candidate -> candidate.isPrimary }
+                ?: return null
+        if (constructor.status.visibility != Visibilities.Public) {
+            return null
+        }
+        val storedProperties =
+            declaration.declarations
+                .filterIsInstance<FirProperty>()
+                .filter { property -> property.getter != null && property.backingField != null }
+        val visibleStoredProperties =
+            storedProperties.map { property ->
+                val getter = property.getter ?: return null
+                if (property.status.visibility != Visibilities.Public || getter.status.visibility != Visibilities.Public) {
+                    return null
+                }
+                property
+            }
+        val constructorParameterNames = constructor.valueParameters.map { parameter -> parameter.name.asString() }
+        val fieldNames = visibleStoredProperties.map { property -> property.name.asString() }
+        if (constructorParameterNames != fieldNames) {
+            return null
+        }
+        return visibleStoredProperties.map { property ->
+            val getter = property.getter ?: return null
+            val fieldType = coneTypeToModel(getter.returnTypeRef.coneType, typeParameterBySymbol) ?: return null
             TcType.Constructor(
                 classifierId = directTypeclassId,
                 arguments = listOf(fieldType.substituteType(appliedBindings)),
@@ -1105,80 +1100,16 @@ private data class ResolutionIndex(
         if (declaration.source == null) {
             return true
         }
-        if (!declaration.supportsDeriveShape()) {
-            return false
-        }
-        if (declaration.classKind == ClassKind.OBJECT || declaration.classKind == ClassKind.ENUM_CLASS) {
-            return true
-        }
-        if (declaration.status.modality == Modality.SEALED) {
-            val subclassIds =
-                buildSet {
-                    addAll(
-                        classInfoById
-                            .filterValues { info -> classId.asString() in info.superClassifiers }
-                            .keys,
-                    )
-                    addAll(
-                        declaration
-                            .getSealedClassInheritors(session)
-                            .map(ClassId::asString),
-                    )
-                }
-            if (subclassIds.isEmpty()) {
-                return false
-            }
-            return subclassIds.all { subclassId ->
-                val caseType =
-                    deriveSealedCaseType(
-                        rootClassId = classId,
-                        rootTargetType = targetType,
-                        rootTypeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.symbol.fir.variance },
-                        subclassId = subclassId,
-                        session = session,
-                    ) ?: return@all true
-                canDeriveGoal(
-                    goal =
-                        TcType.Constructor(
-                            classifierId = directTypeclassId,
-                            arguments = listOf(caseType),
-                        ),
-                    session = session,
-                    availableContexts = availableContexts,
-                    visiting = visiting,
-                    canMaterializeVariable = canMaterializeVariable,
-                    builtinGoalAcceptance = builtinGoalAcceptance,
-                    exactBuiltinGoalContext = exactBuiltinGoalContext,
-                )
-            }
-        }
-        val constructor =
-            declaration.declarations
-                .filterIsInstance<org.jetbrains.kotlin.fir.declarations.FirConstructor>()
-                .singleOrNull { candidate -> candidate.isPrimary }
-                ?: return false
-        val ruleTypeParameters =
-            declaration.typeParameters.mapIndexed { index, typeParameter ->
-                TcTypeParameter(
-                    id = "${classId.asString()}#$index",
-                    displayName = typeParameter.symbol.name.asString(),
-                )
-            }
-        val typeParameterBySymbol =
-            declaration.typeParameters.zip(ruleTypeParameters).associate { (typeParameter, parameter) ->
-                typeParameter.symbol to parameter
-            }
-        val appliedBindings =
-            ruleTypeParameters.zip(targetType.arguments)
-                .associate { (parameter, appliedType) -> parameter.id to appliedType }
-        return constructor.valueParameters.all { parameter ->
-            val fieldType = coneTypeToModel(parameter.returnTypeRef.coneType, typeParameterBySymbol) ?: return@all false
+        val prerequisiteGoals =
+            exactShapeDerivedPrerequisiteGoals(
+                directTypeclassId = directTypeclassId,
+                targetType = targetType,
+                declaration = declaration,
+                session = session,
+            ) ?: return false
+        return prerequisiteGoals.all { prerequisiteGoal ->
             canDeriveGoal(
-                goal =
-                    TcType.Constructor(
-                        classifierId = directTypeclassId,
-                        arguments = listOf(fieldType.substituteType(appliedBindings)),
-                    ),
+                goal = prerequisiteGoal,
                 session = session,
                 availableContexts = availableContexts,
                 visiting = visiting,
@@ -1248,6 +1179,524 @@ private data class ResolutionIndex(
             it.containsAnyVariableIds(subclassVariableIds)
         }
     }
+
+    private fun exactSealedShapeDerivedPrerequisiteGoals(
+        directTypeclassId: String,
+        targetType: TcType.Constructor,
+        declaration: FirRegularClass,
+        session: FirSession,
+    ): List<TcType>? {
+        val rootClassId = declaration.symbol.classId
+        val subclassIds =
+            buildSet {
+                addAll(
+                    classInfoById
+                        .filterValues { info -> rootClassId.asString() in info.superClassifiers }
+                        .keys,
+                )
+                addAll(
+                    declaration
+                        .getSealedClassInheritors(session)
+                        .map(ClassId::asString),
+                )
+            }
+        if (subclassIds.isEmpty()) {
+            return null
+        }
+        val caseInfos =
+            subclassIds.map { subclassId ->
+                buildFirDerivedSumCaseInfo(
+                    rootClassId = rootClassId,
+                    subclassId = subclassId,
+                    session = session,
+                ) ?: return null
+            }
+        val typeclassId = runCatching { ClassId.fromString(directTypeclassId) }.getOrNull() ?: return null
+        val typeclassInterface = session.regularClassSymbolOrNull(typeclassId)?.fir ?: return null
+        val conservativeOnly = typeclassInterface.firGadtAdmissionMode(session) == FirGadtAdmissionMode.CONSERVATIVE_ONLY
+        val rootVariances = declaration.typeParameters.map { typeParameter -> typeParameter.symbol.fir.variance }
+        val prerequisiteGoals = mutableListOf<TcType>()
+        caseInfos.forEach { caseInfo ->
+            when (val admission = caseInfo.admitToTargetCandidate(targetType, rootVariances, conservativeOnly)) {
+                is FirCaseAdmission.Rejected -> return null
+                FirCaseAdmission.Ignored -> Unit
+                is FirCaseAdmission.Admitted ->
+                    prerequisiteGoals +=
+                        TcType.Constructor(
+                            classifierId = directTypeclassId,
+                            arguments = listOf(admission.caseType),
+                        )
+            }
+        }
+        return prerequisiteGoals.takeIf { it.isNotEmpty() }
+    }
+
+    private fun buildFirDerivedSumCaseInfo(
+        rootClassId: ClassId,
+        subclassId: String,
+        session: FirSession,
+    ): FirDerivedSumCaseInfo? {
+        val parsedSubclassId = runCatching { ClassId.fromString(subclassId) }.getOrNull() ?: return null
+        val subclassDeclaration = session.regularClassSymbolOrNull(parsedSubclassId)?.fir ?: return null
+        val caseTypeParameters =
+            subclassDeclaration.typeParameters.mapIndexed { index, typeParameter ->
+                TcTypeParameter(
+                    id = "${parsedSubclassId.asString()}#$index",
+                    displayName = typeParameter.symbol.name.asString(),
+                )
+            }
+        val typeParameterBySymbol =
+            subclassDeclaration.typeParameters.zip(caseTypeParameters).associate { (typeParameter, parameter) ->
+                typeParameter.symbol to parameter
+            }
+        val projectedHead =
+            subclassDeclaration.superTypeRefs
+                .firstOrNull { superTypeRef -> superTypeRef.coneType.classId == rootClassId }
+                ?.let { superTypeRef -> coneTypeToModel(superTypeRef.coneType, typeParameterBySymbol) }
+                as? TcType.Constructor ?: return null
+        val fieldTypes =
+            subclassDeclaration.declarations
+                .filterIsInstance<FirProperty>()
+                .filter { property -> property.getter != null && property.backingField != null }
+                .map { property ->
+                    val getter = property.getter ?: return null
+                    coneTypeToModel(getter.returnTypeRef.coneType, typeParameterBySymbol) ?: return null
+                }
+        return FirDerivedSumCaseInfo(
+            projectedHead = projectedHead,
+            subclassDeclaredType =
+                TcType.Constructor(
+                    classifierId = parsedSubclassId.asString(),
+                    arguments = caseTypeParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) },
+                ),
+            caseTypeParameters = caseTypeParameters,
+            fieldTypes = fieldTypes,
+        )
+    }
+
+    private fun FirDerivedSumCaseInfo.admitToTargetCandidate(
+        targetType: TcType.Constructor,
+        rootVariances: List<Variance>,
+        conservativeOnly: Boolean,
+    ): FirCaseAdmission {
+        val bindings =
+            unifyTypes(
+                left = projectedHead,
+                right = targetType,
+                bindableVariableIds = caseTypeParameters.mapTo(linkedSetOf(), TcTypeParameter::id),
+            ) ?: when {
+                subclassDeclaredType.referencedVariableIds().isEmpty() &&
+                    projectedHead.isVarianceCompatibleWithTargetCandidate(targetType, rootVariances) ->
+                    emptyMap()
+
+                conservativeOnly -> return FirCaseAdmission.Rejected
+                else -> return FirCaseAdmission.Ignored
+            }
+
+        val allowedVariableIds = targetType.referencedVariableIds()
+        val caseType = subclassDeclaredType.substituteType(bindings) as? TcType.Constructor ?: return FirCaseAdmission.Rejected
+        if (!caseType.referencedVariableIds().all(allowedVariableIds::contains)) {
+            return FirCaseAdmission.Rejected
+        }
+        fieldTypes.forEach { fieldType ->
+            val substitutedFieldType = fieldType.substituteType(bindings)
+            if (substitutedFieldType.containsStarProjection()) {
+                return FirCaseAdmission.Rejected
+            }
+            if (!substitutedFieldType.referencedVariableIds().all(allowedVariableIds::contains)) {
+                return FirCaseAdmission.Rejected
+            }
+        }
+        return FirCaseAdmission.Admitted(caseType)
+    }
+
+    private fun TcType.isVarianceCompatibleWithTargetCandidate(
+        targetType: TcType.Constructor,
+        rootVariances: List<Variance>,
+    ): Boolean {
+        val actual = this as? TcType.Constructor ?: return false
+        if (actual.classifierId != targetType.classifierId || actual.arguments.size != targetType.arguments.size) {
+            return false
+        }
+        return actual.arguments.indices.all { index ->
+            val actualArgument = actual.arguments[index]
+            val expectedArgument = targetType.arguments[index]
+            when (rootVariances.getOrNull(index) ?: Variance.INVARIANT) {
+                Variance.OUT_VARIANCE -> actualArgument.isVarianceSubtypeOf(expectedArgument)
+                Variance.IN_VARIANCE -> expectedArgument.isVarianceSubtypeOf(actualArgument)
+                Variance.INVARIANT -> actualArgument == expectedArgument
+            }
+        }
+    }
+
+    private fun TcType.isVarianceSubtypeOf(
+        expected: TcType,
+    ): Boolean =
+        when {
+            expected is TcType.Variable -> true
+            this == expected -> true
+            this is TcType.Constructor && expected is TcType.Constructor ->
+                classifierId == expected.classifierId &&
+                    arguments.size == expected.arguments.size &&
+                    arguments.zip(expected.arguments).all { (left, right) -> left.isVarianceSubtypeOf(right) }
+
+            else -> false
+        }
+
+    private fun FirRegularClass.firGadtAdmissionMode(
+        session: FirSession,
+    ): FirGadtAdmissionMode {
+        val transported = typeParameters.lastOrNull()?.symbol ?: return FirGadtAdmissionMode.CONSERVATIVE_ONLY
+        val declaredOverride = transported.firGadtPolicyMode(session) ?: firGadtPolicyMode(session)
+        if (declaredOverride == FirGadtAdmissionMode.CONSERVATIVE_ONLY) {
+            return FirGadtAdmissionMode.CONSERVATIVE_ONLY
+        }
+        return when (firEffectiveVarianceFor(transported, session)) {
+            FirGadtEffectiveVariance.CONTRAVARIANT,
+            FirGadtEffectiveVariance.PHANTOM,
+            -> FirGadtAdmissionMode.SURFACE_TRUSTED
+
+            FirGadtEffectiveVariance.COVARIANT,
+            FirGadtEffectiveVariance.INVARIANT,
+            -> FirGadtAdmissionMode.CONSERVATIVE_ONLY
+        }
+    }
+
+    private fun FirRegularClass.firGadtPolicyMode(
+        session: FirSession,
+    ): FirGadtAdmissionMode? =
+        resolvedAnnotationsByClassId(
+            annotationClassId = GADT_DERIVATION_POLICY_ANNOTATION_CLASS_ID,
+            session = session,
+        ).firstNotNullOfOrNull { annotation -> annotation.firGadtPolicyMode() }
+
+    private fun FirTypeParameterSymbol.firGadtPolicyMode(
+        session: FirSession,
+    ): FirGadtAdmissionMode? =
+        fir.annotations
+            .filterIsInstance<FirAnnotationCall>()
+            .firstNotNullOfOrNull { annotation ->
+                annotation
+                    .takeIf { it.annotationTypeRef.coneType.classId == GADT_DERIVATION_POLICY_ANNOTATION_CLASS_ID }
+                    ?.firGadtPolicyMode()
+            }
+
+    private fun FirAnnotation.firGadtPolicyMode(): FirGadtAdmissionMode? {
+        val modeArgument = findArgumentByName(Name.identifier("mode"))?.toString().orEmpty()
+        return when {
+            "CONSERVATIVE_ONLY" in modeArgument -> FirGadtAdmissionMode.CONSERVATIVE_ONLY
+            "SURFACE_TRUSTED" in modeArgument -> FirGadtAdmissionMode.SURFACE_TRUSTED
+            else -> null
+        }
+    }
+
+    private fun FirRegularClass.firEffectiveVarianceFor(
+        transported: FirTypeParameterSymbol,
+        session: FirSession,
+    ): FirGadtEffectiveVariance =
+        when (transported.fir.variance) {
+            Variance.IN_VARIANCE -> FirGadtEffectiveVariance.CONTRAVARIANT
+            Variance.OUT_VARIANCE -> FirGadtEffectiveVariance.COVARIANT
+            Variance.INVARIANT ->
+                analyzeFirCallableSurfaceVariance(
+                    transportedId = transported.name.asString(),
+                    substitution = typeParameters.associate { typeParameter ->
+                        typeParameter.symbol.name.asString() to
+                            TcType.Variable(typeParameter.symbol.name.asString(), typeParameter.symbol.name.asString())
+                    },
+                    session = session,
+                    visited = linkedSetOf(),
+                )
+
+            else -> FirGadtEffectiveVariance.INVARIANT
+        }
+
+    private fun FirRegularClass.analyzeFirCallableSurfaceVariance(
+        transportedId: String,
+        substitution: Map<String, TcType>,
+        session: FirSession,
+        visited: MutableSet<String>,
+    ): FirGadtEffectiveVariance {
+        val visitKey =
+            buildString {
+                append(symbol.classId.asString())
+                append(':')
+                append(
+                    typeParameters.joinToString(separator = ",") { typeParameter ->
+                        substitution[typeParameter.symbol.name.asString()]?.render() ?: typeParameter.symbol.name.asString()
+                    },
+                )
+            }
+        if (!visited.add(visitKey)) {
+            return FirGadtEffectiveVariance.PHANTOM
+        }
+
+        val parameterModels =
+            typeParameters.associate { typeParameter ->
+                typeParameter.symbol to
+                    TcTypeParameter(
+                        id = typeParameter.symbol.name.asString(),
+                        displayName = typeParameter.symbol.name.asString(),
+                    )
+            }
+
+        var result = FirGadtEffectiveVariance.PHANTOM
+
+        declarations.filterIsInstance<FirProperty>().forEach { property ->
+            val getter = property.getter ?: return@forEach
+            if (getter.returnTypeRef.hasFirUnsafeVarianceMarker()) {
+                return@forEach
+            }
+            val type = coneTypeToModel(getter.returnTypeRef.coneType, parameterModels)?.substituteType(substitution) ?: return@forEach
+            result =
+                result.parallelCombine(
+                    analyzeFirTypeVariance(
+                        type = type,
+                        position = FirGadtEffectiveVariance.COVARIANT,
+                        transportedId = transportedId,
+                        session = session,
+                    ),
+                )
+        }
+
+        declarations.filterIsInstance<org.jetbrains.kotlin.fir.declarations.FirFunction>().forEach { function ->
+            if (function is org.jetbrains.kotlin.fir.declarations.FirConstructor) {
+                return@forEach
+            }
+            function.receiverParameter?.typeRef?.coneType
+                ?.takeUnless { function.receiverParameter?.typeRef?.hasFirUnsafeVarianceMarker() == true }
+                ?.let { coneTypeToModel(it, parameterModels)?.substituteType(substitution) }
+                ?.let { type ->
+                    result =
+                        result.parallelCombine(
+                            analyzeFirTypeVariance(
+                                type = type,
+                                position = FirGadtEffectiveVariance.CONTRAVARIANT,
+                                transportedId = transportedId,
+                                session = session,
+                            ),
+                        )
+                }
+            (function.contextParameters + function.valueParameters).forEach { parameter ->
+                if (parameter.returnTypeRef.hasFirUnsafeVarianceMarker()) {
+                    return@forEach
+                }
+                val type = coneTypeToModel(parameter.returnTypeRef.coneType, parameterModels)?.substituteType(substitution) ?: return@forEach
+                result =
+                    result.parallelCombine(
+                        analyzeFirTypeVariance(
+                            type = type,
+                            position = FirGadtEffectiveVariance.CONTRAVARIANT,
+                            transportedId = transportedId,
+                            session = session,
+                        ),
+                    )
+            }
+            if (function.returnTypeRef.hasFirUnsafeVarianceMarker()) {
+                return@forEach
+            }
+            val returnType = coneTypeToModel(function.returnTypeRef.coneType, parameterModels)?.substituteType(substitution) ?: return@forEach
+            result =
+                result.parallelCombine(
+                    analyzeFirTypeVariance(
+                        type = returnType,
+                        position = FirGadtEffectiveVariance.COVARIANT,
+                        transportedId = transportedId,
+                        session = session,
+                    ),
+                )
+        }
+
+        superTypeRefs.forEach { superTypeRef ->
+            val superType = coneTypeToModel(superTypeRef.coneType, parameterModels)?.substituteType(substitution) as? TcType.Constructor ?: return@forEach
+            val superClassId = runCatching { ClassId.fromString(superType.classifierId) }.getOrNull() ?: return@forEach
+            val superClass = session.regularClassSymbolOrNull(superClassId)?.fir ?: return@forEach
+            val superSubstitution =
+                superClass.typeParameters.mapIndexedNotNull { index, typeParameter ->
+                    superType.arguments.getOrNull(index)?.let { argument ->
+                        typeParameter.symbol.name.asString() to argument
+                    }
+                }.toMap()
+            result =
+                result.parallelCombine(
+                    superClass.analyzeFirCallableSurfaceVariance(
+                        transportedId = transportedId,
+                        substitution = superSubstitution,
+                        session = session,
+                        visited = visited,
+                    ),
+                )
+        }
+
+        return result
+    }
+
+    private fun analyzeFirTypeVariance(
+        type: TcType,
+        position: FirGadtEffectiveVariance,
+        transportedId: String,
+        session: FirSession,
+    ): FirGadtEffectiveVariance {
+        type.firGadtFunctionTypeInfoOrNull()?.let { functionInfo ->
+            var functionResult = FirGadtEffectiveVariance.PHANTOM
+            functionInfo.parameterTypes.forEach { parameterType ->
+                functionResult =
+                    functionResult.parallelCombine(
+                        analyzeFirTypeVariance(
+                            type = parameterType,
+                            position = position.composeWith(FirGadtEffectiveVariance.CONTRAVARIANT),
+                            transportedId = transportedId,
+                            session = session,
+                        ),
+                    )
+            }
+            functionResult =
+                functionResult.parallelCombine(
+                    analyzeFirTypeVariance(
+                        type = functionInfo.returnType,
+                        position = position.composeWith(FirGadtEffectiveVariance.COVARIANT),
+                        transportedId = transportedId,
+                        session = session,
+                    ),
+                )
+            return functionResult
+        }
+
+        return when (type) {
+            TcType.StarProjection -> FirGadtEffectiveVariance.PHANTOM
+            is TcType.Variable ->
+                if (type.id == transportedId) {
+                    position
+                } else {
+                    FirGadtEffectiveVariance.PHANTOM
+                }
+
+            is TcType.Projected -> {
+                val projectionVariance =
+                    when (type.variance) {
+                        Variance.IN_VARIANCE -> FirGadtEffectiveVariance.CONTRAVARIANT
+                        Variance.OUT_VARIANCE -> FirGadtEffectiveVariance.COVARIANT
+                        Variance.INVARIANT -> FirGadtEffectiveVariance.INVARIANT
+                    }
+                analyzeFirTypeVariance(
+                    type = type.type,
+                    position = position.composeWith(projectionVariance),
+                    transportedId = transportedId,
+                    session = session,
+                )
+            }
+
+            is TcType.Constructor -> {
+                val classId = runCatching { ClassId.fromString(type.classifierId) }.getOrNull()
+                val klass = classId?.let { session.regularClassSymbolOrNull(it)?.fir }
+                var result = FirGadtEffectiveVariance.PHANTOM
+                type.arguments.forEachIndexed { index, argument ->
+                    val nestedType = if (argument is TcType.Projected) argument.type else argument
+                    val declaredVariance = klass?.typeParameters?.getOrNull(index)?.symbol?.fir?.variance ?: Variance.INVARIANT
+                    val argumentVariance =
+                        if (argument is TcType.Projected) {
+                            when (argument.variance) {
+                                Variance.IN_VARIANCE -> FirGadtEffectiveVariance.CONTRAVARIANT
+                                Variance.OUT_VARIANCE -> FirGadtEffectiveVariance.COVARIANT
+                                Variance.INVARIANT -> declaredVariance.toFirGadtEffectiveVariance()
+                            }
+                        } else {
+                            declaredVariance.toFirGadtEffectiveVariance()
+                        }
+                    result =
+                        result.parallelCombine(
+                            analyzeFirTypeVariance(
+                                type = nestedType,
+                                position = position.composeWith(argumentVariance),
+                                transportedId = transportedId,
+                                session = session,
+                            ),
+                        )
+                }
+                result
+            }
+        }
+    }
+
+    private fun Variance.toFirGadtEffectiveVariance(): FirGadtEffectiveVariance =
+        when (this) {
+            Variance.INVARIANT -> FirGadtEffectiveVariance.INVARIANT
+            Variance.IN_VARIANCE -> FirGadtEffectiveVariance.CONTRAVARIANT
+            Variance.OUT_VARIANCE -> FirGadtEffectiveVariance.COVARIANT
+        }
+
+    private fun FirGadtEffectiveVariance.composeWith(
+        nested: FirGadtEffectiveVariance,
+    ): FirGadtEffectiveVariance =
+        when {
+            this == FirGadtEffectiveVariance.PHANTOM || nested == FirGadtEffectiveVariance.PHANTOM -> FirGadtEffectiveVariance.PHANTOM
+            this == FirGadtEffectiveVariance.INVARIANT || nested == FirGadtEffectiveVariance.INVARIANT -> FirGadtEffectiveVariance.INVARIANT
+            this == nested -> FirGadtEffectiveVariance.COVARIANT
+            else -> FirGadtEffectiveVariance.CONTRAVARIANT
+        }
+
+    private fun FirGadtEffectiveVariance.parallelCombine(
+        other: FirGadtEffectiveVariance,
+    ): FirGadtEffectiveVariance =
+        when {
+            this == FirGadtEffectiveVariance.INVARIANT || other == FirGadtEffectiveVariance.INVARIANT -> FirGadtEffectiveVariance.INVARIANT
+            this == FirGadtEffectiveVariance.PHANTOM -> other
+            other == FirGadtEffectiveVariance.PHANTOM -> this
+            this == other -> this
+            else -> FirGadtEffectiveVariance.INVARIANT
+        }
+
+    private fun TcType.firGadtFunctionTypeInfoOrNull(): FirGadtFunctionTypeInfo? {
+        val constructor = this as? TcType.Constructor ?: return null
+        val normalizedClassifier = constructor.classifierId.replace('/', '.')
+        if (!normalizedClassifier.startsWith("kotlin.Function") && !normalizedClassifier.startsWith("kotlin.SuspendFunction")) {
+            return null
+        }
+        if (constructor.arguments.isEmpty()) {
+            return null
+        }
+        return FirGadtFunctionTypeInfo(
+            parameterTypes = constructor.arguments.dropLast(1),
+            returnType = constructor.arguments.last(),
+        )
+    }
+
+    private data class FirDerivedSumCaseInfo(
+        val projectedHead: TcType.Constructor,
+        val subclassDeclaredType: TcType.Constructor,
+        val caseTypeParameters: List<TcTypeParameter>,
+        val fieldTypes: List<TcType>,
+    )
+
+    private sealed interface FirCaseAdmission {
+        data object Ignored : FirCaseAdmission
+        data object Rejected : FirCaseAdmission
+        data class Admitted(
+            val caseType: TcType.Constructor,
+        ) : FirCaseAdmission
+    }
+
+    private enum class FirGadtAdmissionMode {
+        SURFACE_TRUSTED,
+        CONSERVATIVE_ONLY,
+    }
+
+    private enum class FirGadtEffectiveVariance {
+        PHANTOM,
+        COVARIANT,
+        CONTRAVARIANT,
+        INVARIANT,
+    }
+
+    private data class FirGadtFunctionTypeInfo(
+        val parameterTypes: List<TcType>,
+        val returnType: TcType,
+    )
+
+    private fun org.jetbrains.kotlin.fir.types.FirTypeRef.hasFirUnsafeVarianceMarker(): Boolean =
+        annotations.any { annotation ->
+            annotation.annotationTypeRef.coneType.classId == ClassId.topLevel(FqName("kotlin.UnsafeVariance"))
+        } || ((this as? org.jetbrains.kotlin.fir.types.FirResolvedTypeRef)?.delegatedTypeRef?.hasFirUnsafeVarianceMarker() == true)
 
     private fun bindSimpleSealedRootArgument(
         declared: TcType,

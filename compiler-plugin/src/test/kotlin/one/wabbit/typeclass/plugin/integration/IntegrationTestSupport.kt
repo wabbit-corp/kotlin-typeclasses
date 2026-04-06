@@ -902,6 +902,15 @@ abstract class IntegrationTestSupport {
             assertTrue(compilerPluginJar.toFile().isFile, "Support compiler plugin jar is missing at $compilerPluginJar")
         }
 
+        val compilerPluginClasspathEntries =
+            linkedSetOf<Path>().apply {
+                pluginJar?.let(::add)
+                addAll(resolvedSupport.compilerPluginJars)
+                if (isNotEmpty() && activeKotlinVersion.startsWith("2.4")) {
+                    add(stdlibJar)
+                }
+            }.toList()
+
         val runtimeClasspathEntries =
             linkedSetOf<Path>().apply {
                 dependencyArtifacts.forEach { artifacts ->
@@ -929,11 +938,8 @@ abstract class IntegrationTestSupport {
                 add("-no-reflect")
                 add("-jvm-target")
                 add(jvmTarget)
-                pluginJar?.let { isolatedPluginJar ->
-                    add("-Xplugin=${isolatedPluginJar.toAbsolutePath()}")
-                }
-                resolvedSupport.compilerPluginJars.forEach { compilerPluginJar ->
-                    add("-Xplugin=${compilerPluginJar.toAbsolutePath()}")
+                compilerPluginClasspathEntries.forEach { compilerPluginEntry ->
+                    add("-Xplugin=${compilerPluginEntry.toAbsolutePath()}")
                 }
                 addAll(resolvedSupport.compilerArguments)
                 addAll(step.settings.compilerArguments)

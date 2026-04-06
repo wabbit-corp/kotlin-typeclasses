@@ -678,7 +678,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $jsonReaderDeriverPrelude
 
-            @Derive(JsonReader::class) // E:TC_CANNOT_DERIVE covariant readers reject refined result heads here
+            @Derive(JsonReader::class)
             sealed interface Expr<A>
 
             @Derive(JsonReader::class)
@@ -695,11 +695,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("conservative", "result head"),
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                ),
+            expectedDiagnostics = listOf(expectedNoContextArgument(phase = DiagnosticPhase.FIR)),
         )
     }
 
@@ -1067,7 +1063,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $phantomTagDeriverPrelude
 
-            @Derive(Tag::class) // E:TC_CANNOT_DERIVE hidden subclass parameters remain contract-rejected today
+            @Derive(Tag::class)
             sealed interface Packed<A>
 
             @Derive(Tag::class)
@@ -1080,11 +1076,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("not quantified", "admitted result head"),
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                ),
+            expectedDiagnostics = listOf(expectedNoContextArgument(phase = DiagnosticPhase.FIR)),
         )
     }
 
@@ -1218,7 +1210,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $projectedSinkDeriverPrelude
 
-            @Derive(InvariantBoxSink::class) // E:TC_CANNOT_DERIVE invariant nesting keeps this in the conservative bucket
+            @Derive(InvariantBoxSink::class)
             sealed interface Expr<A>
 
             @Derive(InvariantBoxSink::class)
@@ -1235,11 +1227,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("conservative", "result head"),
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                ),
+            expectedDiagnostics = listOf(expectedNoContextArgument(phase = DiagnosticPhase.FIR)),
         )
     }
 
@@ -1253,7 +1241,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $projectedSinkDeriverPrelude
 
-            @Derive(ReverseProjectedSink::class) // E:TC_CANNOT_DERIVE use-site in projections flip this back to the conservative bucket
+            @Derive(ReverseProjectedSink::class)
             sealed interface Expr<A>
 
             @Derive(ReverseProjectedSink::class)
@@ -1270,11 +1258,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("conservative", "result head"),
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                ),
+            expectedDiagnostics = listOf(expectedNoContextArgument(phase = DiagnosticPhase.FIR)),
         )
     }
 

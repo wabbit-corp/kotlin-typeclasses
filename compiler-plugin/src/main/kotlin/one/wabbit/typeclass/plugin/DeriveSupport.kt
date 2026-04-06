@@ -136,11 +136,16 @@ internal fun FirRegularClass.generatedDerivedMetadata(session: FirSession): List
                 ),
             )
             addAll(
-                resolvedAnnotationsByClassId(
-                    annotationClassId = GENERATED_INSTANCE_ANNOTATION_CONTAINER_CLASS_ID,
-                    session = session,
-                )
-                    .flatMap { annotation -> annotation.containedAnnotationArguments() },
+                buildList {
+                    for (annotation in
+                        resolvedAnnotationsByClassId(
+                            annotationClassId = GENERATED_INSTANCE_ANNOTATION_CONTAINER_CLASS_ID,
+                            session = session,
+                        )
+                    ) {
+                        addAll(annotation.containedAnnotationArguments())
+                    }
+                },
             )
         }.ifEmpty {
             buildList {
@@ -152,13 +157,14 @@ internal fun FirRegularClass.generatedDerivedMetadata(session: FirSession): List
                         },
                 )
                 addAll(
-                    annotations
-                        .filterIsInstance<FirAnnotationCall>()
-                        .filter { annotation ->
-                            annotation.annotationTypeRef.coneType.classId == GENERATED_INSTANCE_ANNOTATION_CONTAINER_CLASS_ID
-                        }.flatMap { annotation ->
-                            annotation.containedAnnotationArguments()
-                        },
+                    buildList {
+                        for (annotation in annotations) {
+                            val annotationCall = annotation as? FirAnnotationCall ?: continue
+                            if (annotationCall.annotationTypeRef.coneType.classId == GENERATED_INSTANCE_ANNOTATION_CONTAINER_CLASS_ID) {
+                                addAll(annotationCall.containedAnnotationArguments())
+                            }
+                        }
+                    },
                 )
             }
         }
@@ -219,38 +225,60 @@ internal fun FirRegularClass.resolvedRepeatableAnnotationsByClassId(
 ): List<FirAnnotation> =
     buildList {
         addAll(resolvedAnnotationsByClassId(annotationClassId, session))
-        addAll(
-            resolvedAnnotationsByClassId(containerClassId, session)
-                .flatMap { annotation -> annotation.containedAnnotationArguments() },
-        )
+        for (annotation in resolvedAnnotationsByClassId(containerClassId, session)) {
+            addAll(annotation.containedAnnotationArguments())
+        }
     }
 
 private fun FirAnnotation.containedAnnotationArguments(): List<FirAnnotation> {
     val valueName = Name.identifier("value")
-    val directArguments =
-        findArgumentByName(valueName)
-            ?.unwrapVarargValue()
-            .orEmpty()
-            .ifEmpty { findArgumentByName(valueName)?.let(::listOf).orEmpty() }
-            .asSequence()
-            .filterIsInstance<FirExpression>()
-            .flatMap(::flattenContainedAnnotationArgumentExpressions)
-            .filterIsInstance<FirAnnotation>()
-            .toList()
+    val directArguments = mutableListOf<FirAnnotation>()
+    val directValueArgument = findArgumentByName(valueName)
+    val directValueExpressions = directValueArgument?.unwrapVarargValue().orEmpty()
+    if (directValueExpressions.isNotEmpty()) {
+        for (argument in directValueExpressions) {
+            val expression = argument as? FirExpression ?: continue
+            for (flattened in flattenContainedAnnotationArgumentExpressions(expression)) {
+                val annotation = flattened as? FirAnnotation ?: continue
+                directArguments += annotation
+            }
+        }
+    } else if (directValueArgument is FirExpression) {
+        for (flattened in flattenContainedAnnotationArgumentExpressions(directValueArgument)) {
+            val annotation = flattened as? FirAnnotation ?: continue
+            directArguments += annotation
+        }
+    }
     if (directArguments.isNotEmpty()) {
         return directArguments
     }
 
     val annotationCall = this as? FirAnnotationCall ?: return emptyList()
-    return annotationCall.argumentMapping.mapping
-        .asSequence()
-        .filter { (parameter, _) -> parameter == valueName }
-        .map { (_, argument) -> argument }
-        .ifEmpty { annotationCall.argumentList.arguments.asSequence() }
-        .filterIsInstance<FirExpression>()
-        .flatMap(::flattenContainedAnnotationArgumentExpressions)
-        .filterIsInstance<FirAnnotation>()
-        .toList()
+    val mappedExpressions = mutableListOf<FirExpression>()
+    for ((parameter, argument) in annotationCall.argumentMapping.mapping) {
+        if (parameter == valueName && argument is FirExpression) {
+            mappedExpressions += argument
+        }
+    }
+    val sourceExpressions =
+        if (mappedExpressions.isNotEmpty()) {
+            mappedExpressions
+        } else {
+            buildList {
+                for (argument in annotationCall.argumentList.arguments) {
+                    val expression = argument as? FirExpression ?: continue
+                    add(expression)
+                }
+            }
+        }
+    val annotations = mutableListOf<FirAnnotation>()
+    for (expression in sourceExpressions) {
+        for (flattened in flattenContainedAnnotationArgumentExpressions(expression)) {
+            val annotation = flattened as? FirAnnotation ?: continue
+            annotations += annotation
+        }
+    }
+    return annotations
 }
 
 private fun flattenContainedAnnotationArgumentExpressions(expression: FirExpression): Sequence<FirExpression> =
