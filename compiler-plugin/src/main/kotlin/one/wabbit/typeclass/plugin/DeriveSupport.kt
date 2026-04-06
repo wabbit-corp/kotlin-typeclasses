@@ -13,6 +13,8 @@ import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.getAnnotationsByClassId
 import org.jetbrains.kotlin.fir.expressions.FirAnnotation
 import org.jetbrains.kotlin.fir.expressions.FirAnnotationCall
+import org.jetbrains.kotlin.fir.expressions.FirExpression
+import org.jetbrains.kotlin.fir.expressions.FirVarargArgumentsExpression
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 import org.jetbrains.kotlin.fir.declarations.findArgumentByName
 import org.jetbrains.kotlin.fir.declarations.hasAnnotation
@@ -40,7 +42,7 @@ internal fun FirRegularClass.supportedDerivedTypeclassIds(session: FirSession): 
     val generatedIds = generatedDerivedMetadata(session).mapTo(linkedSetOf()) { metadata -> metadata.typeclassId.asString() }
     val explicitIds =
         if (source == null) {
-            derivedAnnotationClassIds(session)
+            emptySet()
         } else if (!supportsDeriveShape()) {
             emptySet()
         } else {
@@ -160,6 +162,12 @@ internal fun FirRegularClass.generatedDerivedMetadata(session: FirSession): List
                 )
             }
         }
+    if (generatedAnnotations.isEmpty() && source == null) {
+        val binaryMetadata = BinaryGeneratedDerivedMetadataRegistry.generatedMetadataFor(session, symbol.classId)
+        if (binaryMetadata.isNotEmpty()) {
+            return binaryMetadata
+        }
+    }
     return generatedAnnotations.mapNotNull { annotation ->
         decodeGeneratedDerivedMetadata(
             typeclassId = annotation.getStringArgumentCompat("typeclassId", session),
@@ -176,6 +184,11 @@ private fun FirAnnotation.getStringArgumentCompat(
     session: FirSession,
 ): String? =
     typeclassGetStringArgument(Name.identifier(name), session)
+        ?: ((this as? FirAnnotationCall)
+            ?.argumentMapping
+            ?.mapping
+            ?.get(Name.identifier(name)) as? org.jetbrains.kotlin.fir.expressions.FirLiteralExpression)
+            ?.value as? String
         ?: (findArgumentByName(Name.identifier(name)) as? org.jetbrains.kotlin.fir.expressions.FirLiteralExpression)
             ?.value as? String
 
@@ -213,9 +226,39 @@ internal fun FirRegularClass.resolvedRepeatableAnnotationsByClassId(
     }
 
 private fun FirAnnotation.containedAnnotationArguments(): List<FirAnnotation> {
-    val valueArgument = findArgumentByName(Name.identifier("value")) ?: return emptyList()
-    return valueArgument.unwrapVarargValue().filterIsInstance<FirAnnotation>()
+    val valueName = Name.identifier("value")
+    val directArguments =
+        findArgumentByName(valueName)
+            ?.unwrapVarargValue()
+            .orEmpty()
+            .ifEmpty { findArgumentByName(valueName)?.let(::listOf).orEmpty() }
+            .asSequence()
+            .filterIsInstance<FirExpression>()
+            .flatMap(::flattenContainedAnnotationArgumentExpressions)
+            .filterIsInstance<FirAnnotation>()
+            .toList()
+    if (directArguments.isNotEmpty()) {
+        return directArguments
+    }
+
+    val annotationCall = this as? FirAnnotationCall ?: return emptyList()
+    return annotationCall.argumentMapping.mapping
+        .asSequence()
+        .filter { (parameter, _) -> parameter == valueName }
+        .map { (_, argument) -> argument }
+        .ifEmpty { annotationCall.argumentList.arguments.asSequence() }
+        .filterIsInstance<FirExpression>()
+        .flatMap(::flattenContainedAnnotationArgumentExpressions)
+        .filterIsInstance<FirAnnotation>()
+        .toList()
 }
+
+private fun flattenContainedAnnotationArgumentExpressions(expression: FirExpression): Sequence<FirExpression> =
+    expression.typeclassCollectionLiteralArgumentsOrNull()?.flatMap(::flattenContainedAnnotationArgumentExpressions)
+        ?: when (expression) {
+            is FirVarargArgumentsExpression -> expression.arguments.asSequence().flatMap(::flattenContainedAnnotationArgumentExpressions)
+            else -> sequenceOf(expression)
+        }
 
 internal fun FirAnnotation.getClassIdArgument(
     name: String,
@@ -238,37 +281,49 @@ internal fun FirAnnotation.getClassIdArgument(
             }.firstOrNull()
 
 internal fun FirRegularClass.deriveViaTypeclassIds(session: FirSession): Set<String> =
-    buildSet {
-        addAll(
-            resolvedRepeatableAnnotationsByClassId(
-                annotationClassId = DERIVE_VIA_ANNOTATION_CLASS_ID,
-                containerClassId = DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID,
-                session = session,
+    if (source == null) {
+        generatedDerivedMetadata(session)
+            .filterIsInstance<GeneratedDerivedMetadata.DeriveVia>()
+            .mapTo(linkedSetOf()) { metadata -> metadata.typeclassId.asString() }
+    } else {
+        buildSet {
+            addAll(
+                resolvedRepeatableAnnotationsByClassId(
+                    annotationClassId = DERIVE_VIA_ANNOTATION_CLASS_ID,
+                    containerClassId = DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID,
+                    session = session,
+                )
+                    .mapNotNull { annotation -> annotation.getClassIdArgument("typeclass", session)?.asString() },
             )
-                .mapNotNull { annotation -> annotation.getClassIdArgument("typeclass", session)?.asString() },
-        )
-        addAll(
-            generatedDerivedMetadata(session)
-                .filterIsInstance<GeneratedDerivedMetadata.DeriveVia>()
-                .map { metadata -> metadata.typeclassId.asString() },
-        )
+            addAll(
+                generatedDerivedMetadata(session)
+                    .filterIsInstance<GeneratedDerivedMetadata.DeriveVia>()
+                    .map { metadata -> metadata.typeclassId.asString() },
+            )
+        }
     }
 
 internal fun FirRegularClass.deriveEquivRequests(session: FirSession): Set<String> =
-    buildSet {
-        addAll(
-            resolvedRepeatableAnnotationsByClassId(
-                annotationClassId = DERIVE_EQUIV_ANNOTATION_CLASS_ID,
-                containerClassId = DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID,
-                session = session,
+    if (source == null) {
+        generatedDerivedMetadata(session)
+            .filterIsInstance<GeneratedDerivedMetadata.DeriveEquiv>()
+            .mapTo(linkedSetOf()) { metadata -> metadata.otherClassId.asString() }
+    } else {
+        buildSet {
+            addAll(
+                resolvedRepeatableAnnotationsByClassId(
+                    annotationClassId = DERIVE_EQUIV_ANNOTATION_CLASS_ID,
+                    containerClassId = DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID,
+                    session = session,
+                )
+                    .mapNotNull { annotation -> annotation.getClassIdArgument("otherClass", session)?.asString() },
             )
-                .mapNotNull { annotation -> annotation.getClassIdArgument("otherClass", session)?.asString() },
-        )
-        addAll(
-            generatedDerivedMetadata(session)
-                .filterIsInstance<GeneratedDerivedMetadata.DeriveEquiv>()
-                .map { metadata -> metadata.otherClassId.asString() },
-        )
+            addAll(
+                generatedDerivedMetadata(session)
+                    .filterIsInstance<GeneratedDerivedMetadata.DeriveEquiv>()
+                    .map { metadata -> metadata.otherClassId.asString() },
+            )
+        }
     }
 
 internal fun typeclassSupportsDeriveShape(

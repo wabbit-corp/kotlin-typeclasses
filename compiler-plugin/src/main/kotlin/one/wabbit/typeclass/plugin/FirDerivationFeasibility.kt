@@ -13,6 +13,7 @@ import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.references
 import one.wabbit.typeclass.plugin.model.render
 import one.wabbit.typeclass.plugin.model.substituteType
+import one.wabbit.typeclass.plugin.model.unifyTypes
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.descriptors.Visibilities
@@ -61,6 +62,11 @@ internal sealed interface FirDeriveViaPathSegment {
 internal data class FirDeriveViaRequest(
     val typeclassId: ClassId,
     val path: List<FirDeriveViaPathSegment>,
+)
+
+internal data class FirShapeDerivedGoalMatch(
+    val directTypeclassId: String,
+    val targetType: TcType.Constructor,
 )
 
 internal class FirDirectTransportPlanner(
@@ -247,24 +253,44 @@ internal class FirDirectTransportPlanner(
 }
 
 internal fun FirRegularClass.deriveViaRequests(session: FirSession): List<FirDeriveViaRequest> =
-    resolvedRepeatableAnnotationsByClassId(
-        annotationClassId = DERIVE_VIA_ANNOTATION_CLASS_ID,
-        containerClassId = DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID,
-        session = session,
-    ).mapNotNull { annotation ->
-        val typeclassId = annotation.getClassIdArgument("typeclass", session) ?: return@mapNotNull null
-        val path =
-            annotation
-                .getClassIdArguments("path", session)
-                .map { classId ->
-                    val symbol = session.regularClassSymbolOrNull(classId)
-                    if (symbol?.implementsInterface(ISO_CLASS_ID, session, linkedSetOf()) == true) {
-                        FirDeriveViaPathSegment.PinnedIso(classId)
-                    } else {
-                        FirDeriveViaPathSegment.Waypoint(classId)
+    if (source == null) {
+        generatedDerivedMetadata(session)
+            .filterIsInstance<GeneratedDerivedMetadata.DeriveVia>()
+            .map { metadata ->
+                FirDeriveViaRequest(
+                    typeclassId = metadata.typeclassId,
+                    path =
+                        metadata.path.map { segment ->
+                            when (segment.kind) {
+                                GeneratedDeriveViaPathSegment.Kind.WAYPOINT ->
+                                    FirDeriveViaPathSegment.Waypoint(segment.classId)
+
+                                GeneratedDeriveViaPathSegment.Kind.PINNED_ISO ->
+                                    FirDeriveViaPathSegment.PinnedIso(segment.classId)
+                            }
+                        },
+                )
+            }
+    } else {
+        resolvedRepeatableAnnotationsByClassId(
+            annotationClassId = DERIVE_VIA_ANNOTATION_CLASS_ID,
+            containerClassId = DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID,
+            session = session,
+        ).mapNotNull { annotation ->
+            val typeclassId = annotation.getClassIdArgument("typeclass", session) ?: return@mapNotNull null
+            val path =
+                annotation
+                    .getClassIdArguments("path", session)
+                    .map { classId ->
+                        val symbol = session.regularClassSymbolOrNull(classId)
+                        if (symbol?.implementsInterface(ISO_CLASS_ID, session, linkedSetOf()) == true) {
+                            FirDeriveViaPathSegment.PinnedIso(classId)
+                        } else {
+                            FirDeriveViaPathSegment.Waypoint(classId)
+                        }
                     }
-                }
-        FirDeriveViaRequest(typeclassId = typeclassId, path = path)
+            FirDeriveViaRequest(typeclassId = typeclassId, path = path)
+        }
     }
 
 internal fun FirRegularClass.validateDeriveViaTransportability(session: FirSession): String? {
@@ -360,25 +386,59 @@ internal fun FirRegularClass.validateDeriveViaTransportability(session: FirSessi
     return null
 }
 
-internal fun FirRegularClass.supportsShapeDerivedTypeclassId(
-    typeclassId: String,
+internal fun FirRegularClass.matchingShapeDerivedGoalMatches(
+    goal: TcType.Constructor,
     session: FirSession,
     configuration: TypeclassConfiguration,
-): Boolean {
-    if (source == null) {
-        return generatedDerivedMetadata(session)
-            .filterIsInstance<GeneratedDerivedMetadata.Derive>()
-            .any { metadata -> metadata.typeclassId.asString() == typeclassId }
-    }
-    if (!supportsDeriveShape()) {
-        return false
-    }
+): List<FirShapeDerivedGoalMatch> {
     val directIds =
-        derivedTypeclassIds(session).filterTo(linkedSetOf()) { candidate ->
-            supportsDerivationForTypeclass(candidate, session)
+        if (source == null) {
+            generatedDerivedMetadata(session)
+                .filterIsInstance<GeneratedDerivedMetadata.Derive>()
+                .mapTo(linkedSetOf()) { metadata -> metadata.typeclassId.asString() }
+        } else {
+            if (!supportsDeriveShape()) {
+                return emptyList()
+            }
+            derivedTypeclassIds(session).filterTo(linkedSetOf()) { candidate ->
+                supportsDerivationForTypeclass(candidate, session)
+            }
         }
-    val expandedIds = directIds + directIds.expandedDerivedTypeclassIds(session, configuration)
-    return typeclassId in expandedIds
+    if (directIds.isEmpty()) {
+        return emptyList()
+    }
+    val requiredContract = requiredDeriveMethodContractForDeriveShape()
+    return buildList {
+        directIds.forEach { directTypeclassId ->
+            val directClassId = runCatching { ClassId.fromString(directTypeclassId) }.getOrNull() ?: return@forEach
+            if (source != null && requiredContract != null && typeclassCompanionResolveDeriveMethod(directClassId, requiredContract, session) == null) {
+                return@forEach
+            }
+            val expansions = expandedDerivedTypeclassHeads(directTypeclassId, session, configuration)
+            val directTypeParameters = expansions.firstOrNull()?.directTypeParameters.orEmpty()
+            if (directTypeParameters.size != 1) {
+                return@forEach
+            }
+            val bindableIds = directTypeParameters.mapTo(linkedSetOf(), TcTypeParameter::id)
+            val transportedParameter = directTypeParameters.single()
+            expansions.forEach { expansion ->
+                if (expansion.head.classifierId != goal.classifierId) {
+                    return@forEach
+                }
+                val bindings = unifyTypes(expansion.head, goal, bindableVariableIds = bindableIds) ?: return@forEach
+                val targetType = bindings[transportedParameter.id] as? TcType.Constructor ?: return@forEach
+                if (targetType.isNullable) {
+                    return@forEach
+                }
+                add(
+                    FirShapeDerivedGoalMatch(
+                        directTypeclassId = directTypeclassId,
+                        targetType = targetType,
+                    ),
+                )
+            }
+        }
+    }.distinct()
 }
 
 private fun List<FirTypeParameter>.toMethodTypeParameterModels(

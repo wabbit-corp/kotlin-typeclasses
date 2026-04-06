@@ -175,4 +175,177 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
             enableContextParameters = true,
         )
     }
+
+    @Test
+    fun downstreamPluginIgnoresRawDependencyDeriveAnnotationsWithoutGeneratedMetadata() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-raw-derive",
+                useTypeclassPlugin = false,
+                enableContextParameters = false,
+                sources =
+                    mapOf(
+                        "dep/Api.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.Derive
+                            import one.wabbit.typeclass.ProductTypeclassMetadata
+                            import one.wabbit.typeclass.SumTypeclassMetadata
+                            import one.wabbit.typeclass.Typeclass
+                            import one.wabbit.typeclass.TypeclassDeriver
+
+                            @Typeclass
+                            interface Show<A> {
+                                fun show(value: A): String
+
+                                companion object : TypeclassDeriver {
+                                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Show<Any?> =
+                                        object : Show<Any?> {
+                                            override fun show(value: Any?): String = metadata.typeName.substringAfterLast('.')
+                                        }
+
+                                    override fun deriveSum(metadata: SumTypeclassMetadata): Show<Any?> =
+                                        object : Show<Any?> {
+                                            override fun show(value: Any?): String = metadata.typeName.substringAfterLast('.')
+                                        }
+                                }
+                            }
+
+                            @Derive(Show::class)
+                            data class Token(val value: Int)
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.Token
+            import dep.Show
+
+            context(_: Show<Token>)
+            fun render(value: Token): String = "derived:${'$'}{value.value}"
+
+            fun render(value: Token): String = "plain:${'$'}{value.value}"
+
+            fun main() {
+                println(render(Token(1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain:1",
+            dependencies = listOf(dependency),
+        )
+    }
+
+    @Test
+    fun downstreamPluginIgnoresRawDependencyDeriveViaAnnotationsWithoutGeneratedMetadata() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-raw-derive-via",
+                useTypeclassPlugin = false,
+                enableContextParameters = false,
+                sources =
+                    mapOf(
+                        "dep/Api.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.DeriveVia
+                            import one.wabbit.typeclass.Instance
+                            import one.wabbit.typeclass.Typeclass
+
+                            @Typeclass
+                            interface Show<A> {
+                                fun show(value: A): String
+                            }
+
+                            data class Wire(val value: Int)
+
+                            @Instance
+                            object WireShow : Show<Wire> {
+                                override fun show(value: Wire): String = "wire:${'$'}{value.value}"
+                            }
+
+                            @JvmInline
+                            @DeriveVia(Show::class, Wire::class)
+                            value class Token(val value: Int)
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.Token
+            import dep.Show
+
+            context(_: Show<Token>)
+            fun render(value: Token): String = "derived:${'$'}{value.value}"
+
+            fun render(value: Token): String = "plain:${'$'}{value.value}"
+
+            fun main() {
+                println(render(Token(2)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain:2",
+            dependencies = listOf(dependency),
+        )
+    }
+
+    @Test
+    fun downstreamPluginIgnoresRawDependencyDeriveEquivAnnotationsWithoutGeneratedMetadata() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-raw-derive-equiv",
+                useTypeclassPlugin = false,
+                enableContextParameters = false,
+                sources =
+                    mapOf(
+                        "dep/Api.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.DeriveEquiv
+
+                            data class Wire(val value: Int)
+
+                            @DeriveEquiv(Wire::class)
+                            data class Token(val value: Int)
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.Token
+            import dep.Wire
+            import one.wabbit.typeclass.Equiv
+            import one.wabbit.typeclass.InternalTypeclassApi
+
+            @OptIn(InternalTypeclassApi::class)
+            context(_: Equiv<Token, Wire>)
+            fun render(value: Token): String = "derived:${'$'}{value.value}"
+
+            fun render(value: Token): String = "plain:${'$'}{value.value}"
+
+            fun main() {
+                println(render(Token(3)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain:3",
+            dependencies = listOf(dependency),
+        )
+    }
 }

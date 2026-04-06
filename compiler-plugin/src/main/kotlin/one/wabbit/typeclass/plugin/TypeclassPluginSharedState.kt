@@ -19,6 +19,7 @@ import one.wabbit.typeclass.plugin.model.isProvablyNullable
 import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.render
 import one.wabbit.typeclass.plugin.model.substituteType
+import one.wabbit.typeclass.plugin.model.unifyTypes
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.descriptors.Visibilities
@@ -61,21 +62,32 @@ import org.jetbrains.kotlin.fir.types.type
 import org.jetbrains.kotlin.name.*
 import org.jetbrains.kotlin.name.SpecialNames
 import org.jetbrains.kotlin.types.Variance
+import java.io.File
 import java.util.Collections
 import java.util.WeakHashMap
 
 internal class TypeclassPluginSharedState(
     internal val configuration: TypeclassConfiguration = TypeclassConfiguration(),
+    private val binaryClassPathRoots: List<File> = emptyList(),
 ) {
     private val discoveryIndexes = SessionScopedCache<FirSession, DiscoveryIndexes>()
+    private val binaryGeneratedMetadataLoader = BinaryGeneratedDerivedMetadataLoader(binaryClassPathRoots)
     @Volatile
     private var latestIrImportedTopLevelRules: List<ImportedTopLevelInstanceRule> = emptyList()
+    @Volatile
+    private var latestIrImportedGeneratedDerivedMetadataByOwner: Map<String, List<GeneratedDerivedMetadata>> = emptyMap()
 
     fun topLevelContextualCallables(session: FirSession): Set<CallableId> {
         return sourceIndex(session).topLevelContextualCallables
     }
 
     fun importedTopLevelRulesForIr(): List<ImportedTopLevelInstanceRule> = latestIrImportedTopLevelRules
+
+    fun importedGeneratedDerivedMetadataForIr(owner: ClassId): List<GeneratedDerivedMetadata> =
+        latestIrImportedGeneratedDerivedMetadataByOwner[owner.asString()].orEmpty()
+
+    fun binaryGeneratedDerivedMetadataForIr(owner: ClassId): List<GeneratedDerivedMetadata> =
+        binaryGeneratedMetadataLoader.generatedMetadataFor(owner)
 
     fun topLevelContextualPackages(session: FirSession): Set<FqName> {
         return sourceIndex(session).topLevelContextualPackages
@@ -155,7 +167,20 @@ internal class TypeclassPluginSharedState(
                 .distinctBy { importedRule -> importedRule.rule.id to importedRule.reference }
     }
 
+    private fun recordImportedGeneratedDerivedMetadataForIr(
+        ownerId: String,
+        metadata: List<GeneratedDerivedMetadata>,
+    ) {
+        if (metadata.isEmpty()) {
+            return
+        }
+        val existingByOwner = latestIrImportedGeneratedDerivedMetadataByOwner
+        val mergedEntries = (existingByOwner[ownerId].orEmpty() + metadata).distinct()
+        latestIrImportedGeneratedDerivedMetadataByOwner = existingByOwner + (ownerId to mergedEntries)
+    }
+
     private fun buildDiscoveryIndexes(session: FirSession): DiscoveryIndexes {
+        BinaryGeneratedDerivedMetadataRegistry.install(session, binaryClassPathRoots)
         val topLevelCallables = linkedSetOf<CallableId>()
         val topLevelPackages = linkedSetOf<FqName>()
         val memberNamesByOwner = linkedMapOf<ClassId, MutableSet<Name>>()
@@ -172,7 +197,11 @@ internal class TypeclassPluginSharedState(
                 scanner.scanDeclaration(declaration, associatedOwner = null)
             },
         )
-        val resolutionIndex = scanner.build(::recordImportedTopLevelRulesForIr)
+        val resolutionIndex =
+            scanner.build(
+                recordImportedTopLevelRulesForIr = ::recordImportedTopLevelRulesForIr,
+                recordImportedGeneratedDerivedMetadataForIr = ::recordImportedGeneratedDerivedMetadataForIr,
+            )
 
         return DiscoveryIndexes(
             sourceIndex =
@@ -290,6 +319,7 @@ private class FirResolutionScanner(
     private val classInfoById = linkedMapOf<String, VisibleClassHierarchyInfo>()
     private val derivableTypeclassIdsByOwner = linkedMapOf<String, MutableSet<String>>()
     private val deriveEquivTargetIdsByOwner = linkedMapOf<String, MutableSet<String>>()
+    private val importedGeneratedDerivedMetadataByOwner = linkedMapOf<String, MutableSet<GeneratedDerivedMetadata>>()
 
     @OptIn(DirectDeclarationsAccess::class)
     fun scanDeclaration(
@@ -326,6 +356,12 @@ private class FirResolutionScanner(
                             }
                         if (deriveEquivTargets.isNotEmpty()) {
                             deriveEquivTargetIdsByOwner.getOrPut(classId.asString(), ::linkedSetOf) += deriveEquivTargets
+                        }
+                    }
+                    if (declaration.source == null) {
+                        val generatedMetadata = declaration.generatedDerivedMetadata(session)
+                        if (generatedMetadata.isNotEmpty()) {
+                            importedGeneratedDerivedMetadataByOwner.getOrPut(classId.asString(), ::linkedSetOf) += generatedMetadata
                         }
                     }
                 }
@@ -379,6 +415,7 @@ private class FirResolutionScanner(
 
     fun build(
         recordImportedTopLevelRulesForIr: (List<VisibleInstanceRule>) -> Unit,
+        recordImportedGeneratedDerivedMetadataForIr: (String, List<GeneratedDerivedMetadata>) -> Unit,
     ): ResolutionIndex =
         ResolutionIndex(
             configuration = configuration,
@@ -386,6 +423,7 @@ private class FirResolutionScanner(
                 VisibleInstanceRule(rule = rule, associatedOwner = null)
             },
             recordImportedTopLevelRulesForIr = recordImportedTopLevelRulesForIr,
+            recordImportedGeneratedDerivedMetadataForIr = recordImportedGeneratedDerivedMetadataForIr,
             topLevelRulesByPackage =
                 topLevelRules
                     .mapNotNull { visibleRule ->
@@ -402,13 +440,18 @@ private class FirResolutionScanner(
                 derivableTypeclassIdsByOwner.mapValues { (_, typeclassIds) -> typeclassIds.toSet() },
             deriveEquivTargetIdsByOwner =
                 deriveEquivTargetIdsByOwner.mapValues { (_, targetIds) -> targetIds.toSet() },
-        )
+        ).also {
+            importedGeneratedDerivedMetadataByOwner.forEach { (ownerId, metadata) ->
+                recordImportedGeneratedDerivedMetadataForIr(ownerId, metadata.toList())
+            }
+        }
 }
 
 private data class ResolutionIndex(
     val configuration: TypeclassConfiguration,
     val topLevelRules: List<VisibleInstanceRule>,
     val recordImportedTopLevelRulesForIr: (List<VisibleInstanceRule>) -> Unit,
+    val recordImportedGeneratedDerivedMetadataForIr: (String, List<GeneratedDerivedMetadata>) -> Unit,
     val topLevelRulesByPackage: Map<FqName, List<VisibleInstanceRule>>,
     val associatedRulesByOwner: Map<ClassId, List<VisibleInstanceRule>>,
     val classInfoById: MutableMap<String, VisibleClassHierarchyInfo>,
@@ -419,6 +462,22 @@ private data class ResolutionIndex(
     private val lazilyDiscoveredAssociatedRulesByOwner: MutableMap<ClassId, List<VisibleInstanceRule>> = linkedMapOf()
     private val lazilyDiscoveredDerivableTypeclassIdsByOwner: MutableMap<String, Set<String>> = linkedMapOf()
     private val lazilyDiscoveredDeriveEquivTargetIdsByOwner: MutableMap<String, Set<String>> = linkedMapOf()
+
+    private data class ShapeDerivationOption(
+        val ownerId: String,
+        val directTypeclassId: String,
+        val targetType: TcType.Constructor,
+        val prerequisiteTypes: List<TcType>,
+        val importedOwner: Boolean,
+    )
+
+    private data class DeriveViaOption(
+        val ownerId: String,
+        val directTypeclassId: String,
+        val prerequisiteType: TcType.Constructor,
+        val pathKey: String,
+        val importedOwner: Boolean,
+    )
 
     fun rulesForGoal(
         goal: TcType,
@@ -492,69 +551,72 @@ private data class ResolutionIndex(
     ): List<InstanceRule> {
         val constructor = goal as? TcType.Constructor ?: return emptyList()
         return buildList {
-            shapeDerivedRefinementRule(constructor, session)?.let(::add)
+            addAll(shapeDerivedRefinementRules(constructor, session))
             addAll(deriveViaRefinementRules(constructor, session))
             addAll(deriveEquivRefinementRules(constructor, session))
         }
     }
 
-    private fun shapeDerivedRefinementRule(
+    private fun shapeDerivedRefinementRules(
         goal: TcType.Constructor,
         session: FirSession,
-    ): InstanceRule? {
+    ): List<InstanceRule> =
+        shapeDerivationOptionsForGoal(goal, session).map { option ->
+            InstanceRule(
+                id =
+                    directRuleId(
+                        prefix = "derived",
+                        declarationKey = "${option.directTypeclassId}:${option.ownerId}:${option.targetType.normalizedKey()}",
+                        providedType = goal,
+                        prerequisiteTypes = option.prerequisiteTypes,
+                    ),
+                typeParameters = emptyList(),
+                providedType = goal,
+                prerequisiteTypes = option.prerequisiteTypes,
+                supportsRecursiveResolution = true,
+            )
+        }
+
+    private fun shapeDerivationOptionsForGoal(
+        goal: TcType.Constructor,
+        session: FirSession,
+    ): List<ShapeDerivationOption> {
         if (goal.classifierId == EQUIV_CLASS_ID.asString()) {
-            return null
+            return emptyList()
         }
-        if (goal.arguments.size != 1) {
-            return null
-        }
-        val targetType = goal.arguments.singleOrNull() as? TcType.Constructor ?: return null
-        if (targetType.isNullable) {
-            return null
-        }
-        val targetClassId = runCatching { ClassId.fromString(targetType.classifierId) }.getOrNull() ?: return null
-        val targetDeclaration = session.regularClassSymbolOrNull(targetClassId)?.fir ?: return null
-        val exactPrerequisites =
-            exactShapeDerivedPrerequisiteGoals(
-                goal = goal,
-                targetType = targetType,
-                declaration = targetDeclaration,
-                session = session,
-            ) ?: return null
-        val hasApplicableDerivation =
-            derivationOwnersForTarget(targetType.classifierId, session).any { owner ->
-                val ownerClassId = runCatching { ClassId.fromString(owner) }.getOrNull() ?: return@any false
-                val ownerDeclaration = session.regularClassSymbolOrNull(ownerClassId)?.fir ?: return@any false
-                when {
-                    owner == targetType.classifierId ->
-                        ownerDeclaration.supportsShapeDerivedTypeclassId(goal.classifierId, session, configuration)
-
-                    ownerDeclaration.status.modality == Modality.SEALED ->
-                        ownerDeclaration.supportsShapeDerivedTypeclassId(goal.classifierId, session, configuration)
-
-                    else -> false
-                }
+        return associatedOwnerIds(goal, session).flatMap { ownerId ->
+            val ownerClassId = runCatching { ClassId.fromString(ownerId) }.getOrNull() ?: return@flatMap emptyList()
+            val ownerDeclaration = session.regularClassSymbolOrNull(ownerClassId)?.fir ?: return@flatMap emptyList()
+            ownerDeclaration.matchingShapeDerivedGoalMatches(goal, session, configuration).mapNotNull { match ->
+                val targetClassId = runCatching { ClassId.fromString(match.targetType.classifierId) }.getOrNull() ?: return@mapNotNull null
+                val targetDeclaration = session.regularClassSymbolOrNull(targetClassId)?.fir ?: return@mapNotNull null
+                val prerequisiteTypes =
+                    exactShapeDerivedPrerequisiteGoals(
+                        directTypeclassId = match.directTypeclassId,
+                        targetType = match.targetType,
+                        declaration = targetDeclaration,
+                        session = session,
+                    ) ?: return@mapNotNull null
+                ShapeDerivationOption(
+                    ownerId = ownerId,
+                    directTypeclassId = match.directTypeclassId,
+                    targetType = match.targetType,
+                    prerequisiteTypes = prerequisiteTypes,
+                    importedOwner = ownerDeclaration.source == null,
+                )
             }
-        if (!hasApplicableDerivation) {
-            return null
+        }.distinctBy { option ->
+            listOf(
+                option.ownerId,
+                option.directTypeclassId,
+                option.targetType.normalizedKey(),
+                option.prerequisiteTypes.joinToString("|", transform = TcType::normalizedKey),
+            ).joinToString("::")
         }
-        return InstanceRule(
-            id =
-                directRuleId(
-                    prefix = "derived",
-                    declarationKey = "${goal.classifierId}:${targetType.classifierId}",
-                    providedType = goal,
-                    prerequisiteTypes = exactPrerequisites,
-                ),
-            typeParameters = emptyList(),
-            providedType = goal,
-            prerequisiteTypes = exactPrerequisites,
-            supportsRecursiveResolution = true,
-        )
     }
 
     private fun exactShapeDerivedPrerequisiteGoals(
-        goal: TcType.Constructor,
+        directTypeclassId: String,
         targetType: TcType.Constructor,
         declaration: FirRegularClass,
         session: FirSession,
@@ -562,9 +624,8 @@ private data class ResolutionIndex(
         if (!declaration.supportsDeriveShape()) {
             return null
         }
-        val typeclassId = goal.classifierId
         if (declaration.classKind == ClassKind.ENUM_CLASS) {
-            val typeclassClassId = runCatching { ClassId.fromString(typeclassId) }.getOrNull() ?: return null
+            val typeclassClassId = runCatching { ClassId.fromString(directTypeclassId) }.getOrNull() ?: return null
             if (typeclassCompanionResolveDeriveMethod(typeclassClassId, DeriveMethodContract.ENUM, session) == null) {
                 return null
             }
@@ -602,7 +663,7 @@ private data class ResolutionIndex(
                 }
             return caseTypes.map { caseType ->
                 TcType.Constructor(
-                    classifierId = typeclassId,
+                    classifierId = directTypeclassId,
                     arguments = listOf(caseType),
                 )
             }
@@ -629,7 +690,7 @@ private data class ResolutionIndex(
         return constructor.valueParameters.map { parameter ->
             val fieldType = coneTypeToModel(parameter.returnTypeRef.coneType, typeParameterBySymbol) ?: return null
             TcType.Constructor(
-                classifierId = typeclassId,
+                classifierId = directTypeclassId,
                 arguments = listOf(fieldType.substituteType(appliedBindings)),
             )
         }
@@ -638,51 +699,83 @@ private data class ResolutionIndex(
     private fun deriveViaRefinementRules(
         goal: TcType.Constructor,
         session: FirSession,
-    ): List<InstanceRule> {
+    ): List<InstanceRule> =
+        deriveViaOptionsForGoal(goal, session).map { option ->
+            InstanceRule(
+                id = "derived-via:${option.directTypeclassId}:${option.ownerId}:${option.pathKey}:${goal.normalizedKey()}",
+                typeParameters = emptyList(),
+                providedType = goal,
+                prerequisiteTypes = listOf(option.prerequisiteType),
+            )
+        }
+
+    private fun deriveViaOptionsForGoal(
+        goal: TcType.Constructor,
+        session: FirSession,
+    ): List<DeriveViaOption> {
         if (goal.classifierId == EQUIV_CLASS_ID.asString()) {
             return emptyList()
         }
-        val targetType = goal.arguments.lastOrNull() as? TcType.Constructor ?: return emptyList()
-        if (targetType.isNullable) {
-            return emptyList()
-        }
-        val targetClassId = runCatching { ClassId.fromString(targetType.classifierId) }.getOrNull() ?: return emptyList()
-        val targetDeclaration = session.regularClassSymbolOrNull(targetClassId)?.fir ?: return emptyList()
-        if (targetDeclaration.typeParameters.isNotEmpty()) {
-            return emptyList()
-        }
         val planner = FirDirectTransportPlanner(session)
-        return targetDeclaration.deriveViaRequests(session).mapIndexedNotNull { index, request ->
-            val expandedTypeclassIds =
-                setOf(request.typeclassId.asString()) +
-                    listOf(request.typeclassId.asString()).expandedDerivedTypeclassIds(session, configuration)
-            if (goal.classifierId !in expandedTypeclassIds) {
-                return@mapIndexedNotNull null
+        return associatedOwnerIds(goal, session).flatMap { ownerId ->
+            val ownerClassId = runCatching { ClassId.fromString(ownerId) }.getOrNull() ?: return@flatMap emptyList()
+            val ownerDeclaration = session.regularClassSymbolOrNull(ownerClassId)?.fir ?: return@flatMap emptyList()
+            if (ownerDeclaration.typeParameters.isNotEmpty()) {
+                return@flatMap emptyList()
             }
-            val typeclassInterface = session.regularClassSymbolOrNull(request.typeclassId)?.fir ?: return@mapIndexedNotNull null
-            if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)) {
-                return@mapIndexedNotNull null
+            val ownerType = TcType.Constructor(ownerId, emptyList())
+            ownerDeclaration.deriveViaRequests(session).flatMapIndexed { index, request ->
+                val typeclassInterface = session.regularClassSymbolOrNull(request.typeclassId)?.fir ?: return@flatMapIndexed emptyList()
+                if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)) {
+                    return@flatMapIndexed emptyList()
+                }
+                if (typeclassInterface.typeParameters.isEmpty()) {
+                    return@flatMapIndexed emptyList()
+                }
+                if (typeclassInterface.validateDeriveViaTransportability(session) != null) {
+                    return@flatMapIndexed emptyList()
+                }
+                val expansions = expandedDerivedTypeclassHeads(request.typeclassId.asString(), session, configuration)
+                val directTypeParameters = expansions.firstOrNull()?.directTypeParameters.orEmpty()
+                val transportedParameter = directTypeParameters.lastOrNull() ?: return@flatMapIndexed emptyList()
+                val bindableIds = directTypeParameters.mapTo(linkedSetOf(), TcTypeParameter::id)
+                val viaType = planner.resolveViaPath(ownerType, request.path) ?: return@flatMapIndexed emptyList()
+                expansions.mapNotNull { expansion ->
+                    if (expansion.head.classifierId != goal.classifierId) {
+                        return@mapNotNull null
+                    }
+                    val bindings = unifyTypes(expansion.head, goal, bindableVariableIds = bindableIds) ?: return@mapNotNull null
+                    val targetType = bindings[transportedParameter.id] as? TcType.Constructor ?: return@mapNotNull null
+                    if (targetType != ownerType) {
+                        return@mapNotNull null
+                    }
+                    val prerequisiteType =
+                        expansion.head.substituteType(bindings + (transportedParameter.id to viaType)) as? TcType.Constructor
+                            ?: return@mapNotNull null
+                    DeriveViaOption(
+                        ownerId = ownerId,
+                        directTypeclassId = request.typeclassId.asString(),
+                        prerequisiteType = prerequisiteType,
+                        pathKey =
+                            "$index:${request.path.joinToString("|") { segment ->
+                                val prefix =
+                                    when (segment) {
+                                        is FirDeriveViaPathSegment.Waypoint -> "W"
+                                        is FirDeriveViaPathSegment.PinnedIso -> "I"
+                                    }
+                                "$prefix:${segment.classId.asString()}"
+                            }}",
+                        importedOwner = ownerDeclaration.source == null,
+                    )
+                }
             }
-            if (typeclassInterface.typeParameters.isEmpty()) {
-                return@mapIndexedNotNull null
-            }
-            if (typeclassInterface.validateDeriveViaTransportability(session) != null) {
-                return@mapIndexedNotNull null
-            }
-            val viaType = planner.resolveViaPath(targetType, request.path) ?: return@mapIndexedNotNull null
-            InstanceRule(
-                id =
-                    "derived-via:${goal.classifierId}:${targetType.classifierId}:$index:${request.path.joinToString("|") { segment -> segment.classId.asString() }}",
-                typeParameters = emptyList(),
-                providedType = goal,
-                prerequisiteTypes =
-                    listOf(
-                        TcType.Constructor(
-                            classifierId = goal.classifierId,
-                            arguments = goal.arguments.dropLast(1) + viaType,
-                        ),
-                    ),
-            )
+        }.distinctBy { option ->
+            listOf(
+                option.ownerId,
+                option.directTypeclassId,
+                option.pathKey,
+                option.prerequisiteType.normalizedKey(),
+            ).joinToString("::")
         }
     }
 
@@ -813,24 +906,31 @@ private data class ResolutionIndex(
                 }
             }
 
-            else -> {
-                val targetType = constructor.arguments.lastOrNull() as? TcType.Constructor ?: return false
-                if (targetType.isNullable) {
-                    return false
-                }
-                derivationOwnersForTarget(targetType.classifierId, session).any { owner ->
-                    canDeriveUnaryGoalFromOwner(
-                        typeclassId = typeclassId,
-                        goal = constructor,
-                        targetType = targetType,
-                        owner = owner,
-                        session = session,
-                        availableContexts = availableContexts,
-                        visiting = visiting,
-                        canMaterializeVariable = canMaterializeVariable,
-                    )
-                }
-            }
+            else ->
+                associatedOwnerIds(constructor, session).any { ownerId ->
+                    val ownerClassId = runCatching { ClassId.fromString(ownerId) }.getOrNull() ?: return@any false
+                    val ownerDeclaration = session.regularClassSymbolOrNull(ownerClassId)?.fir ?: return@any false
+                    ownerDeclaration.matchingShapeDerivedGoalMatches(constructor, session, configuration).any { match ->
+                        canDeriveMatchedShapeGoal(
+                            directTypeclassId = match.directTypeclassId,
+                            targetType = match.targetType,
+                            session = session,
+                            availableContexts = availableContexts,
+                            visiting = visiting,
+                            canMaterializeVariable = canMaterializeVariable,
+                        )
+                    }
+                } ||
+                    deriveViaOptionsForGoal(constructor, session).any { option ->
+                        option.importedOwner ||
+                            canDeriveGoal(
+                                goal = option.prerequisiteType,
+                                session = session,
+                                availableContexts = availableContexts,
+                                visiting = visiting,
+                                canMaterializeVariable = canMaterializeVariable,
+                            )
+                    }
         }
     }
 
@@ -871,140 +971,66 @@ private data class ResolutionIndex(
         session: FirSession,
     ): Set<String> = sealedOwnerChain(classifierId, session)
 
-    private fun canDeriveUnaryGoalFromOwner(
-        typeclassId: String,
-        goal: TcType.Constructor,
+    private fun canDeriveMatchedShapeGoal(
+        directTypeclassId: String,
         targetType: TcType.Constructor,
-        owner: String,
         session: FirSession,
         availableContexts: List<TcType>,
         visiting: MutableSet<String>,
         canMaterializeVariable: (String) -> Boolean,
     ): Boolean {
-        val discoveredTypeclassIds = discoveredDerivableTypeclassIds(owner, session)
-        if (typeclassId !in discoveredTypeclassIds) {
+        if (targetType.isNullable) {
             return false
         }
-        if (owner != targetType.classifierId) {
-            val ownerClassId = runCatching { ClassId.fromString(owner) }.getOrNull() ?: return true
-            val ownerSymbol = session.regularClassSymbolOrNull(ownerClassId) ?: return true
-            val ownerDeclaration = ownerSymbol.fir
-            if (ownerDeclaration.status.modality != Modality.SEALED || ownerDeclaration.source == null) {
-                return true
-            }
-            if (!ownerDeclaration.supportsShapeDerivedTypeclassId(typeclassId, session, configuration)) {
-                return false
-            }
-            val targetClassId = runCatching { ClassId.fromString(targetType.classifierId) }.getOrNull() ?: return true
-            val targetSymbol = session.regularClassSymbolOrNull(targetClassId) ?: return true
-            return canDeriveTargetShape(
-                typeclassId = typeclassId,
-                goal = goal,
-                targetType = targetType,
-                classId = targetClassId,
-                declaration = targetSymbol.fir,
-                allowLocalDeriveVia = false,
-                allowShapeDerivation = true,
-                session = session,
-                availableContexts = availableContexts,
-                visiting = visiting,
-                canMaterializeVariable = canMaterializeVariable,
-            )
-        }
-        val classId = runCatching { ClassId.fromString(owner) }.getOrNull() ?: return false
-        val symbol = session.regularClassSymbolOrNull(classId) ?: return true
-        if (symbol.fir.source == null) {
+        val classId = runCatching { ClassId.fromString(targetType.classifierId) }.getOrNull() ?: return false
+        val declaration = session.regularClassSymbolOrNull(classId)?.fir ?: return true
+        if (declaration.source == null) {
             return true
         }
-        return canDeriveTargetShape(
-            typeclassId = typeclassId,
-            goal = goal,
-            targetType = targetType,
-            classId = classId,
-            declaration = symbol.fir,
-            allowLocalDeriveVia = true,
-            allowShapeDerivation = symbol.fir.supportsShapeDerivedTypeclassId(typeclassId, session, configuration),
-            session = session,
-            availableContexts = availableContexts,
-            visiting = visiting,
-            canMaterializeVariable = canMaterializeVariable,
-        )
-    }
-
-    private fun canDeriveTargetShape(
-        typeclassId: String,
-        goal: TcType.Constructor,
-        targetType: TcType.Constructor,
-        classId: ClassId,
-        declaration: FirRegularClass,
-        allowLocalDeriveVia: Boolean,
-        allowShapeDerivation: Boolean,
-        session: FirSession,
-        availableContexts: List<TcType>,
-        visiting: MutableSet<String>,
-        canMaterializeVariable: (String) -> Boolean,
-    ): Boolean {
-        if (allowLocalDeriveVia && goal.arguments.isNotEmpty() && declaration.typeParameters.isEmpty()) {
-            val planner = FirDirectTransportPlanner(session)
-            val canDeriveVia =
-                declaration.deriveViaRequests(session).any { request ->
-                    val expandedIds =
-                        setOf(request.typeclassId.asString()) +
-                            listOf(request.typeclassId.asString()).expandedDerivedTypeclassIds(session, configuration)
-                    if (typeclassId !in expandedIds) {
-                        return@any false
-                    }
-                    val typeclassInterface = session.regularClassSymbolOrNull(request.typeclassId)?.fir ?: return@any false
-                    if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)) {
-                        return@any false
-                    }
-                    if (typeclassInterface.typeParameters.isEmpty()) {
-                        return@any false
-                    }
-                    if (typeclassInterface.validateDeriveViaTransportability(session) != null) {
-                        return@any false
-                    }
-                    val viaType = planner.resolveViaPath(targetType, request.path) ?: return@any false
-                    val prerequisiteGoal =
-                        TcType.Constructor(
-                            classifierId = typeclassId,
-                            arguments = goal.arguments.dropLast(1) + viaType,
-                        )
-                    canDeriveGoal(
-                        goal = prerequisiteGoal,
-                        session = session,
-                        availableContexts = availableContexts,
-                        visiting = visiting,
-                        canMaterializeVariable = canMaterializeVariable,
-                    )
-                }
-            if (canDeriveVia) {
-                return true
-            }
-        }
-        if (!allowShapeDerivation) {
+        if (!declaration.supportsDeriveShape()) {
             return false
         }
         if (declaration.classKind == ClassKind.OBJECT || declaration.classKind == ClassKind.ENUM_CLASS) {
             return true
         }
         if (declaration.status.modality == Modality.SEALED) {
-            if (declaration.source == null) {
-                return true
+            val subclassIds =
+                buildSet {
+                    addAll(
+                        classInfoById
+                            .filterValues { info -> classId.asString() in info.superClassifiers }
+                            .keys,
+                    )
+                    addAll(
+                        declaration
+                            .getSealedClassInheritors(session)
+                            .map(ClassId::asString),
+                    )
+                }
+            if (subclassIds.isEmpty()) {
+                return false
             }
-            return canDeriveSealedGoalFromTarget(
-                typeclassId = typeclassId,
-                classId = classId,
-                rootType = targetType,
-                rootTypeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.symbol.fir.variance },
-                session = session,
-                availableContexts = availableContexts,
-                visiting = visiting,
-                canMaterializeVariable = canMaterializeVariable,
-            )
-        }
-        if (goal.arguments.size != 1) {
-            return false
+            return subclassIds.all { subclassId ->
+                val caseType =
+                    deriveSealedCaseType(
+                        rootClassId = classId,
+                        rootTargetType = targetType,
+                        rootTypeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.symbol.fir.variance },
+                        subclassId = subclassId,
+                        session = session,
+                    ) ?: return@all true
+                canDeriveGoal(
+                    goal =
+                        TcType.Constructor(
+                            classifierId = directTypeclassId,
+                            arguments = listOf(caseType),
+                        ),
+                    session = session,
+                    availableContexts = availableContexts,
+                    visiting = visiting,
+                    canMaterializeVariable = canMaterializeVariable,
+                )
+            }
         }
         val constructor =
             declaration.declarations
@@ -1018,75 +1044,21 @@ private data class ResolutionIndex(
                     displayName = typeParameter.symbol.name.asString(),
                 )
             }
-        val typeParameterBySymbol = declaration.typeParameters.zip(ruleTypeParameters).associate { (typeParameter, parameter) ->
-            typeParameter.symbol to parameter
-        }
+        val typeParameterBySymbol =
+            declaration.typeParameters.zip(ruleTypeParameters).associate { (typeParameter, parameter) ->
+                typeParameter.symbol to parameter
+            }
         val appliedBindings =
             ruleTypeParameters.zip(targetType.arguments)
                 .associate { (parameter, appliedType) -> parameter.id to appliedType }
         return constructor.valueParameters.all { parameter ->
             val fieldType = coneTypeToModel(parameter.returnTypeRef.coneType, typeParameterBySymbol) ?: return@all false
-            val prerequisiteGoal =
-                TcType.Constructor(
-                    classifierId = typeclassId,
-                    arguments = listOf(fieldType.substituteType(appliedBindings)),
-                )
             canDeriveGoal(
-                goal = prerequisiteGoal,
-                session = session,
-                availableContexts = availableContexts,
-                visiting = visiting,
-                canMaterializeVariable = canMaterializeVariable,
-            )
-        }
-    }
-
-    private fun canDeriveSealedGoalFromTarget(
-        typeclassId: String,
-        classId: ClassId,
-        rootType: TcType.Constructor,
-        rootTypeParameterVariances: List<Variance>,
-        session: FirSession,
-        availableContexts: List<TcType>,
-        visiting: MutableSet<String>,
-        canMaterializeVariable: (String) -> Boolean,
-    ): Boolean {
-        val subclassIds =
-            buildSet {
-                addAll(
-                    classInfoById
-                        .filterValues { info -> classId.asString() in info.superClassifiers }
-                        .keys,
-                )
-                val sealedSymbol = session.regularClassSymbolOrNull(classId)
-                addAll(
-                    sealedSymbol
-                        ?.fir
-                        ?.takeIf { declaration -> declaration.status.modality == Modality.SEALED }
-                        ?.getSealedClassInheritors(session)
-                        .orEmpty()
-                        .map(ClassId::asString),
-                )
-            }
-        if (subclassIds.isEmpty()) {
-            return false
-        }
-        return subclassIds.all { subclassId ->
-            val caseType =
-                deriveSealedCaseType(
-                    rootClassId = classId,
-                    rootTargetType = rootType,
-                    rootTypeParameterVariances = rootTypeParameterVariances,
-                    subclassId = subclassId,
-                    session = session,
-                ) ?: return@all true
-            val prerequisiteGoal =
-                TcType.Constructor(
-                    classifierId = typeclassId,
-                    arguments = listOf(caseType),
-                )
-            canDeriveGoal(
-                goal = prerequisiteGoal,
+                goal =
+                    TcType.Constructor(
+                        classifierId = directTypeclassId,
+                        arguments = listOf(fieldType.substituteType(appliedBindings)),
+                    ),
                 session = session,
                 availableContexts = availableContexts,
                 visiting = visiting,
@@ -1206,6 +1178,12 @@ private data class ResolutionIndex(
                         } catch (_: IllegalArgumentException) {
                             null
                         } ?: return@getOrPut emptySet()
+                    if (symbol.fir.source == null) {
+                        val generatedMetadata = symbol.fir.generatedDerivedMetadata(activeSession)
+                        if (generatedMetadata.isNotEmpty()) {
+                            recordImportedGeneratedDerivedMetadataForIr(owner, generatedMetadata)
+                        }
+                    }
                     symbol.fir.supportedDerivedTypeclassIds(activeSession).let { supportedTypeclassIds ->
                         supportedTypeclassIds + supportedTypeclassIds.expandedDerivedTypeclassIds(activeSession, configuration)
                     }
@@ -1223,6 +1201,12 @@ private data class ResolutionIndex(
                 lazilyDiscoveredDeriveEquivTargetIdsByOwner.getOrPut(owner) {
                     val classId = runCatching { ClassId.fromString(owner) }.getOrNull() ?: return@getOrPut emptySet()
                     val symbol = activeSession.regularClassSymbolOrNull(classId) ?: return@getOrPut emptySet()
+                    if (symbol.fir.source == null) {
+                        val generatedMetadata = symbol.fir.generatedDerivedMetadata(activeSession)
+                        if (generatedMetadata.isNotEmpty()) {
+                            recordImportedGeneratedDerivedMetadataForIr(owner, generatedMetadata)
+                        }
+                    }
                     if (symbol.fir.typeParameters.isNotEmpty()) {
                         return@getOrPut emptySet()
                     }
@@ -1384,52 +1368,127 @@ internal fun Iterable<String>.expandedDerivedTypeclassIds(
     session: FirSession,
     configuration: TypeclassConfiguration,
 ): Set<String> =
-    flatMapTo(linkedSetOf()) { typeclassId ->
-        expandDerivedTypeclassIds(
-            typeclassId = typeclassId,
-            session = session,
-            configuration = configuration,
-            previousWereTypeclass = true,
-            visited = linkedSetOf(),
-        )
-    }
+    expandedDerivedTypeclassHeads(session, configuration).mapTo(linkedSetOf()) { expansion -> expansion.head.classifierId }
 
-private fun expandDerivedTypeclassIds(
+internal data class ExpandedDerivedTypeclassHead(
+    val directTypeclassId: String,
+    val directTypeParameters: List<TcTypeParameter>,
+    val head: TcType.Constructor,
+)
+
+internal fun Iterable<String>.expandedDerivedTypeclassHeads(
+    session: FirSession,
+    configuration: TypeclassConfiguration,
+): List<ExpandedDerivedTypeclassHead> =
+    flatMap { typeclassId -> expandedDerivedTypeclassHeads(typeclassId, session, configuration) }
+        .distinctBy { expansion -> "${expansion.directTypeclassId}:${expansion.head.normalizedKey()}" }
+
+internal fun expandedDerivedTypeclassHeads(
     typeclassId: String,
     session: FirSession,
     configuration: TypeclassConfiguration,
-    previousWereTypeclass: Boolean,
-    visited: MutableSet<String>,
-): Set<String> {
-    if (!visited.add(typeclassId)) {
-        return emptySet()
-    }
-    val classId = runCatching { ClassId.fromString(typeclassId) }.getOrNull() ?: return emptySet()
+): List<ExpandedDerivedTypeclassHead> {
+    val classId = runCatching { ClassId.fromString(typeclassId) }.getOrNull() ?: return emptyList()
     val classSymbol =
         try {
             session.symbolProvider.getClassLikeSymbolByClassId(classId) as? FirRegularClassSymbol
         } catch (_: IllegalArgumentException) {
             null
-        } ?: return emptySet()
-    val currentIsTypeclass =
-        configuration.isBuiltinTypeclass(classId) || classSymbol.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)
-    val expanded = linkedSetOf<String>()
-    if (currentIsTypeclass && previousWereTypeclass) {
-        expanded += typeclassId
-    }
-    val nextPreviousWereTypeclass = previousWereTypeclass && currentIsTypeclass
-    classSymbol.fir.declaredOrResolvedSuperTypes().forEach { superType ->
-        val superTypeId = superType.lowerBoundIfFlexible().classId?.asString() ?: return@forEach
-        expanded +=
-            expandDerivedTypeclassIds(
-                typeclassId = superTypeId,
-                session = session,
-                configuration = configuration,
-                previousWereTypeclass = nextPreviousWereTypeclass,
-                visited = visited,
+        } ?: return emptyList()
+    val directTypeParameters =
+        classSymbol.fir.typeParameters.mapIndexed { index, typeParameter ->
+            TcTypeParameter(
+                id = "derived-head:$typeclassId#$index",
+                displayName = typeParameter.symbol.name.asString(),
             )
+        }
+    val rootHead =
+        TcType.Constructor(
+            classifierId = typeclassId,
+            arguments = directTypeParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) },
+        )
+    return expandDerivedTypeclassHeads(
+        classSymbol = classSymbol,
+        currentHead = rootHead,
+        directTypeclassId = typeclassId,
+        directTypeParameters = directTypeParameters,
+        session = session,
+        configuration = configuration,
+        previousWereTypeclass = true,
+        visited = emptySet(),
+    )
+}
+
+private fun expandDerivedTypeclassHeads(
+    classSymbol: FirRegularClassSymbol,
+    currentHead: TcType.Constructor,
+    directTypeclassId: String,
+    directTypeParameters: List<TcTypeParameter>,
+    session: FirSession,
+    configuration: TypeclassConfiguration,
+    previousWereTypeclass: Boolean,
+    visited: Set<String>,
+): List<ExpandedDerivedTypeclassHead> {
+    val visitKey = currentHead.normalizedKey()
+    if (visitKey in visited) {
+        return emptyList()
     }
-    return expanded
+    val currentClassId = runCatching { ClassId.fromString(currentHead.classifierId) }.getOrNull() ?: return emptyList()
+    val currentIsTypeclass =
+        configuration.isBuiltinTypeclass(currentClassId) || classSymbol.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)
+    val expanded = buildList {
+        if (currentIsTypeclass && previousWereTypeclass) {
+            add(
+                ExpandedDerivedTypeclassHead(
+                    directTypeclassId = directTypeclassId,
+                    directTypeParameters = directTypeParameters,
+                    head = currentHead,
+                ),
+            )
+        }
+        val localTypeParameters =
+            classSymbol.fir.typeParameters.mapIndexed { index, typeParameter ->
+                TcTypeParameter(
+                    id = "derived-head:${currentHead.classifierId}#$index",
+                    displayName = typeParameter.symbol.name.asString(),
+                )
+            }
+        val typeParameterBySymbol =
+            classSymbol.fir.typeParameters.zip(localTypeParameters).associate { (typeParameter, parameter) ->
+                typeParameter.symbol to parameter
+            }
+        val bindings =
+            localTypeParameters.zip(currentHead.arguments).associate { (parameter, argument) ->
+                parameter.id to argument
+            }
+        val nextPreviousWereTypeclass = previousWereTypeclass && currentIsTypeclass
+        val nextVisited = visited + visitKey
+        classSymbol.fir.declaredOrResolvedSuperTypes().forEach { superType ->
+            val appliedSuperType =
+                (coneTypeToModel(superType, typeParameterBySymbol)?.substituteType(bindings) as? TcType.Constructor)
+                    ?: return@forEach
+            val superClassId = runCatching { ClassId.fromString(appliedSuperType.classifierId) }.getOrNull() ?: return@forEach
+            val superSymbol =
+                try {
+                    session.symbolProvider.getClassLikeSymbolByClassId(superClassId) as? FirRegularClassSymbol
+                } catch (_: IllegalArgumentException) {
+                    null
+                } ?: return@forEach
+            addAll(
+                expandDerivedTypeclassHeads(
+                    classSymbol = superSymbol,
+                    currentHead = appliedSuperType,
+                    directTypeclassId = directTypeclassId,
+                    directTypeParameters = directTypeParameters,
+                    session = session,
+                    configuration = configuration,
+                    previousWereTypeclass = nextPreviousWereTypeclass,
+                    visited = nextVisited,
+                ),
+            )
+        }
+    }
+    return expanded.distinctBy { expansion -> "${expansion.directTypeclassId}:${expansion.head.normalizedKey()}" }
 }
 
 private fun flattenDerivedTypeclassArgumentExpressions(expression: FirExpression): Sequence<FirExpression> =

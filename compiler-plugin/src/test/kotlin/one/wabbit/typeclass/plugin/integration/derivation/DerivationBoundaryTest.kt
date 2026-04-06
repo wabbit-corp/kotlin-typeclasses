@@ -153,6 +153,50 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun invalidLocalDeriveRequestsDoNotHidePlainOverloads() {
+        val sources =
+            mapOf(
+                "shared/Show.kt" to showTypeclassSource(packageName = "shared"),
+                "shared/Token.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Derive
+
+                    @Derive(Show::class) // E:TC_CANNOT_DERIVE invalid derive requests must not also create overload ambiguity
+                    enum class Token {
+                        A,
+                    }
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import shared.Show
+                    import shared.Token
+
+                    context(_: Show<Token>)
+                    fun render(value: Token): String = "derived:${'$'}value"
+
+                    fun render(value: Token): String = "plain:${'$'}value"
+
+                    fun main() {
+                        println(render(Token.A))
+                    }
+                    """.trimIndent(),
+            )
+
+        assertDoesNotCompile(
+            sources = sources,
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("override deriveEnum"),
+                ),
+            unexpectedMessages = listOf("overload resolution ambiguity"),
+        )
+    }
+
+    @Test
     fun consumerModuleCanUseDerivedSealedInstancesFromDependencyModules() {
         val dependency =
             HarnessDependency(
@@ -893,6 +937,130 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
         )
     }
 
+    @Test
+    fun derivedSupertypesPreserveInheritedTypeApplication() {
+        val sources =
+            mapOf(
+                "shared/Parent.kt" to parentTypeclassSource(packageName = "shared"),
+                "shared/Child.kt" to childTypeclassSource(packageName = "shared"),
+                "shared/ShownInt.kt" to childShownIntSource(packageName = "shared"),
+                "shared/Box.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Derive
+
+                    @Derive(Child::class)
+                    data class Box<A>(val value: A)
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import one.wabbit.typeclass.summon
+                    import shared.Box
+                    import shared.Parent
+                    import shared.ShownInt
+                    import shared.renderChild
+
+                    fun main() {
+                        println(renderChild(Box(ShownInt(1))))
+                        val parent = summon<Parent<List<Box<ShownInt>>>>()
+                        println(parent.renderParent(listOf(Box(ShownInt(2)), Box(ShownInt(3)))))
+                    }
+                    """.trimIndent(),
+            )
+
+        assertCompilesAndRuns(
+            sources = sources,
+            expectedStdout =
+                """
+                Box(value=1)
+                [Box(value=2), Box(value=3)]
+                """.trimIndent(),
+            mainClass = "demo.MainKt",
+        )
+    }
+
+    @Test
+    fun derivedSupertypesDoNotFabricateWrongUnaryHead() {
+        val sources =
+            mapOf(
+                "shared/Parent.kt" to parentTypeclassSource(packageName = "shared"),
+                "shared/Child.kt" to childTypeclassSource(packageName = "shared"),
+                "shared/ShownInt.kt" to childShownIntSource(packageName = "shared"),
+                "shared/Box.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Derive
+
+                    @Derive(Child::class)
+                    data class Box<A>(val value: A)
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import shared.Box
+                    import shared.Parent
+                    import shared.ShownInt
+
+                    context(parent: Parent<Box<ShownInt>>)
+                    fun renderWrong(value: Box<ShownInt>): String = parent.renderParent(value)
+
+                    fun main() {
+                        println(renderWrong(Box(ShownInt(1)))) // E:TC_NO_CONTEXT_ARGUMENT inherited Parent<List<A>> must not be treated as Parent<A>
+                    }
+                    """.trimIndent(),
+            )
+
+        assertDoesNotCompile(
+            sources = sources,
+            expectedDiagnostics = listOf(expectedNoContextArgument("parent", phase = DiagnosticPhase.FIR)),
+            unexpectedMessages = listOf("internal compiler error"),
+        )
+    }
+
+    @Test
+    fun derivedSupertypesPreserveFixedPrefixArguments() {
+        val sources =
+            mapOf(
+                "shared/Tagged.kt" to taggedTypeclassSource(packageName = "shared"),
+                "shared/TaggedChild.kt" to taggedChildTypeclassSource(packageName = "shared"),
+                "shared/ShownInt.kt" to taggedChildShownIntSource(packageName = "shared"),
+                "shared/Box.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Derive
+
+                    @Derive(TaggedChild::class)
+                    data class Box<A>(val value: A)
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import one.wabbit.typeclass.summon
+                    import shared.Box
+                    import shared.ShownInt
+                    import shared.Tagged
+
+                    fun main() {
+                        val tagged = summon<Tagged<String, List<Box<ShownInt>>>>()
+                        println(tagged.render("ctx", listOf(Box(ShownInt(7)))))
+                    }
+                    """.trimIndent(),
+            )
+
+        assertCompilesAndRuns(
+            sources = sources,
+            expectedStdout = "ctx:[Box(value=7)]",
+            mainClass = "demo.MainKt",
+        )
+    }
+
     private fun multiHeadDerivationDependencies(): List<HarnessDependency> {
         val typeclassDependency =
             HarnessDependency(
@@ -1125,4 +1293,246 @@ private fun eqTypeclassSource(
 
     context(eq: Eq<A>)
     fun <A> same(left: A, right: A): Boolean = eq.equal(left, right)
+    """.trimIndent()
+
+private fun parentTypeclassSource(packageName: String): String =
+    """
+    package $packageName
+
+    import one.wabbit.typeclass.ProductTypeclassMetadata
+    import one.wabbit.typeclass.SumTypeclassMetadata
+    import one.wabbit.typeclass.Typeclass
+    import one.wabbit.typeclass.TypeclassDeriver
+    import one.wabbit.typeclass.get
+    import one.wabbit.typeclass.matches
+
+    @Typeclass
+    interface Parent<A> {
+        fun renderParent(value: A): String
+
+        companion object : TypeclassDeriver {
+            override fun deriveProduct(metadata: ProductTypeclassMetadata): Parent<Any?> =
+                object : Parent<Any?> {
+                    override fun renderParent(value: Any?): String {
+                        require(value != null)
+                        val renderedFields =
+                            metadata.fields.joinToString(", ") { field ->
+                                val fieldParent = field.instance as Parent<Any?>
+                                "${'$'}{field.name}=${'$'}{fieldParent.renderParent(field.get(value))}"
+                            }
+                        val typeName = metadata.typeName.substringAfterLast('.')
+                        return "${'$'}typeName(${'$'}renderedFields)"
+                    }
+                }
+
+            override fun deriveSum(metadata: SumTypeclassMetadata): Parent<Any?> =
+                object : Parent<Any?> {
+                    override fun renderParent(value: Any?): String {
+                        require(value != null)
+                        val matchingCase = metadata.cases.single { candidate -> candidate.matches(value) }
+                        val caseParent = matchingCase.instance as Parent<Any?>
+                        return caseParent.renderParent(value)
+                    }
+                }
+        }
+    }
+
+    context(parent: Parent<A>)
+    fun <A> renderParent(value: A): String = parent.renderParent(value)
+    """.trimIndent()
+
+private fun childTypeclassSource(packageName: String): String =
+    """
+    package $packageName
+
+    import one.wabbit.typeclass.ProductTypeclassMetadata
+    import one.wabbit.typeclass.SumTypeclassMetadata
+    import one.wabbit.typeclass.Typeclass
+    import one.wabbit.typeclass.TypeclassDeriver
+    import one.wabbit.typeclass.get
+    import one.wabbit.typeclass.matches
+
+    @Typeclass
+    interface Child<A> : Parent<List<A>> {
+        fun renderChild(value: A): String
+
+        companion object : TypeclassDeriver {
+            override fun deriveProduct(metadata: ProductTypeclassMetadata): Child<Any?> =
+                object : Child<Any?> {
+                    override fun renderChild(value: Any?): String {
+                        require(value != null)
+                        val renderedFields =
+                            metadata.fields.joinToString(", ") { field ->
+                                val fieldChild = field.instance as Child<Any?>
+                                "${'$'}{field.name}=${'$'}{fieldChild.renderChild(field.get(value))}"
+                            }
+                        val typeName = metadata.typeName.substringAfterLast('.')
+                        return "${'$'}typeName(${'$'}renderedFields)"
+                    }
+
+                    override fun renderParent(value: List<Any?>): String =
+                        value.joinToString(prefix = "[", postfix = "]") { element ->
+                            renderChild(element)
+                        }
+                }
+
+            override fun deriveSum(metadata: SumTypeclassMetadata): Child<Any?> =
+                object : Child<Any?> {
+                    override fun renderChild(value: Any?): String {
+                        require(value != null)
+                        val matchingCase = metadata.cases.single { candidate -> candidate.matches(value) }
+                        val caseChild = matchingCase.instance as Child<Any?>
+                        return caseChild.renderChild(value)
+                    }
+
+                    override fun renderParent(value: List<Any?>): String =
+                        value.joinToString(prefix = "[", postfix = "]") { element ->
+                            renderChild(element)
+                        }
+                }
+        }
+    }
+
+    context(child: Child<A>)
+    fun <A> renderChild(value: A): String = child.renderChild(value)
+    """.trimIndent()
+
+private fun childShownIntSource(packageName: String): String =
+    """
+    package $packageName
+
+    import one.wabbit.typeclass.Instance
+
+    data class ShownInt(val value: Int) {
+        companion object {
+            @Instance
+            val child: Child<ShownInt> =
+                object : Child<ShownInt> {
+                    override fun renderChild(value: ShownInt): String = value.value.toString()
+
+                    override fun renderParent(value: List<ShownInt>): String =
+                        value.joinToString(prefix = "[", postfix = "]") { element ->
+                            renderChild(element)
+                        }
+                }
+        }
+    }
+    """.trimIndent()
+
+private fun taggedTypeclassSource(packageName: String): String =
+    """
+    package $packageName
+
+    import one.wabbit.typeclass.ProductTypeclassMetadata
+    import one.wabbit.typeclass.SumTypeclassMetadata
+    import one.wabbit.typeclass.Typeclass
+    import one.wabbit.typeclass.TypeclassDeriver
+    import one.wabbit.typeclass.get
+    import one.wabbit.typeclass.matches
+
+    @Typeclass
+    interface Tagged<C, A> {
+        fun render(context: C, value: A): String
+
+        companion object : TypeclassDeriver {
+            override fun deriveProduct(metadata: ProductTypeclassMetadata): Tagged<String, Any?> =
+                object : Tagged<String, Any?> {
+                    override fun render(context: String, value: Any?): String {
+                        require(value != null)
+                        val renderedFields =
+                            metadata.fields.joinToString(", ") { field ->
+                                val fieldTagged = field.instance as Tagged<String, Any?>
+                                "${'$'}{field.name}=${'$'}{fieldTagged.render(context, field.get(value))}"
+                            }
+                        val typeName = metadata.typeName.substringAfterLast('.')
+                        return "${'$'}typeName(${'$'}renderedFields)"
+                    }
+                }
+
+            override fun deriveSum(metadata: SumTypeclassMetadata): Tagged<String, Any?> =
+                object : Tagged<String, Any?> {
+                    override fun render(context: String, value: Any?): String {
+                        require(value != null)
+                        val matchingCase = metadata.cases.single { candidate -> candidate.matches(value) }
+                        val caseTagged = matchingCase.instance as Tagged<String, Any?>
+                        return caseTagged.render(context, value)
+                    }
+                }
+        }
+    }
+    """.trimIndent()
+
+private fun taggedChildTypeclassSource(packageName: String): String =
+    """
+    package $packageName
+
+    import one.wabbit.typeclass.ProductTypeclassMetadata
+    import one.wabbit.typeclass.SumTypeclassMetadata
+    import one.wabbit.typeclass.Typeclass
+    import one.wabbit.typeclass.TypeclassDeriver
+    import one.wabbit.typeclass.get
+    import one.wabbit.typeclass.matches
+
+    @Typeclass
+    interface TaggedChild<A> : Tagged<String, List<A>> {
+        fun renderChild(value: A): String
+
+        companion object : TypeclassDeriver {
+            override fun deriveProduct(metadata: ProductTypeclassMetadata): TaggedChild<Any?> =
+                object : TaggedChild<Any?> {
+                    override fun renderChild(value: Any?): String {
+                        require(value != null)
+                        val renderedFields =
+                            metadata.fields.joinToString(", ") { field ->
+                                val fieldChild = field.instance as TaggedChild<Any?>
+                                "${'$'}{field.name}=${'$'}{fieldChild.renderChild(field.get(value))}"
+                            }
+                        val typeName = metadata.typeName.substringAfterLast('.')
+                        return "${'$'}typeName(${'$'}renderedFields)"
+                    }
+
+                    override fun render(context: String, value: List<Any?>): String =
+                        "${'$'}context:" + value.joinToString(prefix = "[", postfix = "]") { element ->
+                            renderChild(element)
+                        }
+                }
+
+            override fun deriveSum(metadata: SumTypeclassMetadata): TaggedChild<Any?> =
+                object : TaggedChild<Any?> {
+                    override fun renderChild(value: Any?): String {
+                        require(value != null)
+                        val matchingCase = metadata.cases.single { candidate -> candidate.matches(value) }
+                        val caseChild = matchingCase.instance as TaggedChild<Any?>
+                        return caseChild.renderChild(value)
+                    }
+
+                    override fun render(context: String, value: List<Any?>): String =
+                        "${'$'}context:" + value.joinToString(prefix = "[", postfix = "]") { element ->
+                            renderChild(element)
+                        }
+                }
+        }
+    }
+    """.trimIndent()
+
+private fun taggedChildShownIntSource(packageName: String): String =
+    """
+    package $packageName
+
+    import one.wabbit.typeclass.Instance
+
+    data class ShownInt(val value: Int) {
+        companion object {
+            @Instance
+            val child: TaggedChild<ShownInt> =
+                object : TaggedChild<ShownInt> {
+                    override fun renderChild(value: ShownInt): String = value.value.toString()
+
+                    override fun render(context: String, value: List<ShownInt>): String =
+                        "${'$'}context:" + value.joinToString(prefix = "[", postfix = "]") { element ->
+                            renderChild(element)
+                        }
+                }
+        }
+    }
     """.trimIndent()

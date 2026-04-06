@@ -2664,7 +2664,7 @@ private class IrRuleIndex private constructor(
             pluginContext: IrPluginContext,
             sharedState: TypeclassPluginSharedState,
         ): IrRuleIndex {
-            val scanner = IrModuleScanner(pluginContext, sharedState.configuration)
+            val scanner = IrModuleScanner(pluginContext, sharedState.configuration, sharedState)
             moduleFragment.files.forEach(scanner::scanFile)
 
             val directCompanionRules = scanner.buildCompanionRules()
@@ -2742,6 +2742,7 @@ private fun RuleReference.lookupIdentityKeyOrNull(): String? =
 private class IrModuleScanner(
     private val pluginContext: IrPluginContext,
     private val configuration: TypeclassConfiguration,
+    private val sharedState: TypeclassPluginSharedState,
 ) {
     val classInfoById: MutableMap<String, VisibleClassHierarchyInfo> = linkedMapOf()
 
@@ -2888,7 +2889,7 @@ private class IrModuleScanner(
                     klass.toDerivedEquivRules() + klass.toDeriveViaRules()
                 },
             )
-        }
+        }.also(::recordSuccessfulDerivedMetadata)
     }
 
     fun registerDiscoveredClass(declaration: IrClass) {
@@ -2929,6 +2930,77 @@ private class IrModuleScanner(
             )
             addAll(ownerClass.toDerivedEquivRules())
             addAll(ownerClass.toDeriveViaRules())
+        }
+    }
+
+    private fun recordSuccessfulDerivedMetadata(
+        resolvedRules: List<ResolvedRule>,
+    ) {
+        val metadataByOwner = linkedMapOf<IrClass, MutableSet<GeneratedDerivedMetadata>>()
+
+        fun record(owner: IrClass, metadata: GeneratedDerivedMetadata) {
+            if (owner.origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB) {
+                return
+            }
+            metadataByOwner.getOrPut(owner, ::linkedSetOf) += metadata
+        }
+
+        resolvedRules.forEach { resolvedRule ->
+            val providedType = resolvedRule.rule.providedType as? TcType.Constructor ?: return@forEach
+            val providedTypeclassId = runCatching { ClassId.fromString(providedType.classifierId) }.getOrNull() ?: return@forEach
+            when (val reference = resolvedRule.reference) {
+                is RuleReference.Derived ->
+                    record(
+                        owner = reference.targetClass,
+                        metadata =
+                            GeneratedDerivedMetadata.Derive(
+                                typeclassId = providedTypeclassId,
+                                targetId = reference.targetClass.classIdOrFail,
+                            ),
+                    )
+
+                is RuleReference.DerivedEquiv ->
+                    record(
+                        owner = reference.targetClass,
+                        metadata =
+                            GeneratedDerivedMetadata.DeriveEquiv(
+                                targetId = reference.targetClass.classIdOrFail,
+                                otherClassId = reference.otherClassId,
+                            ),
+                    )
+
+                is RuleReference.DerivedVia ->
+                    record(
+                        owner = reference.targetClass,
+                        metadata =
+                            GeneratedDerivedMetadata.DeriveVia(
+                                typeclassId = providedTypeclassId,
+                                targetId = reference.targetClass.classIdOrFail,
+                                path =
+                                    reference.authoredPath.map { segment ->
+                                        when (segment) {
+                                            is DeriveViaPathSegment.Waypoint ->
+                                                GeneratedDeriveViaPathSegment(
+                                                    kind = GeneratedDeriveViaPathSegment.Kind.WAYPOINT,
+                                                    classId = segment.classId,
+                                                )
+
+                                            is DeriveViaPathSegment.PinnedIso ->
+                                                GeneratedDeriveViaPathSegment(
+                                                    kind = GeneratedDeriveViaPathSegment.Kind.PINNED_ISO,
+                                                    classId = segment.classId,
+                                                )
+                                        }
+                                    },
+                            ),
+                    )
+
+                else -> Unit
+            }
+        }
+
+        metadataByOwner.forEach { (owner, entries) ->
+            owner.recordGeneratedDerivedTypeclassMetadata(entries.toList())
         }
     }
 
@@ -2973,7 +3045,6 @@ private class IrModuleScanner(
             is IrClass -> {
                 declaration.classId?.let { classId ->
                     val supportedDerivedTypeclassIds = declaration.shapeDerivedTypeclassIds()
-                    val generatedDerivedMetadataEntries = declaration.generatedDerivedMetadataEntries()
                     classesById[classId.asString()] = declaration
                     declaredDerivationsByClassId[classId.asString()] = supportedDerivedTypeclassIds
                     classInfoById[classId.asString()] =
@@ -2985,9 +3056,6 @@ private class IrModuleScanner(
                             isSealed = declaration.modality == Modality.SEALED,
                             typeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.variance },
                         )
-                    if (generatedDerivedMetadataEntries.isNotEmpty()) {
-                        declaration.recordGeneratedDerivedTypeclassMetadata(generatedDerivedMetadataEntries)
-                    }
                 }
 
                 val nextAssociatedOwner =
@@ -3330,10 +3398,13 @@ private class IrModuleScanner(
         val targetClassId = classId ?: return emptyList()
         val fallbackGoal = "${EQUIV_CLASS_ID.asString()}<${targetClassId.asString()},?>"
         val explicitRequests = deriveEquivRequests()
-        val generatedRequests = generatedDerivedMetadata().filterIsInstance<GeneratedDerivedMetadata.DeriveEquiv>()
-        val preferExplicitRequests = origin != IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB && explicitRequests.isNotEmpty()
+        val generatedRequests = publishedGeneratedDerivedMetadata().filterIsInstance<GeneratedDerivedMetadata.DeriveEquiv>()
         val requestSpecs =
-            if (preferExplicitRequests) {
+            if (origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB) {
+                generatedRequests.map { metadata ->
+                    metadata.otherClassId to compilerMessageLocation()
+                }
+            } else if (explicitRequests.isNotEmpty()) {
                 explicitRequests.map { request ->
                     request.otherClassId to compilerMessageLocation(request.annotation)
                 }
@@ -3404,6 +3475,8 @@ private class IrModuleScanner(
                     ),
                 reference =
                     RuleReference.DerivedEquiv(
+                        targetClass = this,
+                        otherClassId = otherClassId,
                         sourceType = symbol.defaultType,
                         targetType = otherClass.symbol.defaultType,
                         forwardPlan = plans.first,
@@ -3417,10 +3490,25 @@ private class IrModuleScanner(
     private fun IrClass.toDeriveViaRules(): List<ResolvedRule> {
         val targetClassId = classId ?: return emptyList()
         val explicitRequests = deriveViaRequests(pluginContext)
-        val generatedRequests = generatedDerivedMetadata().filterIsInstance<GeneratedDerivedMetadata.DeriveVia>()
-        val preferExplicitRequests = origin != IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB && explicitRequests.isNotEmpty()
+        val generatedRequests = publishedGeneratedDerivedMetadata().filterIsInstance<GeneratedDerivedMetadata.DeriveVia>()
         val requestSpecs =
-            (if (preferExplicitRequests) {
+            (if (origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB) {
+                generatedRequests.map { metadata ->
+                    Triple(
+                        metadata.typeclassId,
+                        metadata.path.map { segment ->
+                            when (segment.kind) {
+                                GeneratedDeriveViaPathSegment.Kind.WAYPOINT ->
+                                    DeriveViaPathSegment.Waypoint(segment.classId)
+
+                                GeneratedDeriveViaPathSegment.Kind.PINNED_ISO ->
+                                    DeriveViaPathSegment.PinnedIso(segment.classId)
+                            }
+                        },
+                        compilerMessageLocation(),
+                    )
+                }
+            } else if (explicitRequests.isNotEmpty()) {
                 explicitRequests.map { request ->
                     Triple(
                         request.typeclassId,
@@ -3551,39 +3639,36 @@ private class IrModuleScanner(
                         "normalized plan: ${resolvedPath.forwardPlan.traceRender()}",
                     ),
             )
-            expandDerivedTypeclassIds(
-                typeclassId = typeclassId,
-                previousWereTypeclass = true,
-                visited = linkedSetOf(),
-            ).mapNotNull { expandedTypeclassId ->
-                val expandedTypeclassInterface = pluginContext.referenceClass(expandedTypeclassId)?.owner ?: return@mapNotNull null
-                val prefixParameters =
-                    expandedTypeclassInterface.typeParameters.dropLast(1).mapIndexed { index, typeParameter ->
-                        TcTypeParameter(
-                            id = "derive-via:${targetClassId.asString()}:${expandedTypeclassId.asString()}:$index",
-                            displayName = typeParameter.name.asString(),
-                        )
-                    }
+            val expansions = expandedDerivedTypeclassHeads(typeclassId)
+            val directTypeParameters = expansions.firstOrNull()?.directTypeParameters.orEmpty()
+            val transportedParameter = directTypeParameters.lastOrNull() ?: return@flatMap emptyList()
+            val prefixParameters = directTypeParameters.dropLast(1)
+            val prefixBindings =
+                prefixParameters.associate { parameter ->
+                    parameter.id to TcType.Variable(parameter.id, parameter.displayName)
+                }
+            expansions.mapNotNull { expansion ->
                 val providedType =
-                    TcType.Constructor(
-                        classifierId = expandedTypeclassId.asString(),
-                        arguments = prefixParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) } + targetType,
-                    )
+                    expansion.head.substituteType(prefixBindings + (transportedParameter.id to targetType)) as? TcType.Constructor
+                        ?: return@mapNotNull null
                 val prerequisiteType =
-                    TcType.Constructor(
-                        classifierId = expandedTypeclassId.asString(),
-                        arguments = prefixParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) } + viaTypeModel,
-                    )
+                    expansion.head.substituteType(prefixBindings + (transportedParameter.id to viaTypeModel)) as? TcType.Constructor
+                        ?: return@mapNotNull null
+                val expandedTypeclassId = runCatching { ClassId.fromString(providedType.classifierId) }.getOrNull() ?: return@mapNotNull null
+                val expandedTypeclassInterface = pluginContext.referenceClass(expandedTypeclassId)?.owner ?: return@mapNotNull null
                 ResolvedRule(
                     rule =
                         InstanceRule(
-                            id = "derived-via:${expandedTypeclassId.asString()}:${targetClassId.asString()}:${path.joinToString("|") { it.classId.asString() }}",
+                            id =
+                                "derived-via:${typeclassId.asString()}:${providedType.normalizedKey()}:${path.joinToString("|") { it.classId.asString() }}",
                             typeParameters = prefixParameters,
                             providedType = providedType,
                             prerequisiteTypes = listOf(prerequisiteType),
                         ),
                     reference =
                         RuleReference.DerivedVia(
+                            targetClass = this,
+                            authoredPath = path,
                             typeclassInterface = expandedTypeclassInterface,
                             targetType = symbol.defaultType,
                             viaType = resolvedPath.viaType,
@@ -3940,73 +4025,33 @@ private class IrModuleScanner(
         }
 
     private fun IrClass.shapeDerivedTypeclassIds(): Set<ClassId> =
-        buildSet {
-            addAll(
-                generatedDerivedMetadata()
-                    .filterIsInstance<GeneratedDerivedMetadata.Derive>()
-                    .map { metadata -> metadata.typeclassId },
-            )
-            addAll(derivedTypeclassIds())
-        }
-
-    private fun IrClass.generatedDerivedMetadataEntries(): List<GeneratedDerivedMetadata> =
-        buildList {
-            derivedTypeclassIds().forEach { typeclassId ->
-                expandDerivedTypeclassIds(
-                    typeclassId = typeclassId,
-                    previousWereTypeclass = true,
-                    visited = linkedSetOf(),
-                ).forEach { expandedTypeclassId ->
-                    add(
-                        GeneratedDerivedMetadata.Derive(
-                            typeclassId = expandedTypeclassId,
-                            targetId = classIdOrFail,
-                        ),
-                    )
-                }
-            }
-            deriveViaRequests(pluginContext).forEach { request ->
-                expandDerivedTypeclassIds(
-                    typeclassId = request.typeclassId,
-                    previousWereTypeclass = true,
-                    visited = linkedSetOf(),
-                ).forEach { expandedTypeclassId ->
-                    add(
-                        GeneratedDerivedMetadata.DeriveVia(
-                            typeclassId = expandedTypeclassId,
-                            targetId = classIdOrFail,
-                            path =
-                                request.path.map { segment ->
-                                    when (segment) {
-                                        is DeriveViaPathSegment.Waypoint ->
-                                            GeneratedDeriveViaPathSegment(
-                                                kind = GeneratedDeriveViaPathSegment.Kind.WAYPOINT,
-                                                classId = segment.classId,
-                                            )
-
-                                        is DeriveViaPathSegment.PinnedIso ->
-                                            GeneratedDeriveViaPathSegment(
-                                                kind = GeneratedDeriveViaPathSegment.Kind.PINNED_ISO,
-                                                classId = segment.classId,
-                                            )
-                                    }
-                                },
-                        ),
-                    )
-                }
-            }
-            deriveEquivRequests().forEach { request ->
-                add(
-                    GeneratedDerivedMetadata.DeriveEquiv(
-                        targetId = classIdOrFail,
-                        otherClassId = request.otherClassId,
-                    ),
+        if (origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB) {
+            publishedGeneratedDerivedMetadata()
+                .filterIsInstance<GeneratedDerivedMetadata.Derive>()
+                .mapTo(linkedSetOf()) { metadata -> metadata.typeclassId }
+        } else {
+            buildSet {
+                addAll(
+                    publishedGeneratedDerivedMetadata()
+                        .filterIsInstance<GeneratedDerivedMetadata.Derive>()
+                        .map { metadata -> metadata.typeclassId },
                 )
+                addAll(derivedTypeclassIds())
             }
         }
 
-    private fun IrClass.generatedDerivedTypeclassIds(): Set<ClassId> =
-        generatedDerivedMetadata().mapTo(linkedSetOf()) { metadata -> metadata.typeclassId }
+    private fun IrClass.publishedGeneratedDerivedMetadata(): List<GeneratedDerivedMetadata> {
+        val directMetadata = generatedDerivedMetadata()
+        if (origin != IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB) {
+            return directMetadata
+        }
+        val ownerId = classId ?: return directMetadata
+        return (
+            directMetadata +
+                sharedState.importedGeneratedDerivedMetadataForIr(ownerId) +
+                sharedState.binaryGeneratedDerivedMetadataForIr(ownerId)
+        ).distinct()
+    }
 
     private fun IrClass.generatedDerivedMetadata(): List<GeneratedDerivedMetadata> =
         annotations
@@ -4061,6 +4106,12 @@ private class IrModuleScanner(
             }
     }
 
+    private data class IrExpandedDerivedTypeclassHead(
+        val directTypeclassId: ClassId,
+        val directTypeParameters: List<TcTypeParameter>,
+        val head: TcType.Constructor,
+    )
+
     private fun typeclassGoal(
         typeclassId: ClassId,
         targetType: TcType,
@@ -4069,41 +4120,102 @@ private class IrModuleScanner(
     private fun expandDerivedProvidedTypes(
         typeclassId: ClassId,
         targetType: TcType,
-    ): List<TcType> =
-        expandDerivedTypeclassIds(
-            typeclassId = typeclassId,
-            previousWereTypeclass = true,
-            visited = linkedSetOf(),
-        ).map { inheritedTypeclassId ->
-            typeclassGoal(inheritedTypeclassId, targetType)
+    ): List<TcType> {
+        val expansions = expandedDerivedTypeclassHeads(typeclassId)
+        val directTypeParameters = expansions.firstOrNull()?.directTypeParameters.orEmpty()
+        if (directTypeParameters.size != 1) {
+            return emptyList()
         }
+        val transportedParameter = directTypeParameters.single()
+        return expansions.mapNotNull { expansion ->
+            expansion.head.substituteType(mapOf(transportedParameter.id to targetType)) as? TcType.Constructor
+        }.distinctBy(TcType::normalizedKey)
+    }
 
-    private fun expandDerivedTypeclassIds(
+    private fun expandedDerivedTypeclassHeads(
         typeclassId: ClassId,
-        previousWereTypeclass: Boolean,
-        visited: MutableSet<String>,
-    ): Set<ClassId> {
-        val visitKey = typeclassId.asString()
-        if (!visited.add(visitKey)) {
-            return emptySet()
-        }
-        val typeclassInterface = pluginContext.referenceClass(typeclassId)?.owner ?: return emptySet()
-        val currentIsTypeclass = typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID)
-        val expanded = linkedSetOf<ClassId>()
-        if (currentIsTypeclass && previousWereTypeclass) {
-            expanded += typeclassId
-        }
-        val nextPreviousWereTypeclass = previousWereTypeclass && currentIsTypeclass
-        typeclassInterface.superTypes.forEach { superType ->
-            val superTypeId = superType.classOrNull?.owner?.classId ?: return@forEach
-            expanded +=
-                expandDerivedTypeclassIds(
-                    typeclassId = superTypeId,
-                    previousWereTypeclass = nextPreviousWereTypeclass,
-                    visited = visited,
+    ): List<IrExpandedDerivedTypeclassHead> {
+        val typeclassInterface = pluginContext.referenceClass(typeclassId)?.owner ?: return emptyList()
+        val directTypeParameters =
+            typeclassInterface.typeParameters.mapIndexed { index, typeParameter ->
+                TcTypeParameter(
+                    id = "derived-head:${typeclassId.asString()}#$index",
+                    displayName = typeParameter.name.asString(),
                 )
+            }
+        val rootHead =
+            TcType.Constructor(
+                classifierId = typeclassId.asString(),
+                arguments = directTypeParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) },
+            )
+        return expandDerivedTypeclassHeads(
+            typeclassInterface = typeclassInterface,
+            currentHead = rootHead,
+            directTypeclassId = typeclassId,
+            directTypeParameters = directTypeParameters,
+            previousWereTypeclass = true,
+            visited = emptySet(),
+        )
+    }
+
+    private fun expandDerivedTypeclassHeads(
+        typeclassInterface: IrClass,
+        currentHead: TcType.Constructor,
+        directTypeclassId: ClassId,
+        directTypeParameters: List<TcTypeParameter>,
+        previousWereTypeclass: Boolean,
+        visited: Set<String>,
+    ): List<IrExpandedDerivedTypeclassHead> {
+        val visitKey = currentHead.normalizedKey()
+        if (visitKey in visited) {
+            return emptyList()
         }
-        return expanded
+        val currentIsTypeclass = typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID)
+        val localTypeParameters =
+            typeclassInterface.typeParameters.mapIndexed { index, typeParameter ->
+                TcTypeParameter(
+                    id = "derived-head:${currentHead.classifierId}#$index",
+                    displayName = typeParameter.name.asString(),
+                )
+            }
+        val typeParameterBySymbol =
+            typeclassInterface.typeParameters.zip(localTypeParameters).associate { (typeParameter, parameter) ->
+                typeParameter.symbol to parameter
+            }
+        val bindings =
+            localTypeParameters.zip(currentHead.arguments).associate { (parameter, argument) ->
+                parameter.id to argument
+            }
+        val nextPreviousWereTypeclass = previousWereTypeclass && currentIsTypeclass
+        val nextVisited = visited + visitKey
+        return buildList {
+            if (currentIsTypeclass && previousWereTypeclass) {
+                add(
+                    IrExpandedDerivedTypeclassHead(
+                        directTypeclassId = directTypeclassId,
+                        directTypeParameters = directTypeParameters,
+                        head = currentHead,
+                    ),
+                )
+            }
+            typeclassInterface.superTypes.forEach { superType ->
+                val appliedSuperType =
+                    (irTypeToModel(superType, typeParameterBySymbol)?.substituteType(bindings) as? TcType.Constructor)
+                        ?: return@forEach
+                val superTypeclassId = runCatching { ClassId.fromString(appliedSuperType.classifierId) }.getOrNull() ?: return@forEach
+                val superTypeclassInterface = pluginContext.referenceClass(superTypeclassId)?.owner ?: return@forEach
+                addAll(
+                    expandDerivedTypeclassHeads(
+                        typeclassInterface = superTypeclassInterface,
+                        currentHead = appliedSuperType,
+                        directTypeclassId = directTypeclassId,
+                        directTypeParameters = directTypeParameters,
+                        previousWereTypeclass = nextPreviousWereTypeclass,
+                        visited = nextVisited,
+                    ),
+                )
+            }
+        }.distinctBy { expansion -> "${expansion.directTypeclassId.asString()}:${expansion.head.normalizedKey()}" }
     }
 }
 
@@ -4485,6 +4597,8 @@ private sealed interface RuleReference {
     ) : RuleReference
 
     data class DerivedEquiv(
+        val targetClass: IrClass,
+        val otherClassId: ClassId,
         val sourceType: IrType,
         val targetType: IrType,
         val forwardPlan: TransportPlan,
@@ -4492,6 +4606,8 @@ private sealed interface RuleReference {
     ) : RuleReference
 
     data class DerivedVia(
+        val targetClass: IrClass,
+        val authoredPath: List<DeriveViaPathSegment>,
         val typeclassInterface: IrClass,
         val targetType: IrType,
         val viaType: IrType,
