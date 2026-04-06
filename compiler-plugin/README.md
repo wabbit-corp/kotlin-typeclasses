@@ -231,6 +231,9 @@ If you are using Gradle, prefer [`../gradle-plugin/README.md`](../gradle-plugin/
 
 - [`../README.md`](../README.md)
 - [`../docs/user-guide.md`](../docs/user-guide.md)
+- [`../docs/instance-authoring.md`](../docs/instance-authoring.md)
+- [`../docs/troubleshooting.md`](../docs/troubleshooting.md)
+- [`../docs/multi-module.md`](../docs/multi-module.md)
 - [`../docs/development.md`](../docs/development.md)
 - [`../docs/architecture.md`](../docs/architecture.md)
 - [`../library/README.md`](../library/README.md)

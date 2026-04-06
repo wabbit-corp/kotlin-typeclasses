@@ -162,6 +162,10 @@ dokka {
             if (dokkaModuleFile.exists()) {
                 includes.from(dokkaModuleFile)
             }
+            val dokkaPackageFile = file("docs/dokka-package.md")
+            if (dokkaPackageFile.exists()) {
+                includes.from(dokkaPackageFile)
+            }
         }
 
         sourceLink {

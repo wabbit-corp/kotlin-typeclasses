@@ -42,6 +42,8 @@ Marks an object, function, or immutable property as a source of evidence.
 
 The compiler plugin treats instance functions as rule-like declarations: no ordinary value parameters, optional context-parameter prerequisites, and a provided typeclass result.
 
+Top-level instances are intentionally restricted: they must live in the same file as the typeclass head or one of the concrete provided classifiers in the target.
+
 ### `summon()`
 
 `summon()` is the user-facing way to ask for evidence from the current context:
@@ -95,6 +97,8 @@ Current proof surfaces include:
 - `TypeId`
 - `Equiv`
 - `Iso`
+- optional builtin `KClass<T>` evidence when `builtinKClassTypeclass=enabled`
+- optional builtin `KSerializer<T>` evidence when `builtinKSerializerTypeclass=enabled`
 
 The singleton carriers used to implement some of these proofs are internal details. End users program against the public proof interfaces.
 
@@ -132,10 +136,18 @@ Then write source code using:
 - `@Derive` and related annotations to opt types into derivation
 - `summon()` or explicit context parameters to consume evidence
 
+For detailed semantics of scope, derivation, proofs, and optional builtins, use the dedicated guides in [`../docs/`](../docs/).
+
 ## Related Docs
 
 - [`../README.md`](../README.md) for the project overview
 - [`../docs/user-guide.md`](../docs/user-guide.md) for user-facing setup and semantics
+- [`../docs/typeclass-model.md`](../docs/typeclass-model.md) for typeclass scope and resolution
+- [`../docs/instance-authoring.md`](../docs/instance-authoring.md) for instance placement, ownership rules, and ambiguity avoidance
+- [`../docs/derivation.md`](../docs/derivation.md) for `@Derive`, `@DeriveVia`, and `@DeriveEquiv`
+- [`../docs/proofs-and-builtins.md`](../docs/proofs-and-builtins.md) for proof surfaces plus `KClass<T>` / `KSerializer<T>`
+- [`../docs/troubleshooting.md`](../docs/troubleshooting.md) for diagnostics and tracing workflow
+- [`../docs/multi-module.md`](../docs/multi-module.md) for dependency and export behavior
 - [`../docs/architecture.md`](../docs/architecture.md) for the repo-wide architecture
 - [`../gradle-plugin/README.md`](../gradle-plugin/README.md) for build integration
 - [`../compiler-plugin/README.md`](../compiler-plugin/README.md) for compiler-plugin behavior

@@ -2,6 +2,15 @@
 
 This guide covers the user-facing programming model of `kotlin-typeclasses`.
 
+For deeper topic-by-topic coverage, see:
+
+- [Typeclass Model](./typeclass-model.md)
+- [Instance Authoring](./instance-authoring.md)
+- [Derivation](./derivation.md)
+- [Proofs And Builtins](./proofs-and-builtins.md)
+- [Troubleshooting](./troubleshooting.md)
+- [Multi-Module Behavior](./multi-module.md)
+
 ## Why This Model Exists
 
 The project treats Kotlin context parameters as the substrate for a typeclass model, not as the entire feature.
@@ -82,6 +91,8 @@ interface Eq<A> {
 
 Only `@Typeclass` interfaces participate in implicit resolution.
 
+For the full scope and search model, see [Typeclass Model](./typeclass-model.md).
+
 ## Search Precedence
 
 The practical resolution order is:
@@ -89,6 +100,7 @@ The practical resolution order is:
 1. directly available contextual evidence
 2. indexed global and associated `@Instance` rules
 3. derived rules where the target shape is derivable
+4. builtin evidence when the goal matches a builtin contract
 
 This is important because:
 
@@ -104,6 +116,10 @@ Supported instance shapes are:
 - top-level `@Instance` parameterless functions with context parameters
 - top-level immutable `@Instance` properties
 - associated companion members using the same shapes
+
+Important rule:
+
+- top-level instances are not arbitrary orphans; they must live in the same file as the typeclass head or one of the concrete provided classifiers in the target
 
 Typical examples:
 
@@ -124,6 +140,8 @@ fun <A, B> pairEq(): Eq<Pair<A, B>> =
 ```
 
 The design intent is that an `@Instance` function acts like a rule: it has no ordinary value parameters, and its context parameters describe prerequisites that must be resolved first.
+
+For placement strategy, orphan restrictions, and ambiguity avoidance, see [Instance Authoring](./instance-authoring.md).
 
 ## Consuming Evidence
 
@@ -230,6 +248,8 @@ For concrete end-to-end derivation examples, see:
 - [`compiler-plugin/README.md`](../compiler-plugin/README.md)
 - [`DerivationSurfaceTest.kt`](../compiler-plugin/src/test/kotlin/one/wabbit/typeclass/plugin/integration/derivation/DerivationSurfaceTest.kt)
 
+For a dedicated derivation guide, including `@DeriveVia` and `@DeriveEquiv`, see [Derivation](./derivation.md).
+
 ## Builtin Proofs
 
 The runtime includes proof-oriented typeclasses that the compiler can materialize directly. These are normal public APIs; users do not need to opt into the internal singleton carriers used to implement them.
@@ -257,6 +277,8 @@ val typeId = summon<TypeId<List<String?>>>()
 ```
 
 For concrete examples, see [`BuiltinProofApiSurfaceTest.kt`](../compiler-plugin/src/test/kotlin/one/wabbit/typeclass/plugin/integration/proofs/BuiltinProofApiSurfaceTest.kt).
+
+For a dedicated guide that covers every builtin proof type plus `KClass<T>` and `KSerializer<T>`, see [Proofs And Builtins](./proofs-and-builtins.md).
 
 ## Tracing And Optional Builtins
 
@@ -286,6 +308,8 @@ For source-scoped tracing, annotate a file, class, function, property, or local 
 ```kotlin
 @file:DebugTypeclassResolution(TypeclassTraceMode.FAILURES_AND_ALTERNATIVES)
 ```
+
+For a practical debugging workflow, including how to interpret `TC_NO_CONTEXT_ARGUMENT`, `TC_AMBIGUOUS_INSTANCE`, and trace modes, see [Troubleshooting](./troubleshooting.md).
 
 ## Ambiguity, Coherence, And Failure Modes
 
@@ -324,5 +348,11 @@ For the contextual-property limitation, see [`compiler-plugin/ISSUE_PROPERTIES.m
 
 - Repo overview: [`README.md`](../README.md)
 - Runtime API: [`library/README.md`](../library/README.md)
+- Typeclass scope and resolution: [`typeclass-model.md`](./typeclass-model.md)
+- Instance placement and publishing: [`instance-authoring.md`](./instance-authoring.md)
+- Derivation details: [`derivation.md`](./derivation.md)
+- Proofs and optional builtins: [`proofs-and-builtins.md`](./proofs-and-builtins.md)
+- Diagnostics and debugging: [`troubleshooting.md`](./troubleshooting.md)
+- Dependency and publishing behavior: [`multi-module.md`](./multi-module.md)
 - Internal architecture: [`architecture.md`](./architecture.md)
 - Local development and release model: [`development.md`](./development.md)

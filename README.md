@@ -156,6 +156,7 @@ The important resolution rules are:
 - Only `@Typeclass` interfaces participate in implicit typeclass resolution.
 - Directly available contextual evidence is considered before global rule search.
 - Global rules come from top-level `@Instance` objects, functions, and immutable properties, plus associated companions.
+- Top-level `@Instance` declarations are restricted by file ownership: they must live with the typeclass head or one of the concrete provided classifiers in the target.
 - For a goal like `Foo<A, B>`, associated search includes the companion of `Foo`, companions of sealed supertypes of `Foo`, and companions of `A` and `B` plus their sealed supertypes.
 - Derived rules created from `@Derive(...)` are part of the same search space.
 - There is no global coherence check. If multiple candidates match, resolution fails as ambiguous.
@@ -219,6 +220,12 @@ For the current property-read limitation, see [`compiler-plugin/ISSUE_PROPERTIES
 ## Documentation Map
 
 - [User Guide](./docs/user-guide.md): setup, authoring typeclasses, derivation, builtin proofs, and tracing
+- [Typeclass Model](./docs/typeclass-model.md): what counts as a typeclass, where evidence lives, typeclass scope, and resolution precedence
+- [Instance Authoring](./docs/instance-authoring.md): placement strategy, top-level ownership rules, and ambiguity avoidance
+- [Derivation](./docs/derivation.md): `@Derive`, `@DeriveVia`, `@DeriveEquiv`, deriver contracts, and current boundaries
+- [Proofs And Builtins](./docs/proofs-and-builtins.md): all builtin proof types plus `KClass<T>` / `KSerializer<T>` summoning
+- [Troubleshooting](./docs/troubleshooting.md): common diagnostics, tracing workflow, and builtin/debugging failure patterns
+- [Multi-Module Behavior](./docs/multi-module.md): visibility, exported evidence, and dependency-boundary semantics
 - [Architecture](./docs/architecture.md): how the runtime, compiler plugin, Gradle plugin, and IntelliJ plugin fit together
 - [Development](./docs/development.md): local build, test, versioning, publishing, and release workflow notes
 - [Runtime Library README](./library/README.md): public runtime API surface and artifact role
@@ -255,8 +262,14 @@ If you are new to the repository, this order works well:
 
 1. [README.md](./README.md)
 2. [docs/user-guide.md](./docs/user-guide.md)
-3. [library/README.md](./library/README.md)
-4. [docs/architecture.md](./docs/architecture.md)
-5. [compiler-plugin/README.md](./compiler-plugin/README.md)
-6. [compiler-plugin/PLAN.md](./compiler-plugin/PLAN.md)
-7. [compiler-plugin/LEARNINGS.md](./compiler-plugin/LEARNINGS.md)
+3. [docs/typeclass-model.md](./docs/typeclass-model.md)
+4. [docs/instance-authoring.md](./docs/instance-authoring.md)
+5. [docs/derivation.md](./docs/derivation.md)
+6. [docs/proofs-and-builtins.md](./docs/proofs-and-builtins.md)
+7. [docs/troubleshooting.md](./docs/troubleshooting.md)
+8. [docs/multi-module.md](./docs/multi-module.md)
+9. [library/README.md](./library/README.md)
+10. [docs/architecture.md](./docs/architecture.md)
+11. [compiler-plugin/README.md](./compiler-plugin/README.md)
+12. [compiler-plugin/PLAN.md](./compiler-plugin/PLAN.md)
+13. [compiler-plugin/LEARNINGS.md](./compiler-plugin/LEARNINGS.md)
