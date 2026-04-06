@@ -342,14 +342,23 @@ internal class DirectTransportPlanner(
             }
 
             if (sourceClass.isTransparentValueClass() && targetType.render() != sourceType.render()) {
-                val sourceField = sourceClass.transparentValueField() ?: return null
+                val sourceField =
+                    sourceClass.transparentValueField(
+                        accessContext = sourceClass.transportAccessContext(),
+                        requireConstructorAccess = false,
+                    ) ?: return null
                 val nested = synthesize(sourceField.type, targetType, visiting) ?: return null
                 return TransportPlan.ValueUnwrap(sourceType, targetType, sourceField.getter, nested)
             }
 
             if (targetClass.isTransparentValueClass() && targetType.render() != sourceType.render()) {
-                val targetField = targetClass.transparentValueField() ?: return null
-                val constructor = targetClass.primaryConstructorOrNullLocal() ?: return null
+                val targetField =
+                    targetClass.transparentValueField(
+                        accessContext = targetClass.transportAccessContext(),
+                        requireConstructorAccess = true,
+                    ) ?: return null
+                val constructor =
+                    targetClass.primaryConstructorOrNullTransportAccessible(targetClass.transportAccessContext()) ?: return null
                 val nested = synthesize(sourceType, targetField.type, visiting) ?: return null
                 return TransportPlan.ValueWrap(sourceType, targetType, constructor, nested)
             }
@@ -396,8 +405,18 @@ internal class DirectTransportPlanner(
         targetClass: IrClass,
         visiting: MutableSet<Pair<String, String>>,
     ): TransportPlan? {
-        val sourceInfo = sourceClass.transparentProductInfo(sourceType) ?: return null
-        val targetInfo = targetClass.transparentProductInfo(targetType) ?: return null
+        val sourceInfo =
+            sourceClass.transparentProductInfo(
+                concreteType = sourceType,
+                accessContext = sourceClass.transportAccessContext(),
+                requireConstructorAccess = false,
+            ) ?: return null
+        val targetInfo =
+            targetClass.transparentProductInfo(
+                concreteType = targetType,
+                accessContext = targetClass.transportAccessContext(),
+                requireConstructorAccess = true,
+            ) ?: return null
         if (sourceInfo.isObjectLike && targetInfo.isObjectLike) {
             return TransportPlan.Product(sourceType, targetType, targetInfo, emptyList())
         }
@@ -1131,10 +1150,19 @@ private fun IrType.transportabilityViolation(
     }
     try {
         if (klass.isTransparentValueClass()) {
-            val field = klass.transparentValueField() ?: return "DeriveVia requires transparent total value classes"
+            val field =
+                klass.transparentValueField(
+                    accessContext = klass.transportAccessContext(),
+                    requireConstructorAccess = true,
+                ) ?: return "DeriveVia requires transparent total value classes"
             return field.type.transportabilityViolation(transported, opaqueParameters, visiting)
         }
-        val productInfo = klass.transparentProductInfo(this)
+        val productInfo =
+            klass.transparentProductInfo(
+                concreteType = this,
+                accessContext = klass.transportAccessContext(),
+                requireConstructorAccess = true,
+            )
         if (productInfo != null) {
             productInfo.fields.forEach { field ->
                 val message = field.type.transportabilityViolation(transported, opaqueParameters, visiting)
@@ -1269,8 +1297,17 @@ private fun IrClass.isTransparentValueClass(): Boolean =
         declarations.none { it is IrAnonymousInitializer } &&
         declarations.filterIsInstance<IrConstructor>().all(IrConstructor::isPrimary)
 
-private fun IrClass.transparentValueField(): TransparentField? {
+private fun IrClass.transparentValueField(
+    accessContext: TransportSyntheticAccessContext,
+    requireConstructorAccess: Boolean,
+): TransparentField? {
     if (!isTransparentValueClass()) {
+        return null
+    }
+    if (!accessContext.allowsTransportVisibility(visibility.toTransportSyntheticVisibility())) {
+        return null
+    }
+    if (requireConstructorAccess && primaryConstructorOrNullTransportAccessible(accessContext) == null) {
         return null
     }
     val properties =
@@ -1278,7 +1315,10 @@ private fun IrClass.transparentValueField(): TransparentField? {
             property.backingField != null &&
                 property.getter != null &&
                 property.setter == null &&
-                property.visibility == DescriptorVisibilities.PUBLIC
+                accessContext.allowsTransportVisibility(property.visibility.toTransportSyntheticVisibility()) &&
+                accessContext.allowsTransportVisibility(
+                    (property.getter ?: return@filter false).visibility.toTransportSyntheticVisibility(),
+                )
         }
     if (properties.size != 1) {
         return null
@@ -1295,7 +1335,12 @@ private fun IrClass.transparentValueField(): TransparentField? {
 
 private fun IrClass.transparentProductInfo(
     concreteType: IrType,
+    accessContext: TransportSyntheticAccessContext,
+    requireConstructorAccess: Boolean,
 ): TransparentProductInfo? {
+    if (!accessContext.allowsTransportVisibility(visibility.toTransportSyntheticVisibility())) {
+        return null
+    }
     val concreteSimpleType = concreteType as? IrSimpleType ?: return null
     val typeArgumentSubstitution =
         typeParameters.mapIndexedNotNull { index, parameter ->
@@ -1323,6 +1368,11 @@ private fun IrClass.transparentProductInfo(
     if (constructors.size != 1) {
         return null
     }
+    if (requireConstructorAccess &&
+        !accessContext.allowsTransportVisibility(primary.visibility.toTransportSyntheticVisibility())
+    ) {
+        return null
+    }
     val storedProperties =
         declarations.filterIsInstance<IrProperty>().filter { property ->
             property.backingField != null
@@ -1330,7 +1380,16 @@ private fun IrClass.transparentProductInfo(
     if (storedProperties.any(IrProperty::isDelegated)) {
         return null
     }
-    if (storedProperties.any { property -> property.setter != null || property.visibility != DescriptorVisibilities.PUBLIC }) {
+    if (storedProperties.any { property -> property.setter != null }) {
+        return null
+    }
+    if (storedProperties.any { property ->
+            !accessContext.allowsTransportVisibility(property.visibility.toTransportSyntheticVisibility()) ||
+                !accessContext.allowsTransportVisibility(
+                    (property.getter?.visibility ?: return null).toTransportSyntheticVisibility(),
+                )
+        }
+    ) {
         return null
     }
     val properties =
@@ -1397,6 +1456,20 @@ private fun IrClass.transparentSealedCases(): List<IrClass>? {
 private fun IrClass.primaryConstructorOrNullLocal(): IrConstructor? =
     declarations.filterIsInstance<IrConstructor>().singleOrNull { constructor -> constructor.isPrimary }
         ?: declarations.filterIsInstance<IrConstructor>().singleOrNull()
+
+private fun IrClass.primaryConstructorOrNullTransportAccessible(
+    accessContext: TransportSyntheticAccessContext,
+): IrConstructor? =
+    primaryConstructorOrNullLocal()?.takeIf { constructor ->
+        accessContext.allowsTransportVisibility(constructor.visibility.toTransportSyntheticVisibility())
+    }
+
+private fun IrClass.transportAccessContext(): TransportSyntheticAccessContext =
+    if (origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB) {
+        TransportSyntheticAccessContext.DEPENDENCY_BINARY
+    } else {
+        TransportSyntheticAccessContext.SAME_MODULE_SOURCE
+    }
 
 private fun IrFunction.valueArgumentIndexOrFallback(
     parameter: IrValueParameter,

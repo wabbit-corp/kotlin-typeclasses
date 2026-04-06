@@ -495,6 +495,247 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
+    @Test fun supportsDerivingViaThroughSameModuleInternalValueMembers() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @JvmInline
+            value class Via internal constructor(internal val value: Int)
+
+            @Instance
+            object ViaShow : Show<Via> {
+                override fun show(value: Via): String = "via:${'$'}{value.value}"
+            }
+
+            @JvmInline
+            @DeriveVia(Show::class, Via::class)
+            value class UserId(val value: Int)
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(UserId(7)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "via:7",
+        )
+    }
+
+    @Test fun privateValueConstructorsAreRejectedWithoutCreatingOverloadAmbiguity() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @JvmInline
+            value class Via private constructor(val value: Int) {
+                companion object {
+                    fun of(value: Int): Via = Via(value)
+                }
+            }
+
+            @Instance
+            object ViaShow : Show<Via> {
+                override fun show(value: Via): String = "via:${'$'}{value.value}"
+            }
+
+            @JvmInline
+            @DeriveVia(Show::class, Via::class) // E:TC_CANNOT_DERIVE private transport members must not make DeriveVia look usable
+            value class UserId(val value: Int)
+
+            context(show: Show<UserId>)
+            fun render(value: UserId): String = show.show(value)
+
+            fun render(value: UserId): String = "plain:${'$'}{value.value}"
+
+            fun main() {
+                println(render(UserId(7)))
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedCannotDerive("derive via", "via", "userid")),
+            unexpectedMessages =
+                listOf(
+                    "overload resolution ambiguity",
+                    "no context argument",
+                ),
+        )
+    }
+
+    @Test fun dependencyInternalValueMembersAreRejectedAtTheAnnotationSite() {
+        val moduleA =
+            HarnessDependency(
+                name = "derivevia-internal-value-upstream",
+                sources =
+                    mapOf(
+                        "depa/Show.kt" to showTypeclassSource("depa"),
+                        "depa/Via.kt" to
+                            """
+                            package depa
+
+                            import one.wabbit.typeclass.Instance
+
+                            @JvmInline
+                            value class Via internal constructor(internal val value: Int)
+
+                            @Instance
+                            object ViaShow : Show<Via> {
+                                override fun show(value: Via): String = "via:${'$'}{value.value}"
+                            }
+                            """.trimIndent(),
+                    ),
+            )
+        val moduleB =
+            HarnessDependency(
+                name = "derivevia-internal-value-consumer",
+                dependencies = listOf(moduleA),
+                sources =
+                    mapOf(
+                        "depb/UserId.kt" to
+                            """
+                            package depb
+
+                            import depa.Show
+                            import depa.Via
+                            import one.wabbit.typeclass.DeriveVia
+
+                            @JvmInline
+                            @DeriveVia(Show::class, Via::class) // E:TC_CANNOT_DERIVE dependency-internal value transport members must not make DeriveVia look usable
+                            value class UserId(val value: Int)
+
+                            context(show: Show<UserId>)
+                            fun render(value: UserId): String = show.show(value)
+
+                            fun render(value: UserId): String = "plain:${'$'}{value.value}"
+
+                            fun renderUserId(): String = render(UserId(7))
+                            """.trimIndent(),
+                    ),
+            )
+        assertDoesNotCompile(
+            sources = moduleB.sources,
+            expectedDiagnostics = listOf(expectedCannotDerive("derive via", "via", "userid")),
+            dependencies = listOf(moduleA),
+        )
+    }
+
+    @Test fun supportsDerivingViaThroughSameModuleInternalProductMembers() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            data class Via internal constructor(internal val value: Int)
+
+            @Instance
+            object ViaShow : Show<Via> {
+                override fun show(value: Via): String = "via:${'$'}{value.value}"
+            }
+
+            @DeriveVia(Show::class, Via::class)
+            data class UserId(val value: Int)
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(UserId(7)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "via:7",
+        )
+    }
+
+    @Test fun dependencyInternalProductMembersAreRejectedAtTheAnnotationSite() {
+        val moduleA =
+            HarnessDependency(
+                name = "derivevia-internal-product-upstream",
+                sources =
+                    mapOf(
+                        "depa/Show.kt" to showTypeclassSource("depa"),
+                        "depa/Via.kt" to
+                            """
+                            package depa
+
+                            import one.wabbit.typeclass.Instance
+
+                            data class Via internal constructor(internal val value: Int)
+
+                            @Instance
+                            object ViaShow : Show<Via> {
+                                override fun show(value: Via): String = "via:${'$'}{value.value}"
+                            }
+                            """.trimIndent(),
+                    ),
+            )
+        val moduleB =
+            HarnessDependency(
+                name = "derivevia-internal-product-consumer",
+                dependencies = listOf(moduleA),
+                sources =
+                    mapOf(
+                        "depb/UserId.kt" to
+                            """
+                            package depb
+
+                            import depa.Show
+                            import depa.Via
+                            import one.wabbit.typeclass.DeriveVia
+
+                            @DeriveVia(Show::class, Via::class) // E:TC_CANNOT_DERIVE dependency-internal product transport members must not make DeriveVia look usable
+                            data class UserId(val value: Int)
+
+                            context(show: Show<UserId>)
+                            fun render(value: UserId): String = show.show(value)
+
+                            fun render(value: UserId): String = "plain:${'$'}{value.value}"
+
+                            fun renderUserId(): String = render(UserId(7))
+                            """.trimIndent(),
+                    ),
+            )
+        assertDoesNotCompile(
+            sources = moduleB.sources,
+            expectedDiagnostics = listOf(expectedCannotDerive("derive via", "via", "userid")),
+            dependencies = listOf(moduleA),
+        )
+    }
+
     // Exact intended semantics:
     // - pinned Iso path segments may live in an upstream dependency module.
     // - The deriving module may still rely on transient local Equiv glue to reach the pinned segment

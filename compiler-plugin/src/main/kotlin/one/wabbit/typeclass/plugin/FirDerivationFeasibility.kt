@@ -33,6 +33,7 @@ import org.jetbrains.kotlin.fir.expressions.FirClassReferenceExpression
 import org.jetbrains.kotlin.fir.expressions.FirExpression
 import org.jetbrains.kotlin.fir.expressions.FirGetClassCall
 import org.jetbrains.kotlin.fir.expressions.FirResolvedQualifier
+import org.jetbrains.kotlin.fir.resolve.providers.firProvider
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
 import org.jetbrains.kotlin.fir.types.ConeClassLikeType
@@ -177,12 +178,20 @@ internal class FirDirectTransportPlanner(
             val sourceClass = session.regularClassSymbolOrNull(sourceConstructor.classIdOrNull() ?: return false)?.fir ?: return false
             val targetClass = session.regularClassSymbolOrNull(targetConstructor.classIdOrNull() ?: return false)?.fir ?: return false
 
-            sourceClass.transparentValueFieldType(sourceConstructor)?.let { sourceFieldType ->
+            sourceClass.transparentValueFieldType(
+                concreteType = sourceConstructor,
+                accessContext = sourceClass.transportAccessContext(session),
+                requireConstructorAccess = false,
+            )?.let { sourceFieldType ->
                 if (sourceFieldType.normalizedKey() != sourceConstructor.normalizedKey() && canTransport(sourceFieldType, targetConstructor, visiting)) {
                     return true
                 }
             }
-            targetClass.transparentValueFieldType(targetConstructor)?.let { targetFieldType ->
+            targetClass.transparentValueFieldType(
+                concreteType = targetConstructor,
+                accessContext = targetClass.transportAccessContext(session),
+                requireConstructorAccess = true,
+            )?.let { targetFieldType ->
                 if (targetFieldType.normalizedKey() != targetConstructor.normalizedKey() && canTransport(sourceConstructor, targetFieldType, visiting)) {
                     return true
                 }
@@ -203,8 +212,18 @@ internal class FirDirectTransportPlanner(
         targetClass: FirRegularClass,
         visiting: MutableSet<Pair<String, String>>,
     ): Boolean? {
-        val sourceInfo = sourceClass.transparentProductInfo(sourceType) ?: return null
-        val targetInfo = targetClass.transparentProductInfo(targetType) ?: return null
+        val sourceInfo =
+            sourceClass.transparentProductInfo(
+                concreteType = sourceType,
+                accessContext = sourceClass.transportAccessContext(session),
+                requireConstructorAccess = false,
+            ) ?: return null
+        val targetInfo =
+            targetClass.transparentProductInfo(
+                concreteType = targetType,
+                accessContext = targetClass.transportAccessContext(session),
+                requireConstructorAccess = true,
+            ) ?: return null
         if (sourceInfo.isObjectLike && targetInfo.isObjectLike) {
             return true
         }
@@ -632,10 +651,18 @@ private fun TcType.transportabilityViolation(
                 return "DeriveVia does not support recursive nominal transport shapes"
             }
             try {
-                klass.transparentValueFieldType(this)?.let { fieldType ->
+                klass.transparentValueFieldType(
+                    concreteType = this,
+                    accessContext = klass.transportAccessContext(session),
+                    requireConstructorAccess = true,
+                )?.let { fieldType ->
                     return fieldType.transportabilityViolation(transportedId, session, visiting)
                 }
-                klass.transparentProductInfo(this)?.let { productInfo ->
+                klass.transparentProductInfo(
+                    concreteType = this,
+                    accessContext = klass.transportAccessContext(session),
+                    requireConstructorAccess = true,
+                )?.let { productInfo ->
                     productInfo.fields.forEach { field ->
                         val message = field.type.transportabilityViolation(transportedId, session, visiting)
                         if (message != null) {
@@ -666,9 +693,23 @@ private fun TcType.transportabilityViolation(
 
 private fun FirRegularClass.transparentValueFieldType(
     concreteType: TcType.Constructor,
+    accessContext: TransportSyntheticAccessContext,
+    requireConstructorAccess: Boolean,
 ): TcType? {
     if (!isTransparentValueClass()) {
         return null
+    }
+    if (!accessContext.allowsTransportVisibility(status.visibility.toTransportSyntheticVisibility())) {
+        return null
+    }
+    if (requireConstructorAccess) {
+        val constructor =
+            declarations.filterIsInstance<FirConstructor>().singleOrNull { candidate -> candidate.isPrimary }
+                ?: declarations.filterIsInstance<FirConstructor>().singleOrNull()
+                ?: return null
+        if (!accessContext.allowsTransportVisibility(constructor.status.visibility.toTransportSyntheticVisibility())) {
+            return null
+        }
     }
     val property =
         declarations
@@ -677,7 +718,10 @@ private fun FirRegularClass.transparentValueFieldType(
                 candidate.backingField != null &&
                     candidate.getter != null &&
                     candidate.setter == null &&
-                    candidate.status.visibility == Visibilities.Public
+                    accessContext.allowsTransportVisibility(candidate.status.visibility.toTransportSyntheticVisibility()) &&
+                    accessContext.allowsTransportVisibility(
+                        (candidate.getter ?: return@singleOrNull false).status.visibility.toTransportSyntheticVisibility(),
+                    )
             } ?: return null
     val getter = property.getter ?: return null
     return getter.returnTypeRef.coneType.toConcreteType(this, concreteType)
@@ -685,7 +729,12 @@ private fun FirRegularClass.transparentValueFieldType(
 
 private fun FirRegularClass.transparentProductInfo(
     concreteType: TcType.Constructor,
+    accessContext: TransportSyntheticAccessContext,
+    requireConstructorAccess: Boolean,
 ): FirTransparentProductInfo? {
+    if (!accessContext.allowsTransportVisibility(status.visibility.toTransportSyntheticVisibility())) {
+        return null
+    }
     if (classKind == ClassKind.OBJECT) {
         return FirTransparentProductInfo(isObjectLike = true, fields = emptyList())
     }
@@ -697,6 +746,11 @@ private fun FirRegularClass.transparentProductInfo(
     if (constructors.size != 1) {
         return null
     }
+    if (requireConstructorAccess &&
+        !accessContext.allowsTransportVisibility(primary.status.visibility.toTransportSyntheticVisibility())
+    ) {
+        return null
+    }
     val storedProperties =
         declarations.filterIsInstance<FirProperty>().filter { property ->
             property.backingField != null
@@ -706,8 +760,10 @@ private fun FirRegularClass.transparentProductInfo(
     }
     if (storedProperties.any { property ->
             property.setter != null ||
-                property.status.visibility != Visibilities.Public ||
-                property.getter?.status?.visibility != Visibilities.Public
+                !accessContext.allowsTransportVisibility(property.status.visibility.toTransportSyntheticVisibility()) ||
+                !accessContext.allowsTransportVisibility(
+                    (property.getter?.status?.visibility ?: return null).toTransportSyntheticVisibility(),
+                )
         }
     ) {
         return null
@@ -760,6 +816,16 @@ private fun FirRegularClass.isTransparentValueClass(): Boolean =
         typeParameters.isEmpty() &&
         !hasAnonymousInitializer() &&
         declarations.filterIsInstance<FirConstructor>().all(FirConstructor::isPrimary)
+
+private fun FirRegularClass.transportAccessContext(session: FirSession): TransportSyntheticAccessContext =
+    if (
+        runCatching { session.firProvider.symbolProvider.getClassLikeSymbolByClassId(symbol.classId) }.getOrNull() != null ||
+        runCatching { session.firProvider.getFirClassifierContainerFileIfAny(symbol.classId) }.getOrNull() != null
+    ) {
+        TransportSyntheticAccessContext.SAME_MODULE_SOURCE
+    } else {
+        TransportSyntheticAccessContext.DEPENDENCY_BINARY
+    }
 
 private fun FirRegularClass.hasAnonymousInitializer(): Boolean =
     declarations.any { declaration -> declaration is FirAnonymousInitializer }
