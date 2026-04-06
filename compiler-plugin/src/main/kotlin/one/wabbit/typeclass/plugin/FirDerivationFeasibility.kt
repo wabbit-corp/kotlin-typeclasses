@@ -64,6 +64,20 @@ internal data class FirDeriveViaRequest(
     val path: List<FirDeriveViaPathSegment>,
 )
 
+internal sealed interface FirDeriveViaAnnotationParseResult {
+    val annotation: FirAnnotation
+
+    data class Valid(
+        override val annotation: FirAnnotation,
+        val request: FirDeriveViaRequest,
+    ) : FirDeriveViaAnnotationParseResult
+
+    data class Invalid(
+        override val annotation: FirAnnotation,
+        val message: String,
+    ) : FirDeriveViaAnnotationParseResult
+}
+
 internal data class FirShapeDerivedGoalMatch(
     val directTypeclassId: String,
     val targetType: TcType.Constructor,
@@ -272,24 +286,20 @@ internal fun FirRegularClass.deriveViaRequests(session: FirSession): List<FirDer
                 )
             }
     } else {
+        deriveViaAnnotationParseResults(session)
+            .mapNotNull { result -> (result as? FirDeriveViaAnnotationParseResult.Valid)?.request }
+    }
+
+internal fun FirRegularClass.deriveViaAnnotationParseResults(session: FirSession): List<FirDeriveViaAnnotationParseResult> =
+    if (source == null) {
+        emptyList()
+    } else {
         resolvedRepeatableAnnotationsByClassId(
             annotationClassId = DERIVE_VIA_ANNOTATION_CLASS_ID,
             containerClassId = DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID,
             session = session,
         ).mapNotNull { annotation ->
-            val typeclassId = annotation.getClassIdArgument("typeclass", session) ?: return@mapNotNull null
-            val path =
-                annotation
-                    .getClassIdArguments("path", session)
-                    .map { classId ->
-                        val symbol = session.regularClassSymbolOrNull(classId)
-                        if (symbol?.implementsInterface(ISO_CLASS_ID, session, linkedSetOf()) == true) {
-                            FirDeriveViaPathSegment.PinnedIso(classId)
-                        } else {
-                            FirDeriveViaPathSegment.Waypoint(classId)
-                        }
-                    }
-            FirDeriveViaRequest(typeclassId = typeclassId, path = path)
+            annotation.parseDeriveViaAnnotation(owner = this, session = session)
         }
     }
 
@@ -452,14 +462,73 @@ private fun List<FirTypeParameter>.toMethodTypeParameterModels(
             )
     }.toMap()
 
-private fun FirAnnotation.getClassIdArguments(
-    name: String,
+private fun FirAnnotation.parseDeriveViaAnnotation(
+    owner: FirRegularClass,
     session: FirSession,
-): List<ClassId> {
+): FirDeriveViaAnnotationParseResult? {
+    if (owner.typeParameters.isNotEmpty()) {
+        return FirDeriveViaAnnotationParseResult.Invalid(
+            annotation = this,
+            message = "@DeriveVia only supports monomorphic classes for now",
+        )
+    }
+    val typeclassId = getClassIdArgument("typeclass", session) ?: return null
+    val pathArguments = getArgumentExpressions("path")
+    if (pathArguments.isEmpty()) {
+        return FirDeriveViaAnnotationParseResult.Invalid(
+            annotation = this,
+            message = "Cannot derive via an empty path",
+        )
+    }
+    val path = mutableListOf<FirDeriveViaPathSegment>()
+    for (expression in pathArguments) {
+        val classId =
+            expression.asReferencedClassId()
+                ?: return FirDeriveViaAnnotationParseResult.Invalid(
+                    annotation = this,
+                    message = "DeriveVia path elements must be class literals; the path contained an unparsable element",
+                )
+        val symbol = session.regularClassSymbolOrNull(classId)
+        if (symbol?.implementsInterface(ISO_CLASS_ID, session, linkedSetOf()) == true) {
+            if (symbol.classKind != ClassKind.OBJECT) {
+                return FirDeriveViaAnnotationParseResult.Invalid(
+                    annotation = this,
+                    message = "Pinned Iso segments must name object singletons",
+                )
+            }
+            path += FirDeriveViaPathSegment.PinnedIso(classId)
+        } else {
+            path += FirDeriveViaPathSegment.Waypoint(classId)
+        }
+    }
+    if (typeclassTypeParameterCount(typeclassId, session)?.let { it >= 1 } != true) {
+        return FirDeriveViaAnnotationParseResult.Invalid(
+            annotation = this,
+            message = "DeriveVia requires a typeclass with at least one type parameter",
+        )
+    }
+    val typeclassInterface = session.regularClassSymbolOrNull(typeclassId)?.fir ?: return null
+    if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)) {
+        return null
+    }
+    typeclassInterface.validateDeriveViaTransportability(session)?.let { message ->
+        return FirDeriveViaAnnotationParseResult.Invalid(
+            annotation = this,
+            message = message,
+        )
+    }
+    return FirDeriveViaAnnotationParseResult.Valid(
+        annotation = this,
+        request = FirDeriveViaRequest(typeclassId = typeclassId, path = path),
+    )
+}
+
+private fun FirAnnotation.getArgumentExpressions(
+    name: String,
+): List<FirExpression> {
     val argument = findArgumentByName(Name.identifier(name)) ?: return emptyList()
     return argument.unwrapVarargValue()
         .ifEmpty { listOf(argument) }
-        .mapNotNull { expression -> expression.asReferencedClassId() }
 }
 
 private fun FirExpression.asReferencedClassId(): ClassId? =
@@ -468,11 +537,12 @@ private fun FirExpression.asReferencedClassId(): ClassId? =
             when (val classExpression = argument) {
                 is FirResolvedQualifier -> classExpression.classId
                 is FirClassReferenceExpression -> classExpression.classTypeRef.coneType.lowerBoundIfFlexible().classId
-                else -> classExpression.resolvedType.lowerBoundIfFlexible().classId
+                else -> null
             }
 
         is FirResolvedQualifier -> classId
-        else -> resolvedType.lowerBoundIfFlexible().classId
+        is FirClassReferenceExpression -> classTypeRef.coneType.lowerBoundIfFlexible().classId
+        else -> null
     }
 
 private fun FirRegularClass.isoEndpoints(session: FirSession): Pair<TcType.Constructor, TcType.Constructor>? {

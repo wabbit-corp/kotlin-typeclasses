@@ -213,6 +213,46 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
+    @Test fun validatesRepeatableEmptyDeriveViaPathsInFirAndKeepsThemOutOfRefinement() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @JvmInline
+            @DeriveVia(Show::class) // E:TC_CANNOT_DERIVE repeated empty DeriveVia paths must be rejected in FIR
+            @DeriveVia(Show::class) // E:TC_CANNOT_DERIVE repeated empty DeriveVia paths must be rejected in FIR
+            value class UserId(val value: Int)
+
+            context(show: Show<UserId>)
+            fun render(value: UserId): String = show.show(value)
+
+            fun render(value: UserId): String = "plain:${'$'}{value.value}"
+
+            fun main() {
+                println(render(UserId(1)))
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedCannotDerive("empty path")),
+            unexpectedMessages =
+                listOf(
+                    "no context argument",
+                    "required instance",
+                    "overload resolution ambiguity",
+                ),
+        )
+    }
+
     // Exact intended semantics:
     // - Equiv search is canonical by endpoint pair, not by proof tree
     // - if multiple direct/composed Equiv derivations all establish the same endpoint pair, they do not by themselves
@@ -1196,6 +1236,26 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
             @DeriveEquiv(PlainIntBox::class) // E:TC_CANNOT_DERIVE generic DeriveEquiv targets are not supported yet
             data class GenericBox<A>(val value: A)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedCannotDerive("monomorphic")),
+        )
+    }
+
+    @Test fun validatesRepeatableDeriveEquivAnnotationsInFir() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveEquiv
+
+            data class GenericBox<A>(val value: A)
+
+            @DeriveEquiv(GenericBox::class) // E:TC_CANNOT_DERIVE repeatable generic DeriveEquiv targets must be rejected in FIR
+            @DeriveEquiv(GenericBox::class) // E:TC_CANNOT_DERIVE repeatable generic DeriveEquiv targets must be rejected in FIR
+            data class PlainIntBox(val value: Int)
             """.trimIndent()
 
         assertDoesNotCompile(

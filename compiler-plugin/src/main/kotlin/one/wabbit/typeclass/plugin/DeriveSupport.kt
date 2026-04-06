@@ -288,12 +288,7 @@ internal fun FirRegularClass.deriveViaTypeclassIds(session: FirSession): Set<Str
     } else {
         buildSet {
             addAll(
-                resolvedRepeatableAnnotationsByClassId(
-                    annotationClassId = DERIVE_VIA_ANNOTATION_CLASS_ID,
-                    containerClassId = DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID,
-                    session = session,
-                )
-                    .mapNotNull { annotation -> annotation.getClassIdArgument("typeclass", session)?.asString() },
+                deriveViaRequests(session).map { request -> request.typeclassId.asString() },
             )
             addAll(
                 generatedDerivedMetadata(session)

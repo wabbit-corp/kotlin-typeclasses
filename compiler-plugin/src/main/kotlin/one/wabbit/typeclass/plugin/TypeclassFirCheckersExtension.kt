@@ -84,10 +84,16 @@ internal class TypeclassFirCheckersExtension(
                 if (declaration.hasAnnotation(DERIVE_ANNOTATION_CLASS_ID, session)) {
                     validateDeriveDeclaration(declaration)
                 }
-                if (declaration.hasAnnotation(DERIVE_VIA_ANNOTATION_CLASS_ID, session)) {
+                if (
+                    declaration.hasAnnotation(DERIVE_VIA_ANNOTATION_CLASS_ID, session) ||
+                    declaration.hasAnnotation(DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID, session)
+                ) {
                     validateDeriveViaDeclarations(declaration)
                 }
-                if (declaration.hasAnnotation(DERIVE_EQUIV_ANNOTATION_CLASS_ID, session)) {
+                if (
+                    declaration.hasAnnotation(DERIVE_EQUIV_ANNOTATION_CLASS_ID, session) ||
+                    declaration.hasAnnotation(DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID, session)
+                ) {
                     validateDeriveEquivDeclarations(declaration)
                 }
                 if (declaration.directlyExtendsEquiv()) {
@@ -520,19 +526,11 @@ internal class TypeclassFirCheckersExtension(
     private fun validateDeriveViaDeclarations(
         declaration: FirRegularClass,
     ) {
-        declaration.resolvedAnnotationsByClassId(DERIVE_VIA_ANNOTATION_CLASS_ID, session).forEach { annotation ->
-            if (declaration.typeParameters.isNotEmpty()) {
+        declaration.deriveViaAnnotationParseResults(session).forEach { result ->
+            if (result is FirDeriveViaAnnotationParseResult.Invalid) {
                 reportCannotDerive(
-                    annotation,
-                    cannotDeriveDiagnostic("@DeriveVia only supports monomorphic classes for now"),
-                )
-                return@forEach
-            }
-            val typeclassId = annotation.getClassIdArgument("typeclass", session) ?: return@forEach
-            if (typeclassTypeParameterCount(typeclassId, session)?.let { it >= 1 } != true) {
-                reportCannotDerive(
-                    annotation,
-                    cannotDeriveDiagnostic("DeriveVia requires a typeclass with at least one type parameter"),
+                    result.annotation,
+                    cannotDeriveDiagnostic(result.message),
                 )
             }
         }
@@ -542,7 +540,11 @@ internal class TypeclassFirCheckersExtension(
     private fun validateDeriveEquivDeclarations(
         declaration: FirRegularClass,
     ) {
-        declaration.resolvedAnnotationsByClassId(DERIVE_EQUIV_ANNOTATION_CLASS_ID, session).forEach { annotation ->
+        declaration.resolvedRepeatableAnnotationsByClassId(
+            annotationClassId = DERIVE_EQUIV_ANNOTATION_CLASS_ID,
+            containerClassId = DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID,
+            session = session,
+        ).forEach { annotation ->
             if (declaration.typeParameters.isNotEmpty()) {
                 reportCannotDerive(
                     annotation,
