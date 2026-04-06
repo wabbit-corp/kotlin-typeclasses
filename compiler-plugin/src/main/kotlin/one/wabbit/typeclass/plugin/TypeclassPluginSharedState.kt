@@ -547,8 +547,19 @@ private data class ResolutionIndex(
                     return false
                 }
                 derivationOwnersForTarget(sourceType.classifierId, session).any { owner ->
+                    if (owner != sourceType.classifierId) {
+                        return@any false
+                    }
                     val preciseTargets = discoveredDeriveEquivTargetIds(owner, session)
-                    preciseTargets.isNotEmpty() && targetType.classifierId in preciseTargets
+                    if (targetType.classifierId !in preciseTargets) {
+                        return@any false
+                    }
+                    val ownerClassId = runCatching { ClassId.fromString(owner) }.getOrNull() ?: return@any false
+                    val ownerSymbol = session.regularClassSymbolOrNull(ownerClassId) ?: return@any true
+                    if (ownerSymbol.fir.source == null) {
+                        return@any true
+                    }
+                    FirDirectTransportPlanner(session).planEquiv(sourceType, targetType)
                 }
             }
 
@@ -560,6 +571,7 @@ private data class ResolutionIndex(
                 derivationOwnersForTarget(targetType.classifierId, session).any { owner ->
                     canDeriveUnaryGoalFromOwner(
                         typeclassId = typeclassId,
+                        goal = constructor,
                         targetType = targetType,
                         owner = owner,
                         session = session,
@@ -611,6 +623,7 @@ private data class ResolutionIndex(
 
     private fun canDeriveUnaryGoalFromOwner(
         typeclassId: String,
+        goal: TcType.Constructor,
         targetType: TcType.Constructor,
         owner: String,
         session: FirSession,
@@ -629,13 +642,19 @@ private data class ResolutionIndex(
             if (ownerDeclaration.status.modality != Modality.SEALED || ownerDeclaration.source == null) {
                 return true
             }
+            if (!ownerDeclaration.supportsShapeDerivedTypeclassId(typeclassId, session, configuration)) {
+                return false
+            }
             val targetClassId = runCatching { ClassId.fromString(targetType.classifierId) }.getOrNull() ?: return true
             val targetSymbol = session.regularClassSymbolOrNull(targetClassId) ?: return true
             return canDeriveTargetShape(
                 typeclassId = typeclassId,
+                goal = goal,
                 targetType = targetType,
                 classId = targetClassId,
                 declaration = targetSymbol.fir,
+                allowLocalDeriveVia = false,
+                allowShapeDerivation = true,
                 session = session,
                 availableContexts = availableContexts,
                 visiting = visiting,
@@ -649,9 +668,12 @@ private data class ResolutionIndex(
         }
         return canDeriveTargetShape(
             typeclassId = typeclassId,
+            goal = goal,
             targetType = targetType,
             classId = classId,
             declaration = symbol.fir,
+            allowLocalDeriveVia = true,
+            allowShapeDerivation = symbol.fir.supportsShapeDerivedTypeclassId(typeclassId, session, configuration),
             session = session,
             availableContexts = availableContexts,
             visiting = visiting,
@@ -661,20 +683,57 @@ private data class ResolutionIndex(
 
     private fun canDeriveTargetShape(
         typeclassId: String,
+        goal: TcType.Constructor,
         targetType: TcType.Constructor,
         classId: ClassId,
         declaration: FirRegularClass,
+        allowLocalDeriveVia: Boolean,
+        allowShapeDerivation: Boolean,
         session: FirSession,
         availableContexts: List<TcType>,
         visiting: MutableSet<String>,
         canMaterializeVariable: (String) -> Boolean,
     ): Boolean {
-        val expandedDeriveViaTypeclassIds =
-            declaration.deriveViaTypeclassIds(session).let { supportedTypeclassIds ->
-                supportedTypeclassIds + supportedTypeclassIds.expandedDerivedTypeclassIds(session, configuration)
+        if (allowLocalDeriveVia && goal.arguments.isNotEmpty() && declaration.typeParameters.isEmpty()) {
+            val planner = FirDirectTransportPlanner(session)
+            val canDeriveVia =
+                declaration.deriveViaRequests(session).any { request ->
+                    val expandedIds =
+                        setOf(request.typeclassId.asString()) +
+                            listOf(request.typeclassId.asString()).expandedDerivedTypeclassIds(session, configuration)
+                    if (typeclassId !in expandedIds) {
+                        return@any false
+                    }
+                    val typeclassInterface = session.regularClassSymbolOrNull(request.typeclassId)?.fir ?: return@any false
+                    if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)) {
+                        return@any false
+                    }
+                    if (typeclassInterface.typeParameters.isEmpty()) {
+                        return@any false
+                    }
+                    if (typeclassInterface.validateDeriveViaTransportability(session) != null) {
+                        return@any false
+                    }
+                    val viaType = planner.resolveViaPath(targetType, request.path) ?: return@any false
+                    val prerequisiteGoal =
+                        TcType.Constructor(
+                            classifierId = typeclassId,
+                            arguments = goal.arguments.dropLast(1) + viaType,
+                        )
+                    canDeriveGoal(
+                        goal = prerequisiteGoal,
+                        session = session,
+                        availableContexts = availableContexts,
+                        visiting = visiting,
+                        canMaterializeVariable = canMaterializeVariable,
+                    )
+                }
+            if (canDeriveVia) {
+                return true
             }
-        if (typeclassId in expandedDeriveViaTypeclassIds) {
-            return true
+        }
+        if (!allowShapeDerivation) {
+            return false
         }
         if (declaration.classKind == ClassKind.OBJECT || declaration.classKind == ClassKind.ENUM_CLASS) {
             return true
@@ -693,6 +752,9 @@ private data class ResolutionIndex(
                 visiting = visiting,
                 canMaterializeVariable = canMaterializeVariable,
             )
+        }
+        if (goal.arguments.size != 1) {
+            return false
         }
         val constructor =
             declaration.declarations
@@ -1068,7 +1130,7 @@ internal fun FirRegularClass.derivedAnnotationClassIds(session: FirSession): Set
     return sourceAnnotation.derivedReferencedClassIds()
 }
 
-private fun Iterable<String>.expandedDerivedTypeclassIds(
+internal fun Iterable<String>.expandedDerivedTypeclassIds(
     session: FirSession,
     configuration: TypeclassConfiguration,
 ): Set<String> =

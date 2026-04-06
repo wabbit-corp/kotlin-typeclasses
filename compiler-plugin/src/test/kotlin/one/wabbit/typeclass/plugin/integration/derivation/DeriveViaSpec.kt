@@ -763,6 +763,113 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
+    @Test fun deriveViaMissingViaInstanceDoesNotHidePlainOverload() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @JvmInline
+            @DeriveVia(Show::class, Int::class)
+            value class UserId(val value: Int)
+
+            context(_: Show<UserId>)
+            fun choose(value: UserId): String = "derive-via"
+
+            fun choose(value: UserId): String = "plain"
+
+            fun main() {
+                println(choose(UserId(1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain",
+        )
+    }
+
+    @Test fun disconnectedDeriveViaPathDoesNotHidePlainOverload() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @JvmInline
+            @DeriveVia(Show::class, String::class) // E:TC_CANNOT_DERIVE disconnected DeriveVia path should stay an annotation-site error
+            value class UserId(val value: Int)
+
+            context(_: Show<UserId>)
+            fun choose(value: UserId): String = "derive-via"
+
+            fun choose(value: UserId): String = "plain"
+
+            fun main() {
+                println(choose(UserId(2)))
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("derive via", "kotlin/string", "demo.userid"),
+                ),
+        )
+    }
+
+    @Test fun infeasibleDeriveEquivDoesNotHidePlainOverload() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveEquiv
+            import one.wabbit.typeclass.Equiv
+            import one.wabbit.typeclass.InternalTypeclassApi
+
+            data class PlainBox(val value: Int)
+
+            @DeriveEquiv(PlainBox::class) // E:TC_CANNOT_DERIVE invalid structural Equiv should stay an annotation-site error
+            data class PositiveBox(val value: Int) {
+                init {
+                    require(value > 0)
+                }
+            }
+
+            @OptIn(InternalTypeclassApi::class)
+            context(_: Equiv<PositiveBox, PlainBox>)
+            fun choose(value: PositiveBox): String = "derive-equiv"
+
+            fun choose(value: PositiveBox): String = "plain"
+
+            fun main() {
+                println(choose(PositiveBox(1)))
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("equiv", "positivebox", "plainbox"),
+                ),
+        )
+    }
+
     @Test fun deriveEquivSupportsRepeatedSiblingTransportPairs() {
         val source =
             """
