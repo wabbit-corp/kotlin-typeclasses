@@ -1182,4 +1182,70 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun ignoresInheritedDefaultMethodFakeOverridesDuringProjectedContextRewrites() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+
+            data class ItemType(val raw: String) {
+                companion object {
+                    fun of(item: ItemStack): ItemType = ItemType(item.raw)
+                }
+            }
+
+            class ItemStack(val raw: String) {
+                val values = mutableListOf<String>()
+            }
+
+            @Typeclass
+            interface ItemComponentType<Type> {
+                val tag: String
+                fun canAttach(type: ItemType): Boolean
+                fun canAttach(item: ItemStack): Boolean = canAttach(ItemType.of(item))
+            }
+
+            data class SomeItemComponent<C>(val value: C, val type: ItemComponentType<C>) {
+                inline fun <R> with(f: context(ItemComponentType<C>) (ItemComponentType<C>, C) -> R): R =
+                    f(type, type, value)
+            }
+
+            data class Mechanic(val id: Int)
+
+            object MechanicType : ItemComponentType<Mechanic> {
+                override val tag: String = "mechanic"
+                override fun canAttach(type: ItemType): Boolean = type.raw == "ok"
+            }
+
+            class Items {
+                context(type: ItemComponentType<Type>)
+                fun <Type> putComponent(item: ItemStack, value: Type) {
+                    if (!type.canAttach(item)) error("component should be attachable")
+                    item.values += "${'$'}{type.tag}:${'$'}value"
+                }
+            }
+
+            fun main() {
+                val items = Items()
+                val stack = ItemStack("ok")
+                val mechanics: List<SomeItemComponent<*>> = listOf(SomeItemComponent(Mechanic(1), MechanicType))
+
+                for (mechanic in mechanics) {
+                    mechanic.with { type, value ->
+                        if (!type.canAttach(stack)) error("default overload should remain callable")
+                        items.putComponent(stack, value)
+                    }
+                }
+
+                println(stack.values.joinToString())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "mechanic:Mechanic(id=1)",
+        )
+    }
+
 }

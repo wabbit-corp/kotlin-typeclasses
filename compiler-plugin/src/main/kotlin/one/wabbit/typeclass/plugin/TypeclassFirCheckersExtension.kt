@@ -36,11 +36,14 @@ import org.jetbrains.kotlin.fir.declarations.hasAnnotation
 import org.jetbrains.kotlin.fir.expressions.FirAnonymousFunctionExpression
 import org.jetbrains.kotlin.fir.expressions.FirAnnotation
 import org.jetbrains.kotlin.fir.expressions.FirAnonymousObjectExpression
+import org.jetbrains.kotlin.fir.expressions.FirBlock
 import org.jetbrains.kotlin.fir.expressions.FirExpression
 import org.jetbrains.kotlin.fir.expressions.FirFunctionCall
 import org.jetbrains.kotlin.fir.expressions.FirPropertyAccessExpression
 import org.jetbrains.kotlin.fir.expressions.FirReturnExpression
 import org.jetbrains.kotlin.fir.expressions.FirResolvedQualifier
+import org.jetbrains.kotlin.fir.expressions.FirSmartCastExpression
+import org.jetbrains.kotlin.fir.expressions.FirTypeOperatorCall
 import org.jetbrains.kotlin.fir.references.FirErrorNamedReference
 import org.jetbrains.kotlin.fir.references.FirResolvedErrorReference
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
@@ -599,9 +602,6 @@ internal class TypeclassFirCheckersExtension(
                     val knownTypeclassConstructors =
                         expression.knownReturnedTypeclassConstructors(session, sharedState.configuration)
                     if (knownTypeclassConstructors.isEmpty()) {
-                        if (expression is FirAnonymousObjectExpression) {
-                            return@forEach
-                        }
                         reportCannotDerive(
                             function,
                             cannotDeriveWrongDeriverReturnType(
@@ -788,27 +788,41 @@ private fun FirExpression.knownReturnedTypeclassConstructors(
     session: FirSession,
     configuration: TypeclassConfiguration,
 ): List<String> {
+    val expression = knownReturnedExpressionOrSelf()
     val knownConstructors = linkedSetOf<String>()
-    safeResolvedOrInferredTypeOrNull(session)?.let { resolvedType ->
+    expression.safeResolvedOrInferredTypeOrNull(session)?.let { resolvedType ->
         listOf(resolvedType)
             .expandProvidedTypes(session, emptyMap(), configuration)
             .validTypes
             .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
             .forEach(knownConstructors::add)
     }
-    implementationClassIdForKnownReturn(session)?.let { implementationClassId ->
+    expression.implementationClassIdForKnownReturn(session)?.let { implementationClassId ->
         knownTypeclassConstructorsForImplementation(implementationClassId, session, configuration)
             .forEach(knownConstructors::add)
     }
-    if (this is FirAnonymousObjectExpression) {
-        anonymousObject.superTypeRefs
-            .mapNotNull { typeRef ->
-                val classifierId = typeRef.coneType.lowerBoundIfFlexible().classId?.asString() ?: return@mapNotNull null
-                classifierId.takeIf { configuration.supportsReturnedTypeclassClassifierId(it, session) }
-            }.forEach(knownConstructors::add)
+    if (expression is FirAnonymousObjectExpression) {
+        expression.anonymousObject.superTypeRefs
+            .mapNotNull { typeRef -> typeRef.coneType.lowerBoundIfFlexible().classId }
+            .forEach { superTypeClassId ->
+                val classifierId = superTypeClassId.asString()
+                if (configuration.supportsReturnedTypeclassClassifierId(classifierId, session)) {
+                    knownConstructors += classifierId
+                }
+                knownTypeclassConstructorsForImplementation(superTypeClassId, session, configuration)
+                    .forEach(knownConstructors::add)
+            }
     }
     return knownConstructors.toList()
 }
+
+private fun FirExpression.knownReturnedExpressionOrSelf(): FirExpression =
+    when (this) {
+        is FirTypeOperatorCall -> argumentList.arguments.singleOrNull()?.knownReturnedExpressionOrSelf() ?: this
+        is FirSmartCastExpression -> originalExpression.knownReturnedExpressionOrSelf()
+        is FirBlock -> (statements.lastOrNull() as? FirExpression)?.knownReturnedExpressionOrSelf() ?: this
+        else -> this
+    }
 
 private fun FirExpression.implementationClassIdForKnownReturn(
     session: FirSession,

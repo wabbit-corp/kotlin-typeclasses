@@ -89,6 +89,7 @@ import org.jetbrains.kotlin.ir.expressions.IrVararg
 import org.jetbrains.kotlin.ir.expressions.impl.IrFunctionExpressionImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrGetEnumValueImpl
 import org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol
+import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.IrStarProjection
 import org.jetbrains.kotlin.ir.types.IrTypeArgument
@@ -265,9 +266,7 @@ private class TypeclassIrCallTransformer(
             return null
         }
         val candidates =
-            pluginContext.referenceFunctions(callableId)
-                .asSequence()
-                .map { symbol -> symbol.owner }
+            referencedCallableIdFunctions(callableId)
                 .map { candidate -> ruleIndex.originalForWrapperLikeFunction(candidate) ?: candidate }
                 .distinctBy { candidate -> candidate.symbol }
                 .toList()
@@ -293,9 +292,7 @@ private class TypeclassIrCallTransformer(
             return emptyList()
         }
         val calleeVisibleParameterCount = callee.visibleNonTypeclassParameterCount(configuration)
-        return pluginContext.referenceFunctions(callableId)
-            .asSequence()
-            .map { symbol -> symbol.owner }
+        return referencedCallableIdFunctions(callableId)
             .map { candidate -> ruleIndex.originalForWrapperLikeFunction(candidate) ?: candidate }
             .filter { candidate -> candidate != callee }
             .filter { candidate ->
@@ -306,6 +303,16 @@ private class TypeclassIrCallTransformer(
             .filter { candidate -> candidate.requiresSyntheticTypeclassResolution(call, configuration) }
             .distinctBy { candidate -> candidate.symbol }
             .toList()
+    }
+
+    private fun referencedCallableIdFunctions(callableId: CallableId): Sequence<IrSimpleFunction> =
+        pluginContext.referenceFunctions(callableId)
+            .asSequence()
+            .mapNotNull { symbol -> symbol.safeCallableLookupOwnerOrNull() }
+
+    private fun IrSimpleFunctionSymbol.safeCallableLookupOwnerOrNull(): IrSimpleFunction? {
+        val owner = runCatching { owner }.getOrNull() ?: return null
+        return owner.takeUnless { it.origin == IrDeclarationOrigin.FAKE_OVERRIDE }
     }
 
     private fun buildResolvedTypeclassCall(
@@ -1517,7 +1524,12 @@ private class TypeclassIrCallTransformer(
                 val knownTypeclassConstructors =
                     returnExpression.knownReturnedTypeclassConstructors(configuration)
                 if (knownTypeclassConstructors.isEmpty()) {
-                    return@forEach
+                    pluginContext.reportTypeclassError(
+                        message = "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>",
+                        diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                        location = deriveMethod.compilerMessageLocation(),
+                    )
+                    return@getOrPut false
                 }
                 if (expectedTypeclassId in knownTypeclassConstructors) {
                     return@forEach
@@ -2223,6 +2235,7 @@ private fun IrExpression.knownReturnedTypeclassConstructors(
 
 private fun IrExpression.knownReturnedExpressionOrSelf(): IrExpression =
     when (this) {
+        is IrReturn -> value.knownReturnedExpressionOrSelf()
         is IrTypeOperatorCall -> argument.knownReturnedExpressionOrSelf()
         is IrComposite -> (statements.lastOrNull() as? IrExpression)?.knownReturnedExpressionOrSelf() ?: this
         is org.jetbrains.kotlin.ir.expressions.IrBlock ->
