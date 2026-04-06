@@ -104,25 +104,45 @@ internal class TypeclassPluginSharedState(
         session: FirSession,
         goal: TcType,
         canMaterializeVariable: (String) -> Boolean = { true },
-    ): List<InstanceRule> = resolutionIndex(session).rulesForGoal(goal, session, canMaterializeVariable)
+        builtinGoalAcceptance: BuiltinGoalAcceptance = BuiltinGoalAcceptance.ALLOW_SPECULATIVE,
+        exactBuiltinGoalContext: FirBuiltinGoalExactContext? = null,
+    ): List<InstanceRule> =
+        resolutionIndex(session).rulesForGoal(
+            goal = goal,
+            session = session,
+            canMaterializeVariable = canMaterializeVariable,
+            builtinGoalAcceptance = builtinGoalAcceptance,
+            exactBuiltinGoalContext = exactBuiltinGoalContext,
+        )
 
     fun refinementRulesForGoal(
         session: FirSession,
         goal: TcType,
         canMaterializeVariable: (String) -> Boolean = { true },
-    ): List<InstanceRule> = resolutionIndex(session).refinementRulesForGoal(goal, session, canMaterializeVariable)
+        exactBuiltinGoalContext: FirBuiltinGoalExactContext? = null,
+    ): List<InstanceRule> =
+        resolutionIndex(session).refinementRulesForGoal(
+            goal = goal,
+            session = session,
+            canMaterializeVariable = canMaterializeVariable,
+            exactBuiltinGoalContext = exactBuiltinGoalContext,
+        )
 
     fun canDeriveGoal(
         session: FirSession,
         goal: TcType,
         availableContexts: List<TcType> = emptyList(),
         canMaterializeVariable: (String) -> Boolean = { true },
+        builtinGoalAcceptance: BuiltinGoalAcceptance = BuiltinGoalAcceptance.ALLOW_SPECULATIVE,
+        exactBuiltinGoalContext: FirBuiltinGoalExactContext? = null,
     ): Boolean =
         resolutionIndex(session).canDeriveGoal(
             goal = goal,
             session = session,
             availableContexts = availableContexts,
             canMaterializeVariable = canMaterializeVariable,
+            builtinGoalAcceptance = builtinGoalAcceptance,
+            exactBuiltinGoalContext = exactBuiltinGoalContext,
         )
 
     fun allowedAssociatedOwnersForProvidedType(
@@ -483,6 +503,8 @@ private data class ResolutionIndex(
         goal: TcType,
         session: FirSession,
         canMaterializeVariable: (String) -> Boolean,
+        builtinGoalAcceptance: BuiltinGoalAcceptance = BuiltinGoalAcceptance.ALLOW_SPECULATIVE,
+        exactBuiltinGoalContext: FirBuiltinGoalExactContext? = null,
     ): List<InstanceRule> {
         val owners = allowedAssociatedOwnersForGoal(goal, session)
         val topLevel =
@@ -498,10 +520,44 @@ private data class ResolutionIndex(
                 visibleRule.rule.id != "builtin:kclass" || supportsBuiltinKClassGoal(goal, canMaterializeVariable)
             }
             .filter { visibleRule ->
-                visibleRule.rule.id != "builtin:subtype" || supportsBuiltinSubtypeGoal(goal, classInfoById)
+                visibleRule.rule.id != "builtin:subtype" ||
+                    builtinGoalAcceptance.accepts(
+                        if (builtinGoalAcceptance == BuiltinGoalAcceptance.PROVABLE_ONLY) {
+                            if (provablySupportsBuiltinSubtypeGoal(goal, classInfoById, exactBuiltinGoalContext)) {
+                                BuiltinGoalFeasibility.PROVABLE
+                            } else {
+                                BuiltinGoalFeasibility.IMPOSSIBLE
+                            }
+                        } else if (supportsBuiltinSubtypeGoal(goal, classInfoById, exactBuiltinGoalContext)) {
+                            if (provablySupportsBuiltinSubtypeGoal(goal, classInfoById, exactBuiltinGoalContext)) {
+                                BuiltinGoalFeasibility.PROVABLE
+                            } else {
+                                BuiltinGoalFeasibility.SPECULATIVE
+                            }
+                        } else {
+                            BuiltinGoalFeasibility.IMPOSSIBLE
+                        },
+                    )
             }
             .filter { visibleRule ->
-                visibleRule.rule.id != "builtin:strict-subtype" || supportsBuiltinStrictSubtypeGoal(goal, classInfoById)
+                visibleRule.rule.id != "builtin:strict-subtype" ||
+                    builtinGoalAcceptance.accepts(
+                        if (builtinGoalAcceptance == BuiltinGoalAcceptance.PROVABLE_ONLY) {
+                            if (provablySupportsBuiltinStrictSubtypeGoal(goal, classInfoById, exactBuiltinGoalContext)) {
+                                BuiltinGoalFeasibility.PROVABLE
+                            } else {
+                                BuiltinGoalFeasibility.IMPOSSIBLE
+                            }
+                        } else if (supportsBuiltinStrictSubtypeGoal(goal, classInfoById, exactBuiltinGoalContext)) {
+                            if (provablySupportsBuiltinStrictSubtypeGoal(goal, classInfoById, exactBuiltinGoalContext)) {
+                                BuiltinGoalFeasibility.PROVABLE
+                            } else {
+                                BuiltinGoalFeasibility.SPECULATIVE
+                            }
+                        } else {
+                            BuiltinGoalFeasibility.IMPOSSIBLE
+                        },
+                    )
             }
             .filter { visibleRule ->
                 visibleRule.rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, session, canMaterializeVariable)
@@ -516,9 +572,48 @@ private data class ResolutionIndex(
                 visibleRule.rule.id != "builtin:not-nullable" || supportsBuiltinNotNullableGoal(goal)
             }
             .filter { visibleRule ->
-                visibleRule.rule.id != "builtin:is-typeclass-instance" || supportsBuiltinIsTypeclassInstanceGoal(goal) { classifierId ->
-                    configuration.supportsTypeclassClassifierId(classifierId, session)
-                }
+                visibleRule.rule.id != "builtin:is-typeclass-instance" ||
+                    builtinGoalAcceptance.accepts(
+                        if (builtinGoalAcceptance == BuiltinGoalAcceptance.PROVABLE_ONLY) {
+                            if (
+                                provablySupportsBuiltinIsTypeclassInstanceGoal(
+                                    goal = goal,
+                                    isTypeclassClassifier = { classifierId ->
+                                        configuration.supportsTypeclassClassifierId(classifierId, session)
+                                    },
+                                    exactContext = exactBuiltinGoalContext,
+                                )
+                            ) {
+                                BuiltinGoalFeasibility.PROVABLE
+                            } else {
+                                BuiltinGoalFeasibility.IMPOSSIBLE
+                            }
+                        } else if (
+                            supportsBuiltinIsTypeclassInstanceGoal(
+                                goal = goal,
+                                isTypeclassClassifier = { classifierId ->
+                                    configuration.supportsTypeclassClassifierId(classifierId, session)
+                                },
+                                exactContext = exactBuiltinGoalContext,
+                            )
+                        ) {
+                            if (
+                                provablySupportsBuiltinIsTypeclassInstanceGoal(
+                                    goal = goal,
+                                    isTypeclassClassifier = { classifierId ->
+                                        configuration.supportsTypeclassClassifierId(classifierId, session)
+                                    },
+                                    exactContext = exactBuiltinGoalContext,
+                                )
+                            ) {
+                                BuiltinGoalFeasibility.PROVABLE
+                            } else {
+                                BuiltinGoalFeasibility.SPECULATIVE
+                            }
+                        } else {
+                            BuiltinGoalFeasibility.IMPOSSIBLE
+                        },
+                    )
             }
             .filter { visibleRule ->
                 visibleRule.rule.id != "builtin:known-type" || supportsBuiltinKnownTypeGoal(goal, canMaterializeVariable)
@@ -539,9 +634,16 @@ private data class ResolutionIndex(
         goal: TcType,
         session: FirSession,
         canMaterializeVariable: (String) -> Boolean,
+        exactBuiltinGoalContext: FirBuiltinGoalExactContext? = null,
     ): List<InstanceRule> =
         (
-            rulesForGoal(goal, session, canMaterializeVariable) +
+            rulesForGoal(
+                goal = goal,
+                session = session,
+                canMaterializeVariable = canMaterializeVariable,
+                builtinGoalAcceptance = BuiltinGoalAcceptance.PROVABLE_ONLY,
+                exactBuiltinGoalContext = exactBuiltinGoalContext,
+            ) +
                 derivedRefinementRulesForGoal(goal, session)
         ).distinctBy(InstanceRule::directIdentityKey)
 
@@ -866,6 +968,8 @@ private data class ResolutionIndex(
         availableContexts: List<TcType> = emptyList(),
         visiting: MutableSet<String> = linkedSetOf(),
         canMaterializeVariable: (String) -> Boolean = { true },
+        builtinGoalAcceptance: BuiltinGoalAcceptance = BuiltinGoalAcceptance.ALLOW_SPECULATIVE,
+        exactBuiltinGoalContext: FirBuiltinGoalExactContext? = null,
     ): Boolean {
         val key = goal.normalizedKey()
         if (!visiting.add(key)) {
@@ -873,7 +977,15 @@ private data class ResolutionIndex(
         }
         val directPlanner =
             TypeclassResolutionPlanner(
-                ruleProvider = { nestedGoal -> rulesForGoal(nestedGoal, session, canMaterializeVariable) },
+                ruleProvider = { nestedGoal ->
+                    rulesForGoal(
+                        goal = nestedGoal,
+                        session = session,
+                        canMaterializeVariable = canMaterializeVariable,
+                        builtinGoalAcceptance = builtinGoalAcceptance,
+                        exactBuiltinGoalContext = exactBuiltinGoalContext,
+                    )
+                },
                 bindableDesiredVariableIds = emptySet(),
             )
         when (directPlanner.resolve(goal, availableContexts)) {
@@ -918,6 +1030,8 @@ private data class ResolutionIndex(
                             availableContexts = availableContexts,
                             visiting = visiting,
                             canMaterializeVariable = canMaterializeVariable,
+                            builtinGoalAcceptance = builtinGoalAcceptance,
+                            exactBuiltinGoalContext = exactBuiltinGoalContext,
                         )
                     }
                 } ||
@@ -929,6 +1043,8 @@ private data class ResolutionIndex(
                                 availableContexts = availableContexts,
                                 visiting = visiting,
                                 canMaterializeVariable = canMaterializeVariable,
+                                builtinGoalAcceptance = builtinGoalAcceptance,
+                                exactBuiltinGoalContext = exactBuiltinGoalContext,
                             )
                     }
         }
@@ -978,6 +1094,8 @@ private data class ResolutionIndex(
         availableContexts: List<TcType>,
         visiting: MutableSet<String>,
         canMaterializeVariable: (String) -> Boolean,
+        builtinGoalAcceptance: BuiltinGoalAcceptance,
+        exactBuiltinGoalContext: FirBuiltinGoalExactContext?,
     ): Boolean {
         if (targetType.isNullable) {
             return false
@@ -1029,6 +1147,8 @@ private data class ResolutionIndex(
                     availableContexts = availableContexts,
                     visiting = visiting,
                     canMaterializeVariable = canMaterializeVariable,
+                    builtinGoalAcceptance = builtinGoalAcceptance,
+                    exactBuiltinGoalContext = exactBuiltinGoalContext,
                 )
             }
         }
@@ -1063,6 +1183,8 @@ private data class ResolutionIndex(
                 availableContexts = availableContexts,
                 visiting = visiting,
                 canMaterializeVariable = canMaterializeVariable,
+                builtinGoalAcceptance = builtinGoalAcceptance,
+                exactBuiltinGoalContext = exactBuiltinGoalContext,
             )
         }
     }

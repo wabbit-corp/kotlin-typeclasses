@@ -75,9 +75,92 @@ class BuiltinGoalSupportTest {
                 typeVariable("TC"),
             )
 
-        assertFalse(supportsBuiltinIsTypeclassInstanceGoal(nonTypeclassGoal) { classifierId -> classifierId == "demo.Show" })
-        assertTrue(supportsBuiltinIsTypeclassInstanceGoal(typeclassGoal) { classifierId -> classifierId == "demo.Show" })
-        assertTrue(supportsBuiltinIsTypeclassInstanceGoal(variableGoal) { false })
+        assertFalse(
+            supportsBuiltinIsTypeclassInstanceGoal(
+                goal = nonTypeclassGoal,
+                isTypeclassClassifier = { classifierId -> classifierId == "demo.Show" },
+            ),
+        )
+        assertTrue(
+            supportsBuiltinIsTypeclassInstanceGoal(
+                goal = typeclassGoal,
+                isTypeclassClassifier = { classifierId -> classifierId == "demo.Show" },
+            ),
+        )
+        assertTrue(
+            supportsBuiltinIsTypeclassInstanceGoal(
+                goal = variableGoal,
+                isTypeclassClassifier = { false },
+            ),
+        )
+    }
+
+    @Test
+    fun `provable-only subtype support rejects speculative variables`() {
+        val speculativeGoal =
+            typeConstructor(
+                SUBTYPE_CLASS_ID.asString(),
+                typeVariable("T"),
+                typeConstructor("kotlin.Number"),
+            )
+        val provableGoal =
+            typeConstructor(
+                SUBTYPE_CLASS_ID.asString(),
+                typeConstructor("demo.Dog"),
+                typeConstructor("demo.Animal"),
+            )
+        val classInfo =
+            mapOf(
+                "demo.Dog" to
+                    VisibleClassHierarchyInfo(
+                        superClassifiers = setOf("demo.Animal"),
+                        isSealed = false,
+                        typeParameterVariances = emptyList(),
+                    ),
+                "demo.Animal" to
+                    VisibleClassHierarchyInfo(
+                        superClassifiers = emptySet(),
+                        isSealed = false,
+                        typeParameterVariances = emptyList(),
+                    ),
+            )
+
+        assertTrue(supportsBuiltinSubtypeGoal(speculativeGoal, classInfo))
+        assertFalse(provablySupportsBuiltinSubtypeGoal(speculativeGoal, classInfo))
+        assertTrue(provablySupportsBuiltinSubtypeGoal(provableGoal, classInfo))
+    }
+
+    @Test
+    fun `provable-only is-typeclass-instance support rejects speculative variables`() {
+        val speculativeGoal =
+            typeConstructor(
+                IS_TYPECLASS_INSTANCE_CLASS_ID.asString(),
+                typeVariable("TC"),
+            )
+        val provableGoal =
+            typeConstructor(
+                IS_TYPECLASS_INSTANCE_CLASS_ID.asString(),
+                typeConstructor("demo.Show", typeConstructor("kotlin.Int")),
+            )
+
+        assertTrue(
+            supportsBuiltinIsTypeclassInstanceGoal(
+                goal = speculativeGoal,
+                isTypeclassClassifier = { classifierId -> classifierId == "demo.Show" },
+            ),
+        )
+        assertFalse(
+            provablySupportsBuiltinIsTypeclassInstanceGoal(
+                goal = speculativeGoal,
+                isTypeclassClassifier = { classifierId -> classifierId == "demo.Show" },
+            ),
+        )
+        assertTrue(
+            provablySupportsBuiltinIsTypeclassInstanceGoal(
+                goal = provableGoal,
+                isTypeclassClassifier = { classifierId -> classifierId == "demo.Show" },
+            ),
+        )
     }
 
     private fun typeConstructor(

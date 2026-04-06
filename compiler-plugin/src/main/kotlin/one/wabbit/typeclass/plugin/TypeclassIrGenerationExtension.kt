@@ -405,7 +405,17 @@ private class TypeclassIrCallTransformer(
         val planner =
             TypeclassResolutionPlanner(
                 ruleProvider = { goal: TcType ->
-                    ruleIndex.rulesForGoal(goal, visibleTypeParameters::canMaterializeRuntimeType)
+                    ruleIndex.rulesForGoal(
+                        goal = goal,
+                        canMaterializeVariable = visibleTypeParameters::canMaterializeRuntimeType,
+                        builtinGoalAcceptance = BuiltinGoalAcceptance.PROVABLE_ONLY,
+                        exactBuiltinGoalContext =
+                            IrBuiltinGoalExactContext(
+                                visibleTypeParameters = visibleTypeParameters,
+                                pluginContext = pluginContext,
+                                configuration = configuration,
+                            ),
+                    )
                 },
             )
 
@@ -2387,6 +2397,8 @@ private class IrRuleIndex private constructor(
     fun rulesForGoal(
         goal: TcType,
         canMaterializeVariable: (String) -> Boolean = { true },
+        builtinGoalAcceptance: BuiltinGoalAcceptance = BuiltinGoalAcceptance.ALLOW_SPECULATIVE,
+        exactBuiltinGoalContext: IrBuiltinGoalExactContext? = null,
     ): List<InstanceRule> {
         val owners = associatedOwnersForGoal(goal)
         val associated =
@@ -2400,10 +2412,16 @@ private class IrRuleIndex private constructor(
                 resolvedRule.rule.id != "builtin:kclass" || supportsBuiltinKClassGoal(goal, canMaterializeVariable)
             }
             .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:subtype" || supportsBuiltinSubtypeGoal(goal, classInfoById)
+                resolvedRule.rule.id != "builtin:subtype" ||
+                    builtinGoalAcceptance.accepts(
+                        irBuiltinSubtypeFeasibility(goal, classInfoById, exactBuiltinGoalContext),
+                    )
             }
             .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:strict-subtype" || supportsBuiltinStrictSubtypeGoal(goal, classInfoById)
+                resolvedRule.rule.id != "builtin:strict-subtype" ||
+                    builtinGoalAcceptance.accepts(
+                        irBuiltinStrictSubtypeFeasibility(goal, classInfoById, exactBuiltinGoalContext),
+                    )
             }
             .filter { resolvedRule ->
                 resolvedRule.rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, pluginContext, canMaterializeVariable)
@@ -2418,9 +2436,16 @@ private class IrRuleIndex private constructor(
                 resolvedRule.rule.id != "builtin:not-nullable" || supportsBuiltinNotNullableGoal(goal)
             }
             .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:is-typeclass-instance" || supportsBuiltinIsTypeclassInstanceGoal(goal) { classifierId ->
-                    pluginContext.supportsTypeclassClassifierId(classifierId, configuration)
-                }
+                resolvedRule.rule.id != "builtin:is-typeclass-instance" ||
+                    builtinGoalAcceptance.accepts(
+                        irBuiltinIsTypeclassInstanceFeasibility(
+                            goal = goal,
+                            exactBuiltinGoalContext = exactBuiltinGoalContext,
+                            isTypeclassClassifier = { classifierId ->
+                                pluginContext.supportsTypeclassClassifierId(classifierId, configuration)
+                            },
+                        ),
+                    )
             }
             .filter { resolvedRule ->
                 resolvedRule.rule.id != "builtin:known-type" || supportsBuiltinKnownTypeGoal(goal, canMaterializeVariable)
@@ -4490,6 +4515,95 @@ private fun canProveSubtype(
     pluginContext: IrPluginContext,
 ): Boolean = subType.isSubtypeOf(superType, JvmIrTypeSystemContext(pluginContext.irBuiltIns))
 
+private fun irBuiltinSubtypeFeasibility(
+    goal: TcType,
+    classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    exactBuiltinGoalContext: IrBuiltinGoalExactContext?,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != SUBTYPE_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    if (exactBuiltinGoalContext == null) {
+        return if (supportsBuiltinSubtypeGoal(goal, classInfoById)) BuiltinGoalFeasibility.SPECULATIVE else BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+    val subModel = constructor.arguments.getOrNull(0) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val superModel = constructor.arguments.getOrNull(1) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val subType =
+        runCatching { modelToIrType(subModel, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val superType =
+        runCatching { modelToIrType(superModel, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    return if (canProveSubtype(subType, superType, exactBuiltinGoalContext.pluginContext)) {
+        BuiltinGoalFeasibility.PROVABLE
+    } else {
+        BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+}
+
+private fun irBuiltinStrictSubtypeFeasibility(
+    goal: TcType,
+    classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    exactBuiltinGoalContext: IrBuiltinGoalExactContext?,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != STRICT_SUBTYPE_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val subModel = constructor.arguments.getOrNull(0) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val superModel = constructor.arguments.getOrNull(1) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    if (!canProveNotSame(subModel, superModel)) {
+        return BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+    if (exactBuiltinGoalContext == null) {
+        return if (supportsBuiltinStrictSubtypeGoal(goal, classInfoById)) BuiltinGoalFeasibility.SPECULATIVE else BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+    val subType =
+        runCatching { modelToIrType(subModel, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val superType =
+        runCatching { modelToIrType(superModel, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    return if (canProveSubtype(subType, superType, exactBuiltinGoalContext.pluginContext)) {
+        BuiltinGoalFeasibility.PROVABLE
+    } else {
+        BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+}
+
+private fun irBuiltinIsTypeclassInstanceFeasibility(
+    goal: TcType,
+    exactBuiltinGoalContext: IrBuiltinGoalExactContext?,
+    isTypeclassClassifier: (String) -> Boolean,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != IS_TYPECLASS_INSTANCE_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val targetModel = constructor.arguments.singleOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    if (exactBuiltinGoalContext == null) {
+        return if (
+            supportsBuiltinIsTypeclassInstanceGoal(
+                goal = goal,
+                isTypeclassClassifier = isTypeclassClassifier,
+            )
+        ) {
+            BuiltinGoalFeasibility.SPECULATIVE
+        } else {
+            BuiltinGoalFeasibility.IMPOSSIBLE
+        }
+    }
+    val targetType =
+        runCatching { modelToIrType(targetModel, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    return if (targetType.isTypeclassType(exactBuiltinGoalContext.configuration)) {
+        BuiltinGoalFeasibility.PROVABLE
+    } else {
+        BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+}
+
 private fun canProveNullable(
     targetType: IrType,
     pluginContext: IrPluginContext,
@@ -5122,6 +5236,12 @@ private data class VisibleTypeParameters(
     fun canMaterializeRuntimeType(variableId: String): Boolean =
         byId[variableId]?.owner?.isReified == true
 }
+
+private data class IrBuiltinGoalExactContext(
+    val visibleTypeParameters: VisibleTypeParameters,
+    val pluginContext: IrPluginContext,
+    val configuration: TypeclassConfiguration,
+)
 
 private data class LocalTypeclassContext(
     val expression: IrBuilderWithScope.() -> IrExpression,

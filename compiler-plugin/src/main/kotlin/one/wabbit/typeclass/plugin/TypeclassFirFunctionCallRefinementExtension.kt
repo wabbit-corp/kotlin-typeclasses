@@ -119,6 +119,7 @@ internal class TypeclassFirFunctionCallRefinementExtension(
         val typeContext = buildTypeContext(callInfo, symbol)
         val inferredTypeArguments = inferFunctionTypeArguments(callInfo, symbol, typeContext)
         val useDerivedAwareRules = function.typeParameters.isEmpty()
+        val exactBuiltinGoalContext = typeContext.exactBuiltinGoalContext()
         val planner =
             TypeclassResolutionPlanner(
                 ruleProvider = { goal ->
@@ -127,12 +128,15 @@ internal class TypeclassFirFunctionCallRefinementExtension(
                             session = session,
                             goal = goal,
                             canMaterializeVariable = typeContext.runtimeMaterializableVariableIds::contains,
+                            builtinGoalAcceptance = BuiltinGoalAcceptance.PROVABLE_ONLY,
+                            exactBuiltinGoalContext = exactBuiltinGoalContext,
                         )
                     } else {
                         sharedState.refinementRulesForGoal(
                             session = session,
                             goal = goal,
                             canMaterializeVariable = typeContext.runtimeMaterializableVariableIds::contains,
+                            exactBuiltinGoalContext = exactBuiltinGoalContext,
                         )
                     }
                 },
@@ -160,6 +164,8 @@ internal class TypeclassFirFunctionCallRefinementExtension(
                         goal = goalModel,
                         availableContexts = typeContext.directlyAvailableContextModels,
                         canMaterializeVariable = typeContext.runtimeMaterializableVariableIds::contains,
+                        builtinGoalAcceptance = BuiltinGoalAcceptance.PROVABLE_ONLY,
+                        exactBuiltinGoalContext = exactBuiltinGoalContext,
                     )
                 else -> false
             }
@@ -406,4 +412,11 @@ internal class TypeclassFirFunctionCallRefinementExtension(
             )
         }
     }
+
+    private fun FirTypeclassResolutionContext.exactBuiltinGoalContext(): FirBuiltinGoalExactContext =
+        FirBuiltinGoalExactContext(
+            session = session,
+            typeParameterModels = typeParameterModels,
+            variableSymbolsById = typeParameterModels.entries.associate { (symbol, parameter) -> parameter.id to symbol },
+        )
 }

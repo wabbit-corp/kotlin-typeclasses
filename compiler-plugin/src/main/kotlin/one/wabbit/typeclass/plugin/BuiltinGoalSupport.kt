@@ -7,7 +7,33 @@ import one.wabbit.typeclass.plugin.model.containsStarProjection
 import one.wabbit.typeclass.plugin.model.isProvablyNullable
 import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.referencedVariableIds
+import org.jetbrains.kotlin.fir.FirSession
+import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
 import org.jetbrains.kotlin.types.Variance
+
+internal enum class BuiltinGoalFeasibility {
+    PROVABLE,
+    SPECULATIVE,
+    IMPOSSIBLE,
+}
+
+internal enum class BuiltinGoalAcceptance {
+    PROVABLE_ONLY,
+    ALLOW_SPECULATIVE,
+    ;
+
+    fun accepts(feasibility: BuiltinGoalFeasibility): Boolean =
+        when (this) {
+            PROVABLE_ONLY -> feasibility == BuiltinGoalFeasibility.PROVABLE
+            ALLOW_SPECULATIVE -> feasibility != BuiltinGoalFeasibility.IMPOSSIBLE
+        }
+}
+
+internal data class FirBuiltinGoalExactContext(
+    val session: FirSession,
+    val typeParameterModels: Map<FirTypeParameterSymbol, one.wabbit.typeclass.plugin.model.TcTypeParameter>,
+    val variableSymbolsById: Map<String, FirTypeParameterSymbol>,
+)
 
 internal fun supportsBuiltinKClassGoal(goal: TcType): Boolean {
     return supportsBuiltinKClassGoal(goal) { true }
@@ -38,27 +64,60 @@ internal fun supportsBuiltinNotSameGoal(goal: TcType): Boolean {
 internal fun supportsBuiltinSubtypeGoal(
     goal: TcType,
     classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    exactContext: FirBuiltinGoalExactContext? = null,
 ): Boolean {
-    val constructor = goal as? TcType.Constructor ?: return true
-    if (constructor.classifierId != SUBTYPE_CLASS_ID.asString()) {
-        return true
-    }
-    val sub = constructor.arguments.getOrNull(0) ?: return false
-    val sup = constructor.arguments.getOrNull(1) ?: return false
-    return canPossiblyProveSubtype(sub, sup, classInfoById)
+    return builtinSubtypeGoalFeasibility(goal, classInfoById, exactContext) != BuiltinGoalFeasibility.IMPOSSIBLE
 }
 
 internal fun supportsBuiltinStrictSubtypeGoal(
     goal: TcType,
     classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    exactContext: FirBuiltinGoalExactContext? = null,
 ): Boolean {
-    val constructor = goal as? TcType.Constructor ?: return true
-    if (constructor.classifierId != STRICT_SUBTYPE_CLASS_ID.asString()) {
-        return true
+    return builtinStrictSubtypeGoalFeasibility(goal, classInfoById, exactContext) != BuiltinGoalFeasibility.IMPOSSIBLE
+}
+
+internal fun provablySupportsBuiltinSubtypeGoal(
+    goal: TcType,
+    classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    exactContext: FirBuiltinGoalExactContext? = null,
+): Boolean = builtinSubtypeGoalFeasibility(goal, classInfoById, exactContext) == BuiltinGoalFeasibility.PROVABLE
+
+internal fun provablySupportsBuiltinStrictSubtypeGoal(
+    goal: TcType,
+    classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    exactContext: FirBuiltinGoalExactContext? = null,
+): Boolean = builtinStrictSubtypeGoalFeasibility(goal, classInfoById, exactContext) == BuiltinGoalFeasibility.PROVABLE
+
+private fun builtinSubtypeGoalFeasibility(
+    goal: TcType,
+    classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    exactContext: FirBuiltinGoalExactContext?,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != SUBTYPE_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
     }
-    val sub = constructor.arguments.getOrNull(0) ?: return false
-    val sup = constructor.arguments.getOrNull(1) ?: return false
-    return canPossiblyProveSubtype(sub, sup, classInfoById) && canProveNotSame(sub, sup)
+    val sub = constructor.arguments.getOrNull(0) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val sup = constructor.arguments.getOrNull(1) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    return subtypeFeasibility(sub, sup, classInfoById, exactContext)
+}
+
+private fun builtinStrictSubtypeGoalFeasibility(
+    goal: TcType,
+    classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    exactContext: FirBuiltinGoalExactContext?,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != STRICT_SUBTYPE_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val sub = constructor.arguments.getOrNull(0) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val sup = constructor.arguments.getOrNull(1) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    if (!canProveNotSame(sub, sup)) {
+        return BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+    return subtypeFeasibility(sub, sup, classInfoById, exactContext)
 }
 
 internal fun supportsBuiltinSameTypeConstructorGoal(goal: TcType): Boolean {
@@ -74,14 +133,17 @@ internal fun supportsBuiltinSameTypeConstructorGoal(goal: TcType): Boolean {
 internal fun supportsBuiltinIsTypeclassInstanceGoal(
     goal: TcType,
     isTypeclassClassifier: (String) -> Boolean,
+    exactContext: FirBuiltinGoalExactContext? = null,
 ): Boolean {
-    val constructor = goal as? TcType.Constructor ?: return true
-    if (constructor.classifierId != IS_TYPECLASS_INSTANCE_CLASS_ID.asString()) {
-        return true
-    }
-    val target = constructor.arguments.singleOrNull() ?: return false
-    return target.isPotentialTypeclassApplication(isTypeclassClassifier)
+    return builtinIsTypeclassInstanceGoalFeasibility(goal, isTypeclassClassifier, exactContext) != BuiltinGoalFeasibility.IMPOSSIBLE
 }
+
+internal fun provablySupportsBuiltinIsTypeclassInstanceGoal(
+    goal: TcType,
+    isTypeclassClassifier: (String) -> Boolean,
+    exactContext: FirBuiltinGoalExactContext? = null,
+): Boolean =
+    builtinIsTypeclassInstanceGoalFeasibility(goal, isTypeclassClassifier, exactContext) == BuiltinGoalFeasibility.PROVABLE
 
 internal fun supportsBuiltinKnownTypeGoal(goal: TcType): Boolean {
     return supportsBuiltinKnownTypeGoal(goal) { true }
@@ -136,12 +198,17 @@ internal fun supportsBuiltinKSerializerShape(
 
 private fun TcType.isPotentialTypeclassApplication(
     isTypeclassClassifier: (String) -> Boolean,
-): Boolean =
+): BuiltinGoalFeasibility =
     when (this) {
-        TcType.StarProjection -> false
-        is TcType.Variable -> true
+        TcType.StarProjection -> BuiltinGoalFeasibility.IMPOSSIBLE
+        is TcType.Variable -> BuiltinGoalFeasibility.SPECULATIVE
         is TcType.Projected -> type.isPotentialTypeclassApplication(isTypeclassClassifier)
-        is TcType.Constructor -> isTypeclassClassifier(classifierId)
+        is TcType.Constructor ->
+            if (isTypeclassClassifier(classifierId)) {
+                BuiltinGoalFeasibility.PROVABLE
+            } else {
+                BuiltinGoalFeasibility.IMPOSSIBLE
+            }
     }
 
 internal fun supportsRuntimeTypeMaterialization(
@@ -182,81 +249,98 @@ internal fun canProveNotSame(
     }
 }
 
-private fun canPossiblyProveSubtype(
+private fun subtypeFeasibility(
     sub: TcType,
     sup: TcType,
     classInfoById: Map<String, VisibleClassHierarchyInfo>,
-): Boolean {
+    exactContext: FirBuiltinGoalExactContext?,
+): BuiltinGoalFeasibility {
+    exactContext?.exactSubtypeFeasibility(sub, sup, classInfoById)?.let { return it }
     if (sub.normalizedKey() == sup.normalizedKey()) {
-        return true
+        return BuiltinGoalFeasibility.PROVABLE
     }
     if (sub.referencedVariableIds().isNotEmpty() || sup.referencedVariableIds().isNotEmpty()) {
-        return true
+        return BuiltinGoalFeasibility.SPECULATIVE
     }
     return when {
-        sub === TcType.StarProjection || sup === TcType.StarProjection -> true
-        sub is TcType.Projected || sup is TcType.Projected -> true
+        sub === TcType.StarProjection || sup === TcType.StarProjection -> BuiltinGoalFeasibility.SPECULATIVE
+        sub is TcType.Projected || sup is TcType.Projected -> BuiltinGoalFeasibility.SPECULATIVE
         sub is TcType.Constructor && sup is TcType.Constructor ->
-            canPossiblyProveConstructorSubtype(sub, sup, classInfoById)
+            constructorSubtypeFeasibility(sub, sup, classInfoById, exactContext)
 
-        else -> false
+        else -> BuiltinGoalFeasibility.IMPOSSIBLE
     }
 }
 
-private fun canPossiblyProveConstructorSubtype(
+private fun constructorSubtypeFeasibility(
     sub: TcType.Constructor,
     sup: TcType.Constructor,
     classInfoById: Map<String, VisibleClassHierarchyInfo>,
-): Boolean {
+    exactContext: FirBuiltinGoalExactContext?,
+): BuiltinGoalFeasibility {
     if (sub.isNullable && !sup.isNullable) {
-        return false
+        return BuiltinGoalFeasibility.IMPOSSIBLE
     }
     if (sub.classifierId == sup.classifierId) {
-        return canPossiblyProveSameClassifierSubtype(sub, sup, classInfoById[sub.classifierId], classInfoById)
+        return sameClassifierSubtypeFeasibility(sub, sup, classInfoById[sub.classifierId], classInfoById, exactContext)
     }
-    return hasSupertypePath(sub.classifierId, sup.classifierId, classInfoById)
+    return hasSupertypePathFeasibility(sub.classifierId, sup.classifierId, classInfoById)
 }
 
-private fun canPossiblyProveSameClassifierSubtype(
+private fun sameClassifierSubtypeFeasibility(
     sub: TcType.Constructor,
     sup: TcType.Constructor,
     classInfo: VisibleClassHierarchyInfo?,
     classInfoById: Map<String, VisibleClassHierarchyInfo>,
-): Boolean {
+    exactContext: FirBuiltinGoalExactContext?,
+): BuiltinGoalFeasibility {
     if (classInfo == null) {
-        return true
+        return BuiltinGoalFeasibility.SPECULATIVE
     }
     if (sub.arguments.size != sup.arguments.size) {
-        return false
+        return BuiltinGoalFeasibility.IMPOSSIBLE
     }
     val variances = classInfo.typeParameterVariances
     if (variances.size != sub.arguments.size) {
-        return true
+        return BuiltinGoalFeasibility.SPECULATIVE
     }
-    return sub.arguments.indices.all { index ->
+    var sawSpeculative = false
+    sub.arguments.indices.forEach { index ->
         val subArgument = sub.arguments[index]
         val superArgument = sup.arguments[index]
         if (superArgument === TcType.StarProjection) {
-            return@all true
+            return@forEach
         }
         val variance = variances.getOrNull(index) ?: Variance.INVARIANT
-        when {
-            subArgument is TcType.Projected || superArgument is TcType.Projected -> true
-            variance == Variance.OUT_VARIANCE -> canPossiblyProveSubtype(subArgument, superArgument, classInfoById)
-            variance == Variance.IN_VARIANCE -> canPossiblyProveSubtype(superArgument, subArgument, classInfoById)
-            else -> subArgument.normalizedKey() == superArgument.normalizedKey()
+        val argumentFeasibility =
+            when {
+                subArgument is TcType.Projected || superArgument is TcType.Projected -> BuiltinGoalFeasibility.SPECULATIVE
+                variance == Variance.OUT_VARIANCE -> subtypeFeasibility(subArgument, superArgument, classInfoById, exactContext)
+                variance == Variance.IN_VARIANCE -> subtypeFeasibility(superArgument, subArgument, classInfoById, exactContext)
+                else ->
+                    if (subArgument.normalizedKey() == superArgument.normalizedKey()) {
+                        BuiltinGoalFeasibility.PROVABLE
+                    } else {
+                        BuiltinGoalFeasibility.IMPOSSIBLE
+                    }
+            }
+        when (argumentFeasibility) {
+            BuiltinGoalFeasibility.PROVABLE -> Unit
+            BuiltinGoalFeasibility.SPECULATIVE -> sawSpeculative = true
+            BuiltinGoalFeasibility.IMPOSSIBLE -> return BuiltinGoalFeasibility.IMPOSSIBLE
         }
     }
+    return if (sawSpeculative) BuiltinGoalFeasibility.SPECULATIVE else BuiltinGoalFeasibility.PROVABLE
 }
 
-private fun hasSupertypePath(
+private fun hasSupertypePathFeasibility(
     sourceClassifierId: String,
     targetClassifierId: String,
     classInfoById: Map<String, VisibleClassHierarchyInfo>,
-): Boolean {
-    val info = classInfoById[sourceClassifierId] ?: return true
+): BuiltinGoalFeasibility {
+    val info = classInfoById[sourceClassifierId] ?: return BuiltinGoalFeasibility.SPECULATIVE
     if (targetClassifierId in info.superClassifiers) {
-        return true
+        return BuiltinGoalFeasibility.PROVABLE
     }
     val remaining = ArrayDeque(info.superClassifiers)
     val visited = linkedSetOf<String>()
@@ -266,10 +350,82 @@ private fun hasSupertypePath(
             continue
         }
         if (current == targetClassifierId) {
-            return true
+            return BuiltinGoalFeasibility.PROVABLE
         }
-        val currentInfo = classInfoById[current] ?: return true
+        val currentInfo = classInfoById[current] ?: return BuiltinGoalFeasibility.SPECULATIVE
         remaining.addAll(currentInfo.superClassifiers)
     }
-    return false
+    return BuiltinGoalFeasibility.IMPOSSIBLE
+}
+
+private fun builtinIsTypeclassInstanceGoalFeasibility(
+    goal: TcType,
+    isTypeclassClassifier: (String) -> Boolean,
+    exactContext: FirBuiltinGoalExactContext?,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != IS_TYPECLASS_INSTANCE_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val target = constructor.arguments.singleOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    exactContext?.let {
+        return when (target) {
+            TcType.StarProjection -> BuiltinGoalFeasibility.IMPOSSIBLE
+            is TcType.Variable -> BuiltinGoalFeasibility.IMPOSSIBLE
+            is TcType.Projected -> BuiltinGoalFeasibility.IMPOSSIBLE
+            is TcType.Constructor ->
+                if (isTypeclassClassifier(target.classifierId)) {
+                    BuiltinGoalFeasibility.PROVABLE
+                } else {
+                    BuiltinGoalFeasibility.IMPOSSIBLE
+                }
+        }
+    }
+    return target.isPotentialTypeclassApplication(isTypeclassClassifier)
+}
+
+private fun FirBuiltinGoalExactContext.exactSubtypeFeasibility(
+    sub: TcType,
+    sup: TcType,
+    classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    visiting: MutableSet<String> = linkedSetOf(),
+): BuiltinGoalFeasibility? {
+    if (sub.normalizedKey() == sup.normalizedKey()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val subVariable = sub as? TcType.Variable
+    if (subVariable != null) {
+        val visitKey = "${subVariable.id}->${sup.normalizedKey()}"
+        if (!visiting.add(visitKey)) {
+            return BuiltinGoalFeasibility.IMPOSSIBLE
+        }
+        try {
+            val symbol = variableSymbolsById[subVariable.id] ?: return null
+            val bounds =
+                symbol.resolvedBounds.mapNotNull { boundTypeRef ->
+                    coneTypeToModel(boundTypeRef.coneType, typeParameterModels)
+                }
+            if (bounds.isEmpty()) {
+                return BuiltinGoalFeasibility.IMPOSSIBLE
+            }
+            return if (bounds.any { bound -> exactSubtypeFeasibility(bound, sup, classInfoById, visiting) == BuiltinGoalFeasibility.PROVABLE }) {
+                BuiltinGoalFeasibility.PROVABLE
+            } else {
+                BuiltinGoalFeasibility.IMPOSSIBLE
+            }
+        } finally {
+            visiting.remove(visitKey)
+        }
+    }
+    if (sup is TcType.Variable) {
+        return BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+    if (sub is TcType.Constructor && sup is TcType.Constructor) {
+        return constructorSubtypeFeasibility(sub, sup, classInfoById, this)
+    }
+    return when {
+        sub === TcType.StarProjection || sup === TcType.StarProjection -> BuiltinGoalFeasibility.IMPOSSIBLE
+        sub is TcType.Projected || sup is TcType.Projected -> BuiltinGoalFeasibility.IMPOSSIBLE
+        else -> BuiltinGoalFeasibility.IMPOSSIBLE
+    }
 }

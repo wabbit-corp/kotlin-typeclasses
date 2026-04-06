@@ -2,7 +2,6 @@
 
 package one.wabbit.typeclass.plugin.integration
 
-import org.junit.Ignore
 import kotlin.test.Test
 
 class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
@@ -93,6 +92,97 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun speculativeSubtypeGoalFailsInFirInsteadOfIr() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Subtype
+
+            context(_: Subtype<T, Number>)
+            fun <T> render(value: T): String = "context"
+
+            fun <T> choose(value: T): String = render(value) // E:TC_NO_CONTEXT_ARGUMENT speculative subtype goal should fail in FIR
+
+            fun main() {
+                println(choose("not-a-number"))
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedNoContextArgument("subtype")),
+            unexpectedMessages = listOf("invalid builtin evidence"),
+        )
+    }
+
+    @Test
+    fun provableSubtypeGoalFromBoundsStillParticipatesInRefinement() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Subtype
+
+            context(_: Subtype<B, A>)
+            fun <A, B : A> render(): String = "context"
+
+            open class Animal
+            class Dog : Animal()
+
+            fun <A, B : A> choose(): String = render<A, B>()
+
+            fun main() {
+                println(choose<Animal, Dog>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "context",
+        )
+    }
+
+    @Test
+    fun speculativeSubtypePrerequisiteFailsInFirInsteadOfIr() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Subtype
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            context(_: Subtype<T, Number>)
+            fun <T> speculativeShow(): Show<T> =
+                object : Show<T> {
+                    override fun label(): String = "context"
+                }
+
+            context(show: Show<T>)
+            fun <T> render(): String = show.label()
+
+            fun <T> choose(): String = render<T>() // E:TC_NO_CONTEXT_ARGUMENT speculative prerequisite should fail in FIR
+
+            fun main() {
+                println(choose<String>())
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedNoContextArgument("show")),
+            unexpectedMessages = listOf("invalid builtin evidence"),
+        )
+    }
+
+    @Test
     fun impossibleStrictSubtypePrerequisitesDoNotCreateSpuriousAmbiguity() {
         val source =
             """
@@ -137,6 +227,31 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun speculativeStrictSubtypeGoalFailsInFirInsteadOfIr() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.StrictSubtype
+
+            context(_: StrictSubtype<T, Number>)
+            fun <T> render(value: T): String = "context"
+
+            fun <T> choose(value: T): String = render(value) // E:TC_NO_CONTEXT_ARGUMENT speculative strict subtype goal should fail in FIR
+
+            fun main() {
+                println(choose("not-a-number"))
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedNoContextArgument("strictsubtype")),
+            unexpectedMessages = listOf("invalid builtin evidence"),
+        )
+    }
+
+    @Test
     fun impossibleIsTypeclassInstancePrerequisiteDoesNotCreateFakeAmbiguity() {
         val source =
             """
@@ -174,6 +289,31 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "exact:1",
+        )
+    }
+
+    @Test
+    fun speculativeIsTypeclassInstanceGoalFailsInFirInsteadOfIr() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.IsTypeclassInstance
+
+            context(_: IsTypeclassInstance<TC>)
+            fun <TC> render(value: Int): String = "context"
+
+            fun <TC> choose(): String = render<TC>(1) // E:TC_NO_CONTEXT_ARGUMENT speculative is-typeclass-instance goal should fail in FIR
+
+            fun main() {
+                println(choose<List<Int>>())
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedNoContextArgument("istypeclassinstance")),
+            unexpectedMessages = listOf("invalid builtin evidence"),
         )
     }
 
