@@ -118,14 +118,23 @@ internal class TypeclassFirFunctionCallRefinementExtension(
 
         val typeContext = buildTypeContext(callInfo, symbol)
         val inferredTypeArguments = inferFunctionTypeArguments(callInfo, symbol, typeContext)
+        val useDerivedAwareRules = function.typeParameters.isEmpty()
         val planner =
             TypeclassResolutionPlanner(
                 ruleProvider = { goal ->
-                    sharedState.rulesForGoal(
-                        session = session,
-                        goal = goal,
-                        canMaterializeVariable = typeContext.runtimeMaterializableVariableIds::contains,
-                    )
+                    if (!useDerivedAwareRules) {
+                        sharedState.rulesForGoal(
+                            session = session,
+                            goal = goal,
+                            canMaterializeVariable = typeContext.runtimeMaterializableVariableIds::contains,
+                        )
+                    } else {
+                        sharedState.refinementRulesForGoal(
+                            session = session,
+                            goal = goal,
+                            canMaterializeVariable = typeContext.runtimeMaterializableVariableIds::contains,
+                        )
+                    }
                 },
                 bindableDesiredVariableIds = typeContext.bindableVariableIds,
             )

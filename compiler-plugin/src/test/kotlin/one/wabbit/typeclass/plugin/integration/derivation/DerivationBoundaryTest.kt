@@ -664,6 +664,55 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun ambiguousManualAndDerivedHeadsSurfaceStructuredAmbiguityAtCallSites() {
+        val sources =
+            mapOf(
+                "shared/Show.kt" to showTypeclassSource(packageName = "shared"),
+                "shared/ShownString.kt" to shownStringSource("shared"),
+                "shared/Box.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Derive
+                    import one.wabbit.typeclass.Instance
+
+                    @Derive(Show::class)
+                    data class Box(val value: ShownString) {
+                        companion object {
+                            @Instance
+                            val show: Show<Box> =
+                                object : Show<Box> {
+                                    override fun show(value: Box): String = "manual"
+                                }
+                        }
+                    }
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import shared.Box
+                    import shared.ShownString
+
+                    context(_: shared.Show<Box>)
+                    fun render(value: Box): String = "context"
+
+                    fun render(value: Box): String = "plain"
+
+                    fun main() {
+                        println(render(Box(ShownString("clash")))) // E:TC_AMBIGUOUS_INSTANCE manual and derived Show<Box> must already be ambiguous in FIR refinement
+                    }
+                    """.trimIndent(),
+            )
+
+        assertDoesNotCompile(
+            sources = sources,
+            expectedDiagnostics = listOf(expectedAmbiguousInstance("show", "box")),
+            unexpectedMessages = listOf("internal compiler error"),
+        )
+    }
+
+    @Test
     fun consumerModuleGetsAmbiguityWhenDependencyExportsManualAndDerivedSealedInstances() {
         val typeclassDependency =
             HarnessDependency(
