@@ -98,7 +98,14 @@ internal class TypeclassPluginSharedState(
         session: FirSession,
         goal: TcType,
         availableContexts: List<TcType> = emptyList(),
-    ): Boolean = resolutionIndex(session).canDeriveGoal(goal, session, availableContexts)
+        canMaterializeVariable: (String) -> Boolean = { true },
+    ): Boolean =
+        resolutionIndex(session).canDeriveGoal(
+            goal = goal,
+            session = session,
+            availableContexts = availableContexts,
+            canMaterializeVariable = canMaterializeVariable,
+        )
 
     fun allowedAssociatedOwnersForProvidedType(
         session: FirSession,
@@ -515,6 +522,7 @@ private data class ResolutionIndex(
         session: FirSession,
         availableContexts: List<TcType> = emptyList(),
         visiting: MutableSet<String> = linkedSetOf(),
+        canMaterializeVariable: (String) -> Boolean = { true },
     ): Boolean {
         val key = goal.normalizedKey()
         if (!visiting.add(key)) {
@@ -522,7 +530,7 @@ private data class ResolutionIndex(
         }
         val directPlanner =
             TypeclassResolutionPlanner(
-                ruleProvider = { nestedGoal -> rulesForGoal(nestedGoal, session) { true } },
+                ruleProvider = { nestedGoal -> rulesForGoal(nestedGoal, session, canMaterializeVariable) },
                 bindableDesiredVariableIds = emptySet(),
             )
         when (directPlanner.resolve(goal, availableContexts)) {
@@ -557,6 +565,7 @@ private data class ResolutionIndex(
                         session = session,
                         availableContexts = availableContexts,
                         visiting = visiting,
+                        canMaterializeVariable = canMaterializeVariable,
                     )
                 }
             }
@@ -607,6 +616,7 @@ private data class ResolutionIndex(
         session: FirSession,
         availableContexts: List<TcType>,
         visiting: MutableSet<String>,
+        canMaterializeVariable: (String) -> Boolean,
     ): Boolean {
         val discoveredTypeclassIds = discoveredDerivableTypeclassIds(owner, session)
         if (typeclassId !in discoveredTypeclassIds) {
@@ -629,6 +639,7 @@ private data class ResolutionIndex(
                 session = session,
                 availableContexts = availableContexts,
                 visiting = visiting,
+                canMaterializeVariable = canMaterializeVariable,
             )
         }
         val classId = runCatching { ClassId.fromString(owner) }.getOrNull() ?: return false
@@ -644,6 +655,7 @@ private data class ResolutionIndex(
             session = session,
             availableContexts = availableContexts,
             visiting = visiting,
+            canMaterializeVariable = canMaterializeVariable,
         )
     }
 
@@ -655,6 +667,7 @@ private data class ResolutionIndex(
         session: FirSession,
         availableContexts: List<TcType>,
         visiting: MutableSet<String>,
+        canMaterializeVariable: (String) -> Boolean,
     ): Boolean {
         val expandedDeriveViaTypeclassIds =
             declaration.deriveViaTypeclassIds(session).let { supportedTypeclassIds ->
@@ -678,6 +691,7 @@ private data class ResolutionIndex(
                 session = session,
                 availableContexts = availableContexts,
                 visiting = visiting,
+                canMaterializeVariable = canMaterializeVariable,
             )
         }
         val constructor =
@@ -710,6 +724,7 @@ private data class ResolutionIndex(
                 session = session,
                 availableContexts = availableContexts,
                 visiting = visiting,
+                canMaterializeVariable = canMaterializeVariable,
             )
         }
     }
@@ -722,6 +737,7 @@ private data class ResolutionIndex(
         session: FirSession,
         availableContexts: List<TcType>,
         visiting: MutableSet<String>,
+        canMaterializeVariable: (String) -> Boolean,
     ): Boolean {
         val subclassIds =
             buildSet {
@@ -762,6 +778,7 @@ private data class ResolutionIndex(
                 session = session,
                 availableContexts = availableContexts,
                 visiting = visiting,
+                canMaterializeVariable = canMaterializeVariable,
             )
         }
     }

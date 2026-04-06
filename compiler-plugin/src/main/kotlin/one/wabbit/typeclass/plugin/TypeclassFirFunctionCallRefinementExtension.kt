@@ -150,6 +150,7 @@ internal class TypeclassFirFunctionCallRefinementExtension(
                         session = session,
                         goal = goalModel,
                         availableContexts = typeContext.directlyAvailableContextModels,
+                        canMaterializeVariable = typeContext.runtimeMaterializableVariableIds::contains,
                     )
                 else -> false
             }

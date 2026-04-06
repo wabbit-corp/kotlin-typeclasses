@@ -259,6 +259,105 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun nonMaterializableKnownTypeDoesNotHidePlainOverload() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.KnownType
+
+            context(_: KnownType<T>)
+            fun <T> choose(): String = "builtin"
+
+            fun choose(label: String = "plain"): String = label
+
+            fun main() {
+                println(choose())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain",
+        )
+    }
+
+    @Test
+    fun nonMaterializableTypeIdDoesNotHidePlainOverload() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.TypeId
+
+            context(_: TypeId<T>)
+            fun <T> choose(): String = "builtin"
+
+            fun choose(label: String = "plain"): String = label
+
+            fun main() {
+                println(choose())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain",
+        )
+    }
+
+    @Test
+    fun nonMaterializableBuiltinKClassDoesNotHidePlainOverload() {
+        val source =
+            """
+            package demo
+
+            import kotlin.reflect.KClass
+
+            context(_: KClass<T>)
+            fun <T : Any> choose(): String = "builtin"
+
+            fun choose(label: String = "plain"): String = label
+
+            fun main() {
+                println(choose())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain",
+            pluginOptions = listOf("builtinKClassTypeclass=enabled"),
+        )
+    }
+
+    @Test
+    fun nonMaterializableBuiltinKSerializerDoesNotHidePlainOverload() {
+        val source =
+            """
+            package demo
+
+            import kotlinx.serialization.KSerializer
+
+            context(_: KSerializer<T>)
+            fun <T> choose(): String = "builtin"
+
+            fun choose(label: String = "plain"): String = label
+
+            fun main() {
+                println(choose())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain",
+            requiredPlugins = listOf(CompilerHarnessPlugin.Serialization),
+            pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
+        )
+    }
+
+    @Test
     fun inapplicableBuiltinCandidatesDoNotCreateFalseAmbiguity() {
         val source =
             """
