@@ -472,6 +472,180 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun illegalMutableInstancePropertiesDoNotCreateSpuriousCallSiteAmbiguity() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "good:${'$'}value"
+            }
+
+            @Instance // E:TC_INVALID_INSTANCE_DECL mutable instance property declarations must remain invalid and must not affect resolution
+            var badShow: Show<Int> =
+                object : Show<Int> {
+                    override fun show(value: Int): String = "bad:${'$'}value"
+                }
+
+            context(show: Show<Int>)
+            fun render(value: Int): String = show.show(value)
+
+            fun main() {
+                println(render(1))
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            unexpectedMessages = listOf("ambiguous"),
+            expectedDiagnostics =
+                listOf(
+                    expectedExactInvalidInstanceDecl(
+                        why = "mutable instance property declarations are not allowed.",
+                    ),
+                ),
+        )
+    }
+
+    @Test fun illegalLateinitInstancePropertiesDoNotCreateSpuriousCallSiteAmbiguity() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "good:${'$'}value"
+            }
+
+            @Instance // E:TC_INVALID_INSTANCE_DECL lateinit instance property declarations must remain invalid and must not affect resolution
+            lateinit var badShow: Show<Int>
+
+            context(show: Show<Int>)
+            fun render(value: Int): String = show.show(value)
+
+            fun main() {
+                println(render(1))
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            unexpectedMessages = listOf("ambiguous"),
+            expectedDiagnostics =
+                listOf(
+                    expectedExactInvalidInstanceDecl(
+                        why = "lateinit instance property declarations are not allowed.",
+                    ),
+                ),
+        )
+    }
+
+    @Test fun illegalCustomGetterInstancePropertiesDoNotCreateSpuriousCallSiteAmbiguity() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "good:${'$'}value"
+            }
+
+            @Instance // E:TC_INVALID_INSTANCE_DECL custom getter instance property declarations must remain invalid and must not affect resolution
+            val badShow: Show<Int>
+                get() =
+                    object : Show<Int> {
+                        override fun show(value: Int): String = "bad:${'$'}value"
+                    }
+
+            context(show: Show<Int>)
+            fun render(value: Int): String = show.show(value)
+
+            fun main() {
+                println(render(1))
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            unexpectedMessages = listOf("ambiguous"),
+            expectedDiagnostics =
+                listOf(
+                    expectedExactInvalidInstanceDecl(
+                        why = "custom getter instance property declarations are not allowed.",
+                    ),
+                ),
+        )
+    }
+
+    @Test fun illegalSuspendInstanceFunctionsDoNotCreateSpuriousCallSiteAmbiguity() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "good:${'$'}value"
+            }
+
+            @Instance // E:TC_INVALID_INSTANCE_DECL suspend instance declarations must remain invalid and must not affect resolution
+            suspend fun badShow(): Show<Int> =
+                object : Show<Int> {
+                    override fun show(value: Int): String = "bad:${'$'}value"
+                }
+
+            context(show: Show<Int>)
+            fun render(value: Int): String = show.show(value)
+
+            fun main() {
+                println(render(1))
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            unexpectedMessages = listOf("ambiguous"),
+            expectedDiagnostics =
+                listOf(
+                    expectedExactInvalidInstanceDecl(
+                        why = "suspend instance functions are not allowed.",
+                    ),
+                ),
+        )
+    }
+
     @Test
     fun illegalMemberInstanceFunctionsDoNotCreateSpuriousCallSiteAmbiguity() {
         val source =

@@ -2320,6 +2320,33 @@ private fun IrDeclaration.isVisibleTypeclassRuleCandidate(): Boolean {
     return true
 }
 
+private fun IrSimpleFunction.isValidTypeclassInstanceFunctionRuleCandidate(): Boolean {
+    if (isSuspend) {
+        return false
+    }
+    if (extensionReceiverParameter != null) {
+        return false
+    }
+    if (parameters.any { it.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular }) {
+        return false
+    }
+    return true
+}
+
+private fun IrProperty.isValidTypeclassInstancePropertyRuleCandidate(): Boolean {
+    if (isVar || isLateinit) {
+        return false
+    }
+    val getter = getter ?: return false
+    if (getter.extensionReceiverParameter != null) {
+        return false
+    }
+    if (getter.body != null && getter.origin != IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR) {
+        return false
+    }
+    return true
+}
+
 private class IrRuleIndex private constructor(
     private val pluginContext: IrPluginContext,
     val configuration: TypeclassConfiguration,
@@ -2526,10 +2553,7 @@ private class IrRuleIndex private constructor(
         if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) || !irInstanceOwnerContext(this).isIndexableScope || !isVisibleTypeclassRuleCandidate()) {
             return emptyList()
         }
-        if (extensionReceiverParameter != null) {
-            return emptyList()
-        }
-        if (parameters.any { parameter -> parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular }) {
+        if (!isValidTypeclassInstanceFunctionRuleCandidate()) {
             return emptyList()
         }
         val typeParameters = this.typeParameters.map { typeParameter ->
@@ -2574,8 +2598,7 @@ private class IrRuleIndex private constructor(
         if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) || !irInstanceOwnerContext(this).isIndexableScope || !isVisibleTypeclassRuleCandidate()) {
             return emptyList()
         }
-        val getter = getter ?: return emptyList()
-        if (getter.extensionReceiverParameter != null) {
+        if (!isValidTypeclassInstancePropertyRuleCandidate()) {
             return emptyList()
         }
         return listOf(backingFieldOrGetterType()).providedTypeExpansion(emptyMap(), configuration).validTypes.map { providedType ->
@@ -3052,10 +3075,7 @@ private class IrModuleScanner(
         if (!irInstanceOwnerContext(this).isIndexableScope || !isVisibleTypeclassRuleCandidate()) {
             return emptyList()
         }
-        if (extensionReceiverParameter != null) {
-            return emptyList()
-        }
-        if (parameters.any { it.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular }) {
+        if (!isValidTypeclassInstanceFunctionRuleCandidate()) {
             return emptyList()
         }
 
@@ -3110,8 +3130,7 @@ private class IrModuleScanner(
         if (!irInstanceOwnerContext(this).isIndexableScope || !isVisibleTypeclassRuleCandidate()) {
             return emptyList()
         }
-        val getter = getter ?: return emptyList()
-        if (getter.extensionReceiverParameter != null) {
+        if (!isValidTypeclassInstancePropertyRuleCandidate()) {
             return emptyList()
         }
         val providedTypeExpansion = listOf(backingFieldOrGetterType()).providedTypeExpansion(emptyMap(), configuration)

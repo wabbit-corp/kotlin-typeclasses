@@ -1668,7 +1668,7 @@ private fun FirTypeclassFunctionDeclaration.toFunctionRules(
     if (source == null && status.visibility != Visibilities.Public) {
         return emptyList()
     }
-    if (receiverParameter != null || valueParameters.isNotEmpty()) {
+    if (receiverParameter != null || valueParameters.isNotEmpty() || status.isSuspend) {
         return emptyList()
     }
     val providedTypes = instanceProvidedTypes(session, configuration)
@@ -1743,7 +1743,7 @@ private fun FirProperty.toPropertyRules(
     if (source == null && status.visibility != Visibilities.Public) {
         return emptyList()
     }
-    if (receiverParameter != null) {
+    if (receiverParameter != null || status.isLateInit || isVar || getter?.body != null) {
         return emptyList()
     }
     val providedTypes = instanceProvidedTypes(session, configuration)
