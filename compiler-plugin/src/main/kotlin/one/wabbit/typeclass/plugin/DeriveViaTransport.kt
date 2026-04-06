@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 @file:OptIn(
     org.jetbrains.kotlin.DeprecatedForRemovalCompilerApi::class,
     org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI::class,
@@ -247,12 +249,12 @@ internal class DirectTransportPlanner(
                     val methods =
                         isoClass.findIsoMethods()
                             ?: return Result.failure(
-                                IllegalArgumentException("Pinned Iso ${segment.classId.asString()} must define to/from"),
+                                IllegalArgumentException("Pinned Iso ${segment.classId.asString()} must define one exact Iso to/from override pair"),
                             )
-                    val toMethod = methods.first
-                    val fromMethod = methods.second
-                    val leftType = toMethod.valueParameters.single().type
-                    val rightType = toMethod.returnType
+                    val toMethod = methods.toMethod
+                    val fromMethod = methods.fromMethod
+                    val leftType = methods.leftType
+                    val rightType = methods.rightType
                     val leftPlans = planEquiv(current, leftType)
                     val rightPlans = planEquiv(current, rightType)
                     when {
@@ -1050,18 +1052,19 @@ internal fun IrStatementsBuilder<*>.buildTransportLambda(
 
 internal fun IrClass.validateDeriveViaTransportability(): String? {
     val transported = typeParameters.lastOrNull()?.symbol ?: return "DeriveVia requires a typeclass with a final transported type parameter"
+    val classOpaqueParameters = typeParameters.map { it.symbol }.filterNot { it == transported }.toSet()
     for (property in declarations.filterIsInstance<IrProperty>()) {
         val getter = property.getter ?: continue
-        val message = getter.returnType.transportabilityViolation(transported, typeParameters.map { it.symbol }.toSet())
+        val message = getter.returnType.transportabilityViolation(transported, classOpaqueParameters)
         if (message != null) {
             return message
         }
     }
     for (function in declarations.filterIsInstance<IrSimpleFunction>()) {
-        val methodParams = typeParameters.map { it.symbol }.toMutableSet()
-        methodParams += function.typeParameters.map { it.symbol }
+        val methodOpaqueParameters = classOpaqueParameters.toMutableSet()
+        methodOpaqueParameters += function.typeParameters.map { it.symbol }
         if (function.typeParameters.any { typeParameter ->
-                typeParameter.superTypes.any { superType -> superType.mentionsTransportedType(transported, methodParams) }
+                typeParameter.superTypes.any { superType -> superType.mentionsTransportedType(transported, methodOpaqueParameters) }
             }
         ) {
             return "DeriveVia does not support method type-parameter bounds that mention the transported type parameter"
@@ -1070,18 +1073,18 @@ internal fun IrClass.validateDeriveViaTransportability(): String? {
             when (parameter.kind) {
                 IrParameterKind.DispatchReceiver -> Unit
                 IrParameterKind.Context ->
-                    if (parameter.type.mentionsTransportedType(transported, methodParams)) {
+                    if (parameter.type.mentionsTransportedType(transported, methodOpaqueParameters)) {
                         return "DeriveVia does not support context parameters that mention the transported type parameter"
                     }
                 else -> {
-                    val message = parameter.type.transportabilityViolation(transported, methodParams)
+                    val message = parameter.type.transportabilityViolation(transported, methodOpaqueParameters)
                     if (message != null) {
                         return message
                     }
                 }
             }
         }
-        val returnMessage = function.returnType.transportabilityViolation(transported, methodParams)
+        val returnMessage = function.returnType.transportabilityViolation(transported, methodOpaqueParameters)
         if (returnMessage != null) {
             return returnMessage
         }
@@ -1166,7 +1169,13 @@ private fun IrType.mentionsTransportedType(
     transported: IrTypeParameterSymbol,
     opaqueParameters: Set<IrTypeParameterSymbol>,
 ): Boolean {
-    val simpleType = this as? IrSimpleType ?: return render().contains(transported.owner.name.asString())
+    val simpleType = this as? IrSimpleType
+    if (simpleType == null) {
+        return render().containsTypeParameterIdentifier(
+            transportedName = transported.owner.name.asString(),
+            opaqueNames = opaqueParameters.mapTo(linkedSetOf()) { symbol -> symbol.owner.name.asString() },
+        )
+    }
     when (val classifier = simpleType.classifier) {
         transported -> return true
         is IrTypeParameterSymbol -> return false
@@ -1180,6 +1189,17 @@ private fun IrType.mentionsTransportedType(
         }
     }
 }
+
+private fun String.containsTypeParameterIdentifier(
+    transportedName: String,
+    opaqueNames: Set<String>,
+): Boolean =
+    Regex("""[A-Za-z_][A-Za-z0-9_]*""")
+        .findAll(this)
+        .map { match -> match.value }
+        .any { identifier ->
+            identifier == transportedName && identifier !in opaqueNames
+        }
 
 private data class FunctionTypeInfo(
     val kind: String,

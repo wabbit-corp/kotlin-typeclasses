@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+
 package one.wabbit.typeclass.gradle
 
 import java.nio.file.Files
@@ -19,7 +21,7 @@ class TypeclassGradlePluginFunctionalTest {
         val repoRoot = moduleRoot.parent
         val kotlinVersion = currentKotlinGradlePluginVersion()
         publishToMavenLocal(repoRoot, ":kotlin-typeclasses:publishToMavenLocal", kotlinVersion)
-        publishToMavenLocal(repoRoot, ":compiler-plugin:publishToMavenLocal", kotlinVersion)
+        publishToMavenLocal(repoRoot, ":kotlin-typeclasses-plugin:publishToMavenLocal", kotlinVersion)
 
         projectDir.resolve("settings.gradle.kts").writeText(
             """

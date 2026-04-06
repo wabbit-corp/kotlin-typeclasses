@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 @file:OptIn(
     org.jetbrains.kotlin.DeprecatedForRemovalCompilerApi::class,
     org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI::class,
@@ -203,14 +205,7 @@ private class TypeclassIrCallTransformer(
     override fun visitCall(expression: IrCall): IrExpression {
         val rewritten = super.visitCall(expression) as IrCall
         val callee = rewritten.symbol.owner
-        val original =
-            when {
-                callee.requiresSyntheticTypeclassResolution(rewritten, configuration) -> callee
-                else ->
-                    ruleIndex.originalForWrapperLikeFunction(callee)?.takeIf { candidate ->
-                        candidate.requiresSyntheticTypeclassResolution(rewritten, configuration)
-                    }
-            }
+        val original = selectSyntheticResolutionOriginal(callee, rewritten)
         if (original == null) {
             return rewritten
         }
@@ -225,6 +220,92 @@ private class TypeclassIrCallTransformer(
             currentFunction = enclosingFunction,
             enclosingFunctions = currentDeclaration.enclosingFunctions(),
         )
+    }
+
+    private fun selectSyntheticResolutionOriginal(
+        callee: IrSimpleFunction,
+        call: IrCall,
+    ): IrSimpleFunction? {
+        val directCandidate =
+            when {
+                callee.requiresSyntheticTypeclassResolution(call, configuration) -> callee
+                else ->
+                    ruleIndex.originalForWrapperLikeFunction(callee)?.takeIf { candidate ->
+                        candidate.requiresSyntheticTypeclassResolution(call, configuration)
+                    }
+            }
+        if (directCandidate != null && directCandidate.canAcceptSyntheticResolutionCall(call, configuration)) {
+            return directCandidate
+        }
+
+        val viableOverloads =
+            contextualOverloadCandidates(callee, call).filter { candidate ->
+                candidate.canAcceptSyntheticResolutionCall(call, configuration)
+            }
+        return when {
+            directCandidate != null && viableOverloads.isEmpty() -> directCandidate
+            directCandidate != null && directCandidate in viableOverloads -> directCandidate
+            viableOverloads.size == 1 -> viableOverloads.single()
+            else -> directCandidate ?: viableOverloads.singleOrNull()
+        }
+    }
+
+    private fun contextualOverloadFallback(
+        callee: IrSimpleFunction,
+        call: IrCall,
+    ): IrSimpleFunction? =
+        contextualOverloadCandidates(callee, call).singleOrNull()
+
+    private fun exactPlainOverloadFallback(
+        callee: IrSimpleFunction,
+        call: IrCall,
+    ): IrSimpleFunction? {
+        val callableId = callee.safeCallableIdOrNull() ?: return null
+        if (callableId.isLocal || callee.typeParameters.isNotEmpty()) {
+            return null
+        }
+        val candidates =
+            pluginContext.referenceFunctions(callableId)
+                .asSequence()
+                .map { symbol -> symbol.owner }
+                .map { candidate -> ruleIndex.originalForWrapperLikeFunction(candidate) ?: candidate }
+                .distinctBy { candidate -> candidate.symbol }
+                .toList()
+        val result =
+            candidates
+                .asSequence()
+                .filter { candidate -> candidate != callee }
+                .filter { candidate -> !candidate.requiresSyntheticTypeclassResolution(call, configuration) }
+                .filter { candidate ->
+                    wrapperResolutionShape(candidate, dropTypeclassContexts = false, configuration = configuration) ==
+                        wrapperResolutionShape(callee, dropTypeclassContexts = true, configuration = configuration)
+                }
+                .singleOrNull()
+        return result
+    }
+
+    private fun contextualOverloadCandidates(
+        callee: IrSimpleFunction,
+        call: IrCall,
+    ): List<IrSimpleFunction> {
+        val callableId = callee.safeCallableIdOrNull() ?: return emptyList()
+        if (callableId.isLocal) {
+            return emptyList()
+        }
+        val calleeVisibleParameterCount = callee.visibleNonTypeclassParameterCount(configuration)
+        return pluginContext.referenceFunctions(callableId)
+            .asSequence()
+            .map { symbol -> symbol.owner }
+            .map { candidate -> ruleIndex.originalForWrapperLikeFunction(candidate) ?: candidate }
+            .filter { candidate -> candidate != callee }
+            .filter { candidate ->
+                candidate.dispatchReceiverParameter != null == (callee.dispatchReceiverParameter != null) &&
+                    candidate.extensionReceiverParameter != null == (callee.extensionReceiverParameter != null)
+            }
+            .filter { candidate -> candidate.visibleNonTypeclassParameterCount(configuration) == calleeVisibleParameterCount }
+            .filter { candidate -> candidate.requiresSyntheticTypeclassResolution(call, configuration) }
+            .distinctBy { candidate -> candidate.symbol }
+            .toList()
     }
 
     private fun buildResolvedTypeclassCall(
@@ -245,7 +326,7 @@ private class TypeclassIrCallTransformer(
                         normalizedCall = normalizedCall,
                         currentCallTypeArgumentsByName =
                             original.typeParameters.mapIndexedNotNull { index, typeParameter ->
-                                call.getTypeArgument(index)?.let { irType ->
+                                call.typeArgumentOrNull(index)?.let { irType ->
                                     typeParameter.name.asString() to irType
                                 }
                             }.toMap(),
@@ -311,6 +392,7 @@ private class TypeclassIrCallTransformer(
         val typeArgumentMap = inferredOriginalTypeArguments.substitutionBySymbol
         val currentScopeIdentity = currentFunction?.renderIdentity() ?: currentDeclaration.renderIdentity()
         val diagnosticLocation = currentDeclaration.compilerMessageLocation(fallbackCall)
+        val plainOverloadFallback = exactPlainOverloadFallback(original, fallbackCall)
         val traceActivation = resolveTraceActivation(traceScopeStack.toList(), configuration.traceMode)
         val planner =
             TypeclassResolutionPlanner(
@@ -407,6 +489,14 @@ private class TypeclassIrCallTransformer(
                         }
 
                         is ResolutionSearchResult.Missing -> {
+                            if (plainOverloadFallback != null) {
+                                return buildPlainOverloadCall(
+                                    plainFallback = plainOverloadFallback,
+                                    dispatchReceiver = dispatchReceiver,
+                                    extensionReceiver = extensionReceiver,
+                                    explicitArguments = explicitArguments,
+                                )
+                            }
                             reportTypeclassResolutionFailure(
                                 message =
                                     missingTypeclassInstanceDiagnostic(
@@ -434,6 +524,14 @@ private class TypeclassIrCallTransformer(
                         }
 
                         is ResolutionSearchResult.Recursive -> {
+                            if (plainOverloadFallback != null) {
+                                return buildPlainOverloadCall(
+                                    plainFallback = plainOverloadFallback,
+                                    dispatchReceiver = dispatchReceiver,
+                                    extensionReceiver = extensionReceiver,
+                                    explicitArguments = explicitArguments,
+                                )
+                            }
                             reportTypeclassResolutionFailure(
                                 message =
                                     recursiveTypeclassResolutionDiagnostic(
@@ -472,6 +570,26 @@ private class TypeclassIrCallTransformer(
         }
 
         return originalCall
+    }
+
+    private fun IrBuilderWithScope.buildPlainOverloadCall(
+        plainFallback: IrSimpleFunction,
+        dispatchReceiver: IrExpression?,
+        extensionReceiver: IrExpression?,
+        explicitArguments: ExtractedExplicitArguments,
+    ): IrExpression {
+        val plainCall = irCall(plainFallback.symbol)
+        plainCall.dispatchReceiver = dispatchReceiver
+        plainCall.extensionReceiver = extensionReceiver
+        val explicitIterator = explicitArguments.nonTypeclassArguments.iterator()
+        plainFallback.valueParameters.forEachIndexed { parameterIndex, parameter ->
+            when (val nextArgument = explicitIterator.nextOrNull()) {
+                ExplicitArgument.Omitted -> Unit
+                is ExplicitArgument.PassThrough -> plainCall.putValueArgument(parameterIndex, nextArgument.expression)
+                null -> error("Not enough explicit arguments when rewriting ${plainFallback.callableId}")
+            }
+        }
+        return plainCall
     }
 
     private fun IrStatementsBuilder<*>.buildBuiltinKClassExpression(
@@ -2223,7 +2341,8 @@ private class IrRuleIndex private constructor(
             owners.flatMapTo(linkedSetOf()) { owner ->
                 associatedRulesByOwner[owner].orEmpty() + discoverAssociatedRules(owner)
             }
-        return (topLevelRules + associated)
+        val resolvedRules =
+            (topLevelRules + associated)
             .asSequence()
             .filter { resolvedRule ->
                 resolvedRule.rule.id != "builtin:kclass" || supportsBuiltinKClassGoal(goal, canMaterializeVariable)
@@ -2263,6 +2382,7 @@ private class IrRuleIndex private constructor(
             .distinctBy { resolvedRule -> resolvedRule.rule.id }
             .map(ResolvedRule::rule)
             .toList()
+        return resolvedRules
     }
 
     private fun associatedOwnersForGoal(goal: TcType): Set<ClassId> {
@@ -2501,11 +2621,26 @@ private class IrRuleIndex private constructor(
 
             val directCompanionRules = scanner.buildCompanionRules()
             val directTopLevelRules = scanner.buildTopLevelRules()
+            val localTopLevelLookupKeys =
+                directTopLevelRules.mapNotNullTo(linkedSetOf()) { resolvedRule ->
+                    resolvedRule.reference.lookupIdentityKeyOrNull()
+                }
+            val importedDependencyTopLevelRules =
+                sharedState.importedTopLevelRulesForIr()
+                    .filterNot { importedRule ->
+                        importedRule.reference.lookupIdentityKey() in localTopLevelLookupKeys
+                    }.map { importedRule ->
+                        ResolvedRule(
+                            rule = importedRule.rule,
+                            reference = importedRule.reference.toIrRuleReference(),
+                            associatedOwner = null,
+                        )
+                    }
             val builtinRules = scanner.buildBuiltinRules()
             val derivedRules = scanner.buildDerivedRules()
-            val topLevelRules = directTopLevelRules + builtinRules
+            val topLevelRules = directTopLevelRules + importedDependencyTopLevelRules + builtinRules
             val associatedSourceRules = directCompanionRules + derivedRules
-            val allRules = directTopLevelRules + directCompanionRules + derivedRules + builtinRules
+            val allRules = topLevelRules + directCompanionRules + derivedRules
             val associatedRules =
                 associatedSourceRules
                     .groupBy { it.associatedOwner ?: error("Associated rule must have owner") }
@@ -2522,6 +2657,39 @@ private class IrRuleIndex private constructor(
         }
     }
 }
+
+private fun VisibleRuleLookupReference.toIrRuleReference(): RuleReference =
+    when (this) {
+        is VisibleRuleLookupReference.LookupFunction ->
+            RuleReference.LookupFunction(
+                callableId = callableId,
+                shape = shape,
+            )
+
+        is VisibleRuleLookupReference.LookupProperty ->
+            RuleReference.LookupProperty(callableId)
+
+        is VisibleRuleLookupReference.LookupObject ->
+            RuleReference.LookupObject(classId)
+    }
+
+private fun VisibleRuleLookupReference.lookupIdentityKey(): String =
+    when (this) {
+        is VisibleRuleLookupReference.LookupFunction -> "fun:${callableId}:$shape"
+        is VisibleRuleLookupReference.LookupProperty -> "prop:$callableId"
+        is VisibleRuleLookupReference.LookupObject -> "obj:${classId.asString()}"
+    }
+
+private fun RuleReference.lookupIdentityKeyOrNull(): String? =
+    when (this) {
+        is RuleReference.DirectFunction -> "fun:${function.callableId}:${lookupFunctionShape(function, dropTypeclassContexts = false, configuration = TypeclassConfiguration())}"
+        is RuleReference.DirectProperty -> "prop:${property.callableId}"
+        is RuleReference.DirectObject -> "obj:${klass.classIdOrFail.asString()}"
+        is RuleReference.LookupFunction -> "fun:${callableId}:$shape"
+        is RuleReference.LookupProperty -> "prop:$callableId"
+        is RuleReference.LookupObject -> "obj:${classId.asString()}"
+        else -> null
+    }
 
 private class IrModuleScanner(
     private val pluginContext: IrPluginContext,
@@ -3838,7 +4006,7 @@ private class IrModuleScanner(
                 val encoded = metadata.encode()
                 val generatedAnnotation =
                     builder
-                        .irCallConstructor(annotationConstructor.symbol, emptyList())
+                        .buildTypeclassGeneratedAnnotation(annotationConstructor)
                         .apply {
                             putValueArgument(0, builder.irString(encoded.typeclassId))
                             putValueArgument(1, builder.irString(encoded.targetId))
@@ -4845,7 +5013,7 @@ private fun IrSimpleFunction.requiresSyntheticTypeclassResolution(
 ): Boolean {
     val substitutionBySymbol =
         typeParameters.mapIndexedNotNull { index, typeParameter ->
-            call.getTypeArgument(index)?.let { argumentType ->
+            call.typeArgumentOrNull(index)?.let { argumentType ->
                 typeParameter.symbol to argumentType
             }
         }.toMap()
@@ -4866,6 +5034,66 @@ private fun IrSimpleFunction.requiresSyntheticTypeclassResolution(
     }
 }
 
+private fun IrSimpleFunction.canAcceptSyntheticResolutionCall(
+    call: IrCall,
+    configuration: TypeclassConfiguration,
+): Boolean {
+    val substitutionBySymbol =
+        typeParameters.mapIndexedNotNull { index, typeParameter ->
+            call.typeArgumentOrNull(index)?.let { argumentType ->
+                typeParameter.symbol to argumentType
+            }
+        }.toMap()
+    val normalizedCall = call.normalizedArgumentsForTypeclassRewrite(this)
+
+    fun receiverMatches(
+        actual: IrExpression?,
+        expected: IrType,
+    ): Boolean {
+        val actualType = actual?.apparentType() ?: return false
+        val substitutedExpected = expected.substitute(substitutionBySymbol)
+        return actualType == substitutedExpected || actualType.satisfiesExpectedArgumentType(substitutedExpected)
+    }
+
+    dispatchReceiverParameter?.type?.let { expectedType ->
+        if (!receiverMatches(normalizedCall.dispatchReceiver, expectedType)) {
+            return false
+        }
+    }
+    extensionReceiverParameter?.type?.let { expectedType ->
+        if (!receiverMatches(normalizedCall.extensionReceiver, expectedType)) {
+            return false
+        }
+    }
+
+    val parameters = regularAndContextParameters()
+    val mappedOriginalIndices =
+        mapCurrentArgumentsToOriginalParameters(
+            originalParameters = parameters,
+            currentArguments = normalizedCall.valueArguments,
+            typeArgumentMap = substitutionBySymbol,
+            visibleTypeParameters = null,
+            configuration = configuration,
+        ).mapTo(linkedSetOf()) { (_, originalIndex) -> originalIndex }
+    return parameters.allIndexed { parameterIndex, parameter ->
+        when {
+            parameterIndex in mappedOriginalIndices -> true
+            parameter.defaultValue != null -> true
+            parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context &&
+                parameter.type.substitute(substitutionBySymbol).isTypeclassType(configuration) -> true
+            else -> false
+        }
+    }
+}
+
+private fun IrSimpleFunction.visibleNonTypeclassParameterCount(
+    configuration: TypeclassConfiguration,
+): Int =
+    regularAndContextParameters().count { parameter ->
+        parameter.kind != org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context ||
+            !parameter.type.isTypeclassType(configuration)
+    }
+
 private inline fun <T> Iterable<T>.anyIndexed(predicate: (index: Int, T) -> Boolean): Boolean {
     var index = 0
     for (element in this) {
@@ -4875,6 +5103,17 @@ private inline fun <T> Iterable<T>.anyIndexed(predicate: (index: Int, T) -> Bool
         index += 1
     }
     return false
+}
+
+private inline fun <T> Iterable<T>.allIndexed(predicate: (index: Int, T) -> Boolean): Boolean {
+    var index = 0
+    for (element in this) {
+        if (!predicate(index, element)) {
+            return false
+        }
+        index += 1
+    }
+    return true
 }
 
 private fun IrClass.isInstanceObject(): Boolean =
@@ -5458,6 +5697,13 @@ private fun IrCall.valueArguments(): List<IrExpression?> =
             }
         }
 
+private fun IrCall.typeArgumentOrNull(index: Int): IrType? =
+    if (index in 0 until typeArgumentsCount) {
+        getTypeArgument(index)
+    } else {
+        null
+    }
+
 private fun IrExpression.apparentType(): IrType =
     (this as? IrCall)
         ?.let { call ->
@@ -5466,7 +5712,7 @@ private fun IrExpression.apparentType(): IrType =
             val returnedTypeParameter = returnType.classifier as? org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol ?: return@let null
             val typeParameterIndex = callee.typeParameters.indexOfFirst { parameter -> parameter.symbol == returnedTypeParameter }
             if (typeParameterIndex >= 0) {
-                call.getTypeArgument(typeParameterIndex)
+                call.typeArgumentOrNull(typeParameterIndex)
             } else {
                 null
             }
@@ -5648,6 +5894,81 @@ private fun IrType.matchesTypeclassParameterType(
     visibleTypeParameters: VisibleTypeParameters,
 ): Boolean =
     irTypeToModel(this, visibleTypeParameters.bySymbol) == irTypeToModel(expected, visibleTypeParameters.bySymbol)
+
+private fun IrType.isNullableNothingType(): Boolean {
+    val owner = (this as? IrSimpleType)?.classOrNull?.owner ?: classOrNull?.owner ?: return false
+    return owner.classId?.asString() == "kotlin/Nothing" && isNullable()
+}
+
+private fun IrType.satisfiesExpectedArgumentType(
+    expected: IrType,
+    visibleTypeParameters: VisibleTypeParameters? = null,
+    visited: MutableSet<String> = linkedSetOf(),
+): Boolean {
+    if (this == expected) {
+        return true
+    }
+    if (isNullableNothingType() && expected.isNullable()) {
+        return true
+    }
+    if (visibleTypeParameters != null && matchesTypeclassParameterType(expected, visibleTypeParameters)) {
+        return true
+    }
+
+    val actualSimple = this as? IrSimpleType
+    val expectedSimple = expected as? IrSimpleType
+    val actualOwner = actualSimple?.classOrNull?.owner ?: classOrNull?.owner ?: return false
+    val expectedOwner = expectedSimple?.classOrNull?.owner ?: expected.classOrNull?.owner
+
+    if (actualOwner.symbol == expectedOwner?.symbol && actualSimple != null && expectedSimple != null) {
+        if (actualSimple.isNullable() && !expectedSimple.isNullable()) {
+            return false
+        }
+        if (actualSimple.arguments.size == expectedSimple.arguments.size &&
+            actualSimple.arguments.zip(expectedSimple.arguments).all { (actualArgument, expectedArgument) ->
+                when (expectedArgument) {
+                    is IrStarProjection -> true
+                    is org.jetbrains.kotlin.ir.types.IrTypeProjection ->
+                        actualArgument.argumentTypeOrNull()?.satisfiesExpectedArgumentType(expectedArgument.type, visibleTypeParameters, visited) == true
+                    is IrType ->
+                        actualArgument.argumentTypeOrNull()?.satisfiesExpectedArgumentType(expectedArgument, visibleTypeParameters, visited) == true
+                    else -> false
+                }
+            }
+        ) {
+            return true
+        }
+    }
+
+    val visitKey = "${render()}<=${expected.render()}"
+    if (!visited.add(visitKey)) {
+        return false
+    }
+    val substitutions =
+        if (actualSimple != null) {
+            actualOwner.typeParameters.mapIndexedNotNull { index, parameter ->
+                val argument = actualSimple.arguments.getOrNull(index)
+                val argumentType =
+                    when (argument) {
+                        is org.jetbrains.kotlin.ir.types.IrTypeProjection -> argument.type
+                        is IrType -> argument
+                        else -> null
+                    } ?: return@mapIndexedNotNull null
+                parameter.symbol to argumentType
+            }.toMap()
+        } else {
+            emptyMap()
+        }
+    return actualOwner.superTypes.any { superType ->
+        val substitutedSuperType =
+            if (substitutions.isEmpty()) {
+                superType
+            } else {
+                superType.substitute(substitutions)
+            }
+        substitutedSuperType.satisfiesExpectedArgumentType(expected, visibleTypeParameters, visited)
+    }
+}
 
 private fun IrType.satisfiesExpectedContextType(
     expected: IrType,
@@ -6061,7 +6382,7 @@ private fun mapCurrentArgumentsToOriginalParameters(
         argument ?: return false
         return argument.type == expectedType ||
             (visibleTypeParameters != null && argument.type.matchesTypeclassParameterType(expectedType, visibleTypeParameters)) ||
-            argument.type.satisfiesExpectedContextType(expectedType, visibleTypeParameters)
+            argument.type.satisfiesExpectedArgumentType(expectedType, visibleTypeParameters)
     }
 
     fun mappingScore(mapping: List<Pair<Int, Int>>): Int =

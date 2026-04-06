@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 package one.wabbit.typeclass.plugin
 
 import org.jetbrains.kotlin.com.intellij.psi.PsiElement
@@ -46,6 +48,24 @@ internal object TypeclassErrors : KtDiagnosticsContainer() {
             TypeclassErrorMessages,
         )
 
+    val AMBIGUOUS_INSTANCE =
+        KtDiagnosticFactory1<String>(
+            TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE,
+            Severity.ERROR,
+            SourceElementPositioningStrategies.DEFAULT,
+            PsiElement::class,
+            TypeclassErrorMessages,
+        )
+
+    val INVALID_BUILTIN_EVIDENCE =
+        KtDiagnosticFactory1<String>(
+            TypeclassDiagnosticIds.INVALID_BUILTIN_EVIDENCE,
+            Severity.ERROR,
+            SourceElementPositioningStrategies.DEFAULT,
+            PsiElement::class,
+            TypeclassErrorMessages,
+        )
+
     override fun getRendererFactory(): BaseDiagnosticRendererFactory = TypeclassErrorMessages
 }
 
@@ -69,6 +89,16 @@ internal object TypeclassErrorMessages : BaseDiagnosticRendererFactory() {
         map.put(
             TypeclassErrors.NO_CONTEXT_ARGUMENT,
             "[${TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT}] {0}",
+            CommonRenderers.STRING,
+        )
+        map.put(
+            TypeclassErrors.AMBIGUOUS_INSTANCE,
+            "[${TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE}] {0}",
+            CommonRenderers.STRING,
+        )
+        map.put(
+            TypeclassErrors.INVALID_BUILTIN_EVIDENCE,
+            "[${TypeclassDiagnosticIds.INVALID_BUILTIN_EVIDENCE}] {0}",
             CommonRenderers.STRING,
         )
     }

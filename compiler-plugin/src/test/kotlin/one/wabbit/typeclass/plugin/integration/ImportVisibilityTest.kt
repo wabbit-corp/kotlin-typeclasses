@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+
 package one.wabbit.typeclass.plugin.integration
 
 import kotlin.test.Test
@@ -548,6 +550,146 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "box:1",
+            dependencies = listOf(dependency),
+        )
+    }
+
+    @Test fun publicTopLevelDependencyInstancesParticipateInIrResolution() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-top-level-instance",
+                sources =
+                    mapOf(
+                        "dep/Api.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.Instance
+                            import one.wabbit.typeclass.Typeclass
+
+                            @Typeclass
+                            interface Show<A> {
+                                fun show(value: A): String
+                            }
+
+                            @Instance
+                            object IntShow : Show<Int> {
+                                override fun show(value: Int): String = "dep:${'$'}value"
+                            }
+
+                            context(show: Show<Int>)
+                            fun render(value: Int): String = show.show(value)
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.render
+
+            fun main() {
+                println(render(1))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "dep:1",
+            dependencies = listOf(dependency),
+        )
+    }
+
+    @Test fun publicTopLevelDependencyPropertyInstancesParticipateInIrResolution() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-top-level-property-instance",
+                sources =
+                    mapOf(
+                        "dep/Api.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.Instance
+                            import one.wabbit.typeclass.Typeclass
+
+                            @Typeclass
+                            interface Show<A> {
+                                fun show(value: A): String
+                            }
+
+                            @Instance
+                            val intShow: Show<Int> =
+                                object : Show<Int> {
+                                    override fun show(value: Int): String = "prop:${'$'}value"
+                                }
+
+                            context(show: Show<Int>)
+                            fun render(value: Int): String = show.show(value)
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.render
+
+            fun main() {
+                println(render(2))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "prop:2",
+            dependencies = listOf(dependency),
+        )
+    }
+
+    @Test fun publicTopLevelDependencyFunctionInstancesParticipateInIrResolution() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-top-level-function-instance",
+                sources =
+                    mapOf(
+                        "dep/Api.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.Instance
+                            import one.wabbit.typeclass.Typeclass
+
+                            @Typeclass
+                            interface Show<A> {
+                                fun show(value: A): String
+                            }
+
+                            @Instance
+                            fun intShow(): Show<Int> =
+                                object : Show<Int> {
+                                    override fun show(value: Int): String = "fun:${'$'}value"
+                                }
+
+                            context(show: Show<Int>)
+                            fun render(value: Int): String = show.show(value)
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.render
+
+            fun main() {
+                println(render(3))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "fun:3",
             dependencies = listOf(dependency),
         )
     }

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 @file:OptIn(
     org.jetbrains.kotlin.fir.declarations.DirectDeclarationsAccess::class,
     org.jetbrains.kotlin.fir.symbols.SymbolInternals::class,

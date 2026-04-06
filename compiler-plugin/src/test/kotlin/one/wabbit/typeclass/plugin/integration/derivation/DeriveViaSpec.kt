@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+
 package one.wabbit.typeclass.plugin.integration.derivation
 
 import one.wabbit.typeclass.plugin.invalidEquivSubclassing
@@ -1926,6 +1928,50 @@ class DeriveViaSpec : IntegrationTestSupport() {
     }
 
     // Exact intended semantics:
+    // - additional method type parameters are rigid opaque variables
+    // - transportability must therefore inspect the actual type structure rather than text-rendered names
+    // - unrelated definitely-non-null uses like method-local `A & Any` must not be mistaken for the transported class-level `A`
+    @Test fun allowsOpaqueMethodTypeParametersInsideUnrelatedDefinitelyNonNullTypes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Fancy<A> {
+                fun <A> witness(tag: A & Any): A & Any
+            }
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooFancy : Fancy<Foo> {
+                override fun <A> witness(tag: A & Any): A & Any = tag
+            }
+
+            @JvmInline
+            @DeriveVia(Fancy::class, Foo::class)
+            value class UserId(val value: Int)
+
+            context(fancy: Fancy<UserId>)
+            fun render(): String = fancy.witness("age").toString()
+
+            fun main() {
+                println(render())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "age",
+        )
+    }
+
+    // Exact intended semantics:
     // - additional method type parameters are allowed only when their bounds do not mention A
     // - a method like fun <T : A> narrow(value: T): A is therefore outside the supported transport boundary
     @Test fun rejectsTransportAcrossGenericMethodBoundsMentioningA() {
@@ -2325,8 +2371,64 @@ class DeriveViaSpec : IntegrationTestSupport() {
             source = source,
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive("derive via", "badiso", "userid"),
+                    expectedCannotDerive("pinned iso", "object singleton"),
                 ),
+        )
+    }
+
+    // Exact intended semantics:
+    // - a pinned Iso object is identified by the actual Iso override pair, not by name-plus-arity alone
+    // - extra one-argument helper overloads must not make a valid pinned segment fail validation
+    @Test fun supportsPinnedIsoObjectsEvenWhenTheyDeclareExtraOneArgHelpers() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Iso
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooShow : Show<Foo> {
+                override fun show(value: Foo): String = "foo:${'$'}{value.value}"
+            }
+
+            data class Token(val raw: Int)
+
+            object TokenFooIso : Iso<Token, Foo> {
+                override fun to(value: Token): Foo = Foo(value.raw)
+
+                override fun from(value: Foo): Token = Token(value.value)
+
+                fun to(value: Int): Int = value + 1
+
+                fun from(value: String): String = value.reversed()
+            }
+
+            @JvmInline
+            @DeriveVia(Show::class, TokenFooIso::class)
+            value class UserId(val value: Token)
+
+            context(show: Show<UserId>)
+            fun render(value: UserId): String = show.show(value)
+
+            fun main() {
+                println(render(UserId(Token(9))))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "foo:9",
         )
     }
 

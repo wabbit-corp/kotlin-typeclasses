@@ -66,7 +66,7 @@ jobs:
       - name: Detect snapshot version
         id: snapshot_version
         run: |
-          VERSIONS="$(./gradlew --quiet --no-daemon :kotlin-typeclasses:printBaseVersion :compiler-plugin:printBaseVersion :gradle-plugin:printBaseVersion)"
+          VERSIONS="$(./gradlew --quiet --no-daemon :kotlin-typeclasses:printBaseVersion :kotlin-typeclasses-plugin:printBaseVersion :kotlin-typeclasses-gradle-plugin:printBaseVersion)"
           VERSIONS="$(printf '%s\n' "${VERSIONS}" | sed '/^[[:space:]]*$/d' | sort -u)"
           test -n "${VERSIONS}"
           printf 'versions<<EOF\n%s\nEOF\n' "${VERSIONS}" >> "$GITHUB_OUTPUT"
@@ -96,7 +96,7 @@ jobs:
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_PASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
-        run: ./gradlew --no-daemon build :kotlin-typeclasses:assertSnapshotVersion :gradle-plugin:assertSnapshotVersion :kotlin-typeclasses:publishToMavenCentral :gradle-plugin:publishToMavenCentral
+        run: ./gradlew --no-daemon build :kotlin-typeclasses:assertSnapshotVersion :kotlin-typeclasses-gradle-plugin:assertSnapshotVersion :kotlin-typeclasses:publishToMavenCentral :kotlin-typeclasses-gradle-plugin:publishToMavenCentral
 
   publish-compiler-plugin:
     if: github.ref_type != 'tag'
@@ -121,13 +121,14 @@ jobs:
           java-version: "21"
           cache: gradle
 
+
       - name: Ensure Gradle wrapper is executable
         run: chmod +x ./gradlew
 
       - name: Detect snapshot version
         id: snapshot_version
         run: |
-          BASE_VERSION="$(./gradlew --quiet --no-daemon -PkotlinVersion=${{ matrix.kotlin-version }} :compiler-plugin:printBaseVersion | sed '/^[[:space:]]*$/d')"
+          BASE_VERSION="$(./gradlew --quiet --no-daemon '-PkotlinVersion=${{ matrix.kotlin-version }}' :kotlin-typeclasses-plugin:printBaseVersion | sed '/^[[:space:]]*$/d')"
           test -n "${BASE_VERSION}"
           printf 'version=%s\n' "${BASE_VERSION}" >> "$GITHUB_OUTPUT"
           if printf '%s' "${BASE_VERSION}" | grep -qE '\+dev-SNAPSHOT$'; then
@@ -149,4 +150,4 @@ jobs:
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_PASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
-        run: ./gradlew --no-daemon -PkotlinVersion=${{ matrix.kotlin-version }} :compiler-plugin:assertSnapshotVersion :compiler-plugin:publishToMavenCentral
+        run: ./gradlew --no-daemon '-PkotlinVersion=${{ matrix.kotlin-version }}' :kotlin-typeclasses-plugin:assertSnapshotVersion :kotlin-typeclasses-plugin:publishToMavenCentral

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 @file:OptIn(
     org.jetbrains.kotlin.fir.extensions.FirExtensionApiInternals::class,
     org.jetbrains.kotlin.fir.symbols.SymbolInternals::class,
@@ -12,7 +14,6 @@ import org.jetbrains.kotlin.fir.originalOrSelf
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.FirFunction
 import org.jetbrains.kotlin.fir.declarations.hasAnnotation
-import org.jetbrains.kotlin.fir.declarations.origin
 import org.jetbrains.kotlin.fir.expressions.FirFunctionCall
 import org.jetbrains.kotlin.fir.expressions.buildResolvedArgumentList
 import org.jetbrains.kotlin.fir.expressions.builder.buildFunctionCallCopy

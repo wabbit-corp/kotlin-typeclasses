@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 package one.wabbit.typeclass.plugin
 
 private val prefixedDiagnosticIdRegex = Regex("""^\[(TC_[A-Z_]+)]\s*(.*)$""")

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+
 package one.wabbit.typeclass.plugin.integration
 
 import one.wabbit.typeclass.plugin.TYPECLASS_PLUGIN_ID
@@ -12,6 +14,7 @@ import one.wabbit.typeclass.plugin.parseTypeclassDiagnostic
 import one.wabbit.typeclass.plugin.reason
 import org.jetbrains.kotlin.cli.common.ExitCode
 import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
+import org.jetbrains.kotlin.config.KotlinCompilerVersion
 import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.writeText
@@ -35,6 +38,7 @@ abstract class IntegrationTestSupport {
         private val prefixedDiagnosticIdRegex = Regex("""^\[(TC_[A-Z_]+)]\s*(.*)$""")
         private val sourceDiagnosticMarkerRegex =
             Regex("""\b(?:([A-Za-z_][A-Za-z0-9_]*)@)?([EW])(?::(TC_[A-Z_]+))?\b""")
+        private val activeKotlinVersion = KotlinCompilerVersion.VERSION
 
         private fun maxJvmTarget(left: String, right: String): String =
             if (normalizeJvmTarget(left) >= normalizeJvmTarget(right)) {
@@ -1414,15 +1418,36 @@ abstract class IntegrationTestSupport {
             0 -> null
             1 -> candidates.single()
             else ->
-                error(
-                    buildString {
-                        appendLine("Found multiple candidates for $description:")
-                        candidates.forEach { candidate ->
-                            appendLine(candidate.toAbsolutePath().toString())
-                        }
-                    },
-                )
+                preferredJarCandidate(candidates, description)
+                    ?: error(
+                        buildString {
+                            appendLine("Found multiple candidates for $description:")
+                            candidates.forEach { candidate ->
+                                appendLine(candidate.toAbsolutePath().toString())
+                            }
+                        },
+                    )
         }
+
+    private fun preferredJarCandidate(
+        candidates: List<Path>,
+        description: String,
+    ): Path? {
+        if (description == "built kotlin-typeclasses-plugin jar") {
+            candidates.firstOrNull { candidate ->
+                candidate.fileName.toString().contains("-kotlin-$activeKotlinVersion")
+            }?.let { return it }
+            return candidates.firstOrNull { candidate ->
+                candidate.fileName.toString().contains("-kotlin-")
+            }
+        }
+        if (description.startsWith("runtime-desktop ")) {
+            return candidates.firstOrNull { candidate ->
+                "androidx.compose.runtime" in candidate.toString()
+            }
+        }
+        return null
+    }
 
     protected fun expectedStructuredDiagnosticId(
         diagnosticId: String,

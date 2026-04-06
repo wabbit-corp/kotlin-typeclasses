@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 @file:OptIn(
     org.jetbrains.kotlin.DeprecatedForRemovalCompilerApi::class,
     org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI::class,
@@ -13,6 +15,9 @@ import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrSpreadElement
 import org.jetbrains.kotlin.ir.expressions.IrVararg
+import org.jetbrains.kotlin.ir.types.IrSimpleType
+import org.jetbrains.kotlin.ir.types.IrType
+import org.jetbrains.kotlin.ir.types.IrTypeProjection
 import org.jetbrains.kotlin.ir.types.classOrNull
 import org.jetbrains.kotlin.ir.util.classId
 import org.jetbrains.kotlin.ir.util.hasAnnotation
@@ -41,6 +46,13 @@ internal data class DeriveViaRequest(
 internal data class DeriveEquivRequest(
     val otherClassId: ClassId,
     val annotation: IrConstructorCall,
+)
+
+internal data class ResolvedIsoMethods(
+    val leftType: IrType,
+    val rightType: IrType,
+    val toMethod: IrSimpleFunction,
+    val fromMethod: IrSimpleFunction,
 )
 
 @OptIn(org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI::class)
@@ -72,7 +84,7 @@ internal fun IrClass.deriveViaRequests(pluginContext: IrPluginContext): List<Der
                             ?.classId
                             ?: return@mapNotNull null
                     val klass = pluginContext.referenceClass(classId)?.owner
-                    if (klass != null && klass.isObject && klass.implementsInterface(ISO_CLASS_ID, linkedSetOf())) {
+                    if (klass != null && klass.implementsInterface(ISO_CLASS_ID, linkedSetOf())) {
                         DeriveViaPathSegment.PinnedIso(classId)
                     } else {
                         DeriveViaPathSegment.Waypoint(classId)
@@ -119,18 +131,117 @@ private fun IrConstructorCall.flattenRepeatableAnnotations(
 internal fun IrClass.isEquivTypeclass(): Boolean = hasAnnotation(EQUIV_CLASS_ID)
 
 @OptIn(org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI::class)
-internal fun IrClass.findIsoMethods(): Pair<IrSimpleFunction, IrSimpleFunction>? {
+internal fun IrClass.findIsoMethods(): ResolvedIsoMethods? {
+    val overrideResolved = findIsoMethodsByOverrides()
+    if (overrideResolved != null) {
+        return overrideResolved
+    }
+
+    val declaredEndpoints = declaredIsoEndpoints() ?: return null
     val toMethod =
         declarations
             .filterIsInstance<IrSimpleFunction>()
             .singleOrNull { function ->
-                function.name.asString() == "to" && function.valueParameters.size == 1
+                function.name.asString() == "to" &&
+                    function.valueParameters.size == 1 &&
+                    function.valueParameters.single().type.sameTypeShape(declaredEndpoints.first) &&
+                    function.returnType.sameTypeShape(declaredEndpoints.second)
             } ?: return null
     val fromMethod =
         declarations
             .filterIsInstance<IrSimpleFunction>()
             .singleOrNull { function ->
-                function.name.asString() == "from" && function.valueParameters.size == 1
+                function.name.asString() == "from" &&
+                    function.valueParameters.size == 1 &&
+                    function.valueParameters.single().type.sameTypeShape(declaredEndpoints.second) &&
+                    function.returnType.sameTypeShape(declaredEndpoints.first)
             } ?: return null
-    return toMethod to fromMethod
+    return ResolvedIsoMethods(
+        leftType = declaredEndpoints.first,
+        rightType = declaredEndpoints.second,
+        toMethod = toMethod,
+        fromMethod = fromMethod,
+    )
+}
+
+private fun IrClass.findIsoMethodsByOverrides(): ResolvedIsoMethods? {
+    val toMethod =
+        declarations
+            .filterIsInstance<IrSimpleFunction>()
+                    .singleOrNull { function ->
+                function.valueParameters.size == 1 &&
+                    function.overriddenSymbols.any { overridden ->
+                        overridden.owner.name.asString() == "to" &&
+                            overridden.owner.parentAsClass.implementsInterface(ISO_CLASS_ID, linkedSetOf())
+                    }
+            } ?: return null
+    val fromMethod =
+        declarations
+            .filterIsInstance<IrSimpleFunction>()
+                    .singleOrNull { function ->
+                function.valueParameters.size == 1 &&
+                    function.overriddenSymbols.any { overridden ->
+                        overridden.owner.name.asString() == "from" &&
+                            overridden.owner.parentAsClass.implementsInterface(ISO_CLASS_ID, linkedSetOf())
+                    }
+            } ?: return null
+    val leftType = toMethod.valueParameters.single().type
+    val rightType = toMethod.returnType
+    if (!fromMethod.valueParameters.single().type.sameTypeShape(rightType)) {
+        return null
+    }
+    if (!fromMethod.returnType.sameTypeShape(leftType)) {
+        return null
+    }
+    return ResolvedIsoMethods(
+        leftType = leftType,
+        rightType = rightType,
+        toMethod = toMethod,
+        fromMethod = fromMethod,
+    )
+}
+
+private fun IrClass.declaredIsoEndpoints(): Pair<IrType, IrType>? =
+    superTypes
+        .filterIsInstance<IrSimpleType>()
+        .firstNotNullOfOrNull { superType ->
+            val superClassId = superType.classOrNull?.owner?.classId
+            if (superClassId != ISO_CLASS_ID) {
+                return@firstNotNullOfOrNull null
+            }
+            val leftType = superType.arguments.getOrNull(0).asIrTypeOrNull() ?: return@firstNotNullOfOrNull null
+            val rightType = superType.arguments.getOrNull(1).asIrTypeOrNull() ?: return@firstNotNullOfOrNull null
+            leftType to rightType
+        }
+
+private fun org.jetbrains.kotlin.ir.types.IrTypeArgument?.asIrTypeOrNull(): IrType? =
+    when (this) {
+        is IrType -> this
+        is IrTypeProjection -> type
+        else -> null
+    }
+
+private fun IrType.sameTypeShape(other: IrType): Boolean {
+    val thisSimple = this as? IrSimpleType ?: return this == other
+    val otherSimple = other as? IrSimpleType ?: return false
+    if (thisSimple.classifier != otherSimple.classifier) {
+        return false
+    }
+    if (thisSimple.nullability != otherSimple.nullability) {
+        return false
+    }
+    if (thisSimple.arguments.size != otherSimple.arguments.size) {
+        return false
+    }
+    return thisSimple.arguments.zip(otherSimple.arguments).all { (leftArgument, rightArgument) ->
+        when {
+            leftArgument is IrTypeProjection && rightArgument is IrTypeProjection ->
+                leftArgument.variance == rightArgument.variance && leftArgument.type.sameTypeShape(rightArgument.type)
+
+            leftArgument is IrType && rightArgument is IrType ->
+                leftArgument.sameTypeShape(rightArgument)
+
+            else -> leftArgument::class == rightArgument::class
+        }
+    }
 }

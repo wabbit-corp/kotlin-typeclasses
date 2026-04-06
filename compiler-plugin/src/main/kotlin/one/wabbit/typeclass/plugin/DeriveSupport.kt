@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 @file:OptIn(
     org.jetbrains.kotlin.fir.declarations.DirectDeclarationsAccess::class,
     org.jetbrains.kotlin.fir.symbols.SymbolInternals::class,
@@ -37,10 +39,12 @@ internal enum class DeriveMethodContract(
 internal fun FirRegularClass.supportedDerivedTypeclassIds(session: FirSession): Set<String> {
     val generatedIds = generatedDerivedMetadata(session).mapTo(linkedSetOf()) { metadata -> metadata.typeclassId.asString() }
     val explicitIds =
-        if (!supportsDeriveShape()) {
+        if (source == null) {
+            derivedAnnotationClassIds(session)
+        } else if (!supportsDeriveShape()) {
             emptySet()
         } else {
-                derivedTypeclassIds(session).filterTo(linkedSetOf()) { typeclassId ->
+            derivedTypeclassIds(session).filterTo(linkedSetOf()) { typeclassId ->
                 supportsDerivationForTypeclass(typeclassId, session)
             }
         }

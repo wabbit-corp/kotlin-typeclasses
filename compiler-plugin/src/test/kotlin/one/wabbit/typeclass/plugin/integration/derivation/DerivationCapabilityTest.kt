@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+
 package one.wabbit.typeclass.plugin.integration.derivation
 
 import one.wabbit.typeclass.plugin.cannotDeriveMissingEnumOverride

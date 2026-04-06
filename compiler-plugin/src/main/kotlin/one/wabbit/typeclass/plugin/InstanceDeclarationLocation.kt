@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 @file:OptIn(org.jetbrains.kotlin.fir.symbols.SymbolInternals::class)
 
 package one.wabbit.typeclass.plugin
@@ -28,7 +30,11 @@ internal fun FirDeclaration.isLegalTopLevelInstanceLocation(
     session: FirSession,
     providedTypes: ProvidedTypeExpansion,
 ): Boolean {
-    val declarationPath = sourceFilePath(session) ?: return false
+    val declarationPath = sourceFilePath(session)
+        // Deserialized dependency declarations are revalidated in downstream FIR sessions,
+        // but their original source file path is no longer available here.
+        // Trust the producing compilation to have enforced the top-level placement rule.
+        ?: return source == null
     val allowedPaths =
         providedTypes.declaredTypes.flatMapTo(linkedSetOf()) { type ->
             type.referencedClassifierIds().mapNotNull { classifierId ->

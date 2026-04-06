@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 @file:OptIn(
     org.jetbrains.kotlin.fir.declarations.DirectDeclarationsAccess::class,
     org.jetbrains.kotlin.fir.symbols.SymbolInternals::class,
@@ -25,15 +27,21 @@ import org.jetbrains.kotlin.fir.declarations.DirectDeclarationsAccess
 import org.jetbrains.kotlin.fir.declarations.FirDeclaration
 import org.jetbrains.kotlin.fir.declarations.FirProperty
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
+import org.jetbrains.kotlin.fir.declarations.getSealedClassInheritors
 import org.jetbrains.kotlin.fir.declarations.findArgumentByName
 import org.jetbrains.kotlin.fir.declarations.hasAnnotation
 import org.jetbrains.kotlin.fir.declarations.unwrapVarargValue
+import org.jetbrains.kotlin.fir.expressions.FirAnnotation
 import org.jetbrains.kotlin.fir.expressions.FirAnnotationCall
+import org.jetbrains.kotlin.fir.expressions.FirClassReferenceExpression
 import org.jetbrains.kotlin.fir.expressions.FirExpression
 import org.jetbrains.kotlin.fir.expressions.FirGetClassCall
+import org.jetbrains.kotlin.fir.expressions.FirResolvedQualifier
 import org.jetbrains.kotlin.fir.expressions.FirVarargArgumentsExpression
 import org.jetbrains.kotlin.fir.resolve.providers.firProvider
+import org.jetbrains.kotlin.fir.resolve.providers.dependenciesSymbolProvider
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
+import org.jetbrains.kotlin.fir.resolve.providers.FirCompositeSymbolNamesProvider
 import org.jetbrains.kotlin.fir.symbols.SymbolInternals
 import org.jetbrains.kotlin.fir.symbols.impl.FirClassSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
@@ -60,10 +68,14 @@ internal class TypeclassPluginSharedState(
     internal val configuration: TypeclassConfiguration = TypeclassConfiguration(),
 ) {
     private val discoveryIndexes = SessionScopedCache<FirSession, DiscoveryIndexes>()
+    @Volatile
+    private var latestIrImportedTopLevelRules: List<ImportedTopLevelInstanceRule> = emptyList()
 
     fun topLevelContextualCallables(session: FirSession): Set<CallableId> {
         return sourceIndex(session).topLevelContextualCallables
     }
+
+    fun importedTopLevelRulesForIr(): List<ImportedTopLevelInstanceRule> = latestIrImportedTopLevelRules
 
     fun topLevelContextualPackages(session: FirSession): Set<FqName> {
         return sourceIndex(session).topLevelContextualPackages
@@ -109,6 +121,27 @@ internal class TypeclassPluginSharedState(
             buildDiscoveryIndexes(session)
         }
 
+    private fun recordImportedTopLevelRulesForIr(rules: List<VisibleInstanceRule>) {
+        val importedRules =
+            rules
+                .asSequence()
+                .filter(VisibleInstanceRule::isFromDependencyBinary)
+                .mapNotNull { visibleRule ->
+                    visibleRule.lookupReference?.let { lookupReference ->
+                        ImportedTopLevelInstanceRule(
+                            rule = visibleRule.rule,
+                            reference = lookupReference,
+                        )
+                    }
+                }.toList()
+        if (importedRules.isEmpty()) {
+            return
+        }
+        latestIrImportedTopLevelRules =
+            (latestIrImportedTopLevelRules + importedRules)
+                .distinctBy { importedRule -> importedRule.rule.id to importedRule.reference }
+    }
+
     private fun buildDiscoveryIndexes(session: FirSession): DiscoveryIndexes {
         val topLevelCallables = linkedSetOf<CallableId>()
         val topLevelPackages = linkedSetOf<FqName>()
@@ -126,6 +159,7 @@ internal class TypeclassPluginSharedState(
                 scanner.scanDeclaration(declaration, associatedOwner = null)
             },
         )
+        val resolutionIndex = scanner.build(::recordImportedTopLevelRulesForIr)
 
         return DiscoveryIndexes(
             sourceIndex =
@@ -134,7 +168,7 @@ internal class TypeclassPluginSharedState(
                     topLevelContextualPackages = topLevelPackages,
                     memberContextualNames = memberNamesByOwner.mapValues { (_, names) -> names.toSet() },
                 ),
-            resolutionIndex = scanner.build(),
+            resolutionIndex = resolutionIndex,
         )
     }
 
@@ -199,8 +233,8 @@ internal fun <D> scanTopLevelDeclarations(
 private class FirTopLevelDeclarationSource(
     session: FirSession,
 ) : TopLevelDeclarationSource<FirDeclaration> {
-    private val symbolProvider = session.firProvider.symbolProvider
-    private val symbolNamesProvider = symbolProvider.symbolNamesProvider
+    private val symbolProviders = session.topLevelDeclarationProviders()
+    private val symbolNamesProvider = FirCompositeSymbolNamesProvider.fromSymbolProviders(symbolProviders)
 
     override fun packageNames(): Sequence<FqName> =
         symbolNamesProvider.getPackageNames().orEmpty().asSequence().map(::FqName)
@@ -208,21 +242,31 @@ private class FirTopLevelDeclarationSource(
     override fun declarationsInPackage(packageName: FqName): Sequence<FirDeclaration> =
         sequence {
             symbolNamesProvider.getTopLevelCallableNamesInPackage(packageName).orEmpty().forEach { callableName ->
-                symbolProvider.getTopLevelFunctionSymbols(packageName, callableName).forEach { functionSymbol ->
-                    yield(functionSymbol.fir)
-                }
-                symbolProvider.getTopLevelPropertySymbols(packageName, callableName).forEach { propertySymbol ->
-                    yield(propertySymbol.fir)
+                symbolProviders.forEach { symbolProvider ->
+                    symbolProvider.getTopLevelFunctionSymbols(packageName, callableName).forEach { functionSymbol ->
+                        yield(functionSymbol.fir)
+                    }
+                    symbolProvider.getTopLevelPropertySymbols(packageName, callableName).forEach { propertySymbol ->
+                        yield(propertySymbol.fir)
+                    }
                 }
             }
             symbolNamesProvider.getTopLevelClassifierNamesInPackage(packageName).orEmpty().forEach { classifierName ->
-                val classSymbol =
-                    symbolProvider.getClassLikeSymbolByClassId(ClassId(packageName, classifierName))
-                        as? FirRegularClassSymbol ?: return@forEach
-                yield(classSymbol.fir)
+                symbolProviders.forEach { symbolProvider ->
+                    val classSymbol =
+                        symbolProvider.getClassLikeSymbolByClassId(ClassId(packageName, classifierName))
+                            as? FirRegularClassSymbol ?: return@forEach
+                    yield(classSymbol.fir)
+                }
             }
         }
 }
+
+private fun FirSession.topLevelDeclarationProviders(): List<org.jetbrains.kotlin.fir.resolve.providers.FirSymbolProvider> =
+    buildList {
+        add(firProvider.symbolProvider)
+        add(dependenciesSymbolProvider)
+    }.distinct()
 
 private class FirResolutionScanner(
     private val session: FirSession,
@@ -320,12 +364,25 @@ private class FirResolutionScanner(
         }
     }
 
-    fun build(): ResolutionIndex =
+    fun build(
+        recordImportedTopLevelRulesForIr: (List<VisibleInstanceRule>) -> Unit,
+    ): ResolutionIndex =
         ResolutionIndex(
             configuration = configuration,
             topLevelRules = topLevelRules.toList() + configuration.builtinRules().map { rule ->
                 VisibleInstanceRule(rule = rule, associatedOwner = null)
             },
+            recordImportedTopLevelRulesForIr = recordImportedTopLevelRulesForIr,
+            topLevelRulesByPackage =
+                topLevelRules
+                    .mapNotNull { visibleRule ->
+                        visibleRule.lookupReference?.packageFqName()?.let { packageName ->
+                            packageName to visibleRule
+                        }
+                    }.groupBy(
+                        keySelector = { (packageName, _) -> packageName },
+                        valueTransform = { (_, visibleRule) -> visibleRule },
+                    ),
             associatedRulesByOwner = associatedRulesByOwner.mapValues { (_, rules) -> rules.toList() },
             classInfoById = classInfoById.toMutableMap(),
             derivableTypeclassIdsByOwner =
@@ -338,11 +395,14 @@ private class FirResolutionScanner(
 private data class ResolutionIndex(
     val configuration: TypeclassConfiguration,
     val topLevelRules: List<VisibleInstanceRule>,
+    val recordImportedTopLevelRulesForIr: (List<VisibleInstanceRule>) -> Unit,
+    val topLevelRulesByPackage: Map<FqName, List<VisibleInstanceRule>>,
     val associatedRulesByOwner: Map<ClassId, List<VisibleInstanceRule>>,
     val classInfoById: MutableMap<String, VisibleClassHierarchyInfo>,
     val derivableTypeclassIdsByOwner: Map<String, Set<String>>,
     val deriveEquivTargetIdsByOwner: Map<String, Set<String>>,
 ) {
+    private val lazilyDiscoveredTopLevelRulesByPackage: MutableMap<FqName, List<VisibleInstanceRule>> = linkedMapOf()
     private val lazilyDiscoveredAssociatedRulesByOwner: MutableMap<ClassId, List<VisibleInstanceRule>> = linkedMapOf()
     private val lazilyDiscoveredDerivableTypeclassIdsByOwner: MutableMap<String, Set<String>> = linkedMapOf()
     private val lazilyDiscoveredDeriveEquivTargetIdsByOwner: MutableMap<String, Set<String>> = linkedMapOf()
@@ -353,11 +413,14 @@ private data class ResolutionIndex(
         canMaterializeVariable: (String) -> Boolean,
     ): List<InstanceRule> {
         val owners = allowedAssociatedOwnersForGoal(goal, session)
+        val topLevel =
+            topLevelRules + discoverTopLevelRulesForGoal(goal, session)
         val associated =
             owners.flatMapTo(linkedSetOf()) { owner ->
                 associatedRulesByOwner[owner].orEmpty() + discoverAssociatedRules(owner, session)
             }
-        return (topLevelRules + associated)
+        val resolvedRules =
+            (topLevel + associated)
             .asSequence()
             .filter { visibleRule ->
                 visibleRule.rule.id != "builtin:kclass" || supportsBuiltinKClassGoal(goal, canMaterializeVariable)
@@ -397,6 +460,54 @@ private data class ResolutionIndex(
             .distinctBy { visibleRule -> visibleRule.rule.id }
             .map(VisibleInstanceRule::rule)
             .toList()
+        return resolvedRules
+    }
+
+    private fun discoverTopLevelRulesForGoal(
+        goal: TcType,
+        session: FirSession,
+    ): List<VisibleInstanceRule> =
+        topLevelSearchPackagesForGoal(goal, session)
+            .flatMapTo(linkedSetOf()) { packageName ->
+                topLevelRulesByPackage[packageName].orEmpty() +
+                    lazilyDiscoveredTopLevelRulesByPackage.getOrPut(packageName) {
+                        discoverTopLevelRulesInPackage(packageName, session).also(recordImportedTopLevelRulesForIr)
+                    }
+            }.toList()
+
+    private fun topLevelSearchPackagesForGoal(
+        goal: TcType,
+        session: FirSession,
+    ): Set<FqName> =
+        allowedAssociatedOwnersForGoal(goal, session)
+            .mapTo(linkedSetOf()) { owner -> owner.packageFqName }
+
+    private fun discoverTopLevelRulesInPackage(
+        packageName: FqName,
+        session: FirSession,
+    ): List<VisibleInstanceRule> {
+        val symbolProviders = session.topLevelDeclarationProviders()
+        val symbolNamesProvider = FirCompositeSymbolNamesProvider.fromSymbolProviders(symbolProviders)
+        return buildList {
+            symbolNamesProvider.getTopLevelCallableNamesInPackage(packageName).orEmpty().forEach { callableName ->
+                symbolProviders.forEach { symbolProvider ->
+                    symbolProvider.getTopLevelFunctionSymbols(packageName, callableName).forEach { functionSymbol ->
+                        addAll(functionSymbol.fir.toFunctionRules(session, configuration))
+                    }
+                    symbolProvider.getTopLevelPropertySymbols(packageName, callableName).forEach { propertySymbol ->
+                        addAll(propertySymbol.fir.toPropertyRules(session, configuration))
+                    }
+                }
+            }
+            symbolNamesProvider.getTopLevelClassifierNamesInPackage(packageName).orEmpty().forEach { classifierName ->
+                symbolProviders.forEach { symbolProvider ->
+                    val classSymbol =
+                        symbolProvider.getClassLikeSymbolByClassId(ClassId(packageName, classifierName))
+                            as? FirRegularClassSymbol ?: return@forEach
+                    addAll(classSymbol.fir.toObjectRules(session, configuration))
+                }
+            }
+        }
     }
 
     fun canDeriveGoal(
@@ -497,7 +608,8 @@ private data class ResolutionIndex(
         availableContexts: List<TcType>,
         visiting: MutableSet<String>,
     ): Boolean {
-        if (typeclassId !in discoveredDerivableTypeclassIds(owner, session)) {
+        val discoveredTypeclassIds = discoveredDerivableTypeclassIds(owner, session)
+        if (typeclassId !in discoveredTypeclassIds) {
             return false
         }
         if (owner != targetType.classifierId) {
@@ -521,6 +633,9 @@ private data class ResolutionIndex(
         }
         val classId = runCatching { ClassId.fromString(owner) }.getOrNull() ?: return false
         val symbol = session.regularClassSymbolOrNull(classId) ?: return true
+        if (symbol.fir.source == null) {
+            return true
+        }
         return canDeriveTargetShape(
             typeclassId = typeclassId,
             targetType = targetType,
@@ -609,9 +724,22 @@ private data class ResolutionIndex(
         visiting: MutableSet<String>,
     ): Boolean {
         val subclassIds =
-            classInfoById
-                .filterValues { info -> classId.asString() in info.superClassifiers }
-                .keys
+            buildSet {
+                addAll(
+                    classInfoById
+                        .filterValues { info -> classId.asString() in info.superClassifiers }
+                        .keys,
+                )
+                val sealedSymbol = session.regularClassSymbolOrNull(classId)
+                addAll(
+                    sealedSymbol
+                        ?.fir
+                        ?.takeIf { declaration -> declaration.status.modality == Modality.SEALED }
+                        ?.getSealedClassInheritors(session)
+                        .orEmpty()
+                        .map(ClassId::asString),
+                )
+            }
         if (subclassIds.isEmpty()) {
             return false
         }
@@ -894,45 +1022,33 @@ private fun collectAssociatedRules(
 }
 
 internal fun FirRegularClass.derivedTypeclassIds(session: FirSession): Set<String> {
-    val deriveArguments =
-        buildList {
-            addAll(
-                resolvedAnnotationsByClassId(
-                    annotationClassId = DERIVE_ANNOTATION_CLASS_ID,
-                    session = session,
-                )
-                    .flatMap { annotation ->
-                        annotation.findArgumentByName(Name.identifier("value"))
-                            ?.unwrapVarargValue()
-                            .orEmpty()
-                    },
-            )
-            if (isEmpty()) {
-                val deriveAnnotation =
-                    annotations
-                        .filterIsInstance<FirAnnotationCall>()
-                        .firstOrNull { annotation ->
-                            annotation.annotationTypeRef.coneType.classId == DERIVE_ANNOTATION_CLASS_ID
-                        }
-                if (deriveAnnotation != null) {
-                    addAll(
-                        deriveAnnotation.argumentMapping.mapping.values.ifEmpty {
-                            deriveAnnotation.argumentList.arguments
-                        },
-                    )
-                }
-            }
-        }
-    if (deriveArguments.isEmpty()) {
-        return emptySet()
+    return derivedAnnotationClassIds(session).filterTo(linkedSetOf()) { classifierId ->
+        val classId = runCatching { ClassId.fromString(classifierId) }.getOrNull() ?: return@filterTo false
+        session.regularClassSymbolOrNull(classId)?.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session) == true
     }
-    val derivedIds =
-        deriveArguments
+}
+
+internal fun FirRegularClass.derivedAnnotationClassIds(session: FirSession): Set<String> {
+    val referencedClassIds =
+        resolvedAnnotationsByClassId(
+            annotationClassId = DERIVE_ANNOTATION_CLASS_ID,
+            session = session,
+        )
             .asSequence()
-        .flatMap(::flattenDerivedTypeclassArgumentExpressions)
-        .mapNotNull { expression -> expression.derivedTypeclassId(session) }
-        .toCollection(linkedSetOf())
-    return derivedIds
+            .flatMap { annotation -> annotation.derivedReferencedClassIds().asSequence() }
+            .toCollection(linkedSetOf())
+    if (referencedClassIds.isNotEmpty()) {
+        return referencedClassIds
+    }
+
+    val sourceAnnotation =
+        annotations
+            .filterIsInstance<FirAnnotationCall>()
+            .firstOrNull { annotation ->
+                annotation.annotationTypeRef.coneType.classId == DERIVE_ANNOTATION_CLASS_ID
+            }
+            ?: return emptySet()
+    return sourceAnnotation.derivedReferencedClassIds()
 }
 
 private fun Iterable<String>.expandedDerivedTypeclassIds(
@@ -988,25 +1104,56 @@ private fun expandDerivedTypeclassIds(
 }
 
 private fun flattenDerivedTypeclassArgumentExpressions(expression: FirExpression): Sequence<FirExpression> =
-    when (expression) {
-        is FirVarargArgumentsExpression -> expression.arguments.asSequence().flatMap(::flattenDerivedTypeclassArgumentExpressions)
-        else -> sequenceOf(expression)
+    expression.typeclassCollectionLiteralArgumentsOrNull()?.flatMap(::flattenDerivedTypeclassArgumentExpressions)
+        ?: when (expression) {
+            is FirVarargArgumentsExpression -> expression.arguments.asSequence().flatMap(::flattenDerivedTypeclassArgumentExpressions)
+            else -> sequenceOf(expression)
+        }
+
+private fun FirAnnotation.deriveValueExpressions(): Sequence<FirExpression> {
+    val valueName = Name.identifier("value")
+    val directArguments =
+        findArgumentByName(valueName)
+            ?.unwrapVarargValue()
+            .orEmpty()
+            .ifEmpty { findArgumentByName(valueName)?.let(::listOf).orEmpty() }
+            .asSequence()
+            .filterIsInstance<FirExpression>()
+            .flatMap(::flattenDerivedTypeclassArgumentExpressions)
+            .toList()
+    if (directArguments.isNotEmpty()) {
+        return directArguments.asSequence()
     }
 
-private fun FirExpression.derivedTypeclassId(session: FirSession): String? {
-    val classId =
-        when (this) {
-            is FirGetClassCall -> argument.resolvedType.lowerBoundIfFlexible().classId
-            else -> resolvedType.lowerBoundIfFlexible().classId
-        } ?: return null
-    val classSymbol =
-        try {
-            session.symbolProvider.getClassLikeSymbolByClassId(classId) as? FirRegularClassSymbol
-        } catch (_: IllegalArgumentException) {
-            null
-        } ?: return null
-    return classId.asString().takeIf { classSymbol.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session) }
+    val annotationCall = this as? FirAnnotationCall ?: return emptySequence()
+    val mappedArguments =
+        annotationCall.argumentMapping.mapping
+            .asSequence()
+            .filter { (parameter, _) -> parameter == valueName }
+            .map { (_, argument) -> argument }
+            .ifEmpty { annotationCall.argumentList.arguments.asSequence() }
+            .filterIsInstance<FirExpression>()
+            .flatMap(::flattenDerivedTypeclassArgumentExpressions)
+    return mappedArguments
 }
+
+private fun FirAnnotation.derivedReferencedClassIds(): Set<String> =
+    deriveValueExpressions()
+        .mapNotNull { expression -> expression.derivedReferencedClassId()?.asString() }
+        .toCollection(linkedSetOf())
+
+private fun FirExpression.derivedReferencedClassId(): ClassId? =
+    when (this) {
+        is FirGetClassCall ->
+            when (val classExpression = argument) {
+                is FirResolvedQualifier -> classExpression.classId
+                is FirClassReferenceExpression -> classExpression.classTypeRef.coneType.lowerBoundIfFlexible().classId
+                else -> classExpression.resolvedType.lowerBoundIfFlexible().classId
+            }
+
+        is FirResolvedQualifier -> classId
+        else -> resolvedType.lowerBoundIfFlexible().classId
+    }
 
 private fun TypeclassConfiguration.builtinRules(): List<InstanceRule> =
     buildList {
@@ -1395,6 +1542,9 @@ private fun FirRegularClass.toObjectRules(
     if (status.visibility == Visibilities.Private) {
         return emptyList()
     }
+    if (source == null && status.visibility != Visibilities.Public) {
+        return emptyList()
+    }
     val ownerContext = firInstanceOwnerContext(session, symbol.classId)
     val providedTypes = instanceProvidedTypes(session, configuration)
     if (ownerContext.isTopLevel && !isLegalTopLevelInstanceLocation(session, providedTypes)) {
@@ -1415,6 +1565,8 @@ private fun FirRegularClass.toObjectRules(
                     prerequisiteTypes = emptyList(),
                 ),
             associatedOwner = null,
+            lookupReference = VisibleRuleLookupReference.LookupObject(symbol.classId),
+            isFromDependencyBinary = source == null,
         )
     }
 }
@@ -1432,6 +1584,9 @@ private fun FirTypeclassFunctionDeclaration.toFunctionRules(
         return emptyList()
     }
     if (status.visibility == Visibilities.Private) {
+        return emptyList()
+    }
+    if (source == null && status.visibility != Visibilities.Public) {
         return emptyList()
     }
     if (receiverParameter != null || valueParameters.isNotEmpty()) {
@@ -1479,6 +1634,14 @@ private fun FirTypeclassFunctionDeclaration.toFunctionRules(
                     prerequisiteTypes = prerequisites,
                 ),
             associatedOwner = null,
+            lookupReference =
+                lookupFunctionShape(session, configuration)?.let { shape ->
+                    VisibleRuleLookupReference.LookupFunction(
+                        callableId = callableId,
+                        shape = shape,
+                    )
+                },
+            isFromDependencyBinary = source == null,
         )
     }
 }
@@ -1496,6 +1659,9 @@ private fun FirProperty.toPropertyRules(
         return emptyList()
     }
     if (status.visibility == Visibilities.Private) {
+        return emptyList()
+    }
+    if (source == null && status.visibility != Visibilities.Public) {
         return emptyList()
     }
     if (receiverParameter != null) {
@@ -1520,7 +1686,76 @@ private fun FirProperty.toPropertyRules(
                     prerequisiteTypes = emptyList(),
                 ),
             associatedOwner = null,
+            lookupReference = VisibleRuleLookupReference.LookupProperty(callableId),
+            isFromDependencyBinary = source == null,
         )
+    }
+}
+
+private fun FirTypeclassFunctionDeclaration.lookupFunctionShape(
+    session: FirSession,
+    configuration: TypeclassConfiguration,
+): LookupFunctionShape? {
+    val placeholderParameters =
+        typeParameters.mapIndexed { index, _ ->
+            TcTypeParameter(id = "P$index", displayName = "P$index")
+        }
+    val typeParameterBySymbol =
+        this.typeParameters.zip(placeholderParameters).associate { (typeParameter, parameter) ->
+            typeParameter.symbol to parameter
+        }
+    val contextTypes =
+        contextParameters.map { parameter ->
+            coneTypeToModel(parameter.returnTypeRef.coneType, typeParameterBySymbol) ?: return null
+        }
+    val regularTypes =
+        valueParameters.map { parameter ->
+            coneTypeToModel(parameter.returnTypeRef.coneType, typeParameterBySymbol) ?: return null
+        }
+    val extensionType =
+        receiverParameter?.typeRef?.coneType?.let { receiverType ->
+            coneTypeToModel(receiverType, typeParameterBySymbol) ?: return null
+        }
+    return LookupFunctionShape(
+        dispatchReceiver = symbol.callableId.classId != null,
+        extensionReceiverType = extensionType,
+        typeParameterCount = visibleSignatureTypeParameterCount(session, configuration, dropTypeclassContexts = false),
+        contextParameterTypes = contextTypes,
+        regularParameterTypes = regularTypes,
+    )
+}
+
+private fun FirTypeclassFunctionDeclaration.visibleSignatureTypeParameterCount(
+    session: FirSession,
+    configuration: TypeclassConfiguration,
+    dropTypeclassContexts: Boolean,
+): Int {
+    val referenced = linkedSetOf<FirTypeParameterSymbol>()
+    receiverParameter?.typeRef?.coneType?.collectReferencedTypeParameters(referenced)
+    returnTypeRef.coneType.collectReferencedTypeParameters(referenced)
+    valueParameters.forEach { parameter ->
+        parameter.returnTypeRef.coneType.collectReferencedTypeParameters(referenced)
+    }
+    contextParameters
+        .filterNot { parameter ->
+            dropTypeclassContexts && isTypeclassType(parameter.returnTypeRef.coneType, session, configuration)
+        }.forEach { parameter ->
+            parameter.returnTypeRef.coneType.collectReferencedTypeParameters(referenced)
+        }
+    return typeParameters.count { typeParameter -> typeParameter.symbol in referenced }
+}
+
+private fun ConeKotlinType.collectReferencedTypeParameters(
+    sink: MutableSet<FirTypeParameterSymbol>,
+) {
+    when (val lowered = lowerBoundIfFlexible()) {
+        is ConeTypeParameterType -> sink += lowered.lookupTag.typeParameterSymbol
+        is ConeClassLikeType ->
+            lowered.typeArguments.forEach { argument ->
+                argument.type?.collectReferencedTypeParameters(sink)
+            }
+
+        else -> Unit
     }
 }
 

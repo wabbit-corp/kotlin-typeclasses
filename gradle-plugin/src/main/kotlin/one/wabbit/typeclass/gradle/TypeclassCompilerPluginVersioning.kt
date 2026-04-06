@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 package one.wabbit.typeclass.gradle
 
 import org.gradle.api.logging.Logging

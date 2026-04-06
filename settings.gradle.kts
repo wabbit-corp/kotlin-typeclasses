@@ -16,6 +16,7 @@ pluginManagement {
             .orElse(providers.gradleProperty("defaultKotlinVersion"))
             .orElse("2.3.10")
             .get()
+
     repositories {
         google()
         gradlePluginPortal()
@@ -46,12 +47,12 @@ pluginManagement {
 
 include(":kotlin-typeclasses")
 project(":kotlin-typeclasses").projectDir = file("library")
-include(":compiler-plugin")
-project(":compiler-plugin").projectDir = file("compiler-plugin")
-include(":ij-plugin")
-project(":ij-plugin").projectDir = file("ij-plugin")
-include(":gradle-plugin")
-project(":gradle-plugin").projectDir = file("gradle-plugin")
+include(":kotlin-typeclasses-plugin")
+project(":kotlin-typeclasses-plugin").projectDir = file("compiler-plugin")
+include(":kotlin-typeclasses-ij-plugin")
+project(":kotlin-typeclasses-ij-plugin").projectDir = file("ij-plugin")
+include(":kotlin-typeclasses-gradle-plugin")
+project(":kotlin-typeclasses-gradle-plugin").projectDir = file("gradle-plugin")
 val localSettingsFile = file("settings.local.gradle.kts")
 if (localSettingsFile.isFile) {
     apply(from = localSettingsFile)
