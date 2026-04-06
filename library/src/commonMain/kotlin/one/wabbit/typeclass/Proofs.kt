@@ -69,6 +69,12 @@ public interface Subtype<Sub, Super> {
 }
 
 @InternalTypeclassApi
+/**
+ * Internal singleton carrier for compiler-synthesized [Subtype] evidence.
+ *
+ * End users normally interact with [Subtype] rather than referencing this object
+ * directly.
+ */
 public object UnsafeAssertSubtype : Subtype<Any?, Any?>
 
 /**
@@ -116,6 +122,9 @@ public interface Same<A, B> : Subtype<A, B> {
 }
 
 @InternalTypeclassApi
+/**
+ * Internal singleton carrier for compiler-synthesized [Same] evidence.
+ */
 public object UnsafeAssertSame : Same<Any?, Any?>
 
 /**
@@ -159,6 +168,9 @@ public interface NotSame<A, B> {
 }
 
 @InternalTypeclassApi
+/**
+ * Internal singleton carrier for compiler-synthesized [NotSame] evidence.
+ */
 public object UnsafeAssertNotSame : NotSame<Any?, Any?>
 
 /**
@@ -195,6 +207,9 @@ public interface StrictSubtype<Sub, Super> : Subtype<Sub, Super>, NotSame<Sub, S
 }
 
 @InternalTypeclassApi
+/**
+ * Internal singleton carrier for compiler-synthesized [StrictSubtype] evidence.
+ */
 public object UnsafeAssertStrictSubtype : StrictSubtype<Any?, Any?>
 
 /**
@@ -237,6 +252,9 @@ public interface Nullable<T> {
 }
 
 @InternalTypeclassApi
+/**
+ * Internal singleton carrier for compiler-synthesized [Nullable] evidence.
+ */
 public object UnsafeAssertNullable : Nullable<Any?>
 
 /**
@@ -272,6 +290,9 @@ public interface NotNullable<T> {
 }
 
 @InternalTypeclassApi
+/**
+ * Internal singleton carrier for compiler-synthesized [NotNullable] evidence.
+ */
 public object UnsafeAssertNotNullable : NotNullable<Any?>
 
 /**
@@ -281,6 +302,10 @@ public object UnsafeAssertNotNullable : NotNullable<Any?>
 public interface IsTypeclassInstance<TC>
 
 @InternalTypeclassApi
+/**
+ * Internal singleton carrier for compiler-synthesized [IsTypeclassInstance]
+ * evidence.
+ */
 public object UnsafeAssertIsTypeclassInstance : IsTypeclassInstance<Any?>
 
 /**
@@ -310,6 +335,10 @@ public interface SameTypeConstructor<A, B> {
 }
 
 @InternalTypeclassApi
+/**
+ * Internal singleton carrier for compiler-synthesized [SameTypeConstructor]
+ * evidence.
+ */
 public object UnsafeAssertSameTypeConstructor : SameTypeConstructor<Any?, Any?>
 
 /**
@@ -326,6 +355,9 @@ public object UnsafeAssertSameTypeConstructor : SameTypeConstructor<Any?, Any?>
  */
 @Typeclass
 public interface KnownType<T> {
+    /**
+     * Exact reflective type for the witnessed type.
+     */
     public val kType: KType
 
     /**
@@ -353,18 +385,37 @@ public fun knownType(
  * Equal ids yield a [Same] proof. Unequal ids yield a [NotSame] proof.
  */
 public sealed interface TypeIdComparison<A, B> {
+    /**
+     * Left-hand identifier that participated in the comparison.
+     */
     public val left: TypeId<A>
+
+    /**
+     * Right-hand identifier that participated in the comparison.
+     */
     public val right: TypeId<B>
 
+    /**
+     * Result shape for two equal canonical type identifiers.
+     */
     public data class Equal<A, B>(
         override val left: TypeId<A>,
         override val right: TypeId<B>,
+        /**
+         * Equality witness justified by the two matching identifiers.
+         */
         public val proof: Same<A, B>,
     ) : TypeIdComparison<A, B>
 
+    /**
+     * Result shape for two distinct canonical type identifiers.
+     */
     public data class Different<A, B>(
         override val left: TypeId<A>,
         override val right: TypeId<B>,
+        /**
+         * Inequality witness justified by the two distinct identifiers.
+         */
         public val proof: NotSame<A, B>,
     ) : TypeIdComparison<A, B>
 }

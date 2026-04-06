@@ -1,5 +1,17 @@
 package one.wabbit.typeclass
 
+/**
+ * Marks a declaration as a source of typeclass evidence.
+ *
+ * Supported declaration shapes are:
+ * - objects
+ * - parameterless functions whose context parameters describe prerequisites
+ * - immutable properties
+ *
+ * The compiler plugin indexes these declarations and treats them as candidates
+ * during typeclass resolution. Binary retention is required so those candidates
+ * remain visible across module boundaries.
+ */
 @Target(
     AnnotationTarget.CLASS,
     AnnotationTarget.FUNCTION,
