@@ -2767,6 +2767,18 @@ private fun FirTypeclassFunctionDeclaration.toFunctionRules(
     if (prerequisites.size != contextParameters.size) {
         return emptyList()
     }
+    val lookupOwnerKey = symbol.lookupOwnerKey(session)
+    val lookupReference =
+        lookupFunctionShape(session, configuration)?.let { shape ->
+            VisibleRuleLookupReference.LookupFunction(
+                callableId = callableId,
+                shape = shape,
+                ownerKey = lookupOwnerKey,
+            )
+        }
+    val declarationKey =
+        lookupReference?.lookupIdentityKey()
+            ?: "fun:${lookupOwnerKey ?: "-"}:${callableId}"
 
     return providedTypes.validTypes.map { providedType ->
         VisibleInstanceRule(
@@ -2774,7 +2786,7 @@ private fun FirTypeclassFunctionDeclaration.toFunctionRules(
                 InstanceRule(
                     id = directRuleId(
                         prefix = "fir-function",
-                        declarationKey = symbol.callableId.toString(),
+                        declarationKey = declarationKey,
                         providedType = providedType,
                         prerequisiteTypes = prerequisites,
                         typeParameters = typeParameters,
@@ -2784,13 +2796,7 @@ private fun FirTypeclassFunctionDeclaration.toFunctionRules(
                     prerequisiteTypes = prerequisites,
                 ),
             associatedOwner = null,
-            lookupReference =
-                lookupFunctionShape(session, configuration)?.let { shape ->
-                    VisibleRuleLookupReference.LookupFunction(
-                        callableId = callableId,
-                        shape = shape,
-                    )
-                },
+            lookupReference = lookupReference,
             isFromDependencyBinary = source == null,
         )
     }
@@ -2821,6 +2827,9 @@ private fun FirProperty.toPropertyRules(
     if (ownerContext.isTopLevel && !isLegalTopLevelInstanceLocation(session, providedTypes)) {
         return emptyList()
     }
+    val lookupOwnerKey = symbol.lookupOwnerKey(session)
+    val lookupReference = VisibleRuleLookupReference.LookupProperty(callableId, ownerKey = lookupOwnerKey)
+    val declarationKey = lookupReference.lookupIdentityKey()
 
     return providedTypes.validTypes.map { providedType ->
         VisibleInstanceRule(
@@ -2828,7 +2837,7 @@ private fun FirProperty.toPropertyRules(
                 InstanceRule(
                     id = directRuleId(
                         prefix = "fir-property",
-                        declarationKey = symbol.callableId.toString(),
+                        declarationKey = declarationKey,
                         providedType = providedType,
                     ),
                     typeParameters = emptyList(),
@@ -2836,11 +2845,18 @@ private fun FirProperty.toPropertyRules(
                     prerequisiteTypes = emptyList(),
                 ),
             associatedOwner = null,
-            lookupReference = VisibleRuleLookupReference.LookupProperty(callableId),
+            lookupReference = lookupReference,
             isFromDependencyBinary = source == null,
         )
     }
 }
+
+private fun org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol<*>.lookupOwnerKey(session: FirSession): String? =
+    callableId?.classId?.let(::classLookupOwnerKey)
+        ?: runCatching { session.firProvider.getFirCallableContainerFile(this)?.sourceFile?.path }
+            .getOrNull()
+            ?.let(::sourceLookupOwnerKey)
+        ?: containerSource?.lookupOwnerKeyOrNull()
 
 private fun FirTypeclassFunctionDeclaration.lookupFunctionShape(
     session: FirSession,

@@ -64,10 +64,12 @@ import org.jetbrains.kotlin.ir.declarations.IrDeclarationBase
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationWithVisibility
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationParent
+import org.jetbrains.kotlin.ir.declarations.DescriptorMetadataSource
 import org.jetbrains.kotlin.ir.declarations.IrEnumEntry
 import org.jetbrains.kotlin.ir.declarations.IrField
 import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrFunction
+import org.jetbrains.kotlin.ir.declarations.IrMetadataSourceOwner
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.declarations.IrProperty
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
@@ -121,6 +123,7 @@ import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedCallableMemberDescriptor
 import org.jetbrains.kotlin.types.Variance
 
 internal class TypeclassIrGenerationExtension(
@@ -1093,7 +1096,7 @@ private class TypeclassIrCallTransformer(
                     }
 
                     is RuleReference.LookupFunction -> {
-                        val function = ruleIndex.resolveLookupFunction(reference)
+                        val function = ruleIndex.resolveLookupFunction(reference, resolvedRule.rule)
                             ?: error("Could not resolve instance function ${reference.callableId}")
                         val prerequisiteExpressions =
                             plan.prerequisitePlans.map { nested ->
@@ -1121,7 +1124,7 @@ private class TypeclassIrCallTransformer(
                         buildInstancePropertyAccess(reference.property)
 
                     is RuleReference.LookupProperty -> {
-                        val property = ruleIndex.resolveLookupProperty(reference)
+                        val property = ruleIndex.resolveLookupProperty(reference, resolvedRule.rule)
                             ?: error("Could not resolve instance property ${reference.callableId}")
                         buildInstancePropertyAccess(property)
                     }
@@ -2464,17 +2467,39 @@ private class IrRuleIndex private constructor(
 
     fun ruleById(ruleId: String): ResolvedRule? = rulesById[ruleId] ?: lazilyDiscoveredRulesById[ruleId]
 
-    fun resolveLookupFunction(reference: RuleReference.LookupFunction): IrSimpleFunction? =
-        pluginContext.referenceFunctions(reference.callableId)
-            .map { it.owner }
-            .singleOrNull { function ->
+    fun resolveLookupFunction(
+        reference: RuleReference.LookupFunction,
+        targetRule: InstanceRule,
+    ): IrSimpleFunction? {
+        val candidates = pluginContext.referenceFunctions(reference.callableId).map { it.owner }
+        val shapeMatchedCandidates =
+            candidates.filter { function ->
                 lookupFunctionShape(function, dropTypeclassContexts = false, configuration = configuration) == reference.shape
             }
+        val ownerMatchedCandidates =
+            shapeMatchedCandidates.filter { function ->
+                reference.ownerKey == null || function.lookupOwnerKeyOrNull() == reference.ownerKey
+            }
+        return ownerMatchedCandidates.singleOrNull()
+            ?: shapeMatchedCandidates.singleOrNull { function ->
+                function.matchesImportedLookupRule(targetRule, configuration)
+            }
+    }
 
-    fun resolveLookupProperty(reference: RuleReference.LookupProperty): IrProperty? =
-        pluginContext.referenceProperties(reference.callableId)
-            .map { it.owner }
-            .singleOrNull()
+    fun resolveLookupProperty(
+        reference: RuleReference.LookupProperty,
+        targetRule: InstanceRule,
+    ): IrProperty? {
+        val candidates = pluginContext.referenceProperties(reference.callableId).map { it.owner }
+        val ownerMatchedCandidates =
+            candidates.filter { property ->
+                reference.ownerKey == null || property.lookupOwnerKeyOrNull() == reference.ownerKey
+            }
+        return ownerMatchedCandidates.singleOrNull()
+            ?: candidates.singleOrNull { property ->
+                property.matchesImportedLookupRule(targetRule, configuration)
+            }
+    }
 
     fun rulesForGoal(
         goal: TcType,
@@ -2827,29 +2852,24 @@ private fun VisibleRuleLookupReference.toIrRuleReference(): RuleReference =
             RuleReference.LookupFunction(
                 callableId = callableId,
                 shape = shape,
+                ownerKey = ownerKey,
             )
 
         is VisibleRuleLookupReference.LookupProperty ->
-            RuleReference.LookupProperty(callableId)
+            RuleReference.LookupProperty(callableId, ownerKey = ownerKey)
 
         is VisibleRuleLookupReference.LookupObject ->
             RuleReference.LookupObject(classId)
     }
 
-private fun VisibleRuleLookupReference.lookupIdentityKey(): String =
-    when (this) {
-        is VisibleRuleLookupReference.LookupFunction -> "fun:${callableId}:$shape"
-        is VisibleRuleLookupReference.LookupProperty -> "prop:$callableId"
-        is VisibleRuleLookupReference.LookupObject -> "obj:${classId.asString()}"
-    }
-
 private fun RuleReference.lookupIdentityKeyOrNull(configuration: TypeclassConfiguration): String? =
     when (this) {
-        is RuleReference.DirectFunction -> "fun:${function.callableId}:${lookupFunctionShape(function, dropTypeclassContexts = false, configuration = configuration)}"
-        is RuleReference.DirectProperty -> "prop:${property.callableId}"
+        is RuleReference.DirectFunction ->
+            "fun:${function.lookupOwnerKeyOrNull() ?: "-"}:${function.callableId}:${lookupFunctionShape(function, dropTypeclassContexts = false, configuration = configuration)}"
+        is RuleReference.DirectProperty -> "prop:${property.lookupOwnerKeyOrNull() ?: "-"}:${property.callableId}"
         is RuleReference.DirectObject -> "obj:${klass.classIdOrFail.asString()}"
-        is RuleReference.LookupFunction -> "fun:${callableId}:$shape"
-        is RuleReference.LookupProperty -> "prop:$callableId"
+        is RuleReference.LookupFunction -> "fun:${ownerKey ?: "-"}:${callableId}:$shape"
+        is RuleReference.LookupProperty -> "prop:${ownerKey ?: "-"}:${callableId}"
         is RuleReference.LookupObject -> "obj:${classId.asString()}"
         else -> null
     }
@@ -3288,13 +3308,20 @@ private class IrModuleScanner(
         if (associatedOwner == null && !isLegalTopLevelInstanceLocation(providedTypeExpansion.declaredTypes, classesById)) {
             return emptyList()
         }
+        val declarationKey =
+            RuleReference.LookupFunction(
+                callableId = callableId,
+                shape = lookupFunctionShape(this, dropTypeclassContexts = false, configuration = configuration),
+                ownerKey = lookupOwnerKeyOrNull(),
+            ).lookupIdentityKeyOrNull(configuration)
+                ?: "fun:${lookupOwnerKeyOrNull() ?: "-"}:${callableId}"
         return providedTypes.map { providedType ->
             ResolvedRule(
                 rule =
                     InstanceRule(
                         id = directRuleId(
                             prefix = idPrefix,
-                            declarationKey = callableId.toString(),
+                            declarationKey = declarationKey,
                             providedType = providedType,
                             prerequisiteTypes = prerequisites,
                             typeParameters = typeParameters,
@@ -3327,13 +3354,19 @@ private class IrModuleScanner(
         if (associatedOwner == null && !isLegalTopLevelInstanceLocation(providedTypeExpansion.declaredTypes, classesById)) {
             return emptyList()
         }
+        val declarationKey =
+            RuleReference.LookupProperty(
+                callableId = callableId,
+                ownerKey = lookupOwnerKeyOrNull(),
+            ).lookupIdentityKeyOrNull(configuration)
+                ?: "prop:${lookupOwnerKeyOrNull() ?: "-"}:${callableId}"
         return providedTypes.map { providedType ->
             ResolvedRule(
                 rule =
                     InstanceRule(
                         id = directRuleId(
                             prefix = idPrefix,
-                            declarationKey = callableId.toString(),
+                            declarationKey = declarationKey,
                             providedType = providedType,
                         ),
                         typeParameters = emptyList(),
@@ -4956,6 +4989,7 @@ private sealed interface RuleReference {
     data class LookupFunction(
         val callableId: CallableId,
         val shape: LookupFunctionShape,
+        val ownerKey: String? = null,
     ) : RuleReference
 
     data class DirectProperty(
@@ -4964,6 +4998,7 @@ private sealed interface RuleReference {
 
     data class LookupProperty(
         val callableId: CallableId,
+        val ownerKey: String? = null,
     ) : RuleReference
 
     data class DirectObject(
@@ -6011,6 +6046,66 @@ private fun IrSimpleFunction.safeCallableIdentity(): String =
 
 private fun IrSimpleFunction.safeCallableIdOrNull(): CallableId? =
     runCatching { callableId }.getOrNull()
+
+private fun IrSimpleFunction.lookupOwnerKeyOrNull(): String? =
+    safeCallableIdOrNull()?.classId?.let(::classLookupOwnerKey)
+        ?: (this as? IrMetadataSourceOwner)?.deserializedLookupOwnerKeyOrNull()
+        ?: containingIrFileOrNull()?.fileEntry?.name?.let(::sourceLookupOwnerKey)
+
+private fun IrProperty.lookupOwnerKeyOrNull(): String? =
+    runCatching { callableId }.getOrNull()?.classId?.let(::classLookupOwnerKey)
+        ?: (this as? IrMetadataSourceOwner)?.deserializedLookupOwnerKeyOrNull()
+        ?: containingIrFileOrNull()?.fileEntry?.name?.let(::sourceLookupOwnerKey)
+
+private fun IrMetadataSourceOwner.deserializedLookupOwnerKeyOrNull(): String? =
+    when (val metadataSource = metadata) {
+        is DescriptorMetadataSource.Function ->
+            (metadataSource.descriptor as? DeserializedCallableMemberDescriptor)?.containerSource?.lookupOwnerKeyOrNull()
+
+        is DescriptorMetadataSource.Property ->
+            (metadataSource.descriptor as? DeserializedCallableMemberDescriptor)?.containerSource?.lookupOwnerKeyOrNull()
+
+        else -> null
+    }
+
+private tailrec fun IrDeclaration.containingIrFileOrNull(): IrFile? =
+    when (val currentParent = parent) {
+        is IrFile -> currentParent
+        is IrDeclaration -> currentParent.containingIrFileOrNull()
+        else -> null
+    }
+
+private fun IrSimpleFunction.matchesImportedLookupRule(
+    targetRule: InstanceRule,
+    configuration: TypeclassConfiguration,
+): Boolean {
+    val placeholderParameters = visibleTypeParametersForShape(this)
+    val bySymbol =
+        visibleTypeParameterSymbols(this, listOf(this)).zip(placeholderParameters).associate { (symbol, parameter) ->
+            symbol to parameter
+        }
+    val targetProvidedType = targetRule.providedType.normalizeLookupRuleTypeParameters(targetRule.typeParameters)
+    return listOf(returnType).providedTypeExpansion(bySymbol, configuration).validTypes.any { candidateProvidedType ->
+        candidateProvidedType == targetProvidedType
+    }
+}
+
+private fun IrProperty.matchesImportedLookupRule(
+    targetRule: InstanceRule,
+    configuration: TypeclassConfiguration,
+): Boolean {
+    val targetProvidedType = targetRule.providedType.normalizeLookupRuleTypeParameters(targetRule.typeParameters)
+    return listOf(backingFieldOrGetterType()).providedTypeExpansion(emptyMap(), configuration).validTypes.any { candidateProvidedType ->
+        candidateProvidedType == targetProvidedType
+    }
+}
+
+private fun TcType.normalizeLookupRuleTypeParameters(typeParameters: List<TcTypeParameter>): TcType =
+    substituteType(
+        typeParameters.mapIndexed { index, parameter ->
+            parameter.id to TcType.Variable(id = "P$index", displayName = "P$index")
+        }.toMap(),
+    )
 
 private fun org.jetbrains.kotlin.ir.declarations.IrDeclarationParent.localDeclarationIdentity(): String =
     when (this) {

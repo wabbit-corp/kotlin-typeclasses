@@ -788,6 +788,180 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun dependencyTopLevelFunctionsWithSharedCallableIdsStillResolveTheSelectedRuleInIr() {
+        val api =
+            HarnessDependency(
+                name = "dep-shared-api",
+                sources =
+                    mapOf(
+                        "shared/Api.kt" to
+                            """
+                            package shared
+
+                            import one.wabbit.typeclass.Typeclass
+
+                            @Typeclass
+                            interface Show<A> {
+                                fun show(value: A): String
+                            }
+
+                            context(show: Show<A>)
+                            fun <A> render(value: A): String = show.show(value)
+                            """.trimIndent(),
+                    ),
+            )
+        val ints =
+            HarnessDependency(
+                name = "dep-int-facade",
+                sources =
+                    mapOf(
+                        "p/Ints.kt" to
+                            """
+                            package p
+
+                            import one.wabbit.typeclass.Instance
+                            import shared.Show
+
+                            data class IntBox(val value: Int)
+
+                            @Instance
+                            fun show(): Show<IntBox> =
+                                object : Show<IntBox> {
+                                    override fun show(value: IntBox): String = "int:${'$'}{value.value}"
+                                }
+                            """.trimIndent(),
+                    ),
+                dependencies = listOf(api),
+            )
+        val strings =
+            HarnessDependency(
+                name = "dep-string-facade",
+                sources =
+                    mapOf(
+                        "p/Strings.kt" to
+                            """
+                            package p
+
+                            import one.wabbit.typeclass.Instance
+                            import shared.Show
+
+                            data class StringBox(val value: String)
+
+                            @Instance
+                            fun show(): Show<StringBox> =
+                                object : Show<StringBox> {
+                                    override fun show(value: StringBox): String = "string:${'$'}{value.value}"
+                                }
+                            """.trimIndent(),
+                    ),
+                dependencies = listOf(api),
+            )
+        val source =
+            """
+            package demo
+
+            import p.IntBox
+            import shared.render
+
+            fun main() {
+                println(render(IntBox(1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int:1",
+            dependencies = listOf(api, ints, strings),
+        )
+    }
+
+    @Test fun dependencyTopLevelPropertiesWithSharedCallableIdsStillResolveTheSelectedRuleInIr() {
+        val api =
+            HarnessDependency(
+                name = "dep-shared-api",
+                sources =
+                    mapOf(
+                        "shared/Api.kt" to
+                            """
+                            package shared
+
+                            import one.wabbit.typeclass.Typeclass
+
+                            @Typeclass
+                            interface Show<A> {
+                                fun show(value: A): String
+                            }
+
+                            context(show: Show<A>)
+                            fun <A> render(value: A): String = show.show(value)
+                            """.trimIndent(),
+                    ),
+            )
+        val ints =
+            HarnessDependency(
+                name = "dep-int-property-facade",
+                sources =
+                    mapOf(
+                        "p/Ints.kt" to
+                            """
+                            package p
+
+                            import one.wabbit.typeclass.Instance
+                            import shared.Show
+
+                            data class IntBox(val value: Int)
+
+                            @Instance
+                            val show: Show<IntBox> =
+                                object : Show<IntBox> {
+                                    override fun show(value: IntBox): String = "prop-int:${'$'}{value.value}"
+                                }
+                            """.trimIndent(),
+                    ),
+                dependencies = listOf(api),
+            )
+        val strings =
+            HarnessDependency(
+                name = "dep-string-property-facade",
+                sources =
+                    mapOf(
+                        "p/Strings.kt" to
+                            """
+                            package p
+
+                            import one.wabbit.typeclass.Instance
+                            import shared.Show
+
+                            data class StringBox(val value: String)
+
+                            @Instance
+                            val show: Show<StringBox> =
+                                object : Show<StringBox> {
+                                    override fun show(value: StringBox): String = "prop-string:${'$'}{value.value}"
+                                }
+                            """.trimIndent(),
+                    ),
+                dependencies = listOf(api),
+            )
+        val source =
+            """
+            package demo
+
+            import p.IntBox
+            import shared.render
+
+            fun main() {
+                println(render(IntBox(1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "prop-int:1",
+            dependencies = listOf(api, ints, strings),
+        )
+    }
+
     @Test fun privateAssociatedCompanionInstancesDoNotLeakAcrossDependencyBoundaries() {
         val dependency =
             HarnessDependency(

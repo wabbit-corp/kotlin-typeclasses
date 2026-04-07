@@ -4,9 +4,11 @@ package one.wabbit.typeclass.plugin
 
 import one.wabbit.typeclass.plugin.model.InstanceRule
 import one.wabbit.typeclass.plugin.model.TcType
+import org.jetbrains.kotlin.load.kotlin.JvmPackagePartSource
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedContainerSource
 import org.jetbrains.kotlin.types.Variance
 
 internal data class LookupFunctionShape(
@@ -34,10 +36,12 @@ internal sealed interface VisibleRuleLookupReference {
     data class LookupFunction(
         val callableId: CallableId,
         val shape: LookupFunctionShape,
+        val ownerKey: String? = null,
     ) : VisibleRuleLookupReference
 
     data class LookupProperty(
         val callableId: CallableId,
+        val ownerKey: String? = null,
     ) : VisibleRuleLookupReference
 
     data class LookupObject(
@@ -49,6 +53,23 @@ internal data class ImportedTopLevelInstanceRule(
     val rule: InstanceRule,
     val reference: VisibleRuleLookupReference,
 )
+
+internal fun DeserializedContainerSource.lookupOwnerKeyOrNull(): String? =
+    when (this) {
+        is JvmPackagePartSource -> "jvm-package-part:${className.internalName}"
+        else -> null
+    }
+
+internal fun sourceLookupOwnerKey(path: String): String = "source-file:$path"
+
+internal fun classLookupOwnerKey(classId: ClassId): String = "class:${classId.asString()}"
+
+internal fun VisibleRuleLookupReference.lookupIdentityKey(): String =
+    when (this) {
+        is VisibleRuleLookupReference.LookupFunction -> "fun:${ownerKey ?: "-"}:${callableId}:$shape"
+        is VisibleRuleLookupReference.LookupProperty -> "prop:${ownerKey ?: "-"}:${callableId}"
+        is VisibleRuleLookupReference.LookupObject -> "obj:${classId.asString()}"
+    }
 
 internal fun VisibleRuleLookupReference.packageFqName(): FqName =
     when (this) {
