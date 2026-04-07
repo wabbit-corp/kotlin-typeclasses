@@ -1041,6 +1041,54 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun genericCallsCanInferDerivedContextThroughLocalPrerequisites() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Eq<A> {
+                fun label(): String
+
+                companion object : ProductTypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Eq<Any?> {
+                            override fun label(): String = metadata.typeName.substringAfterLast('.') + "-derived"
+                        }
+                }
+            }
+
+            @Instance
+            object IntEq : Eq<Int> {
+                override fun label(): String = "int"
+            }
+
+            @Derive(Eq::class)
+            data class Box<A>(val value: A)
+
+            context(_: Eq<Box<A>>)
+            fun <A> choose(): String = summon<Eq<Box<A>>>().label()
+
+            fun main() {
+                context(IntEq) {
+                    println(choose())
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "Box-derived",
+        )
+    }
+
     @Test fun reportsAmbiguityBetweenSpecificAndGenericInstances() {
         val source =
             """
@@ -1081,16 +1129,13 @@ class ResolutionTest : IntegrationTestSupport() {
             fun <A> render(): String = summon<Show<A>>().show()
 
             fun main() {
-                println(render<Box<Int>>()) // E:TC_NO_CONTEXT_ARGUMENT generic and specific instances both match
+                println(render<Box<Int>>()) // E:TC_AMBIGUOUS_INSTANCE generic and specific instances both match
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    ExpectedDiagnostic.Error(messageRegex = "(?i)no context argument.*show"),
-                ),
+            expectedDiagnostics = listOf(expectedAmbiguousInstance("show", "box")),
         )
     }
 
@@ -2629,7 +2674,7 @@ class ResolutionTest : IntegrationTestSupport() {
             fun <A> which(): String = summon<Eq<A>>().label()
 
             fun main() {
-                println(which<List<Int?>>()) // E:TC_NO_CONTEXT_ARGUMENT decide whether specific or generic nullable rule should win
+                println(which<List<Int?>>()) // E:TC_AMBIGUOUS_INSTANCE decide whether specific or generic nullable rule should win
             }
             """.trimIndent()
 

@@ -72,16 +72,13 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             fun <A> render(value: A): String = show.show(value)
 
             fun main() {
-                println(render(Box(1))) // E:TC_NO_CONTEXT_ARGUMENT ambiguous Show<Box> resolution
+                println(render(Box(1))) // E:TC_AMBIGUOUS_INSTANCE ambiguous Show<Box> resolution
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    ExpectedDiagnostic.Error(messageRegex = "(?i)(duplicate|no context argument)"),
-                ),
+            expectedDiagnostics = listOf(expectedAmbiguousInstance("show", "box")),
         )
     }
 
