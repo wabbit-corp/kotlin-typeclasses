@@ -6540,6 +6540,7 @@ private fun inferOriginalTypeArguments(
         }
     val bindableVariableIds = originalTypeParameterBySymbol.values.mapTo(linkedSetOf(), TcTypeParameter::id)
     val bindings = linkedMapOf<String, TcType>()
+    val classifierVariancesCache = linkedMapOf<String, List<Variance>>()
 
     original.typeParameters.forEach { typeParameter ->
         val currentType = currentCallTypeArgumentsByName[typeParameter.name.asString()] ?: return@forEach
@@ -6561,8 +6562,34 @@ private fun inferOriginalTypeArguments(
                 ?.substituteType(bindings)
                 ?: return
         actualType.inferenceModels(visibleTypeParameters, configuration).forEach { actualModel ->
-            val candidateBindings = unifyTypes(expectedModel, actualModel, bindableVariableIds) ?: return@forEach
-            mergeTypeBindings(bindings, candidateBindings, bindableVariableIds)
+            val candidateBindings =
+                inferTypeBindings(
+                    expected = expectedModel,
+                    actual = actualModel,
+                    bindableVariableIds = bindableVariableIds,
+                    variancesForClassifier = { classifierId ->
+                        classifierVariancesCache.getOrPut(classifierId) {
+                            val classId = runCatching { ClassId.fromString(classifierId) }.getOrNull() ?: return@getOrPut emptyList()
+                            pluginContext.referenceClass(classId)?.owner?.typeParameters?.map(IrTypeParameter::variance).orEmpty()
+                        }
+                    },
+                    isProvableSubtype = { sub, sup ->
+                        when {
+                            sub == sup -> true
+                            else ->
+                                runCatching {
+                                    canProveSubtype(
+                                        subType = modelToIrType(sub, visibleTypeParameters, pluginContext),
+                                        superType = modelToIrType(sup, visibleTypeParameters, pluginContext),
+                                        pluginContext = pluginContext,
+                                    )
+                                }.getOrDefault(false)
+                        }
+                    },
+                )
+            if (candidateBindings.isNotEmpty()) {
+                mergeTypeBindings(bindings, candidateBindings, bindableVariableIds)
+            }
         }
     }
 

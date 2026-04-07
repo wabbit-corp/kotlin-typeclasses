@@ -7,6 +7,7 @@
 
 package one.wabbit.typeclass.plugin
 
+import one.wabbit.typeclass.plugin.model.TcTypeParameter
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.FirConstructor
 import org.jetbrains.kotlin.fir.declarations.FirTypeParameterRef
@@ -30,12 +31,14 @@ import org.jetbrains.kotlin.fir.types.ConeStubType
 import org.jetbrains.kotlin.fir.types.ConeTypeParameterType
 import org.jetbrains.kotlin.fir.types.ConeTypeVariableType
 import org.jetbrains.kotlin.fir.types.FirTypeProjectionWithVariance
+import org.jetbrains.kotlin.fir.types.ProjectionKind
 import org.jetbrains.kotlin.fir.types.coneType
 import org.jetbrains.kotlin.fir.types.lowerBoundIfFlexible
 import org.jetbrains.kotlin.fir.types.resolvedType
 import org.jetbrains.kotlin.fir.types.type
 import org.jetbrains.kotlin.fir.types.typeContext
 import org.jetbrains.kotlin.fir.types.withNullabilityOf
+import org.jetbrains.kotlin.types.Variance
 
 internal fun FirExpression.safeResolvedOrInferredTypeOrNull(session: FirSession): ConeKotlinType? {
     val resolved = safeResolvedTypeOrNull()
@@ -58,20 +61,30 @@ internal fun inferFunctionTypeArgumentsFromCallSite(
     val function = resolvedFunction.fir
     val inferred = linkedMapOf<FirTypeParameterSymbol, ConeKotlinType>()
     val functionTypeParameters = function.typeParameters.mapTo(linkedSetOf(), FirTypeParameterRef::symbol)
+    val inferenceTypeParameterModels =
+        buildInferenceTypeParameterModels(
+            bindableTypeParameters = functionTypeParameters,
+            containingFunction = containingFunction,
+        )
     function.typeParameters.zip(functionCall.typeArguments).forEach { (typeParameter, typeArgument) ->
         val explicitType = (typeArgument as? FirTypeProjectionWithVariance)?.typeRef?.coneType ?: return@forEach
         inferred[typeParameter.symbol] = explicitType
     }
 
+    val directConstraints = linkedMapOf<FirTypeParameterSymbol, MutableTypeBindingConstraints<ConeKotlinType>>()
     function.receiverParameter?.typeRef?.coneType?.let { receiverType ->
         functionCall.explicitReceiver
             ?.safeResolvedOrInferredTypeOrNull(session)
             ?.let { explicitReceiverType ->
-                unifyFunctionTypeArgumentsForInference(
+                collectFunctionTypeArgumentConstraintsForInference(
+                    session = session,
+                    sharedState = sharedState,
+                    typeParameterModels = inferenceTypeParameterModels,
                     parameterType = receiverType,
                     argumentType = explicitReceiverType,
                     functionTypeParameters = functionTypeParameters,
-                    inferred = inferred,
+                    excludedSymbols = inferred.keys,
+                    constraintsBySymbol = directConstraints,
                 )
             }
     }
@@ -83,11 +96,15 @@ internal fun inferFunctionTypeArgumentsFromCallSite(
                 (argument as? FirFunctionCall)?.inferReturnTypeOrNull(session)
                     ?: argument.safeResolvedOrInferredTypeOrNull(session)
                     ?: return@forEach
-            unifyFunctionTypeArgumentsForInference(
+            collectFunctionTypeArgumentConstraintsForInference(
+                session = session,
+                sharedState = sharedState,
+                typeParameterModels = inferenceTypeParameterModels,
                 parameterType = parameter.inferenceParameterType(),
                 argumentType = argumentType,
                 functionTypeParameters = functionTypeParameters,
-                inferred = inferred,
+                excludedSymbols = inferred.keys,
+                constraintsBySymbol = directConstraints,
             )
         }
     } else {
@@ -97,12 +114,26 @@ internal fun inferFunctionTypeArgumentsFromCallSite(
                 nestedCall?.inferReturnTypeOrNull(session)
                     ?: argument.safeResolvedOrInferredTypeOrNull(session)
                     ?: return@forEach
-            unifyFunctionTypeArgumentsForInference(
+            collectFunctionTypeArgumentConstraintsForInference(
+                session = session,
+                sharedState = sharedState,
+                typeParameterModels = inferenceTypeParameterModels,
                 parameterType = parameter.inferenceParameterType(),
                 argumentType = argumentType,
                 functionTypeParameters = functionTypeParameters,
-                inferred = inferred,
+                excludedSymbols = inferred.keys,
+                constraintsBySymbol = directConstraints,
             )
+        }
+    }
+    resolveFirTypeBindingConstraints(
+        session = session,
+        sharedState = sharedState,
+        typeParameterModels = inferenceTypeParameterModels,
+        constraintsBySymbol = directConstraints,
+    ).resolvedByKey.forEach { (symbol, type) ->
+        if (symbol !in inferred) {
+            inferred[symbol] = type
         }
     }
 
@@ -117,22 +148,28 @@ internal fun inferFunctionTypeArgumentsFromCallSite(
                 }
         }
 
-    val localContextInferred = linkedMapOf<FirTypeParameterSymbol, ConeKotlinType>()
-    val conflictingLocalBindings = linkedSetOf<FirTypeParameterSymbol>()
+    val localContextConstraints = linkedMapOf<FirTypeParameterSymbol, MutableTypeBindingConstraints<ConeKotlinType>>()
     function.contextParameters.forEach { parameter ->
         localContextTypes.forEach { localContextType ->
-            unifyLocalContextTypeArgumentsForInference(
+            collectFunctionTypeArgumentConstraintsForInference(
+                session = session,
+                sharedState = sharedState,
+                typeParameterModels = inferenceTypeParameterModels,
                 parameterType = parameter.returnTypeRef.coneType,
                 argumentType = localContextType,
                 functionTypeParameters = functionTypeParameters,
-                inferred = inferred,
-                localContextInferred = localContextInferred,
-                conflictingLocalBindings = conflictingLocalBindings,
+                excludedSymbols = inferred.keys,
+                constraintsBySymbol = localContextConstraints,
             )
         }
     }
-    localContextInferred.forEach { (symbol, type) ->
-        if (symbol !in conflictingLocalBindings && symbol !in inferred) {
+    resolveFirTypeBindingConstraints(
+        session = session,
+        sharedState = sharedState,
+        typeParameterModels = inferenceTypeParameterModels,
+        constraintsBySymbol = localContextConstraints,
+    ).resolvedByKey.forEach { (symbol, type) ->
+        if (symbol !in inferred) {
             inferred[symbol] = type
         }
     }
@@ -158,6 +195,12 @@ internal fun FirFunctionCall.inferReturnTypeOrNull(session: FirSession): ConeKot
     }
 
     val inferred = linkedMapOf<FirTypeParameterSymbol, ConeKotlinType>()
+    val inferenceTypeParameterModels =
+        buildInferenceTypeParameterModels(
+            bindableTypeParameters = functionTypeParameters,
+            containingFunction = null,
+        )
+    val directConstraints = linkedMapOf<FirTypeParameterSymbol, MutableTypeBindingConstraints<ConeKotlinType>>()
 
     function.typeParameters.zip(typeArguments).forEach { (typeParameter, typeArgument) ->
         val explicitType = (typeArgument as? FirTypeProjectionWithVariance)?.typeRef?.coneType ?: return@forEach
@@ -168,22 +211,40 @@ internal fun FirFunctionCall.inferReturnTypeOrNull(session: FirSession): ConeKot
     if (parameterByArgument != null) {
         parameterByArgument.forEach { (argument, parameter) ->
             val argumentType = argument.safeResolvedOrInferredTypeOrNull(session) ?: return@forEach
-            unifyFunctionTypeArgumentsForInference(
+            collectFunctionTypeArgumentConstraintsForInference(
+                session = session,
+                sharedState = null,
+                typeParameterModels = inferenceTypeParameterModels,
                 parameterType = parameter.inferenceParameterType(),
                 argumentType = argumentType,
                 functionTypeParameters = functionTypeParameters,
-                inferred = inferred,
+                excludedSymbols = inferred.keys,
+                constraintsBySymbol = directConstraints,
             )
         }
     } else {
         function.valueParameters.zip(arguments).forEach { (parameter, argument) ->
             val argumentType = argument.safeResolvedOrInferredTypeOrNull(session) ?: return@forEach
-            unifyFunctionTypeArgumentsForInference(
+            collectFunctionTypeArgumentConstraintsForInference(
+                session = session,
+                sharedState = null,
+                typeParameterModels = inferenceTypeParameterModels,
                 parameterType = parameter.inferenceParameterType(),
                 argumentType = argumentType,
                 functionTypeParameters = functionTypeParameters,
-                inferred = inferred,
+                excludedSymbols = inferred.keys,
+                constraintsBySymbol = directConstraints,
             )
+        }
+    }
+    resolveFirTypeBindingConstraints(
+        session = session,
+        sharedState = null,
+        typeParameterModels = inferenceTypeParameterModels,
+        constraintsBySymbol = directConstraints,
+    ).resolvedByKey.forEach { (symbol, type) ->
+        if (symbol !in inferred) {
+            inferred[symbol] = type
         }
     }
 
@@ -211,14 +272,34 @@ private fun FirFunctionCall.inferConstructedClassTypeOrNull(session: FirSession)
         return resolved
     }
     val inferred = linkedMapOf<FirTypeParameterSymbol, ConeKotlinType>()
+    val inferenceTypeParameterModels =
+        buildInferenceTypeParameterModels(
+            bindableTypeParameters = classTypeParameters,
+            containingFunction = null,
+        )
+    val directConstraints = linkedMapOf<FirTypeParameterSymbol, MutableTypeBindingConstraints<ConeKotlinType>>()
     primaryConstructor.valueParameters.zip(arguments).forEach { (parameter, argument) ->
         val argumentType = argument.safeResolvedOrInferredTypeOrNull(session) ?: return@forEach
-        unifyFunctionTypeArgumentsForInference(
+        collectFunctionTypeArgumentConstraintsForInference(
+            session = session,
+            sharedState = null,
+            typeParameterModels = inferenceTypeParameterModels,
             parameterType = parameter.returnTypeRef.coneType,
             argumentType = argumentType,
             functionTypeParameters = classTypeParameters,
-            inferred = inferred,
+            excludedSymbols = inferred.keys,
+            constraintsBySymbol = directConstraints,
         )
+    }
+    resolveFirTypeBindingConstraints(
+        session = session,
+        sharedState = null,
+        typeParameterModels = inferenceTypeParameterModels,
+        constraintsBySymbol = directConstraints,
+    ).resolvedByKey.forEach { (symbol, type) ->
+        if (symbol !in inferred) {
+            inferred[symbol] = type
+        }
     }
     return substituteInferredTypes(
         type = resolved,
@@ -254,20 +335,32 @@ private fun ConeKotlinType.containsTypeParameterReference(): Boolean =
         else -> false
     }
 
-private fun unifyFunctionTypeArgumentsForInference(
+internal fun collectFunctionTypeArgumentConstraintsForInference(
+    session: FirSession,
+    sharedState: TypeclassPluginSharedState?,
+    typeParameterModels: MutableMap<FirTypeParameterSymbol, TcTypeParameter>,
     parameterType: ConeKotlinType,
     argumentType: ConeKotlinType,
     functionTypeParameters: Set<FirTypeParameterSymbol>,
-    inferred: MutableMap<FirTypeParameterSymbol, ConeKotlinType>,
+    excludedSymbols: Set<FirTypeParameterSymbol>,
+    constraintsBySymbol: MutableMap<FirTypeParameterSymbol, MutableTypeBindingConstraints<ConeKotlinType>>,
+    position: ExactTypeArgumentPosition = ExactTypeArgumentPosition.EXACT,
 ) {
     val normalizedArgumentType = argumentType.approximateIntegerLiteralType()
+    ensureInferenceTypeParameterModels(typeParameterModels, parameterType, normalizedArgumentType)
     when (val loweredParameter = parameterType.lowerBoundIfFlexible()) {
         is ConeTypeParameterType -> {
             val symbol = loweredParameter.lookupTag.typeParameterSymbol
-            if (symbol !in functionTypeParameters || symbol in inferred) {
+            if (symbol !in functionTypeParameters || symbol in excludedSymbols) {
                 return
             }
-            inferred[symbol] = normalizedArgumentType
+            val actualModel = coneTypeToModel(normalizedArgumentType, typeParameterModels) ?: return
+            recordTypeBindingConstraint(
+                constraintsByKey = constraintsBySymbol,
+                key = symbol,
+                candidate = TypeBindingBound(value = normalizedArgumentType, model = actualModel),
+                position = position,
+            )
             return
         }
 
@@ -276,10 +369,16 @@ private fun unifyFunctionTypeArgumentsForInference(
                 (loweredParameter.typeConstructor.originalTypeParameter as? ConeTypeParameterLookupTag)
                     ?.typeParameterSymbol
                     ?: return
-            if (symbol !in functionTypeParameters || symbol in inferred) {
+            if (symbol !in functionTypeParameters || symbol in excludedSymbols) {
                 return
             }
-            inferred[symbol] = normalizedArgumentType
+            val actualModel = coneTypeToModel(normalizedArgumentType, typeParameterModels) ?: return
+            recordTypeBindingConstraint(
+                constraintsByKey = constraintsBySymbol,
+                key = symbol,
+                candidate = TypeBindingBound(value = normalizedArgumentType, model = actualModel),
+                position = position,
+            )
             return
         }
 
@@ -292,80 +391,32 @@ private fun unifyFunctionTypeArgumentsForInference(
         return
     }
 
-    parameterClassLike.typeArguments.zip(argumentClassLike.typeArguments).forEach { (parameterArgument, actualArgument) ->
-        val nestedParameterType = parameterArgument.type ?: return@forEach
-        val nestedActualType = actualArgument.type ?: return@forEach
-        unifyFunctionTypeArgumentsForInference(
+    val declaredVariances =
+        (session.symbolProvider.getClassLikeSymbolByClassId(parameterClassLike.lookupTag.classId) as? FirRegularClassSymbol)
+            ?.fir
+            ?.typeParameters
+            ?.map { typeParameter -> typeParameter.symbol.fir.variance }
+            .orEmpty()
+
+    parameterClassLike.typeArguments.zip(argumentClassLike.typeArguments).forEachIndexed { index, (parameterArgument, actualArgument) ->
+        val nestedParameterType = parameterArgument.type ?: return@forEachIndexed
+        val nestedActualType = actualArgument.type ?: return@forEachIndexed
+        val nestedVariance =
+            nestedInferenceVariance(
+                parameterKind = parameterArgument.kind,
+                actualKind = actualArgument.kind,
+                declaredVariance = declaredVariances.getOrNull(index) ?: Variance.INVARIANT,
+            ) ?: return@forEachIndexed
+        collectFunctionTypeArgumentConstraintsForInference(
+            session = session,
+            sharedState = sharedState,
+            typeParameterModels = typeParameterModels,
             parameterType = nestedParameterType,
             argumentType = nestedActualType,
             functionTypeParameters = functionTypeParameters,
-            inferred = inferred,
-        )
-    }
-}
-
-private fun unifyLocalContextTypeArgumentsForInference(
-    parameterType: ConeKotlinType,
-    argumentType: ConeKotlinType,
-    functionTypeParameters: Set<FirTypeParameterSymbol>,
-    inferred: Map<FirTypeParameterSymbol, ConeKotlinType>,
-    localContextInferred: MutableMap<FirTypeParameterSymbol, ConeKotlinType>,
-    conflictingLocalBindings: MutableSet<FirTypeParameterSymbol>,
-) {
-    val normalizedArgumentType = argumentType.approximateIntegerLiteralType()
-    when (val loweredParameter = parameterType.lowerBoundIfFlexible()) {
-        is ConeTypeParameterType -> {
-            val symbol = loweredParameter.lookupTag.typeParameterSymbol
-            if (symbol !in functionTypeParameters || symbol in inferred || symbol in conflictingLocalBindings) {
-                return
-            }
-            val existing = localContextInferred[symbol]
-            if (existing == null) {
-                localContextInferred[symbol] = normalizedArgumentType
-            } else if (existing != normalizedArgumentType) {
-                localContextInferred.remove(symbol)
-                conflictingLocalBindings += symbol
-            }
-            return
-        }
-
-        is ConeTypeVariableType -> {
-            val symbol =
-                (loweredParameter.typeConstructor.originalTypeParameter as? ConeTypeParameterLookupTag)
-                    ?.typeParameterSymbol
-                    ?: return
-            if (symbol !in functionTypeParameters || symbol in inferred || symbol in conflictingLocalBindings) {
-                return
-            }
-            val existing = localContextInferred[symbol]
-            if (existing == null) {
-                localContextInferred[symbol] = normalizedArgumentType
-            } else if (existing != normalizedArgumentType) {
-                localContextInferred.remove(symbol)
-                conflictingLocalBindings += symbol
-            }
-            return
-        }
-
-        else -> Unit
-    }
-
-    val parameterClassLike = parameterType.lowerBoundIfFlexible() as? ConeClassLikeType ?: return
-    val argumentClassLike = normalizedArgumentType.lowerBoundIfFlexible() as? ConeClassLikeType ?: return
-    if (parameterClassLike.lookupTag.classId != argumentClassLike.lookupTag.classId) {
-        return
-    }
-
-    parameterClassLike.typeArguments.zip(argumentClassLike.typeArguments).forEach { (parameterArgument, actualArgument) ->
-        val nestedParameterType = parameterArgument.type ?: return@forEach
-        val nestedActualType = actualArgument.type ?: return@forEach
-        unifyLocalContextTypeArgumentsForInference(
-            parameterType = nestedParameterType,
-            argumentType = nestedActualType,
-            functionTypeParameters = functionTypeParameters,
-            inferred = inferred,
-            localContextInferred = localContextInferred,
-            conflictingLocalBindings = conflictingLocalBindings,
+            excludedSymbols = excludedSymbols,
+            constraintsBySymbol = constraintsBySymbol,
+            position = position.compose(nestedVariance),
         )
     }
 }
@@ -417,5 +468,83 @@ private class InferredTypeSubstitutor(
         return replacement
             .withNullabilityOf(type, typeContext)
             .withCombinedAttributesFrom(type)
+    }
+}
+
+internal fun buildInferenceTypeParameterModels(
+    bindableTypeParameters: Set<FirTypeParameterSymbol>,
+    containingFunction: FirNamedFunctionSymbol?,
+): MutableMap<FirTypeParameterSymbol, TcTypeParameter> {
+    val referencedSymbols = linkedSetOf<FirTypeParameterSymbol>()
+    containingFunction?.fir?.typeParameters?.forEach { typeParameter -> referencedSymbols += typeParameter.symbol }
+    referencedSymbols += bindableTypeParameters
+    val result = linkedMapOf<FirTypeParameterSymbol, TcTypeParameter>()
+    referencedSymbols.forEachIndexed { index, symbol ->
+        result[symbol] =
+            TcTypeParameter(
+                id = "inference:$index:${symbol.name.asString()}",
+                displayName = symbol.name.asString(),
+            )
+    }
+    return result
+}
+
+private fun ensureInferenceTypeParameterModels(
+    typeParameterModels: MutableMap<FirTypeParameterSymbol, TcTypeParameter>,
+    vararg types: ConeKotlinType,
+) {
+    val referencedSymbols = linkedSetOf<FirTypeParameterSymbol>()
+    types.forEach { type -> referencedSymbols.collectBindableTypeParameters(type) }
+    referencedSymbols.forEach { symbol ->
+        typeParameterModels.getOrPut(symbol) {
+            TcTypeParameter(
+                id = "inference:${typeParameterModels.size}:${symbol.name.asString()}",
+                displayName = symbol.name.asString(),
+            )
+        }
+    }
+}
+
+internal fun resolveFirTypeBindingConstraints(
+    session: FirSession,
+    sharedState: TypeclassPluginSharedState?,
+    typeParameterModels: Map<FirTypeParameterSymbol, TcTypeParameter>,
+    constraintsBySymbol: Map<FirTypeParameterSymbol, MutableTypeBindingConstraints<ConeKotlinType>>,
+): ResolvedTypeBindingConstraints<FirTypeParameterSymbol, ConeKotlinType> {
+    val exactContext =
+        FirBuiltinGoalExactContext(
+            session = session,
+            typeParameterModels = typeParameterModels,
+            variableSymbolsById = typeParameterModels.entries.associate { (symbol, parameter) -> parameter.id to symbol },
+        )
+    return resolveTypeBindingConstraints(
+        constraintsByKey = constraintsBySymbol,
+        isProvableSubtype = { sub, sup ->
+            when {
+                sub == sup -> true
+                sharedState != null -> sharedState.provablySubtype(sub, sup, exactContext)
+                else -> false
+            }
+        },
+    )
+}
+
+private fun nestedInferenceVariance(
+    parameterKind: ProjectionKind,
+    actualKind: ProjectionKind,
+    declaredVariance: Variance,
+): Variance? {
+    val parameterVariance =
+        when (parameterKind) {
+            ProjectionKind.STAR -> return null
+            ProjectionKind.IN -> Variance.IN_VARIANCE
+            ProjectionKind.OUT -> Variance.OUT_VARIANCE
+            ProjectionKind.INVARIANT -> declaredVariance
+        }
+    return when (actualKind) {
+        ProjectionKind.STAR -> null
+        ProjectionKind.INVARIANT -> parameterVariance
+        ProjectionKind.IN -> if (parameterVariance == Variance.IN_VARIANCE) Variance.IN_VARIANCE else null
+        ProjectionKind.OUT -> if (parameterVariance == Variance.OUT_VARIANCE) Variance.OUT_VARIANCE else null
     }
 }

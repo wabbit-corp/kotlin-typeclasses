@@ -85,6 +85,17 @@ internal class TypeclassPluginSharedState(
     fun binaryGeneratedDerivedMetadataForIr(owner: ClassId): List<GeneratedDerivedMetadata> =
         binaryGeneratedMetadataLoader.generatedMetadataFor(owner)
 
+    fun provablySubtype(
+        sub: TcType,
+        sup: TcType,
+        exactBuiltinGoalContext: FirBuiltinGoalExactContext? = null,
+    ): Boolean =
+        provablySupportsBuiltinSubtypeGoal(
+            goal = TcType.Constructor(SUBTYPE_CLASS_ID.asString(), listOf(sub, sup)),
+            classInfoById = resolutionIndex(exactBuiltinGoalContext?.session ?: error("Missing FIR session for subtype check")).classInfoById,
+            exactContext = exactBuiltinGoalContext,
+        )
+
     fun rulesForGoal(
         session: FirSession,
         goal: TcType,
