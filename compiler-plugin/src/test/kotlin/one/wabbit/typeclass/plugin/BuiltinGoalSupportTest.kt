@@ -203,6 +203,34 @@ class BuiltinGoalSupportTest {
     }
 
     @Test
+    fun `cross-classifier generic subtype goals are not proven from raw classifier reachability`() {
+        val unsoundGoal =
+            typeConstructor(
+                SUBTYPE_CLASS_ID.asString(),
+                typeConstructor("kotlin.collections.List", typeConstructor("kotlin.String")),
+                typeConstructor("kotlin.collections.Collection", typeConstructor("kotlin.Int")),
+            )
+        val classInfo =
+            mapOf(
+                "kotlin.collections.List" to
+                    VisibleClassHierarchyInfo(
+                        superClassifiers = setOf("kotlin.collections.Collection"),
+                        isSealed = false,
+                        typeParameterVariances = listOf(Variance.OUT_VARIANCE),
+                    ),
+                "kotlin.collections.Collection" to
+                    VisibleClassHierarchyInfo(
+                        superClassifiers = emptySet(),
+                        isSealed = false,
+                        typeParameterVariances = listOf(Variance.OUT_VARIANCE),
+                    ),
+            )
+
+        assertFalse(supportsBuiltinSubtypeGoal(unsoundGoal, classInfo))
+        assertFalse(provablySupportsBuiltinSubtypeGoal(unsoundGoal, classInfo))
+    }
+
+    @Test
     fun `provable-only is-typeclass-instance support rejects speculative variables`() {
         val speculativeGoal =
             typeConstructor(

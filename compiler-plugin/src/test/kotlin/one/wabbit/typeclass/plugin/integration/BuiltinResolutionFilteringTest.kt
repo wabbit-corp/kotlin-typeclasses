@@ -92,6 +92,48 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun genericSupertypeReachabilityDoesNotFabricateSubtypeEvidence() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Subtype
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun label(): String = "int"
+            }
+
+            @Instance
+            context(_: Subtype<List<String>, Collection<Int>>)
+            fun impossibleShow(): Show<Int> =
+                object : Show<Int> {
+                    override fun label(): String = "impossible"
+                }
+
+            context(_: Show<Int>)
+            fun render(): String = summon<Show<Int>>().label()
+
+            fun main() {
+                println(render())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "int",
+        )
+    }
+
+    @Test
     fun speculativeSubtypeGoalFailsInFirInsteadOfIr() {
         val source =
             """

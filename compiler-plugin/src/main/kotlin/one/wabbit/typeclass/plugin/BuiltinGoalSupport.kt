@@ -351,6 +351,9 @@ private fun constructorSubtypeFeasibility(
     if (sub.classifierId == sup.classifierId) {
         return sameClassifierSubtypeFeasibility(sub, sup, classInfoById[sub.classifierId], classInfoById, exactContext)
     }
+    if (sub.arguments.isNotEmpty() || sup.arguments.isNotEmpty()) {
+        return BuiltinGoalFeasibility.IMPOSSIBLE
+    }
     return hasSupertypePathFeasibility(sub.classifierId, sup.classifierId, classInfoById)
 }
 
