@@ -18,9 +18,48 @@ import org.jetbrains.kotlin.types.Variance
 import org.jetbrains.kotlin.types.model.CaptureStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class FirDerivationFeasibilityTest {
+    @Test
+    fun `greedy fallback assignment preserves multiplicity for equal sources`() {
+        val sources =
+            listOf(
+                CollapsingField(identity = "first", kind = "dup"),
+                CollapsingField(identity = "second", kind = "dup"),
+            )
+        val targets = listOf("first", "second")
+
+        assertTrue(
+            greedyUniqueAssignmentPreservingMultiplicity(
+                sources = sources,
+                targets = targets,
+            ) { source, target ->
+                source.identity == target
+            },
+        )
+    }
+
+    @Test
+    fun `greedy fallback assignment still rejects ambiguous matches`() {
+        val sources =
+            listOf(
+                CollapsingField(identity = "first", kind = "dup"),
+                CollapsingField(identity = "second", kind = "dup"),
+            )
+
+        assertFalse(
+            greedyUniqueAssignmentPreservingMultiplicity(
+                sources = sources,
+                targets = listOf("either"),
+            ) { _, _ ->
+                true
+            },
+        )
+    }
+
     @Test
     fun `unsupported transported cone shape is rejected instead of ignored`() {
         val transported = boundTypeParameterSymbol("A")
@@ -50,6 +89,15 @@ class FirDerivationFeasibilityTest {
             status.message,
         )
     }
+}
+
+private class CollapsingField(
+    val identity: String,
+    private val kind: String,
+) {
+    override fun equals(other: Any?): Boolean = other is CollapsingField && kind == other.kind
+
+    override fun hashCode(): Int = kind.hashCode()
 }
 
 private fun boundTypeParameterSymbol(name: String): FirTypeParameterSymbol {

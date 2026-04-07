@@ -303,15 +303,12 @@ internal class FirDirectTransportPlanner(
             return true
         }
 
-        val remaining = sourceNonUnit.toMutableSet()
-        for (targetField in targetNonUnit) {
-            val viable = remaining.filter { sourceField -> canTransport(sourceField.type, targetField.type, visiting) }
-            if (viable.size != 1) {
-                return false
-            }
-            remaining -= viable.single()
+        return greedyUniqueAssignmentPreservingMultiplicity(
+            sources = sourceNonUnit,
+            targets = targetNonUnit,
+        ) { sourceField, targetField ->
+            canTransport(sourceField.type, targetField.type, visiting)
         }
-        return true
     }
 
     private fun canTransportSum(
@@ -1313,6 +1310,22 @@ private data class FirTransparentFieldInfo(
     val type: TcType,
     val isUnitLike: Boolean,
 )
+
+internal fun <Source, Target> greedyUniqueAssignmentPreservingMultiplicity(
+    sources: List<Source>,
+    targets: List<Target>,
+    compatible: (Source, Target) -> Boolean,
+): Boolean {
+    val remaining = sources.toMutableList()
+    for (target in targets) {
+        val viableIndices = remaining.indices.filter { index -> compatible(remaining[index], target) }
+        if (viableIndices.size != 1) {
+            return false
+        }
+        remaining.removeAt(viableIndices.single())
+    }
+    return true
+}
 
 private data class FirFunctionTypeInfo(
     val kind: String,
