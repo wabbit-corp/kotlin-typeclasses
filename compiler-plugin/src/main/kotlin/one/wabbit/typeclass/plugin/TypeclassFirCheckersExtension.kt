@@ -856,6 +856,44 @@ private fun FirTypeclassFunctionDeclaration.knownDeriverReturnExpressions(): Lis
     return expressions.toList()
 }
 
+private fun org.jetbrains.kotlin.fir.declarations.FirPropertyAccessor.knownGetterReturnExpressions(): List<FirExpression> {
+    val expressions = linkedSetOf<FirExpression>()
+    val body = body ?: return emptyList()
+    body.statements.lastOrNull()?.let { statement ->
+        when (statement) {
+            is FirReturnExpression -> expressions += statement.result
+            is FirExpression -> expressions += statement
+        }
+    }
+    body.acceptChildren(
+        object : FirDefaultVisitorVoid() {
+            override fun visitElement(element: FirElement) {
+                element.acceptChildren(this)
+            }
+
+            override fun visitFunction(function: FirFunction) {
+                return
+            }
+
+            override fun visitAnonymousFunctionExpression(anonymousFunctionExpression: FirAnonymousFunctionExpression) {
+                return
+            }
+
+            override fun visitRegularClass(regularClass: FirRegularClass) {
+                return
+            }
+
+            override fun visitReturnExpression(returnExpression: FirReturnExpression) {
+                if (returnExpression.target.labeledElement === this@knownGetterReturnExpressions) {
+                    expressions += returnExpression.result
+                }
+                returnExpression.result.acceptChildren(this)
+            }
+        },
+    )
+    return expressions.toList()
+}
+
 private fun FirExpression.knownReturnedTypeclassConstructors(
     session: FirSession,
     configuration: TypeclassConfiguration,
@@ -895,9 +933,15 @@ private fun FirExpression.knownReturnedTypeclassConstructors(
             try {
                 when (val declaration = symbol.fir) {
                     is FirProperty ->
-                        declaration.initializer
-                            ?.knownReturnedTypeclassConstructors(session, configuration, visitedCallables)
-                            ?.forEach(knownConstructors::add)
+                        buildList {
+                            declaration.initializer?.let(::add)
+                            declaration.getter
+                                ?.knownGetterReturnExpressions()
+                                ?.let(::addAll)
+                        }.forEach { nested ->
+                            nested.knownReturnedTypeclassConstructors(session, configuration, visitedCallables)
+                                .forEach(knownConstructors::add)
+                        }
 
                     is FirTypeclassFunctionDeclaration ->
                         declaration.knownDeriverReturnExpressions()
