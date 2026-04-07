@@ -1522,6 +1522,12 @@ private class TypeclassIrCallTransformer(
                 )
                 return@getOrPut false
             }
+            if (deriveMethod.origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB && deriveMethod.body == null) {
+                // External stubs do not carry bodies, so source-validated Any-return derivers are
+                // indistinguishable from invalid ones here. Trust the producer once the declared
+                // return type does not already contradict the owning typeclass.
+                return@getOrPut true
+            }
             val knownReturnExpressions = deriveMethod.knownDeriverReturnExpressions()
             if (knownReturnExpressions.isEmpty()) {
                 pluginContext.reportTypeclassError(

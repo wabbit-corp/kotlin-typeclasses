@@ -242,6 +242,74 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun downstreamPluginCanDeriveAgainstBinaryAnyReturningProductDerivers() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-binary-any-deriver",
+                sources =
+                    mapOf(
+                        "dep/Api.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.Instance
+                            import one.wabbit.typeclass.ProductTypeclassDeriver
+                            import one.wabbit.typeclass.ProductTypeclassMetadata
+                            import one.wabbit.typeclass.Typeclass
+
+                            @Typeclass
+                            interface Show<A> {
+                                fun show(value: A): String
+
+                                companion object : ProductTypeclassDeriver {
+                                    private object ExistingShow : Show<Any?> {
+                                        override fun show(value: Any?): String = "binary-any"
+                                    }
+
+                                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any = ExistingShow
+                                }
+                            }
+
+                            data class ShownInt(val value: Int) {
+                                companion object {
+                                    @Instance
+                                    val show: Show<ShownInt> =
+                                        object : Show<ShownInt> {
+                                            override fun show(value: ShownInt): String = value.value.toString()
+                                        }
+                                }
+                            }
+
+                            context(show: Show<A>)
+                            fun <A> render(value: A): String = show.show(value)
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.Show
+            import dep.ShownInt
+            import dep.render
+            import one.wabbit.typeclass.Derive
+
+            @Derive(Show::class)
+            data class Box(val value: ShownInt)
+
+            fun main() {
+                println(render(Box(ShownInt(1))))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "binary-any",
+            dependencies = listOf(dependency),
+        )
+    }
+
+    @Test
     fun downstreamPluginIgnoresRawDependencyDeriveViaAnnotationsWithoutGeneratedMetadata() {
         val dependency =
             HarnessDependency(
