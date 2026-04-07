@@ -632,7 +632,15 @@ internal fun IrBuilderWithScope.buildTransportExpression(
             }
 
         is TransportPlan.Sum -> {
-            var elseBranch: IrExpression = irAs(irNull(), plan.targetType)
+            var elseBranch: IrExpression =
+                irTypeclassInternalError(
+                    pluginContext = pluginContext,
+                    message =
+                        impossibleSumTransportRuntimeMessage(
+                            sourceType = plan.sourceType.render(),
+                            targetType = plan.targetType.render(),
+                        ),
+                )
             for (mapping in plan.mappings.asReversed()) {
                 elseBranch =
                     irIfThenElse(

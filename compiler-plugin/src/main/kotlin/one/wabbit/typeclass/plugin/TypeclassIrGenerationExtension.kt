@@ -1873,7 +1873,11 @@ private class TypeclassIrCallTransformer(
         val valueParameter = resolver.addValueParameter("value", anyType)
         resolver.body =
             DeclarationIrBuilder(pluginContext, resolver.symbol, startOffset, endOffset).irBlockBody {
-                var result: IrExpression = irInt(-1)
+                var result: IrExpression =
+                    irTypeclassInternalError(
+                        pluginContext = pluginContext,
+                        message = impossibleEnumOrdinalResolverRuntimeMessage(reference.targetClass.renderClassName()),
+                    )
                 for (index in shape.entries.indices.reversed()) {
                     val entry = shape.entries[index]
                     result =
@@ -1923,7 +1927,11 @@ private class TypeclassIrCallTransformer(
         val indexParameter = resolver.addValueParameter("index", intType)
         resolver.body =
             DeclarationIrBuilder(pluginContext, resolver.symbol, startOffset, endOffset).irBlockBody {
-                var result: IrExpression = irNull()
+                var result: IrExpression =
+                    irTypeclassInternalError(
+                        pluginContext = pluginContext,
+                        message = impossibleEnumValueResolverRuntimeMessage(reference.targetClass.renderClassName()),
+                    )
                 for (index in shape.entries.indices.reversed()) {
                     val entry = shape.entries[index]
                     result =
