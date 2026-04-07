@@ -57,9 +57,10 @@ private fun transportSyntheticVisibility(
         isPublic || (rendered.contains("public") && !rendered.contains("package")) ->
             TransportSyntheticVisibility.PUBLIC
 
-        isInternal || rendered.contains("internal") || rendered.contains("package") ->
+        isInternal || rendered.contains("internal") ->
             TransportSyntheticVisibility.INTERNAL
 
+        rendered.contains("package") ||
         rendered.contains("private") ||
             rendered.contains("protected") ||
             rendered.contains("local") ||
