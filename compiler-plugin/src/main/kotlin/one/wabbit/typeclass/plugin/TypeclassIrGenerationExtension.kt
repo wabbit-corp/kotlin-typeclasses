@@ -5302,14 +5302,6 @@ private fun TcType.isVarianceSubtypeOf(
         else -> false
     }
 
-private fun TcType.gadtSpecificityScore(): Int =
-    when (this) {
-        TcType.StarProjection -> 0
-        is TcType.Projected -> 1 + type.gadtSpecificityScore()
-        is TcType.Variable -> 0
-        is TcType.Constructor -> 1 + arguments.sumOf(TcType::gadtSpecificityScore)
-    }
-
 private data class WrapperResolutionShape(
     val dispatchReceiver: Boolean,
     val extensionReceiverType: String?,

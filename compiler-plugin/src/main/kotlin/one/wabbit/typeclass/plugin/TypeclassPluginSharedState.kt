@@ -487,6 +487,7 @@ private data class ResolutionIndex(
         val directTypeclassId: String,
         val targetType: TcType.Constructor,
         val prerequisiteTypes: List<TcType>,
+        val priority: Int,
     )
 
     private data class DeriveViaOption(
@@ -695,18 +696,13 @@ private data class ResolutionIndex(
         session: FirSession,
     ): List<InstanceRule> =
         shapeDerivationOptionsForGoal(goal, session).map { option ->
-            InstanceRule(
-                id =
-                    directRuleId(
-                        prefix = "derived",
-                        declarationKey = "${option.directTypeclassId}:${option.targetOwnerId}:${option.targetType.normalizedKey()}",
-                        providedType = goal,
-                        prerequisiteTypes = option.prerequisiteTypes,
-                    ),
-                typeParameters = emptyList(),
-                providedType = goal,
+            buildShapeDerivedRefinementRule(
+                goal = goal,
+                targetOwnerId = option.targetOwnerId,
+                directTypeclassId = option.directTypeclassId,
+                targetType = option.targetType,
                 prerequisiteTypes = option.prerequisiteTypes,
-                supportsRecursiveResolution = true,
+                priority = option.priority,
             )
         }
 
@@ -738,6 +734,12 @@ private data class ResolutionIndex(
                     directTypeclassId = match.directTypeclassId,
                     targetType = match.targetType,
                     prerequisiteTypes = prerequisiteTypes,
+                    priority =
+                        if (targetDeclaration.status.modality == Modality.SEALED) {
+                            match.targetType.gadtSpecificityScore()
+                        } else {
+                            0
+                        },
                 )
             }
         }.distinctBy { option ->
