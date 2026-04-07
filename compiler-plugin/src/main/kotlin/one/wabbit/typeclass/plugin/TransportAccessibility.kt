@@ -3,7 +3,10 @@
 package one.wabbit.typeclass.plugin
 
 import org.jetbrains.kotlin.descriptors.DescriptorVisibility
+import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.descriptors.Visibility
+import org.jetbrains.kotlin.descriptors.Visibilities
+import org.jetbrains.kotlin.load.java.JavaDescriptorVisibilities
 
 internal enum class TransportSyntheticAccessContext {
     SAME_MODULE_SOURCE,
@@ -29,43 +32,36 @@ internal fun TransportSyntheticAccessContext.allowsTransportVisibility(
     }
 
 internal fun Visibility.toTransportSyntheticVisibility(): TransportSyntheticVisibility =
-    transportSyntheticVisibility(
-        rendered = renderTransportVisibility(),
-        isPublic = this == org.jetbrains.kotlin.descriptors.Visibilities.Public,
-        isInternal = this == org.jetbrains.kotlin.descriptors.Visibilities.Internal,
-    )
+    when (this) {
+        Visibilities.Public -> TransportSyntheticVisibility.PUBLIC
+        Visibilities.Internal -> TransportSyntheticVisibility.INTERNAL
+        Visibilities.Private,
+        Visibilities.PrivateToThis,
+        Visibilities.Protected,
+        Visibilities.Local,
+        Visibilities.Inherited,
+        Visibilities.InvisibleFake,
+        Visibilities.Unknown,
+        -> TransportSyntheticVisibility.INACCESSIBLE
+
+        else -> TransportSyntheticVisibility.INACCESSIBLE
+    }
 
 internal fun DescriptorVisibility.toTransportSyntheticVisibility(): TransportSyntheticVisibility =
-    transportSyntheticVisibility(
-        rendered = renderTransportVisibility(),
-        isPublic = this == org.jetbrains.kotlin.descriptors.DescriptorVisibilities.PUBLIC,
-        isInternal = this == org.jetbrains.kotlin.descriptors.DescriptorVisibilities.INTERNAL,
-    )
-
-private fun Visibility.renderTransportVisibility(): String =
-    "$this ${externalDisplayName}".lowercase()
-
-private fun DescriptorVisibility.renderTransportVisibility(): String =
-    "$this ${externalDisplayName}".lowercase()
-
-private fun transportSyntheticVisibility(
-    rendered: String,
-    isPublic: Boolean,
-    isInternal: Boolean,
-): TransportSyntheticVisibility =
-    when {
-        isPublic || (rendered.contains("public") && !rendered.contains("package")) ->
-            TransportSyntheticVisibility.PUBLIC
-
-        isInternal || rendered.contains("internal") ->
-            TransportSyntheticVisibility.INTERNAL
-
-        rendered.contains("package") ||
-        rendered.contains("private") ||
-            rendered.contains("protected") ||
-            rendered.contains("local") ||
-            rendered.contains("invisible") ->
-            TransportSyntheticVisibility.INACCESSIBLE
+    when (this) {
+        DescriptorVisibilities.PUBLIC -> TransportSyntheticVisibility.PUBLIC
+        DescriptorVisibilities.INTERNAL -> TransportSyntheticVisibility.INTERNAL
+        DescriptorVisibilities.PRIVATE,
+        DescriptorVisibilities.PRIVATE_TO_THIS,
+        DescriptorVisibilities.PROTECTED,
+        DescriptorVisibilities.LOCAL,
+        DescriptorVisibilities.INHERITED,
+        DescriptorVisibilities.INVISIBLE_FAKE,
+        DescriptorVisibilities.UNKNOWN,
+        JavaDescriptorVisibilities.PACKAGE_VISIBILITY,
+        JavaDescriptorVisibilities.PROTECTED_STATIC_VISIBILITY,
+        JavaDescriptorVisibilities.PROTECTED_AND_PACKAGE,
+        -> TransportSyntheticVisibility.INACCESSIBLE
 
         else -> TransportSyntheticVisibility.INACCESSIBLE
     }
