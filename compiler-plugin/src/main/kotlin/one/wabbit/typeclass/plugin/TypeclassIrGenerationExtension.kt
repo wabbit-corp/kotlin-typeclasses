@@ -6695,11 +6695,12 @@ private fun inferOriginalTypeArguments(
         expectedType: IrType,
         actualType: IrType,
     ) {
+        val projectedActualType = projectTypeToMatchingInferenceSupertype(expectedType, actualType) ?: actualType
         val expectedModel =
             irTypeToModel(expectedType, originalTypeParameterBySymbol)
                 ?.substituteType(bindings)
                 ?: return
-        actualType.inferenceModels(visibleTypeParameters, configuration).forEach { actualModel ->
+        projectedActualType.inferenceModels(visibleTypeParameters, configuration).forEach { actualModel ->
             val candidateBindings =
                 inferTypeBindings(
                     expected = expectedModel,
@@ -6826,7 +6827,7 @@ internal fun receiverTypeArgumentBindings(
     if (expectedClass.typeParameters.isEmpty()) {
         return emptyMap()
     }
-    val projectedActualType = actualType.projectToMatchingReceiverSupertype(expectedClass) ?: return emptyMap()
+    val projectedActualType = actualType.projectToMatchingSupertype(expectedClass) ?: return emptyMap()
     return expectedClass.typeParameters.mapIndexedNotNull { index, parameter ->
         projectedActualType.arguments.getOrNull(index)?.argumentTypeOrNull()?.let { argumentType ->
             parameter.symbol to argumentType
@@ -6834,7 +6835,16 @@ internal fun receiverTypeArgumentBindings(
     }.toMap()
 }
 
-private fun IrType.projectToMatchingReceiverSupertype(
+internal fun projectTypeToMatchingInferenceSupertype(
+    expectedType: IrType,
+    actualType: IrType,
+): IrType? {
+    val expectedSimpleType = expectedType as? IrSimpleType ?: return null
+    val expectedClass = expectedSimpleType.classOrNull?.owner ?: return null
+    return actualType.projectToMatchingSupertype(expectedClass)
+}
+
+private fun IrType.projectToMatchingSupertype(
     expectedClass: IrClass,
     visited: MutableSet<org.jetbrains.kotlin.ir.symbols.IrClassSymbol> = linkedSetOf(),
 ): IrSimpleType? {
@@ -6854,7 +6864,7 @@ private fun IrType.projectToMatchingReceiverSupertype(
         }.toMap()
     actualClass.superTypes.forEach { superType ->
         val substitutedSuperType = if (substitutions.isEmpty()) superType else superType.substitute(substitutions)
-        val projected = substitutedSuperType.projectToMatchingReceiverSupertype(expectedClass, visited)
+        val projected = substitutedSuperType.projectToMatchingSupertype(expectedClass, visited)
         if (projected != null) {
             return projected
         }

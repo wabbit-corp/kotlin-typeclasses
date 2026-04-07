@@ -91,6 +91,38 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun infersTypeArgumentsThroughCollectionSupertypesWhenOnlyVisibleArgumentsBindThem() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "show:${'$'}value"
+            }
+
+            context(show: Show<Int>)
+            fun <T> first(items: Iterable<T>): T = items.first()
+
+            fun main() {
+                println(first(listOf("a", "b")))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "a",
+        )
+    }
+
     @Test fun compilesAssociatedCompanionInstanceFunction() {
         val source =
             """

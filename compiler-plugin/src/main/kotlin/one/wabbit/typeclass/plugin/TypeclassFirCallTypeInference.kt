@@ -40,6 +40,7 @@ import org.jetbrains.kotlin.fir.types.resolvedType
 import org.jetbrains.kotlin.fir.types.type
 import org.jetbrains.kotlin.fir.types.typeContext
 import org.jetbrains.kotlin.fir.types.withNullabilityOf
+import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.types.Variance
 
 internal fun FirExpression.safeResolvedOrInferredTypeOrNull(session: FirSession): ConeKotlinType? {
@@ -405,10 +406,11 @@ internal fun collectFunctionTypeArgumentConstraintsForInference(
     }
 
     val parameterClassLike = parameterType.lowerBoundIfFlexible() as? ConeClassLikeType ?: return
-    val argumentClassLike = normalizedArgumentType.lowerBoundIfFlexible() as? ConeClassLikeType ?: return
-    if (parameterClassLike.lookupTag.classId != argumentClassLike.lookupTag.classId) {
-        return
-    }
+    val argumentClassLike =
+        normalizedArgumentType.projectToMatchingInferenceSupertype(
+            expectedClassId = parameterClassLike.lookupTag.classId,
+            session = session,
+        ) as? ConeClassLikeType ?: return
 
     val declaredVariances =
         (session.symbolProvider.getClassLikeSymbolByClassId(parameterClassLike.lookupTag.classId) as? FirRegularClassSymbol)
@@ -442,6 +444,47 @@ internal fun collectFunctionTypeArgumentConstraintsForInference(
 
 private fun FirExpression.safeResolvedTypeOrNull(): ConeKotlinType? =
     runCatching { resolvedType }.getOrNull()
+
+private fun ConeKotlinType.projectToMatchingInferenceSupertype(
+    expectedClassId: ClassId,
+    session: FirSession,
+    visited: MutableSet<ClassId> = linkedSetOf(),
+): ConeKotlinType? {
+    val actualSimpleType = lowerBoundIfFlexible() as? ConeClassLikeType ?: return null
+    val actualClassId = actualSimpleType.lookupTag.classId
+    if (actualClassId == expectedClassId) {
+        return actualSimpleType
+    }
+    if (!visited.add(actualClassId)) {
+        return null
+    }
+    val classSymbol =
+        runCatching {
+            session.symbolProvider.getClassLikeSymbolByClassId(actualClassId) as? FirRegularClassSymbol
+        }.getOrNull() ?: return null
+    val substitutions =
+        classSymbol.fir.typeParameters.zip(actualSimpleType.typeArguments).mapNotNull { (parameter, argument) ->
+            argument.type?.let { type -> parameter.symbol to type }
+        }.toMap()
+    classSymbol.fir.declaredOrResolvedSuperTypes().forEach { superType ->
+        val substitutedSuperType =
+            if (substitutions.isEmpty()) {
+                superType
+            } else {
+                substituteInferredTypes(superType, substitutions, session)
+            }.withNullabilityOf(actualSimpleType, session.typeContext)
+        val projected =
+            substitutedSuperType.projectToMatchingInferenceSupertype(
+                expectedClassId = expectedClassId,
+                session = session,
+                visited = visited,
+            )
+        if (projected != null) {
+            return projected
+        }
+    }
+    return null
+}
 
 private fun FirFunctionCall.parameterByArgumentMappingOrNull(
     parameters: List<FirValueParameter>,

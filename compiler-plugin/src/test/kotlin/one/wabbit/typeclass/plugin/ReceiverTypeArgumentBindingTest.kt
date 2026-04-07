@@ -34,6 +34,28 @@ import kotlin.test.assertTrue
 
 class ReceiverTypeArgumentBindingTest {
     @Test
+    fun argumentInferenceProjectionFollowsMatchingGenericSupertypes() {
+        val packageFragment = testPackageFragment()
+        val iterable = irClass("Iterable", packageFragment, listOf("T"))
+        val list = irClass("List", packageFragment, listOf("E"))
+        val string = irClass("String", packageFragment)
+
+        list.superTypes = listOf(simpleType(iterable, listOf(list.typeParameters.single().defaultType)))
+
+        val projected =
+            projectTypeToMatchingInferenceSupertype(
+                expectedType = simpleType(iterable, listOf(iterable.typeParameters.single().defaultType)),
+                actualType = simpleType(list, listOf(simpleType(string))),
+            )
+
+        assertEquals(
+            simpleType(iterable, listOf(simpleType(string))),
+            projected,
+            "Argument inference should project List<String> to Iterable<String> before binding T.",
+        )
+    }
+
+    @Test
     fun remappedReceiverSupertypesBindExpectedClassifierArguments() {
         val packageFragment = testPackageFragment()
         val box = irClass("Box", packageFragment, listOf("T"))
