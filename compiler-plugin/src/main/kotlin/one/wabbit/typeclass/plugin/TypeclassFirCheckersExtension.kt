@@ -596,23 +596,11 @@ internal class TypeclassFirCheckersExtension(
     private fun validateDeriveEquivDeclarations(
         declaration: FirRegularClass,
     ) {
-        declaration.resolvedRepeatableAnnotationsByClassId(
-            annotationClassId = DERIVE_EQUIV_ANNOTATION_CLASS_ID,
-            containerClassId = DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID,
-            session = session,
-        ).forEach { annotation ->
-            if (declaration.typeParameters.isNotEmpty()) {
+        declaration.deriveEquivAnnotationParseResults(session).forEach { result ->
+            if (result is FirDeriveEquivAnnotationParseResult.Invalid) {
                 reportCannotDerive(
-                    annotation,
-                    cannotDeriveDiagnostic("@DeriveEquiv only supports monomorphic classes for now"),
-                )
-                return@forEach
-            }
-            val otherClassId = annotation.getClassIdArgument("otherClass", session) ?: return@forEach
-            if (session.regularClassSymbolOrNull(otherClassId)?.fir?.typeParameters?.isEmpty() != true) {
-                reportCannotDerive(
-                    annotation,
-                    cannotDeriveDiagnostic("@DeriveEquiv only supports monomorphic classes for now"),
+                    result.annotation,
+                    cannotDeriveDiagnostic(result.message),
                 )
             }
         }

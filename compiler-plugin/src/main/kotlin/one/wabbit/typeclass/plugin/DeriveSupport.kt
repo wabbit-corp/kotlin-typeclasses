@@ -340,12 +340,8 @@ internal fun FirRegularClass.deriveEquivRequests(session: FirSession): Set<Strin
     } else {
         buildSet {
             addAll(
-                resolvedRepeatableAnnotationsByClassId(
-                    annotationClassId = DERIVE_EQUIV_ANNOTATION_CLASS_ID,
-                    containerClassId = DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID,
-                    session = session,
-                )
-                    .mapNotNull { annotation -> annotation.getClassIdArgument("otherClass", session)?.asString() },
+                deriveEquivRequestsValidated(session)
+                    .map { request -> request.otherClassId.asString() },
             )
             addAll(
                 generatedDerivedMetadata(session)

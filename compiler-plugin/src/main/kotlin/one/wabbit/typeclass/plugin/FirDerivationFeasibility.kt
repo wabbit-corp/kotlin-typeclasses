@@ -67,6 +67,10 @@ internal data class FirDeriveViaRequest(
     val path: List<FirDeriveViaPathSegment>,
 )
 
+internal data class FirDeriveEquivRequest(
+    val otherClassId: ClassId,
+)
+
 internal sealed interface FirDeriveViaAnnotationParseResult {
     val annotation: FirAnnotation
 
@@ -79,6 +83,20 @@ internal sealed interface FirDeriveViaAnnotationParseResult {
         override val annotation: FirAnnotation,
         val message: String,
     ) : FirDeriveViaAnnotationParseResult
+}
+
+internal sealed interface FirDeriveEquivAnnotationParseResult {
+    val annotation: FirAnnotation
+
+    data class Valid(
+        override val annotation: FirAnnotation,
+        val request: FirDeriveEquivRequest,
+    ) : FirDeriveEquivAnnotationParseResult
+
+    data class Invalid(
+        override val annotation: FirAnnotation,
+        val message: String,
+    ) : FirDeriveEquivAnnotationParseResult
 }
 
 internal data class FirShapeDerivedGoalMatch(
@@ -97,45 +115,86 @@ internal class FirDirectTransportPlanner(
     fun resolveViaPath(
         sourceType: TcType.Constructor,
         path: List<FirDeriveViaPathSegment>,
-    ): TcType.Constructor? {
+    ): TcType.Constructor? =
+        resolveViaPathDetailed(sourceType, path).getOrNull()
+
+    fun resolveViaPathDetailed(
+        sourceType: TcType.Constructor,
+        path: List<FirDeriveViaPathSegment>,
+    ): Result<TcType.Constructor> {
         if (path.isEmpty()) {
-            return null
+            return Result.failure(IllegalArgumentException("DeriveVia requires a non-empty path"))
         }
 
         var current = sourceType
         for (segment in path) {
             when (segment) {
                 is FirDeriveViaPathSegment.Waypoint -> {
-                    val waypointClass = session.regularClassSymbolOrNull(segment.classId)?.fir ?: return null
+                    val waypointClass =
+                        session.regularClassSymbolOrNull(segment.classId)?.fir
+                            ?: return Result.failure(
+                                IllegalArgumentException("Could not resolve DeriveVia waypoint ${segment.classId.asString()}"),
+                            )
                     if (waypointClass.typeParameters.isNotEmpty()) {
-                        return null
+                        return Result.failure(
+                            IllegalArgumentException(
+                                "Generic DeriveVia waypoints are not supported yet: ${segment.classId.asString()}",
+                            ),
+                        )
                     }
                     val waypointType = TcType.Constructor(segment.classId.asString(), emptyList())
                     if (!planEquiv(current, waypointType)) {
-                        return null
+                        return Result.failure(
+                            IllegalArgumentException(
+                                "Cannot derive via ${segment.classId.asString()} from ${current.render()}",
+                            ),
+                        )
                     }
                     current = waypointType
                 }
 
                 is FirDeriveViaPathSegment.PinnedIso -> {
-                    val isoClass = session.regularClassSymbolOrNull(segment.classId)?.fir ?: return null
+                    val isoClass =
+                        session.regularClassSymbolOrNull(segment.classId)?.fir
+                            ?: return Result.failure(
+                                IllegalArgumentException("Could not resolve pinned Iso ${segment.classId.asString()}"),
+                            )
                     if (isoClass.classKind != ClassKind.OBJECT) {
-                        return null
+                        return Result.failure(
+                            IllegalArgumentException("Pinned Iso path segments must name object singletons"),
+                        )
                     }
-                    val endpoints = isoClass.isoEndpoints(session) ?: return null
+                    val endpoints =
+                        isoClass.isoEndpoints(session)
+                            ?: return Result.failure(
+                                IllegalArgumentException(
+                                    "Pinned Iso ${segment.classId.asString()} must define one exact Iso to/from override pair",
+                                ),
+                            )
                     val leftReachable = planEquiv(current, endpoints.first)
                     val rightReachable = planEquiv(current, endpoints.second)
                     current =
                         when {
-                            leftReachable && rightReachable -> return null
+                            leftReachable && rightReachable ->
+                                return Result.failure(
+                                    IllegalStateException(
+                                        "Pinned Iso ${segment.classId.asString()} is ambiguous because both endpoints are reachable from ${current.render()}",
+                                    ),
+                                )
+
                             leftReachable -> endpoints.second
                             rightReachable -> endpoints.first
-                            else -> return null
+                            else ->
+                                return Result.failure(
+                                    IllegalArgumentException(
+                                        "Pinned Iso ${segment.classId.asString()} is disconnected from ${current.render()}",
+                                    ),
+                                )
                         }
                 }
             }
         }
-        return current
+        return Result.success(current)
     }
 
     private fun canTransport(
@@ -311,6 +370,16 @@ internal fun FirRegularClass.deriveViaRequests(session: FirSession): List<FirDer
             .mapNotNull { result -> (result as? FirDeriveViaAnnotationParseResult.Valid)?.request }
     }
 
+internal fun FirRegularClass.deriveEquivRequestsValidated(session: FirSession): List<FirDeriveEquivRequest> =
+    if (source == null) {
+        generatedDerivedMetadata(session)
+            .filterIsInstance<GeneratedDerivedMetadata.DeriveEquiv>()
+            .map { metadata -> FirDeriveEquivRequest(metadata.otherClassId) }
+    } else {
+        deriveEquivAnnotationParseResults(session)
+            .mapNotNull { result -> (result as? FirDeriveEquivAnnotationParseResult.Valid)?.request }
+    }
+
 internal fun FirRegularClass.deriveViaAnnotationParseResults(session: FirSession): List<FirDeriveViaAnnotationParseResult> =
     if (source == null) {
         emptyList()
@@ -321,6 +390,19 @@ internal fun FirRegularClass.deriveViaAnnotationParseResults(session: FirSession
             session = session,
         ).mapNotNull { annotation ->
             annotation.parseDeriveViaAnnotation(owner = this, session = session)
+        }
+    }
+
+internal fun FirRegularClass.deriveEquivAnnotationParseResults(session: FirSession): List<FirDeriveEquivAnnotationParseResult> =
+    if (source == null) {
+        emptyList()
+    } else {
+        resolvedRepeatableAnnotationsByClassId(
+            annotationClassId = DERIVE_EQUIV_ANNOTATION_CLASS_ID,
+            containerClassId = DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID,
+            session = session,
+        ).mapNotNull { annotation ->
+            annotation.parseDeriveEquivAnnotation(owner = this, session = session)
         }
     }
 
@@ -825,9 +907,51 @@ private fun FirAnnotation.parseDeriveViaAnnotation(
             message = message,
         )
     }
+    FirDirectTransportPlanner(session)
+        .resolveViaPathDetailed(
+            sourceType = TcType.Constructor(owner.symbol.classId.asString(), emptyList()),
+            path = path,
+        ).exceptionOrNull()?.let { error ->
+            return FirDeriveViaAnnotationParseResult.Invalid(
+                annotation = this,
+                message = error.message ?: "Failed to resolve DeriveVia path",
+            )
+        }
     return FirDeriveViaAnnotationParseResult.Valid(
         annotation = this,
         request = FirDeriveViaRequest(typeclassId = typeclassId, path = path),
+    )
+}
+
+private fun FirAnnotation.parseDeriveEquivAnnotation(
+    owner: FirRegularClass,
+    session: FirSession,
+): FirDeriveEquivAnnotationParseResult? {
+    if (owner.typeParameters.isNotEmpty()) {
+        return FirDeriveEquivAnnotationParseResult.Invalid(
+            annotation = this,
+            message = "@DeriveEquiv only supports monomorphic classes for now",
+        )
+    }
+    val otherClassId = getClassIdArgument("otherClass", session) ?: return null
+    val otherClass = session.regularClassSymbolOrNull(otherClassId)?.fir ?: return null
+    if (otherClass.typeParameters.isNotEmpty()) {
+        return FirDeriveEquivAnnotationParseResult.Invalid(
+            annotation = this,
+            message = "@DeriveEquiv only supports monomorphic classes for now",
+        )
+    }
+    val ownerType = TcType.Constructor(owner.symbol.classId.asString(), emptyList())
+    val otherType = TcType.Constructor(otherClassId.asString(), emptyList())
+    if (!FirDirectTransportPlanner(session).planEquiv(ownerType, otherType)) {
+        return FirDeriveEquivAnnotationParseResult.Invalid(
+            annotation = this,
+            message = "Cannot derive Equiv between ${owner.symbol.classId.asString()} and ${otherClassId.asString()}",
+        )
+    }
+    return FirDeriveEquivAnnotationParseResult.Valid(
+        annotation = this,
+        request = FirDeriveEquivRequest(otherClassId),
     )
 }
 

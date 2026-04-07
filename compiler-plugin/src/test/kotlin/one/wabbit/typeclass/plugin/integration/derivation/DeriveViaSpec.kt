@@ -1253,7 +1253,7 @@ class DeriveViaSpec : IntegrationTestSupport() {
             source = source,
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive("derive via", "kotlin/string", "demo.userid"),
+                    expectedCannotDerive("derive via", "kotlin/string", "userid"),
                 ),
         )
     }
@@ -1886,6 +1886,55 @@ class DeriveViaSpec : IntegrationTestSupport() {
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics = listOf(expectedCannotDerive("monomorphic")),
+        )
+    }
+
+    @Test fun validatesRepeatableDisconnectedDeriveViaPathsInFir() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @JvmInline
+            @DeriveVia(Show::class, String::class) // E:TC_CANNOT_DERIVE repeatable disconnected DeriveVia paths must be rejected in FIR
+            @DeriveVia(Show::class, String::class) // E:TC_CANNOT_DERIVE repeatable disconnected DeriveVia paths must be rejected in FIR
+            value class UserId(val value: Int)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedCannotDerive("derive via", "kotlin/string", "userid")),
+        )
+    }
+
+    @Test fun validatesRepeatableInfeasibleDeriveEquivAnnotationsInFir() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveEquiv
+
+            data class PlainBox(val value: Int)
+
+            @DeriveEquiv(PlainBox::class) // E:TC_CANNOT_DERIVE repeatable infeasible DeriveEquiv requests must be rejected in FIR
+            @DeriveEquiv(PlainBox::class) // E:TC_CANNOT_DERIVE repeatable infeasible DeriveEquiv requests must be rejected in FIR
+            data class PositiveBox(val value: Int) {
+                init {
+                    require(value > 0)
+                }
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedCannotDerive("equiv", "positivebox", "plainbox")),
         )
     }
 
