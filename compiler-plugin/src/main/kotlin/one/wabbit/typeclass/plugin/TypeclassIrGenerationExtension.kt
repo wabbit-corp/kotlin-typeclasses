@@ -289,10 +289,7 @@ private class TypeclassIrCallTransformer(
                     )
                 }
                 .filter { candidate -> !candidate.requiresSyntheticTypeclassResolution(call, configuration) }
-                .filter { candidate ->
-                    wrapperResolutionShape(candidate, dropTypeclassContexts = false, configuration = configuration) ==
-                        wrapperResolutionShape(callee, dropTypeclassContexts = true, configuration = configuration)
-                }
+                .filter { candidate -> exactPlainOverloadFallbackShapesMatch(candidate, callee, configuration) }
                 .singleOrNull()
         return result
     }
@@ -2737,7 +2734,7 @@ private class IrRuleIndex private constructor(
             val directTopLevelRules = scanner.buildTopLevelRules()
             val localTopLevelLookupKeys =
                 directTopLevelRules.mapNotNullTo(linkedSetOf()) { resolvedRule ->
-                    resolvedRule.reference.lookupIdentityKeyOrNull()
+                    resolvedRule.reference.lookupIdentityKeyOrNull(sharedState.configuration)
                 }
             val importedDependencyTopLevelRules =
                 sharedState.importedTopLevelRulesForIr()
@@ -2794,9 +2791,9 @@ private fun VisibleRuleLookupReference.lookupIdentityKey(): String =
         is VisibleRuleLookupReference.LookupObject -> "obj:${classId.asString()}"
     }
 
-private fun RuleReference.lookupIdentityKeyOrNull(): String? =
+private fun RuleReference.lookupIdentityKeyOrNull(configuration: TypeclassConfiguration): String? =
     when (this) {
-        is RuleReference.DirectFunction -> "fun:${function.callableId}:${lookupFunctionShape(function, dropTypeclassContexts = false, configuration = TypeclassConfiguration())}"
+        is RuleReference.DirectFunction -> "fun:${function.callableId}:${lookupFunctionShape(function, dropTypeclassContexts = false, configuration = configuration)}"
         is RuleReference.DirectProperty -> "prop:${property.callableId}"
         is RuleReference.DirectObject -> "obj:${klass.classIdOrFail.asString()}"
         is RuleReference.LookupFunction -> "fun:${callableId}:$shape"
@@ -5475,6 +5472,14 @@ internal fun supportsExactPlainOverloadFallbackTypeParameters(
     !callableIsLocal &&
         calleeDeclaredTypeParameterCount == 0 &&
         candidateDeclaredTypeParameterCount == 0
+
+internal fun exactPlainOverloadFallbackShapesMatch(
+    candidate: IrSimpleFunction,
+    callee: IrSimpleFunction,
+    configuration: TypeclassConfiguration,
+): Boolean =
+    wrapperResolutionShape(candidate, dropTypeclassContexts = false, configuration = configuration) ==
+        wrapperResolutionShape(callee, dropTypeclassContexts = true, configuration = configuration)
 
 private inline fun <T> Iterable<T>.anyIndexed(predicate: (index: Int, T) -> Boolean): Boolean {
     var index = 0
