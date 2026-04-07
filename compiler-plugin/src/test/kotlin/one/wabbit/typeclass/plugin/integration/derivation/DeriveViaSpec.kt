@@ -2138,6 +2138,47 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
+    @Test fun deriveViaCyclesMustNotCountAsSatisfiedRecursiveEvidence() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @DeriveVia(Show::class, ViaB::class)
+            @JvmInline
+            value class ViaA(val value: Int)
+
+            @DeriveVia(Show::class, ViaA::class)
+            @JvmInline
+            value class ViaB(val value: Int)
+
+            @DeriveVia(Show::class, ViaA::class)
+            @JvmInline
+            value class UserId(val value: Int)
+
+            context(show: Show<UserId>)
+            fun render(value: UserId): String = "derived:${'$'}{show.show(value)}"
+
+            fun render(value: UserId): String = "plain:${'$'}{value.value}"
+
+            fun main() {
+                println(render(UserId(7)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain:7",
+        )
+    }
+
     // Exact intended semantics:
     // - for multi-parameter typeclasses, DeriveVia transports only the last type parameter
     // - so Decoder<E, A> should support deriving Decoder<String, UserId> from Decoder<String, Foo>

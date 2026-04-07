@@ -912,13 +912,14 @@ private data class ResolutionIndex(
         session: FirSession,
         availableContexts: List<TcType> = emptyList(),
         visiting: MutableSet<String> = linkedSetOf(),
+        allowedRecursiveGoals: Set<String> = emptySet(),
         canMaterializeVariable: (String) -> Boolean = { true },
         builtinGoalAcceptance: BuiltinGoalAcceptance = BuiltinGoalAcceptance.ALLOW_SPECULATIVE,
         exactBuiltinGoalContext: FirBuiltinGoalExactContext? = null,
     ): Boolean {
         val key = goal.normalizedKey()
         if (!visiting.add(key)) {
-            return true
+            return key in allowedRecursiveGoals
         }
         val directPlanner =
             TypeclassResolutionPlanner(
@@ -965,12 +966,18 @@ private data class ResolutionIndex(
 
             else ->
                 shapeDerivationOptionsForGoal(constructor, session).any { option ->
+                    val nestedAllowedRecursiveGoals =
+                        linkedSetOf<String>().apply {
+                            addAll(allowedRecursiveGoals)
+                            add(key)
+                        }
                     option.prerequisiteTypes.all { prerequisiteGoal ->
                         canDeriveGoal(
                             goal = prerequisiteGoal,
                             session = session,
                             availableContexts = availableContexts,
                             visiting = linkedSetOf<String>().apply { addAll(visiting) },
+                            allowedRecursiveGoals = nestedAllowedRecursiveGoals,
                             canMaterializeVariable = canMaterializeVariable,
                             builtinGoalAcceptance = builtinGoalAcceptance,
                             exactBuiltinGoalContext = exactBuiltinGoalContext,
@@ -983,6 +990,7 @@ private data class ResolutionIndex(
                             session = session,
                             availableContexts = availableContexts,
                             visiting = linkedSetOf<String>().apply { addAll(visiting) },
+                            allowedRecursiveGoals = allowedRecursiveGoals,
                             canMaterializeVariable = canMaterializeVariable,
                             builtinGoalAcceptance = builtinGoalAcceptance,
                             exactBuiltinGoalContext = exactBuiltinGoalContext,
