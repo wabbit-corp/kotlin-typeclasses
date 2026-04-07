@@ -265,8 +265,8 @@ internal class FirDirectTransportPlanner(
         if (sourceClass.status.modality != Modality.SEALED || targetClass.status.modality != Modality.SEALED) {
             return null
         }
-        val sourceCases = sourceClass.transparentSealedCases(session) ?: return null
-        val targetCases = targetClass.transparentSealedCases(session) ?: return null
+        val sourceCases = sourceClass.transparentSealedCases(session, sourceClass.transportAccessContext(session)) ?: return null
+        val targetCases = targetClass.transparentSealedCases(session, targetClass.transportAccessContext(session)) ?: return null
         if (sourceCases.size != targetCases.size) {
             return false
         }
@@ -679,7 +679,7 @@ private fun TcType.transportabilityViolation(
                     }
                     return null
                 }
-                val sealedCases = klass.transparentSealedCases(session)
+                val sealedCases = klass.transparentSealedCases(session, klass.transportAccessContext(session))
                 if (sealedCases != null) {
                     sealedCases.forEach { case ->
                         val message =
@@ -801,8 +801,12 @@ private fun FirRegularClass.transparentProductInfo(
 
 private fun FirRegularClass.transparentSealedCases(
     session: FirSession,
+    accessContext: TransportSyntheticAccessContext,
 ): List<FirRegularClassSymbol>? {
     if (status.modality != Modality.SEALED || typeParameters.isNotEmpty()) {
+        return null
+    }
+    if (!accessContext.allowsTransportVisibility(status.visibility.toTransportSyntheticVisibility())) {
         return null
     }
     val subclasses =
@@ -813,8 +817,10 @@ private fun FirRegularClass.transparentSealedCases(
     }
     return subclasses.takeIf { cases ->
         cases.all { case ->
-            case.fir.classKind == ClassKind.OBJECT ||
+            accessContext.allowsTransportVisibility(case.fir.status.visibility.toTransportSyntheticVisibility()) &&
+                (case.fir.classKind == ClassKind.OBJECT ||
                 (case.fir.status.isData && case.fir.typeParameters.isEmpty() && !case.fir.hasAnonymousInitializer())
+                )
         }
     }
 }

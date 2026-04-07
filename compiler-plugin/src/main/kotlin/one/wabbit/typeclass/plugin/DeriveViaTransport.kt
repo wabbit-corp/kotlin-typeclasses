@@ -501,8 +501,8 @@ internal class DirectTransportPlanner(
         if (sourceClass.modality != Modality.SEALED || targetClass.modality != Modality.SEALED) {
             return null
         }
-        val sourceCases = sourceClass.transparentSealedCases() ?: return null
-        val targetCases = targetClass.transparentSealedCases() ?: return null
+        val sourceCases = sourceClass.transparentSealedCases(sourceClass.transportAccessContext()) ?: return null
+        val targetCases = targetClass.transparentSealedCases(targetClass.transportAccessContext()) ?: return null
         if (sourceCases.size != targetCases.size) {
             return null
         }
@@ -1377,7 +1377,7 @@ private fun IrType.transportabilityViolation(
             }
             return null
         }
-        val sumCases = klass.transparentSealedCases()
+        val sumCases = klass.transparentSealedCases(klass.transportAccessContext())
         if (sumCases != null) {
             sumCases.forEach { case ->
                 val message =
@@ -1636,8 +1636,13 @@ private fun IrClass.transparentProductInfo(
     )
 }
 
-private fun IrClass.transparentSealedCases(): List<IrClass>? {
+private fun IrClass.transparentSealedCases(
+    accessContext: TransportSyntheticAccessContext,
+): List<IrClass>? {
     if (modality != Modality.SEALED || typeParameters.isNotEmpty()) {
+        return null
+    }
+    if (!accessContext.allowsTransportVisibility(visibility.toTransportSyntheticVisibility())) {
         return null
     }
     val subclasses = sealedSubclasses.mapNotNull { symbol -> runCatching { symbol.owner }.getOrNull() }
@@ -1646,8 +1651,10 @@ private fun IrClass.transparentSealedCases(): List<IrClass>? {
     }
     return subclasses.takeIf { cases ->
         cases.all { case ->
-            case.isObject ||
+            accessContext.allowsTransportVisibility(case.visibility.toTransportSyntheticVisibility()) &&
+                (case.isObject ||
                 (case.isData && case.declarations.none { it is IrAnonymousInitializer } && case.typeParameters.isEmpty())
+                )
         }
     }
 }

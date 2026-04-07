@@ -762,6 +762,125 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
+    @Test fun supportsDerivingViaThroughSameModuleInternalSealedCases() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            sealed interface Via
+
+            internal data object ViaEmpty : Via
+
+            internal data class ViaBox(val value: Int) : Via
+
+            @Instance
+            object ViaShow : Show<Via> {
+                override fun show(value: Via): String =
+                    when (value) {
+                        ViaEmpty -> "empty"
+                        is ViaBox -> "box:${'$'}{value.value}"
+                    }
+            }
+
+            @DeriveVia(Show::class, Via::class)
+            sealed interface User {
+                data object Empty : User
+                data class Box(val value: Int) : User
+            }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render<User>(User.Empty))
+                println(render<User>(User.Box(7)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                empty
+                box:7
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun dependencyInternalSealedCasesAreRejectedAtTheAnnotationSite() {
+        val moduleA =
+            HarnessDependency(
+                name = "derivevia-internal-sealed-upstream",
+                sources =
+                    mapOf(
+                        "depa/Show.kt" to showTypeclassSource("depa"),
+                        "depa/Via.kt" to
+                            """
+                            package depa
+
+                            import one.wabbit.typeclass.Instance
+
+                            sealed interface Via
+
+                            internal data object ViaEmpty : Via
+
+                            internal data class ViaBox(val value: Int) : Via
+
+                            @Instance
+                            object ViaShow : Show<Via> {
+                                override fun show(value: Via): String =
+                                    when (value) {
+                                        ViaEmpty -> "empty"
+                                        is ViaBox -> "box:${'$'}{value.value}"
+                                    }
+                            }
+                            """.trimIndent(),
+                    ),
+            )
+        assertDoesNotCompile(
+            sources =
+                mapOf(
+                    "depb/User.kt" to
+                        """
+                        package depb
+
+                        import depa.Show
+                        import depa.Via
+                        import one.wabbit.typeclass.DeriveVia
+
+                        @DeriveVia(Show::class, Via::class) // E:TC_CANNOT_DERIVE dependency-internal sealed cases must not make DeriveVia look usable
+                        sealed interface User {
+                            data object Empty : User
+                            data class Box(val value: Int) : User
+                        }
+
+                        context(show: Show<A>)
+                        fun <A> render(value: A): String = show.show(value)
+
+                        fun render(value: User): String = "plain"
+
+                        fun renderUser(): String = render(User.Empty)
+                        """.trimIndent(),
+                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("derive via", "via", "user")),
+            unexpectedMessages =
+                listOf(
+                    "overload resolution ambiguity",
+                    "no context argument",
+                ),
+            dependencies = listOf(moduleA),
+        )
+    }
+
     // Exact intended semantics:
     // - pinned Iso path segments may live in an upstream dependency module.
     // - The deriving module may still rely on transient local Equiv glue to reach the pinned segment
