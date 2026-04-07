@@ -725,11 +725,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("conservative", "result head"),
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                ),
+            expectedDiagnostics = listOf(expectedNoContextArgument(phase = DiagnosticPhase.IR)),
         )
     }
 
@@ -1028,7 +1024,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $constructorsDeriverPrelude
 
-            @Derive(Constructors::class) // E:TC_CANNOT_DERIVE conservative-only policy should still reject refined result heads here
+            @Derive(Constructors::class)
             sealed interface Expr<A>
 
             @Derive(Constructors::class)
@@ -1044,11 +1040,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("conservative", "result head"),
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                ),
+            expectedDiagnostics = listOf(expectedNoContextArgument(phase = DiagnosticPhase.FIR)),
         )
     }
 

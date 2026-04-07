@@ -27,6 +27,7 @@ import org.jetbrains.kotlin.fir.declarations.DirectDeclarationsAccess
 import org.jetbrains.kotlin.fir.declarations.FirDeclaration
 import org.jetbrains.kotlin.fir.declarations.FirProperty
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
+import org.jetbrains.kotlin.fir.declarations.extractEnumValueArgumentInfo
 import org.jetbrains.kotlin.fir.declarations.getSealedClassInheritors
 import org.jetbrains.kotlin.fir.declarations.findArgumentByName
 import org.jetbrains.kotlin.fir.declarations.hasAnnotation
@@ -1382,10 +1383,15 @@ private data class ResolutionIndex(
             }
 
     private fun FirAnnotation.firGadtPolicyMode(): FirGadtAdmissionMode? {
-        val modeArgument = findArgumentByName(Name.identifier("mode"))?.toString().orEmpty()
-        return when {
-            "CONSERVATIVE_ONLY" in modeArgument -> FirGadtAdmissionMode.CONSERVATIVE_ONLY
-            "SURFACE_TRUSTED" in modeArgument -> FirGadtAdmissionMode.SURFACE_TRUSTED
+        val modeName =
+            findArgumentByName(Name.identifier("mode"))
+                ?.extractEnumValueArgumentInfo()
+                ?.enumEntryName
+                ?.asString()
+                ?: return null
+        return when (modeName) {
+            "CONSERVATIVE_ONLY" -> FirGadtAdmissionMode.CONSERVATIVE_ONLY
+            "SURFACE_TRUSTED" -> FirGadtAdmissionMode.SURFACE_TRUSTED
             else -> null
         }
     }
