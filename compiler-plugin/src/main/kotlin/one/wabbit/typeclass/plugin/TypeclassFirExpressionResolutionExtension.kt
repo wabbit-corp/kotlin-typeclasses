@@ -24,16 +24,13 @@ internal class TypeclassFirExpressionResolutionExtension(
         val containingFunction = containingCallableSymbol as? FirNamedFunctionSymbol ?: return emptyList()
         val receiver = containingFunction.fir.receiverParameter ?: return emptyList()
         val receiverType = receiver.typeRef.coneType
-        if (!sharedState.isTypeclassType(session, receiverType)) {
-            return emptyList()
-        }
-        return listOf(
+        return receiverType.localEvidenceTypes(session, sharedState.configuration).map { evidenceType ->
             ImplicitExtensionReceiverValue(
                 receiver.symbol,
-                receiverType,
+                evidenceType,
                 session,
                 sessionHolder.scopeSession,
-            ),
-        )
+            )
+        }
     }
 }

@@ -10,6 +10,7 @@ package one.wabbit.typeclass.plugin
 
 import one.wabbit.typeclass.plugin.model.TcType
 import one.wabbit.typeclass.plugin.model.TcTypeParameter
+import one.wabbit.typeclass.plugin.model.ResolutionPlan
 import one.wabbit.typeclass.plugin.model.ResolutionSearchResult
 import one.wabbit.typeclass.plugin.model.TypeclassResolutionPlanner
 import one.wabbit.typeclass.plugin.model.normalizedKey
@@ -377,7 +378,23 @@ internal class TypeclassFirCheckersExtension(
                             localContextLabels = typeContext.directlyAvailableContextLabels,
                         ),
                 )
-            is ResolutionSearchResult.Ambiguous -> Unit
+            is ResolutionSearchResult.Ambiguous ->
+                reportAmbiguousInstanceWithTrace(
+                    expression = functionCall,
+                    narrative =
+                        TypeclassDiagnostic.AmbiguousInstance(
+                            goal = goal.render().replace('/', '.'),
+                            scope = "",
+                            candidates = tracedResult.result.matchingPlans.map { plan -> plan.renderForFirDiagnostic() },
+                        ),
+                    trace =
+                        renderResolutionTrace(
+                            trace = tracedResult.trace,
+                            activation = activation,
+                            location = null,
+                            localContextLabels = typeContext.directlyAvailableContextLabels,
+                        ),
+                )
             is ResolutionSearchResult.Success -> Unit
         }
     }
@@ -721,6 +738,27 @@ internal class TypeclassFirCheckersExtension(
             "${narrative.renderBody()}\n$trace",
         )
     }
+
+    context(context: CheckerContext, reporter: DiagnosticReporter)
+    private fun reportAmbiguousInstanceWithTrace(
+        expression: FirExpression,
+        narrative: TypeclassDiagnostic.AmbiguousInstance,
+        trace: String,
+    ) {
+        val source = expression.source ?: return
+        reporter.reportOn(
+            source,
+            TypeclassErrors.AMBIGUOUS_INSTANCE,
+            "${narrative.renderBody()}\n$trace",
+        )
+    }
+
+    private fun ResolutionPlan.renderForFirDiagnostic(): String =
+        when (this) {
+            is ResolutionPlan.LocalContext -> "local-context[$index]"
+            is ResolutionPlan.ApplyRule -> ruleId
+            is ResolutionPlan.RecursiveReference -> "recursive[${providedType.render()}]"
+        }
 
     private fun FirBasedSymbol<*>.firFunctionOrNull(): FirFunction? = fir as? FirFunction
 

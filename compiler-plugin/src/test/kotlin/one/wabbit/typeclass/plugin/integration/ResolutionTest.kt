@@ -4,6 +4,7 @@ package one.wabbit.typeclass.plugin.integration
 
 import one.wabbit.typeclass.plugin.TypeclassDiagnosticIds
 import org.junit.Ignore
+import org.jetbrains.kotlin.config.KotlinCompilerVersion
 import kotlin.test.Test
 
 class ResolutionTest : IntegrationTestSupport() {
@@ -1987,6 +1988,254 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun wrapperLocalEvidenceMakesContextualOverloadVisibleInFir() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            class WrappedIntShow : Show<Int> {
+                override fun show(): String = "wrapped"
+            }
+
+            context(show: Show<Int>)
+            fun choose(): String = "context:" + show.show()
+
+            fun choose(): String = "plain"
+
+            context(_: WrappedIntShow)
+            fun run(): String = choose() // E overload resolution ambiguity on Kotlin 2.4
+
+            fun main() {
+                context(WrappedIntShow()) {
+                    println(run())
+                }
+            }
+            """.trimIndent()
+
+        if (KotlinCompilerVersion.VERSION.startsWith("2.4")) {
+            assertDoesNotCompile(
+                source = source,
+                expectedDiagnostics =
+                    listOf(
+                        ExpectedDiagnostic.Error(
+                            messageRegex = "(?i)(ambiguity|overload resolution ambiguity)",
+                        ),
+                    ),
+            )
+        } else {
+            assertCompilesAndRuns(
+                source = source,
+                expectedStdout = "context:wrapped",
+            )
+        }
+    }
+
+    @Test fun wrapperLocalEvidenceCanInferGenericContextualCallsInFir() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            class WrappedStringShow : Show<String> {
+                override fun show(): String = "wrapped-string"
+            }
+
+            context(show: Show<A>)
+            fun <A> render(): String = show.show()
+
+            context(_: WrappedStringShow)
+            fun run(): String = render()
+
+            fun main() {
+                context(WrappedStringShow()) {
+                    println(run())
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "wrapped-string",
+        )
+    }
+
+    @Test fun wrapperLocalEvidenceSupportsSummonInFir() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            class WrappedIntShow : Show<Int> {
+                override fun show(): String = "wrapped-summon"
+            }
+
+            context(_: WrappedIntShow)
+            fun run(): String = summon<Show<Int>>().show()
+
+            fun main() {
+                context(WrappedIntShow()) {
+                    println(run())
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "wrapped-summon",
+        )
+    }
+
+    @Test fun wrapperLocalEvidenceCanInferSummonDrivenGenericCallsInFir() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            class WrappedStringShow : Show<String> {
+                override fun show(): String = "wrapped-generic-summon"
+            }
+
+            context(_: Show<A>)
+            fun <A> reveal(): String = summon<Show<A>>().show()
+
+            context(_: WrappedStringShow)
+            fun run(): String = reveal()
+
+            fun main() {
+                context(WrappedStringShow()) {
+                    println(run())
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "wrapped-generic-summon",
+        )
+    }
+
+    @Test fun wrapperReceiverEvidenceSupportsSummonInFir() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            class WrappedIntShow : Show<Int> {
+                override fun show(): String = "receiver-summon"
+            }
+
+            fun WrappedIntShow.run(): String = summon<Show<Int>>().show()
+
+            fun main() {
+                println(WrappedIntShow().run())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "receiver-summon",
+        )
+    }
+
+    @Test fun wrapperReceiverEvidenceCanInferGenericContextualCallsInFir() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            class WrappedStringShow : Show<String> {
+                override fun show(): String = "receiver-generic"
+            }
+
+            context(show: Show<A>)
+            fun <A> render(): String = show.show()
+
+            fun WrappedStringShow.run(): String = render()
+
+            fun main() {
+                println(WrappedStringShow().run())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "receiver-generic",
+        )
+    }
+
+    @Test fun genericWrapperLocalEvidenceSupportsSummonInFir() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            class WrappedShow<A>(private val label: String) : Show<A> {
+                override fun show(): String = label
+            }
+
+            context(_: WrappedShow<String>)
+            fun run(): String = summon<Show<String>>().show()
+
+            fun main() {
+                context(WrappedShow<String>("generic-wrapper")) {
+                    println(run())
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "generic-wrapper",
+        )
+    }
+
     @Test fun resolvesContextualOverloadsBetweenSingleAndVarargAlternatives() {
         val source =
             """
@@ -2197,7 +2446,7 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun reportsConflictingBindingsFromLocalContexts() {
+    @Test fun reportsUnsatisfiedGoalFromIncompatibleLocalContexts() {
         val source =
             """
             package demo
@@ -2220,7 +2469,7 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 context(IntShow) {
                     context(StringListShow) {
-                        println(choose()) // E A is inferred as both Int and String
+                        println(choose()) // E the local contexts cannot jointly satisfy choose()
                     }
                 }
             }
@@ -2231,7 +2480,7 @@ class ResolutionTest : IntegrationTestSupport() {
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
-                        messageRegex = "(?i)(conflicting|cannot infer|inferred as|type mismatch)",
+                        messageRegex = "(?i)(conflicting|cannot infer|inferred as|type mismatch|no context argument)",
                     ),
                 ),
         )

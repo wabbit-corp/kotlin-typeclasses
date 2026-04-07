@@ -35,6 +35,7 @@ internal data class FirTypeclassResolutionContext(
     val bindableVariableIds: Set<String>,
     val directlyAvailableContextTypes: List<ConeKotlinType>,
     val directlyAvailableContextModels: List<TcType>,
+    val nativelyAvailableContextModels: List<TcType>,
     val directlyAvailableContextLabels: List<String>,
     val runtimeMaterializableVariableIds: Set<String>,
 )
@@ -67,23 +68,41 @@ internal fun buildFirTypeclassResolutionContext(
         }
 
     val directlyAvailableContexts =
-        buildList<Pair<ConeKotlinType, String>> {
+        buildList<Triple<ConeKotlinType, TcType, String>> {
             containingFunctions.forEach { declaration ->
                 declaration.receiverParameter?.typeRef?.coneType
-                    ?.takeIf { type -> sharedState.isTypeclassType(session, type) }
-                    ?.let { type -> add(type to "receiver") }
+                    ?.localEvidenceTypes(session, sharedState.configuration)
+                    ?.forEach { evidenceType ->
+                        val model = coneTypeToModel(evidenceType, typeParameterModels) ?: return@forEach
+                        add(Triple(evidenceType, model, "receiver"))
+                    }
                 declaration.contextParameters.forEach { parameter ->
                     parameter.returnTypeRef.coneType
-                        .takeIf { type -> sharedState.isTypeclassType(session, type) }
-                        ?.let { type -> add(type to parameter.name.asString()) }
+                        .localEvidenceTypes(session, sharedState.configuration)
+                        .forEach { evidenceType ->
+                            val model = coneTypeToModel(evidenceType, typeParameterModels) ?: return@forEach
+                            add(Triple(evidenceType, model, parameter.name.asString()))
+                        }
                 }
             }
         }
-    val directlyAvailableContextTypes = directlyAvailableContexts.map(Pair<ConeKotlinType, String>::first)
-    val directlyAvailableContextModels =
-        directlyAvailableContextTypes
-            .expandProvidedTypes(session = session, typeParameterBySymbol = typeParameterModels)
-            .validTypes
+    val directlyAvailableContextTypes = directlyAvailableContexts.map(Triple<ConeKotlinType, TcType, String>::first)
+    val directlyAvailableContextModels = directlyAvailableContexts.map(Triple<ConeKotlinType, TcType, String>::second)
+    val nativelyAvailableContextModels =
+        buildList {
+            containingFunctions.forEach { declaration ->
+                declaration.receiverParameter?.typeRef?.coneType
+                    ?.takeIf { declaredType -> sharedState.isTypeclassType(session, declaredType) }
+                    ?.let { declaredType -> coneTypeToModel(declaredType, typeParameterModels) }
+                    ?.let(::add)
+                declaration.contextParameters.forEach { parameter ->
+                    parameter.returnTypeRef.coneType
+                        .takeIf { declaredType -> sharedState.isTypeclassType(session, declaredType) }
+                        ?.let { declaredType -> coneTypeToModel(declaredType, typeParameterModels) }
+                        ?.let(::add)
+                }
+            }
+        }
     val runtimeMaterializableVariableIds =
         typeParameterModels.mapNotNullTo(linkedSetOf()) { (symbol, parameter) ->
             parameter.id.takeIf { symbol.fir.isReified }
@@ -93,7 +112,11 @@ internal fun buildFirTypeclassResolutionContext(
         bindableVariableIds = bindableVariableIds,
         directlyAvailableContextTypes = directlyAvailableContextTypes,
         directlyAvailableContextModels = directlyAvailableContextModels,
-        directlyAvailableContextLabels = directlyAvailableContexts.map(Pair<ConeKotlinType, String>::second),
+        nativelyAvailableContextModels = nativelyAvailableContextModels,
+        directlyAvailableContextLabels =
+            directlyAvailableContexts.mapIndexed { index, (_, _, label) ->
+                "$label (local context[$index])"
+            },
         runtimeMaterializableVariableIds = runtimeMaterializableVariableIds,
     )
 }

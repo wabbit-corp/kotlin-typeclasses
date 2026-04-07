@@ -200,7 +200,7 @@ internal class TypeclassFirFunctionCallRefinementExtension(
         symbol: FirNamedFunctionSymbol,
     ): Boolean {
         val typeContext = buildTypeContext(callInfo, symbol)
-        if (typeContext.directlyAvailableContextModels.isEmpty()) {
+        if (typeContext.nativelyAvailableContextModels.isEmpty()) {
             return false
         }
 
@@ -220,7 +220,7 @@ internal class TypeclassFirFunctionCallRefinementExtension(
             }
         return requiredContextModels.isNotEmpty() &&
             requiredContextModels.all { requiredContext ->
-                typeContext.directlyAvailableContextModels.any { availableContext ->
+                typeContext.nativelyAvailableContextModels.any { availableContext ->
                     unifyTypes(
                         left = requiredContext,
                         right = availableContext,
@@ -289,14 +289,23 @@ internal class TypeclassFirFunctionCallRefinementExtension(
             )
         }
 
+        val localContextInferred = linkedMapOf<FirTypeParameterSymbol, org.jetbrains.kotlin.fir.types.ConeKotlinType>()
+        val conflictingLocalBindings = linkedSetOf<FirTypeParameterSymbol>()
         function.contextParameters.forEach { parameter ->
             typeContext.directlyAvailableContextTypes.forEach { availableType ->
-                unifyFunctionTypeArguments(
+                unifyLocalContextTypeArguments(
                     parameterType = parameter.returnTypeRef.coneType,
                     argumentType = availableType,
                     functionTypeParameters = functionTypeParameters,
                     inferred = inferred,
+                    localContextInferred = localContextInferred,
+                    conflictingLocalBindings = conflictingLocalBindings,
                 )
+            }
+        }
+        localContextInferred.forEach { (symbol, type) ->
+            if (symbol !in conflictingLocalBindings && symbol !in inferred) {
+                inferred[symbol] = type
             }
         }
 
@@ -409,6 +418,72 @@ internal class TypeclassFirFunctionCallRefinementExtension(
                 argumentType = nestedActualType,
                 functionTypeParameters = functionTypeParameters,
                 inferred = inferred,
+            )
+        }
+    }
+
+    private fun unifyLocalContextTypeArguments(
+        parameterType: org.jetbrains.kotlin.fir.types.ConeKotlinType,
+        argumentType: org.jetbrains.kotlin.fir.types.ConeKotlinType,
+        functionTypeParameters: Set<FirTypeParameterSymbol>,
+        inferred: Map<FirTypeParameterSymbol, org.jetbrains.kotlin.fir.types.ConeKotlinType>,
+        localContextInferred: MutableMap<FirTypeParameterSymbol, org.jetbrains.kotlin.fir.types.ConeKotlinType>,
+        conflictingLocalBindings: MutableSet<FirTypeParameterSymbol>,
+    ) {
+        val normalizedArgumentType = argumentType.approximateIntegerLiteralType()
+        when (val loweredParameter = parameterType.lowerBoundIfFlexible()) {
+            is ConeTypeParameterType -> {
+                val symbol = loweredParameter.lookupTag.typeParameterSymbol
+                if (symbol !in functionTypeParameters || symbol in inferred || symbol in conflictingLocalBindings) {
+                    return
+                }
+                val existing = localContextInferred[symbol]
+                if (existing == null) {
+                    localContextInferred[symbol] = normalizedArgumentType
+                } else if (existing != normalizedArgumentType) {
+                    localContextInferred.remove(symbol)
+                    conflictingLocalBindings += symbol
+                }
+                return
+            }
+
+            is ConeTypeVariableType -> {
+                val symbol =
+                    (loweredParameter.typeConstructor.originalTypeParameter as? org.jetbrains.kotlin.fir.symbols.ConeTypeParameterLookupTag)
+                        ?.typeParameterSymbol
+                        ?: return
+                if (symbol !in functionTypeParameters || symbol in inferred || symbol in conflictingLocalBindings) {
+                    return
+                }
+                val existing = localContextInferred[symbol]
+                if (existing == null) {
+                    localContextInferred[symbol] = normalizedArgumentType
+                } else if (existing != normalizedArgumentType) {
+                    localContextInferred.remove(symbol)
+                    conflictingLocalBindings += symbol
+                }
+                return
+            }
+
+            else -> Unit
+        }
+
+        val parameterClassLike = parameterType.lowerBoundIfFlexible() as? ConeClassLikeType ?: return
+        val argumentClassLike = normalizedArgumentType.lowerBoundIfFlexible() as? ConeClassLikeType ?: return
+        if (parameterClassLike.lookupTag.classId != argumentClassLike.lookupTag.classId) {
+            return
+        }
+
+        parameterClassLike.typeArguments.zip(argumentClassLike.typeArguments).forEach { (parameterArgument, actualArgument) ->
+            val nestedParameterType = parameterArgument.type ?: return@forEach
+            val nestedActualType = actualArgument.type ?: return@forEach
+            unifyLocalContextTypeArguments(
+                parameterType = nestedParameterType,
+                argumentType = nestedActualType,
+                functionTypeParameters = functionTypeParameters,
+                inferred = inferred,
+                localContextInferred = localContextInferred,
+                conflictingLocalBindings = conflictingLocalBindings,
             )
         }
     }

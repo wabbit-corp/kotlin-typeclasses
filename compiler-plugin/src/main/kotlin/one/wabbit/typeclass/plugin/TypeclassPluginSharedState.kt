@@ -2815,6 +2815,54 @@ internal fun Iterable<ConeKotlinType>.expandProvidedTypes(
     )
 }
 
+internal fun ConeKotlinType.localEvidenceTypes(
+    session: FirSession,
+    configuration: TypeclassConfiguration,
+): List<ConeKotlinType> = localEvidenceTypes(session, configuration, visited = linkedSetOf())
+
+private fun ConeKotlinType.localEvidenceTypes(
+    session: FirSession,
+    configuration: TypeclassConfiguration,
+    visited: MutableSet<String>,
+): List<ConeKotlinType> {
+    val lowered = approximateIntegerLiteralType().lowerBoundIfFlexible() as? ConeClassLikeType ?: return emptyList()
+    val classId = lowered.lookupTag.classId
+    if (classId.isLocal) {
+        return emptyList()
+    }
+    val visitKey = lowered.toString()
+    if (!visited.add(visitKey)) {
+        return emptyList()
+    }
+
+    val classSymbol =
+        try {
+            session.symbolProvider.getClassLikeSymbolByClassId(classId) as? FirRegularClassSymbol
+        } catch (_: IllegalArgumentException) {
+            null
+        } ?: return emptyList()
+
+    val collected = linkedMapOf<String, ConeKotlinType>()
+    val currentIsTypeclass =
+        configuration.isBuiltinTypeclass(classId) || classSymbol.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)
+    if (currentIsTypeclass) {
+        collected[visitKey] = lowered
+    }
+
+    val substitutions =
+        classSymbol.fir.typeParameters.zip(lowered.typeArguments).mapNotNull { (parameter, argument) ->
+            argument.type?.let { type -> parameter.symbol to type }
+        }.toMap()
+    classSymbol.fir.declaredOrResolvedSuperTypes().forEach { superType ->
+        val substitutedSuperType = substituteInferredTypes(superType, substitutions, session)
+        substitutedSuperType.localEvidenceTypes(session, configuration, visited).forEach { candidate ->
+            collected.putIfAbsent(candidate.toString(), candidate)
+        }
+    }
+
+    return collected.values.toList()
+}
+
 private fun ConeKotlinType.declaredProvidedTypeOrNull(
     session: FirSession,
     typeParameterBySymbol: Map<FirTypeParameterSymbol, TcTypeParameter>,
