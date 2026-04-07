@@ -44,24 +44,37 @@ internal class BinaryGeneratedDerivedMetadataLoader(
     fun generatedMetadataFor(classId: ClassId): List<GeneratedDerivedMetadata> =
         metadataByOwnerId.computeIfAbsent(classId.asString()) { ownerId ->
             metadataRoots.firstNotNullOfOrNull { root ->
-                root.generatedMetadataFor(classId)?.takeIf(List<GeneratedDerivedMetadata>::isNotEmpty)
+                when (val result = root.generatedMetadataFor(classId)) {
+                    BinaryGeneratedDerivedMetadataLookupResult.NotFound -> null
+                    is BinaryGeneratedDerivedMetadataLookupResult.Found -> result.metadata
+                }
             }.orEmpty()
         }
 }
 
+internal sealed interface BinaryGeneratedDerivedMetadataLookupResult {
+    data object NotFound : BinaryGeneratedDerivedMetadataLookupResult
+
+    data class Found(
+        val metadata: List<GeneratedDerivedMetadata>,
+    ) : BinaryGeneratedDerivedMetadataLookupResult
+}
+
 internal interface BinaryGeneratedDerivedMetadataRoot {
-    fun generatedMetadataFor(classId: ClassId): List<GeneratedDerivedMetadata>?
+    fun generatedMetadataFor(classId: ClassId): BinaryGeneratedDerivedMetadataLookupResult
 }
 
 internal class DirectoryBinaryGeneratedDerivedMetadataRoot(
     private val root: File,
 ) : BinaryGeneratedDerivedMetadataRoot {
-    override fun generatedMetadataFor(classId: ClassId): List<GeneratedDerivedMetadata>? {
+    override fun generatedMetadataFor(classId: ClassId): BinaryGeneratedDerivedMetadataLookupResult {
         val classFile = root.resolve(classId.classFilePath())
         if (!classFile.isFile) {
-            return null
+            return BinaryGeneratedDerivedMetadataLookupResult.NotFound
         }
-        return parseGeneratedDerivedMetadata(classFile.readBytes(), classId.asString())
+        return BinaryGeneratedDerivedMetadataLookupResult.Found(
+            parseGeneratedDerivedMetadata(classFile.readBytes(), classId.asString()),
+        )
     }
 }
 
@@ -73,11 +86,14 @@ internal class JarBinaryGeneratedDerivedMetadataRoot(
         jarFileOpener(root)
     }
 
-    override fun generatedMetadataFor(classId: ClassId): List<GeneratedDerivedMetadata>? {
-        val entry = jarFile.getJarEntry(classId.classFilePath()) ?: return null
-        return jarFile.getInputStream(entry).use { stream ->
-            parseGeneratedDerivedMetadata(stream.readBytes(), classId.asString())
-        }
+    override fun generatedMetadataFor(classId: ClassId): BinaryGeneratedDerivedMetadataLookupResult {
+        val entry = jarFile.getJarEntry(classId.classFilePath())
+            ?: return BinaryGeneratedDerivedMetadataLookupResult.NotFound
+        return BinaryGeneratedDerivedMetadataLookupResult.Found(
+            jarFile.getInputStream(entry).use { stream ->
+                parseGeneratedDerivedMetadata(stream.readBytes(), classId.asString())
+            },
+        )
     }
 }
 

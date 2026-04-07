@@ -16,6 +16,21 @@ import kotlin.test.assertEquals
 
 class BinaryGeneratedDerivedMetadataLoaderTest {
     @Test
+    fun loaderStopsAtFirstClasspathClassfileHitEvenWithoutGeneratedMetadata() {
+        val owner = ClassId.fromString("demo/User")
+        val metadata =
+            GeneratedDerivedMetadata.Derive(
+                typeclassId = ClassId.fromString("demo/Show"),
+                targetId = owner,
+            )
+        val shadowingJar = createPlainClassJar(owner)
+        val metadataJar = createMetadataJar(owner to metadata)
+        val loader = BinaryGeneratedDerivedMetadataLoader(listOf(shadowingJar, metadataJar))
+
+        assertEquals(emptyList(), loader.generatedMetadataFor(owner))
+    }
+
+    @Test
     fun jarRootReusesSingleJarOpenAcrossMultipleColdLookups() {
         val ownerA = ClassId.fromString("demo/Alpha")
         val ownerB = ClassId.fromString("demo/Beta")
@@ -42,8 +57,8 @@ class BinaryGeneratedDerivedMetadataLoaderTest {
                 JarFile(file)
             }
 
-        assertEquals(listOf(metadataA), root.generatedMetadataFor(ownerA))
-        assertEquals(listOf(metadataB), root.generatedMetadataFor(ownerB))
+        assertEquals(listOf(metadataA), root.generatedMetadataFor(ownerA).metadataForTest())
+        assertEquals(listOf(metadataB), root.generatedMetadataFor(ownerB).metadataForTest())
         assertEquals(1, openCount)
     }
 
@@ -80,6 +95,19 @@ class BinaryGeneratedDerivedMetadataLoaderTest {
         }
         return jarFile
     }
+
+    private fun createPlainClassJar(vararg owners: ClassId): File {
+        val jarFile = Files.createTempFile("typeclass-generated-metadata-plain", ".jar").toFile()
+        jarFile.deleteOnExit()
+        JarOutputStream(jarFile.outputStream().buffered()).use { jar ->
+            owners.forEach { owner ->
+                jar.putNextEntry(JarEntry(owner.classFilePathForTest()))
+                jar.write(plainClassBytes(owner))
+                jar.closeEntry()
+            }
+        }
+        return jarFile
+    }
 }
 
 private fun generatedMetadataAnnotatedClassBytes(
@@ -97,6 +125,22 @@ private fun generatedMetadataAnnotatedClassBytes(
         null,
     )
     writeGeneratedMetadataAnnotation(writer, metadata)
+    writeDefaultConstructor(writer)
+    writer.visitEnd()
+    return writer.toByteArray()
+}
+
+private fun plainClassBytes(owner: ClassId): ByteArray {
+    val writer = ClassWriter(0)
+    val internalName = owner.classInternalNameForTest()
+    writer.visit(
+        Opcodes.V1_8,
+        Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
+        internalName,
+        null,
+        "java/lang/Object",
+        null,
+    )
     writeDefaultConstructor(writer)
     writer.visitEnd()
     return writer.toByteArray()
@@ -141,3 +185,9 @@ private fun ClassId.classFilePathForTest(): String {
         "$packagePath/$relativePath.class"
     }
 }
+
+private fun BinaryGeneratedDerivedMetadataLookupResult.metadataForTest(): List<GeneratedDerivedMetadata> =
+    when (this) {
+        BinaryGeneratedDerivedMetadataLookupResult.NotFound -> error("expected classfile hit")
+        is BinaryGeneratedDerivedMetadataLookupResult.Found -> metadata
+    }
