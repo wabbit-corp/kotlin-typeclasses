@@ -489,7 +489,6 @@ private data class ResolutionIndex(
         val directTypeclassId: String,
         val targetType: TcType.Constructor,
         val prerequisiteTypes: List<TcType>,
-        val importedOwner: Boolean,
     )
 
     private data class DeriveViaOption(
@@ -497,7 +496,6 @@ private data class ResolutionIndex(
         val directTypeclassId: String,
         val prerequisiteType: TcType.Constructor,
         val pathKey: String,
-        val importedOwner: Boolean,
     )
 
     fun rulesForGoal(
@@ -705,7 +703,6 @@ private data class ResolutionIndex(
                     directTypeclassId = match.directTypeclassId,
                     targetType = match.targetType,
                     prerequisiteTypes = prerequisiteTypes,
-                    importedOwner = ownerDeclaration.source == null,
                 )
             }
         }.distinctBy { option ->
@@ -862,7 +859,6 @@ private data class ResolutionIndex(
                                     }
                                 "$prefix:${segment.classId.asString()}"
                             }}",
-                        importedOwner = ownerDeclaration.source == null,
                     )
                 }
             }
@@ -1014,13 +1010,10 @@ private data class ResolutionIndex(
             }
 
             else ->
-                associatedOwnerIds(constructor, session).any { ownerId ->
-                    val ownerClassId = runCatching { ClassId.fromString(ownerId) }.getOrNull() ?: return@any false
-                    val ownerDeclaration = session.regularClassSymbolOrNull(ownerClassId)?.fir ?: return@any false
-                    ownerDeclaration.matchingShapeDerivedGoalMatches(constructor, session, configuration).any { match ->
-                        canDeriveMatchedShapeGoal(
-                            directTypeclassId = match.directTypeclassId,
-                            targetType = match.targetType,
+                shapeDerivationOptionsForGoal(constructor, session).any { option ->
+                    option.prerequisiteTypes.all { prerequisiteGoal ->
+                        canDeriveGoal(
+                            goal = prerequisiteGoal,
                             session = session,
                             availableContexts = availableContexts,
                             visiting = linkedSetOf<String>().apply { addAll(visiting) },
@@ -1031,16 +1024,15 @@ private data class ResolutionIndex(
                     }
                 } ||
                     deriveViaOptionsForGoal(constructor, session).any { option ->
-                        option.importedOwner ||
-                            canDeriveGoal(
-                                goal = option.prerequisiteType,
-                                session = session,
-                                availableContexts = availableContexts,
-                                visiting = linkedSetOf<String>().apply { addAll(visiting) },
-                                canMaterializeVariable = canMaterializeVariable,
-                                builtinGoalAcceptance = builtinGoalAcceptance,
-                                exactBuiltinGoalContext = exactBuiltinGoalContext,
-                            )
+                        canDeriveGoal(
+                            goal = option.prerequisiteType,
+                            session = session,
+                            availableContexts = availableContexts,
+                            visiting = linkedSetOf<String>().apply { addAll(visiting) },
+                            canMaterializeVariable = canMaterializeVariable,
+                            builtinGoalAcceptance = builtinGoalAcceptance,
+                            exactBuiltinGoalContext = exactBuiltinGoalContext,
+                        )
                     }
         }
     }
@@ -1081,44 +1073,6 @@ private data class ResolutionIndex(
         classifierId: String,
         session: FirSession,
     ): Set<String> = sealedOwnerChain(classifierId, session)
-
-    private fun canDeriveMatchedShapeGoal(
-        directTypeclassId: String,
-        targetType: TcType.Constructor,
-        session: FirSession,
-        availableContexts: List<TcType>,
-        visiting: MutableSet<String>,
-        canMaterializeVariable: (String) -> Boolean,
-        builtinGoalAcceptance: BuiltinGoalAcceptance,
-        exactBuiltinGoalContext: FirBuiltinGoalExactContext?,
-    ): Boolean {
-        if (targetType.isNullable) {
-            return false
-        }
-        val classId = runCatching { ClassId.fromString(targetType.classifierId) }.getOrNull() ?: return false
-        val declaration = session.regularClassSymbolOrNull(classId)?.fir ?: return true
-        if (declaration.source == null) {
-            return true
-        }
-        val prerequisiteGoals =
-            exactShapeDerivedPrerequisiteGoals(
-                directTypeclassId = directTypeclassId,
-                targetType = targetType,
-                declaration = declaration,
-                session = session,
-            ) ?: return false
-        return prerequisiteGoals.all { prerequisiteGoal ->
-            canDeriveGoal(
-                goal = prerequisiteGoal,
-                session = session,
-                availableContexts = availableContexts,
-                visiting = linkedSetOf<String>().apply { addAll(visiting) },
-                canMaterializeVariable = canMaterializeVariable,
-                builtinGoalAcceptance = builtinGoalAcceptance,
-                exactBuiltinGoalContext = exactBuiltinGoalContext,
-            )
-        }
-    }
 
     private fun deriveSealedCaseType(
         rootClassId: ClassId,

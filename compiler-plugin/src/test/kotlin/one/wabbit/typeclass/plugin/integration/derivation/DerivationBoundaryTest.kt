@@ -396,6 +396,51 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun importedGenericDerivedRulesMustStillSolveConcretePrerequisitesInFir() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-generic-derived-box",
+                sources =
+                    mapOf(
+                        "dep/Show.kt" to showTypeclassSource(packageName = "dep"),
+                        "dep/Box.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.Derive
+
+                            @Derive(Show::class)
+                            data class Box<A>(val value: A)
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.Box
+            import dep.Show
+
+            data class Missing(val value: String)
+
+            context(_: Show<Box<Missing>>)
+            fun choose(value: Box<Missing>): String = "derived"
+
+            fun choose(value: Box<Missing>): String = "plain"
+
+            fun main() {
+                println(choose(Box(Missing("nope"))))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain",
+            dependencies = listOf(dependency),
+        )
+    }
+
+    @Test
     fun consumerModuleCanUseDerivedGenericSealedInstancesFromDependencyModules() {
         val dependency =
             HarnessDependency(
@@ -602,7 +647,7 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.IR)),
+            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.FIR)),
             dependencies = listOf(modelDependency),
             unexpectedMessages = listOf("internal compiler error"),
         )
@@ -721,7 +766,7 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.IR)),
+            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.FIR)),
             dependencies = listOf(modelDependency),
             unexpectedMessages = listOf("internal compiler error"),
         )
@@ -957,7 +1002,7 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedNoContextArgument("eq", phase = DiagnosticPhase.IR)),
+            expectedDiagnostics = listOf(expectedNoContextArgument("eq", phase = DiagnosticPhase.FIR)),
             dependencies = dependencies,
             unexpectedMessages = listOf("internal compiler error"),
         )

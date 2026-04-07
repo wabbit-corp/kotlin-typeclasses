@@ -1113,6 +1113,62 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
+    @Test fun importedDeriveViaRulesMustStillSolveConcretePrerequisitesInFir() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-imported-derive-via-hidden-prereq",
+                sources =
+                    mapOf(
+                        "dep/Api.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.DeriveVia
+                            import one.wabbit.typeclass.Instance
+                            import one.wabbit.typeclass.Typeclass
+
+                            @Typeclass
+                            interface Show<A> {
+                                fun show(value: A): String
+                            }
+
+                            data class Hidden(val value: String)
+
+                            @Instance
+                            internal object HiddenShow : Show<Hidden> {
+                                override fun show(value: Hidden): String = value.value
+                            }
+
+                            @JvmInline
+                            @DeriveVia(Show::class, Hidden::class)
+                            value class Token(val value: Hidden)
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.Show
+            import dep.Token
+
+            context(_: Show<Token>)
+            fun choose(value: Token): String = "derive-via"
+
+            fun choose(value: Token): String = "plain"
+
+            fun main() {
+                println(choose(Token(dep.Hidden("nope"))))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain",
+            dependencies = listOf(dependency),
+        )
+    }
+
     @Test fun infeasibleDeriveEquivDoesNotHidePlainOverload() {
         val source =
             """
