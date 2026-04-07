@@ -37,6 +37,8 @@ import org.jetbrains.kotlin.fir.resolve.providers.firProvider
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
 import org.jetbrains.kotlin.fir.types.ConeClassLikeType
+import org.jetbrains.kotlin.fir.types.ConeDefinitelyNotNullType
+import org.jetbrains.kotlin.fir.types.ConeIntersectionType
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
 import org.jetbrains.kotlin.fir.types.ConeTypeParameterType
 import org.jetbrains.kotlin.fir.types.classId
@@ -614,8 +616,11 @@ private fun ConeKotlinType.mentionsTransportedType(
                 argument.type?.mentionsTransportedType(transported, opaqueParameters) == true
             }
 
+        is ConeDefinitelyNotNullType -> lowered.original.mentionsTransportedType(transported, opaqueParameters)
+        is ConeIntersectionType -> lowered.intersectedTypes.any { intersected -> intersected.mentionsTransportedType(transported, opaqueParameters) }
+
         else ->
-            lowered.toString().containsTypeParameterIdentifier(
+            lowered.toString().containsStandaloneTypeParameterIdentifier(
                 transportedName = transported.name.asString(),
                 opaqueNames = opaqueParameters.mapTo(linkedSetOf()) { symbol -> symbol.name.asString() },
             )
@@ -908,14 +913,3 @@ private fun TcType.withoutNullability(): TcType? =
         is TcType.Variable -> if (isNullable) copy(isNullable = false) else null
         is TcType.Constructor -> if (isNullable) copy(isNullable = false) else null
     }
-
-private fun String.containsTypeParameterIdentifier(
-    transportedName: String,
-    opaqueNames: Set<String>,
-): Boolean =
-    Regex("""[A-Za-z_][A-Za-z0-9_]*""")
-        .findAll(this)
-        .map { match -> match.value }
-        .any { identifier ->
-            identifier == transportedName && identifier !in opaqueNames
-        }

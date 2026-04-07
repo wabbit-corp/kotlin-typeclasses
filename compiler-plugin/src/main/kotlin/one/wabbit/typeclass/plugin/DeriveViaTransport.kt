@@ -1404,7 +1404,12 @@ private fun IrType.mentionsTransportedType(
 ): Boolean {
     val simpleType = this as? IrSimpleType
     if (simpleType == null) {
-        return render().containsTypeParameterIdentifier(
+        withoutNullability()?.let { inner ->
+            if (inner != this) {
+                return inner.mentionsTransportedType(transported, opaqueParameters)
+            }
+        }
+        return render().containsStandaloneTypeParameterIdentifier(
             transportedName = transported.owner.name.asString(),
             opaqueNames = opaqueParameters.mapTo(linkedSetOf()) { symbol -> symbol.owner.name.asString() },
         )
@@ -1422,17 +1427,6 @@ private fun IrType.mentionsTransportedType(
         }
     }
 }
-
-private fun String.containsTypeParameterIdentifier(
-    transportedName: String,
-    opaqueNames: Set<String>,
-): Boolean =
-    Regex("""[A-Za-z_][A-Za-z0-9_]*""")
-        .findAll(this)
-        .map { match -> match.value }
-        .any { identifier ->
-            identifier == transportedName && identifier !in opaqueNames
-        }
 
 private data class FunctionTypeInfo(
     val kind: String,
