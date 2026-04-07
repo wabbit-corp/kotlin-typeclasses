@@ -71,6 +71,7 @@ internal class TypeclassPluginSharedState(
 ) {
     private val discoveryIndexes = SessionScopedCache<FirSession, ResolutionIndex>()
     private val binaryGeneratedMetadataLoader = BinaryGeneratedDerivedMetadataLoader(binaryClassPathRoots)
+    private val irImportedStateLock = Any()
     @Volatile
     private var latestIrImportedTopLevelRules: List<ImportedTopLevelInstanceRule> = emptyList()
     @Volatile
@@ -174,9 +175,11 @@ internal class TypeclassPluginSharedState(
         if (importedRules.isEmpty()) {
             return
         }
-        latestIrImportedTopLevelRules =
-            (latestIrImportedTopLevelRules + importedRules)
-                .distinctBy { importedRule -> importedRule.rule.id to importedRule.reference }
+        synchronized(irImportedStateLock) {
+            latestIrImportedTopLevelRules =
+                (latestIrImportedTopLevelRules + importedRules)
+                    .distinctBy { importedRule -> importedRule.rule.id to importedRule.reference }
+        }
     }
 
     private fun recordImportedGeneratedDerivedMetadataForIr(
@@ -186,9 +189,11 @@ internal class TypeclassPluginSharedState(
         if (metadata.isEmpty()) {
             return
         }
-        val existingByOwner = latestIrImportedGeneratedDerivedMetadataByOwner
-        val mergedEntries = (existingByOwner[ownerId].orEmpty() + metadata).distinct()
-        latestIrImportedGeneratedDerivedMetadataByOwner = existingByOwner + (ownerId to mergedEntries)
+        synchronized(irImportedStateLock) {
+            val existingByOwner = latestIrImportedGeneratedDerivedMetadataByOwner
+            val mergedEntries = (existingByOwner[ownerId].orEmpty() + metadata).distinct()
+            latestIrImportedGeneratedDerivedMetadataByOwner = existingByOwner + (ownerId to mergedEntries)
+        }
     }
 
     private fun buildDiscoveryIndexes(session: FirSession): ResolutionIndex {
