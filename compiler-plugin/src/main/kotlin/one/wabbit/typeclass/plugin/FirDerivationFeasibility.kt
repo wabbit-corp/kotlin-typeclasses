@@ -414,7 +414,291 @@ internal fun FirRegularClass.validateDeriveViaTransportability(session: FirSessi
             return returnMessage
         }
     }
+
+    val concreteType = defaultConcreteType()
+    val transportedId = typeParameterBySymbol[transported]?.id ?: return "DeriveVia requires a typeclass with a final transported type parameter"
+    val seenPropertyKeys = linkedSetOf<String>()
+    val seenFunctionKeys = linkedSetOf<String>()
+    recordDeclaredTypeclassMemberSignatures(
+        concreteType = concreteType,
+        seenPropertyKeys = seenPropertyKeys,
+        seenFunctionKeys = seenFunctionKeys,
+    )
+    for (superType in declaredOrResolvedSuperTypes()) {
+        val superConcreteType = superType.toConcreteType(this, concreteType) as? TcType.Constructor ?: continue
+        val superClassId = superConcreteType.classIdOrNull() ?: continue
+        val superClass = session.regularClassSymbolOrNull(superClassId)?.fir ?: continue
+        val message =
+            superClass.validateInheritedAbstractTypeclassSurface(
+                session = session,
+                concreteType = superConcreteType,
+                transportedId = transportedId,
+                seenPropertyKeys = seenPropertyKeys,
+                seenFunctionKeys = seenFunctionKeys,
+                visited = linkedSetOf(),
+            )
+        if (message != null) {
+            return message
+        }
+    }
     return null
+}
+
+private fun FirRegularClass.defaultConcreteType(): TcType.Constructor =
+    TcType.Constructor(
+        classifierId = symbol.classId.asString(),
+        arguments =
+            typeParameters.mapIndexed { index, typeParameter ->
+                TcType.Variable(
+                    id = "${symbol.classId.asString()}#$index",
+                    displayName = typeParameter.symbol.name.asString(),
+                )
+            },
+    )
+
+private fun FirRegularClass.recordDeclaredTypeclassMemberSignatures(
+    concreteType: TcType.Constructor,
+    seenPropertyKeys: MutableSet<String>,
+    seenFunctionKeys: MutableSet<String>,
+) {
+    for (property in declarations.filterIsInstance<FirProperty>()) {
+        val getter = property.getter ?: continue
+        seenPropertyKeys += property.signatureKey(this, concreteType, getter)
+    }
+    for (function in declarations.filterIsInstance<FirTypeclassFunctionDeclaration>()) {
+        seenFunctionKeys += function.signatureKey(this, concreteType)
+    }
+}
+
+private fun FirRegularClass.validateInheritedAbstractTypeclassSurface(
+    session: FirSession,
+    concreteType: TcType.Constructor,
+    transportedId: String,
+    seenPropertyKeys: MutableSet<String>,
+    seenFunctionKeys: MutableSet<String>,
+    visited: MutableSet<String>,
+): String? {
+    val visitKey = "${symbol.classId.asString()}:${concreteType.render()}"
+    if (!visited.add(visitKey)) {
+        return null
+    }
+
+    for (property in declarations.filterIsInstance<FirProperty>()) {
+        val getter = property.getter ?: continue
+        val signatureKey = property.signatureKey(this, concreteType, getter)
+        if (!seenPropertyKeys.add(signatureKey)) {
+            continue
+        }
+        if (getter.status.modality != Modality.ABSTRACT) {
+            continue
+        }
+        val message =
+            getter.returnTypeRef.coneType.transportabilityViolationInOwnerContext(
+                owner = this,
+                concreteType = concreteType,
+                transportedId = transportedId,
+                session = session,
+            )
+        if (message != null) {
+            return message
+        }
+    }
+
+    for (function in declarations.filterIsInstance<FirTypeclassFunctionDeclaration>()) {
+        val signatureKey = function.signatureKey(this, concreteType)
+        if (!seenFunctionKeys.add(signatureKey)) {
+            continue
+        }
+        if (function.status.modality != Modality.ABSTRACT) {
+            continue
+        }
+        val methodTypeParameters = function.typeParameters.toMethodTypeParameterModels(function)
+        if (function.typeParameters.any { typeParameter ->
+                typeParameter.bounds.any { bound ->
+                    bound.coneType.referencesTransportedTypeInOwnerContext(
+                        owner = this,
+                        concreteType = concreteType,
+                        transportedId = transportedId,
+                        additionalTypeParameters = methodTypeParameters,
+                    )
+                }
+            }
+        ) {
+            return "DeriveVia does not support method type-parameter bounds that mention the transported type parameter"
+        }
+        function.receiverParameter?.typeRef?.coneType?.let { receiverType ->
+            val message =
+                receiverType.transportabilityViolationInOwnerContext(
+                    owner = this,
+                    concreteType = concreteType,
+                    transportedId = transportedId,
+                    session = session,
+                    additionalTypeParameters = methodTypeParameters,
+                )
+            if (message != null) {
+                return message
+            }
+        }
+        for (parameter in function.contextParameters) {
+            if (parameter.valueParameterKind == FirValueParameterKind.ContextParameter &&
+                parameter.returnTypeRef.coneType.referencesTransportedTypeInOwnerContext(
+                    owner = this,
+                    concreteType = concreteType,
+                    transportedId = transportedId,
+                    additionalTypeParameters = methodTypeParameters,
+                )
+            ) {
+                return "DeriveVia does not support context parameters that mention the transported type parameter"
+            }
+        }
+        for (parameter in function.valueParameters) {
+            val message =
+                parameter.returnTypeRef.coneType.transportabilityViolationInOwnerContext(
+                    owner = this,
+                    concreteType = concreteType,
+                    transportedId = transportedId,
+                    session = session,
+                    additionalTypeParameters = methodTypeParameters,
+                )
+            if (message != null) {
+                return message
+            }
+        }
+        val returnMessage =
+            function.returnTypeRef.coneType.transportabilityViolationInOwnerContext(
+                owner = this,
+                concreteType = concreteType,
+                transportedId = transportedId,
+                session = session,
+                additionalTypeParameters = methodTypeParameters,
+            )
+        if (returnMessage != null) {
+            return returnMessage
+        }
+    }
+
+    for (superType in declaredOrResolvedSuperTypes()) {
+        val superConcreteType = superType.toConcreteType(this, concreteType) as? TcType.Constructor ?: continue
+        val superClassId = superConcreteType.classIdOrNull() ?: continue
+        val superClass = session.regularClassSymbolOrNull(superClassId)?.fir ?: continue
+        val message =
+            superClass.validateInheritedAbstractTypeclassSurface(
+                session = session,
+                concreteType = superConcreteType,
+                transportedId = transportedId,
+                seenPropertyKeys = seenPropertyKeys,
+                seenFunctionKeys = seenFunctionKeys,
+                visited = visited,
+            )
+        if (message != null) {
+            return message
+        }
+    }
+    return null
+}
+
+private fun FirProperty.signatureKey(
+    owner: FirRegularClass,
+    concreteType: TcType.Constructor,
+    getter: org.jetbrains.kotlin.fir.declarations.FirPropertyAccessor,
+): String =
+    buildString {
+        append("property:")
+        append(name.asString())
+        append(":")
+        append(getter.returnTypeRef.coneType.signatureRenderInOwnerContext(owner, concreteType))
+    }
+
+private fun FirTypeclassFunctionDeclaration.signatureKey(
+    owner: FirRegularClass,
+    concreteType: TcType.Constructor,
+): String {
+    val methodTypeParameters = typeParameters.toMethodTypeParameterModels(this)
+    return buildString {
+        append("function:")
+        append(name.asString())
+        append(":suspend=")
+        append(status.isSuspend)
+        append(":typeParams=")
+        append(typeParameters.size)
+        append(":ext=")
+        append(
+            receiverParameter?.typeRef?.coneType?.signatureRenderInOwnerContext(
+                owner = owner,
+                concreteType = concreteType,
+                additionalTypeParameters = methodTypeParameters,
+            ) ?: "-",
+        )
+        (contextParameters + valueParameters)
+            .forEach { parameter ->
+                append(":")
+                append(parameter.valueParameterKind.name)
+                append("=")
+                append(
+                    parameter.returnTypeRef.coneType.signatureRenderInOwnerContext(
+                        owner = owner,
+                        concreteType = concreteType,
+                        additionalTypeParameters = methodTypeParameters,
+                    ),
+                )
+            }
+        append(":ret=")
+        append(
+            returnTypeRef.coneType.signatureRenderInOwnerContext(
+                owner = owner,
+                concreteType = concreteType,
+                additionalTypeParameters = methodTypeParameters,
+            ),
+        )
+    }
+}
+
+private fun ConeKotlinType.signatureRenderInOwnerContext(
+    owner: FirRegularClass,
+    concreteType: TcType.Constructor,
+    additionalTypeParameters: Map<FirTypeParameterSymbol, TcTypeParameter> = emptyMap(),
+): String =
+    toConcreteType(
+        owner = owner,
+        concreteType = concreteType,
+        additionalTypeParameters = additionalTypeParameters,
+    )?.render() ?: approximateIntegerLiteralType().lowerBoundIfFlexible().toString()
+
+private fun ConeKotlinType.referencesTransportedTypeInOwnerContext(
+    owner: FirRegularClass,
+    concreteType: TcType.Constructor,
+    transportedId: String,
+    additionalTypeParameters: Map<FirTypeParameterSymbol, TcTypeParameter> = emptyMap(),
+): Boolean =
+    toConcreteType(
+        owner = owner,
+        concreteType = concreteType,
+        additionalTypeParameters = additionalTypeParameters,
+    )?.references(transportedId) == true
+
+private fun ConeKotlinType.transportabilityViolationInOwnerContext(
+    owner: FirRegularClass,
+    concreteType: TcType.Constructor,
+    transportedId: String,
+    session: FirSession,
+    additionalTypeParameters: Map<FirTypeParameterSymbol, TcTypeParameter> = emptyMap(),
+    visiting: MutableSet<String> = linkedSetOf(),
+): String? {
+    val lowered = approximateIntegerLiteralType().lowerBoundIfFlexible()
+    val rendered = lowered.toString()
+    val concreteModel =
+        toConcreteType(
+            owner = owner,
+            concreteType = concreteType,
+            additionalTypeParameters = additionalTypeParameters,
+        )
+    if (concreteModel?.references(transportedId) != true) {
+        return null
+    }
+    if (rendered.contains("&")) {
+        return "DeriveVia does not support definitely-non-null or intersection member types"
+    }
+    return concreteModel.transportabilityViolation(transportedId, session, visiting)
 }
 
 internal fun FirRegularClass.matchingShapeDerivedGoalMatches(
@@ -847,6 +1131,7 @@ private fun FirRegularClass.hasAnonymousInitializer(): Boolean =
 private fun ConeKotlinType.toConcreteType(
     owner: FirRegularClass,
     concreteType: TcType.Constructor,
+    additionalTypeParameters: Map<FirTypeParameterSymbol, TcTypeParameter> = emptyMap(),
 ): TcType? {
     val typeParameters =
         owner.typeParameters.mapIndexed { index, typeParameter ->
@@ -855,13 +1140,17 @@ private fun ConeKotlinType.toConcreteType(
                     id = "${owner.symbol.classId.asString()}#$index",
                     displayName = typeParameter.symbol.name.asString(),
                 )
-        }
+        } + additionalTypeParameters.toList()
     if (typeParameters.size != concreteType.arguments.size) {
-        return null
+        val ownerParameterCount = owner.typeParameters.size
+        if (ownerParameterCount != concreteType.arguments.size) {
+            return null
+        }
     }
     val parameterModels = typeParameters.toMap()
     val bindings =
-        typeParameters.mapIndexed { index, (_, parameter) ->
+        owner.typeParameters.mapIndexed { index, typeParameter ->
+            val parameter = parameterModels[typeParameter.symbol] ?: return null
             parameter.id to concreteType.arguments[index]
         }.toMap()
     return coneTypeToModel(this, parameterModels)?.substituteType(bindings)

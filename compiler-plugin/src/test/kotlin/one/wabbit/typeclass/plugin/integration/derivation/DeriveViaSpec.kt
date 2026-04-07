@@ -2844,6 +2844,55 @@ class DeriveViaSpec : IntegrationTestSupport() {
     }
 
     // Exact intended semantics:
+    // - inherited abstract members are part of the transported typeclass surface
+    // - DeriveVia must therefore validate inherited method bounds the same way it validates direct members
+    // - the inherited invalid member must be rejected during FIR validation rather than being discovered only later
+    @Test fun rejectsTransportAcrossInheritedGenericMethodBoundsMentioningA() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface BaseFancy<A> {
+                fun <T : A> narrow(value: T): A
+            }
+
+            @Typeclass
+            interface Fancy<A> : BaseFancy<A>
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooFancy : Fancy<Foo> {
+                override fun <T : Foo> narrow(value: T): Foo = value
+            }
+
+            @JvmInline
+            @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE inherited method bounds mentioning the transported type parameter are unsupported
+            value class UserId(val value: Int)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("type-parameter bounds", "transported type parameter"),
+                ),
+            unexpectedMessages =
+                listOf(
+                    "no context argument",
+                    "required instance",
+                    "overload resolution ambiguity",
+                ),
+        )
+    }
+
+    // Exact intended semantics:
     // - definitely-non-null / intersection forms like A & Any are outside the supported transport boundary for now
     @Test fun rejectsTransportAcrossDefinitelyNonNullIntersectionShapes() {
         val source =
