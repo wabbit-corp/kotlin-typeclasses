@@ -854,6 +854,7 @@ private fun FirTypeclassFunctionDeclaration.knownDeriverReturnExpressions(): Lis
 private fun FirExpression.knownReturnedTypeclassConstructors(
     session: FirSession,
     configuration: TypeclassConfiguration,
+    visitedCallables: MutableSet<FirCallableSymbol<*>> = linkedSetOf(),
 ): List<String> {
     val expression = knownReturnedExpressionOrSelf()
     val knownConstructors = linkedSetOf<String>()
@@ -879,6 +880,50 @@ private fun FirExpression.knownReturnedTypeclassConstructors(
                 knownTypeclassConstructorsForImplementation(superTypeClassId, session, configuration)
                     .forEach(knownConstructors::add)
             }
+    }
+    when (expression) {
+        is FirPropertyAccessExpression -> {
+            val symbol = (expression.calleeReference as? FirResolvedNamedReference)?.resolvedSymbol as? FirCallableSymbol<*> ?: return knownConstructors.toList()
+            if (!visitedCallables.add(symbol)) {
+                return knownConstructors.toList()
+            }
+            try {
+                when (val declaration = symbol.fir) {
+                    is FirProperty ->
+                        declaration.initializer
+                            ?.knownReturnedTypeclassConstructors(session, configuration, visitedCallables)
+                            ?.forEach(knownConstructors::add)
+
+                    is FirTypeclassFunctionDeclaration ->
+                        declaration.knownDeriverReturnExpressions()
+                            .forEach { nested ->
+                                nested.knownReturnedTypeclassConstructors(session, configuration, visitedCallables)
+                                    .forEach(knownConstructors::add)
+                            }
+
+                    else -> Unit
+                }
+            } finally {
+                visitedCallables.remove(symbol)
+            }
+        }
+
+        is FirFunctionCall -> {
+            val symbol = (expression.calleeReference as? FirResolvedNamedReference)?.resolvedSymbol as? FirCallableSymbol<*> ?: return knownConstructors.toList()
+            if (!visitedCallables.add(symbol)) {
+                return knownConstructors.toList()
+            }
+            try {
+                (symbol.fir as? FirTypeclassFunctionDeclaration)
+                    ?.knownDeriverReturnExpressions()
+                    ?.forEach { nested ->
+                        nested.knownReturnedTypeclassConstructors(session, configuration, visitedCallables)
+                            .forEach(knownConstructors::add)
+                    }
+            } finally {
+                visitedCallables.remove(symbol)
+            }
+        }
     }
     return knownConstructors.toList()
 }

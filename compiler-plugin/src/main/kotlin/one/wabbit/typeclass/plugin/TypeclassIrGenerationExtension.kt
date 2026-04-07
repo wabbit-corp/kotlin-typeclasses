@@ -81,6 +81,7 @@ import org.jetbrains.kotlin.ir.expressions.IrConst
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrExpressionBody
+import org.jetbrains.kotlin.ir.expressions.IrGetValue
 import org.jetbrains.kotlin.ir.expressions.IrGetObjectValue
 import org.jetbrains.kotlin.ir.expressions.IrReturn
 import org.jetbrains.kotlin.ir.expressions.IrStatementOrigin
@@ -2272,9 +2273,15 @@ private fun IrSimpleFunction.knownDeriverReturnExpressions(): List<IrExpression>
 
 private fun IrExpression.knownReturnedTypeclassConstructors(
     configuration: TypeclassConfiguration,
+    visitedFunctions: MutableSet<IrSimpleFunction> = linkedSetOf(),
+    visitedVariables: MutableSet<IrVariable> = linkedSetOf(),
 ): List<String> =
     knownReturnedExpressionOrSelf()
-        .knownReturnedTypeclassConstructorsOrEmpty(configuration)
+        .knownReturnedTypeclassConstructorsOrEmpty(
+            configuration = configuration,
+            visitedFunctions = visitedFunctions,
+            visitedVariables = visitedVariables,
+        )
 
 private fun IrExpression.knownReturnedExpressionOrSelf(): IrExpression =
     when (this) {
@@ -2310,17 +2317,18 @@ private fun IrExpression.knownReturnedImplementationOwners(): List<IrClass> =
 
 private fun IrExpression.knownReturnedTypeclassConstructorsOrEmpty(
     configuration: TypeclassConfiguration,
+    visitedFunctions: MutableSet<IrSimpleFunction>,
+    visitedVariables: MutableSet<IrVariable>,
 ): List<String> {
+    val expression = knownReturnedExpressionOrSelf()
     val direct =
-        listOf(type)
+        listOf(expression.type)
             .providedTypeExpansion(emptyMap(), configuration)
             .validTypes
             .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
             .distinct()
-    if (direct.isNotEmpty()) {
-        return direct
-    }
     val result = linkedSetOf<String>()
+    result += direct
     val visited = linkedSetOf<String>()
 
     fun visitSuperType(superType: IrType) {
@@ -2340,11 +2348,46 @@ private fun IrExpression.knownReturnedTypeclassConstructorsOrEmpty(
         currentClass.superTypes.forEach(::visitSuperType)
     }
 
-    knownReturnedImplementationOwners()
+    expression.knownReturnedImplementationOwners()
         .distinctBy { owner -> owner.classId?.asString() ?: owner.name.asString() }
         .forEach { owner ->
             owner.superTypes.forEach(::visitSuperType)
         }
+    when (expression) {
+        is IrGetValue -> {
+            val variable = expression.symbol.owner as? IrVariable
+            if (variable != null && visitedVariables.add(variable)) {
+                try {
+                    variable.initializer
+                        ?.knownReturnedTypeclassConstructors(
+                            configuration = configuration,
+                            visitedFunctions = visitedFunctions,
+                            visitedVariables = visitedVariables,
+                        )
+                        ?.forEach(result::add)
+                } finally {
+                    visitedVariables.remove(variable)
+                }
+            }
+        }
+
+        is IrCall -> {
+            val function = expression.symbol.owner
+            if (visitedFunctions.add(function)) {
+                try {
+                    function.knownDeriverReturnExpressions().forEach { nested ->
+                        nested.knownReturnedTypeclassConstructors(
+                            configuration = configuration,
+                            visitedFunctions = visitedFunctions,
+                            visitedVariables = visitedVariables,
+                        ).forEach(result::add)
+                    }
+                } finally {
+                    visitedFunctions.remove(function)
+                }
+            }
+        }
+    }
     return result.toList()
 }
 
