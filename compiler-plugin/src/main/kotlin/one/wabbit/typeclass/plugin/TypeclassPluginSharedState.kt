@@ -850,22 +850,24 @@ private data class ResolutionIndex(
                 return@flatMap emptyList()
             }
             val ownerType = TcType.Constructor(ownerId, emptyList())
-            ownerDeclaration.deriveViaRequests(session).flatMapIndexed { index, request ->
-                val typeclassInterface = session.regularClassSymbolOrNull(request.typeclassId)?.fir ?: return@flatMapIndexed emptyList()
+            ownerDeclaration.deriveViaRequests(session).distinctBy { request ->
+                deriveViaRequestIdentityKey(request.typeclassId, request.path)
+            }.flatMap requestLoop@{ request ->
+                val typeclassInterface = session.regularClassSymbolOrNull(request.typeclassId)?.fir ?: return@requestLoop emptyList()
                 if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)) {
-                    return@flatMapIndexed emptyList()
+                    return@requestLoop emptyList()
                 }
                 if (typeclassInterface.typeParameters.isEmpty()) {
-                    return@flatMapIndexed emptyList()
+                    return@requestLoop emptyList()
                 }
                 if (typeclassInterface.validateDeriveViaTransportability(session) != null) {
-                    return@flatMapIndexed emptyList()
+                    return@requestLoop emptyList()
                 }
                 val expansions = expandedDerivedTypeclassHeads(request.typeclassId.asString(), session, configuration)
                 val directTypeParameters = expansions.firstOrNull()?.directTypeParameters.orEmpty()
-                val transportedParameter = directTypeParameters.lastOrNull() ?: return@flatMapIndexed emptyList()
+                val transportedParameter = directTypeParameters.lastOrNull() ?: return@requestLoop emptyList()
                 val bindableIds = directTypeParameters.mapTo(linkedSetOf(), TcTypeParameter::id)
-                val viaType = planner.resolveViaPath(ownerType, request.path) ?: return@flatMapIndexed emptyList()
+                val viaType = planner.resolveViaPath(ownerType, request.path) ?: return@requestLoop emptyList()
                 expansions.mapNotNull { expansion ->
                     if (expansion.head.classifierId != goal.classifierId) {
                         return@mapNotNull null
@@ -882,15 +884,7 @@ private data class ResolutionIndex(
                         ownerId = ownerId,
                         directTypeclassId = request.typeclassId.asString(),
                         prerequisiteType = prerequisiteType,
-                        pathKey =
-                            "$index:${request.path.joinToString("|") { segment ->
-                                val prefix =
-                                    when (segment) {
-                                        is FirDeriveViaPathSegment.Waypoint -> "W"
-                                        is FirDeriveViaPathSegment.PinnedIso -> "I"
-                                    }
-                                "$prefix:${segment.classId.asString()}"
-                            }}",
+                        pathKey = deriveViaPathKey(request.path),
                     )
                 }
             }
@@ -903,6 +897,21 @@ private data class ResolutionIndex(
             ).joinToString("::")
         }
     }
+
+    private fun deriveViaRequestIdentityKey(
+        typeclassId: ClassId,
+        path: List<FirDeriveViaPathSegment>,
+    ): String = "${typeclassId.asString()}:${deriveViaPathKey(path)}"
+
+    private fun deriveViaPathKey(path: List<FirDeriveViaPathSegment>): String =
+        path.joinToString("|") { segment ->
+            val prefix =
+                when (segment) {
+                    is FirDeriveViaPathSegment.Waypoint -> "W"
+                    is FirDeriveViaPathSegment.PinnedIso -> "I"
+                }
+            "$prefix:${segment.classId.asString()}"
+        }
 
     private fun deriveEquivRefinementRules(
         goal: TcType.Constructor,

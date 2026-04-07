@@ -1974,6 +1974,50 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
+    // Exact intended semantics:
+    // - duplicate identical DeriveVia annotations are redundant declarations of the same route
+    // - they must not create extra refinement rules or make a single contextual call ambiguous
+    @Test fun duplicateIdenticalDeriveViaAnnotationsDoNotCreateExtraRefinementCandidates() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @JvmInline
+            value class Via(val value: Int)
+
+            @Instance
+            object ViaShow : Show<Via> {
+                override fun show(value: Via): String = "via:${'$'}{value.value}"
+            }
+
+            @DeriveVia(Show::class, Via::class)
+            @DeriveVia(Show::class, Via::class)
+            @JvmInline
+            value class UserId(val value: Int)
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(UserId(7)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "via:7",
+        )
+    }
+
     @Test fun failedSiblingDeriveViaBranchesMustNotLeakRecursiveFeasibilityState() {
         val source =
             """
