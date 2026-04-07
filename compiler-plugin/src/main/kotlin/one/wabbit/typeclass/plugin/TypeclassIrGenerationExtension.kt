@@ -263,7 +263,13 @@ private class TypeclassIrCallTransformer(
         call: IrCall,
     ): IrSimpleFunction? {
         val callableId = callee.safeCallableIdOrNull() ?: return null
-        if (callableId.isLocal || callee.typeParameters.isNotEmpty()) {
+        if (
+            !supportsExactPlainOverloadFallbackTypeParameters(
+                callableIsLocal = callableId.isLocal,
+                calleeDeclaredTypeParameterCount = callee.typeParameters.size,
+                candidateDeclaredTypeParameterCount = 0,
+            )
+        ) {
             return null
         }
         val candidates =
@@ -275,6 +281,13 @@ private class TypeclassIrCallTransformer(
             candidates
                 .asSequence()
                 .filter { candidate -> candidate != callee }
+                .filter { candidate ->
+                    supportsExactPlainOverloadFallbackTypeParameters(
+                        callableIsLocal = false,
+                        calleeDeclaredTypeParameterCount = callee.typeParameters.size,
+                        candidateDeclaredTypeParameterCount = candidate.typeParameters.size,
+                    )
+                }
                 .filter { candidate -> !candidate.requiresSyntheticTypeclassResolution(call, configuration) }
                 .filter { candidate ->
                     wrapperResolutionShape(candidate, dropTypeclassContexts = false, configuration = configuration) ==
@@ -596,6 +609,9 @@ private class TypeclassIrCallTransformer(
         extensionReceiver: IrExpression?,
         explicitArguments: ExtractedExplicitArguments,
     ): IrExpression {
+        require(plainFallback.typeParameters.isEmpty()) {
+            "Generic plain overload fallback is unsupported for ${plainFallback.renderIdentity()}"
+        }
         val plainCall = irCall(plainFallback.symbol)
         plainCall.dispatchReceiver = dispatchReceiver
         plainCall.extensionReceiver = extensionReceiver
@@ -5450,6 +5466,15 @@ private fun IrSimpleFunction.visibleNonTypeclassParameterCount(
         parameter.kind != org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context ||
             !parameter.type.isTypeclassType(configuration)
     }
+
+internal fun supportsExactPlainOverloadFallbackTypeParameters(
+    callableIsLocal: Boolean,
+    calleeDeclaredTypeParameterCount: Int,
+    candidateDeclaredTypeParameterCount: Int,
+): Boolean =
+    !callableIsLocal &&
+        calleeDeclaredTypeParameterCount == 0 &&
+        candidateDeclaredTypeParameterCount == 0
 
 private inline fun <T> Iterable<T>.anyIndexed(predicate: (index: Int, T) -> Boolean): Boolean {
     var index = 0
