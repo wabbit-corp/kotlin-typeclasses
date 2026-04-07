@@ -16,7 +16,6 @@ import org.jetbrains.kotlin.ir.util.classIdOrFail
 import org.jetbrains.kotlin.ir.util.parentAsClass
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
-import org.jetbrains.kotlin.name.SpecialNames
 
 internal data class InstanceOwnerContext(
     val isTopLevel: Boolean,
@@ -34,7 +33,7 @@ internal fun firInstanceOwnerContext(
     if (classId.isLocal) {
         return InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = null)
     }
-    return if (classId.shortClassName == SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT) {
+    return if (session.regularClassSymbolOrNull(classId)?.isTypeclassCompanionDeclaration() == true) {
         InstanceOwnerContext(
             isTopLevel = false,
             isCompanionScope = true,
@@ -61,7 +60,7 @@ private fun firNestedOwnerContext(
         return InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = null)
     }
     val ownerClass = session.symbolProvider.getClassLikeSymbolByClassId(ownerClassId) as? FirRegularClassSymbol
-    return if (ownerClass?.fir?.classKind == ClassKind.OBJECT && ownerClassId.shortClassName == SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT) {
+    return if (ownerClass?.isTypeclassCompanionDeclaration() == true) {
         InstanceOwnerContext(
             isTopLevel = false,
             isCompanionScope = true,

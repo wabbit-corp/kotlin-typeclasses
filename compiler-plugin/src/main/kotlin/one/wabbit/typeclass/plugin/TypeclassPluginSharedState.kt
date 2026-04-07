@@ -60,7 +60,6 @@ import org.jetbrains.kotlin.fir.types.coneType
 import org.jetbrains.kotlin.fir.types.resolvedType
 import org.jetbrains.kotlin.fir.types.type
 import org.jetbrains.kotlin.name.*
-import org.jetbrains.kotlin.name.SpecialNames
 import org.jetbrains.kotlin.types.Variance
 import java.io.File
 import java.util.Collections
@@ -317,7 +316,7 @@ private class FirResolutionScanner(
 
                 val nextAssociatedOwner =
                     when {
-                        classId.shortClassName == SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT -> classId.outerClassId
+                        declaration.isTypeclassCompanionDeclaration() -> classId.outerClassId
                         associatedOwner != null -> associatedOwner
                         else -> null
                     }
@@ -1785,15 +1784,8 @@ private data class ResolutionIndex(
             val companion =
                 directOrNestedCompanion(
                     owner = owner,
-                    directCompanion =
-                        ownerSymbol.fir.declarations
-                            .filterIsInstance<FirRegularClass>()
-                            .firstOrNull { declaration ->
-                                declaration.symbol.classId.shortClassName == SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT
-                            },
-                    nestedLookup = { companionId ->
-                        session.regularClassSymbolOrNull(companionId)?.fir
-                    },
+                    directCompanion = ownerSymbol.fir.declarations.filterIsInstance<FirRegularClass>().firstOrNull(FirRegularClass::isTypeclassCompanionDeclaration),
+                    nestedLookup = { session.companionSymbolOrNull(owner)?.fir },
                 ) ?: return@getOrPut emptyList()
             buildList {
                 collectAssociatedRules(

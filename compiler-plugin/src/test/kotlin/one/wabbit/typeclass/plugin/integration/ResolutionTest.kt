@@ -2384,6 +2384,42 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun resolvesAssociatedNamedCompanionObjectInstances() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            data class Box<A>(val value: A) {
+                companion object NamedEvidence {
+                    @Instance
+                    object IntBoxShow : Show<Box<Int>> {
+                        override fun show(value: Box<Int>): String = "named-companion:${'$'}{value.value}"
+                    }
+                }
+            }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(Box(1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "named-companion:1",
+        )
+    }
+
     @Test fun distinguishesValueClassesFromUnderlyingTypes() {
         val source =
             """

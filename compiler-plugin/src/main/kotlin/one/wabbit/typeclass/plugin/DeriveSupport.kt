@@ -27,7 +27,6 @@ import org.jetbrains.kotlin.fir.types.lowerBoundIfFlexible
 import org.jetbrains.kotlin.fir.types.resolvedType
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.name.SpecialNames
 
 internal enum class DeriveMethodContract(
     val methodName: String,
@@ -381,23 +380,11 @@ internal fun typeclassCompanionResolveDeriveMethod(
     return companionSymbol.resolveDeriveMethod(contract, session)
 }
 
-private fun typeclassCompanionSymbol(
+internal fun typeclassCompanionSymbol(
     typeclassId: ClassId,
     session: FirSession,
 ): FirRegularClassSymbol? {
-    val typeclassSymbol = session.regularClassSymbolOrNull(typeclassId) ?: return null
-    return typeclassSymbol.fir.declarations
-        .filterIsInstance<FirRegularClass>()
-        .singleOrNull { declaration ->
-            declaration.symbol.classId.shortClassName == SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT
-        }?.symbol
-        ?: try {
-            session.symbolProvider.getClassLikeSymbolByClassId(
-                typeclassId.createNestedClassId(SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT),
-            ) as? FirRegularClassSymbol
-        } catch (_: IllegalArgumentException) {
-            null
-        }
+    return session.companionSymbolOrNull(typeclassId)
 }
 
 internal fun typeclassTypeParameterCount(

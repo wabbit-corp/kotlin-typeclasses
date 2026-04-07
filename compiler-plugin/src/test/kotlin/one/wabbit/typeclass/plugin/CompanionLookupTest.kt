@@ -30,20 +30,20 @@ class CompanionLookupTest {
     @Test
     fun fallsBackToNestedCompanionLookupWhenDirectCompanionIsMissing() {
         val owner = ClassId.fromString("demo/Box")
-        var lookedUpCompanionId: ClassId? = null
+        var nestedLookupCalls = 0
 
         val resolved =
             directOrNestedCompanion(
                 owner = owner,
                 directCompanion = null,
-                nestedLookup = { companionId ->
-                    lookedUpCompanionId = companionId
+                nestedLookup = {
+                    nestedLookupCalls += 1
                     "nested"
                 },
             )
 
         assertEquals("nested", resolved)
-        assertEquals(ClassId.fromString("demo/Box.Companion"), lookedUpCompanionId)
+        assertEquals(1, nestedLookupCalls)
     }
 
     @Test

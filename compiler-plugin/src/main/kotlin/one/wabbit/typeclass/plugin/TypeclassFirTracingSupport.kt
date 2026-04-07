@@ -28,7 +28,6 @@ import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
 import org.jetbrains.kotlin.fir.types.coneType
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.name.SpecialNames
 
 internal data class FirTypeclassResolutionContext(
     val typeParameterModels: Map<FirTypeParameterSymbol, TcTypeParameter>,
@@ -185,7 +184,7 @@ private fun FirAnnotationContainer.debugTypeclassTraceScope(session: FirSession)
             TypeclassTraceScope(
                 mode = mode,
                 kind =
-                    if (classKind == ClassKind.OBJECT || symbol.classId.shortClassName == SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT) {
+                    if (classKind == ClassKind.OBJECT || isTypeclassCompanionDeclaration()) {
                         "object"
                     } else {
                         "class"

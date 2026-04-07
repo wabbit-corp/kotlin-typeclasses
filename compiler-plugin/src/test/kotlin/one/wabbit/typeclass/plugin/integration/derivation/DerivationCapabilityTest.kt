@@ -249,6 +249,52 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun deriveProductWorksWithNamedTypeclassCompanions() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object NamedFactory : ProductTypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+                }
+            }
+
+            @Instance
+            object IntShow : Show<Int> {
+                override fun show(value: Int): String = "int:${'$'}value"
+            }
+
+            @Derive(Show::class)
+            data class Box(val value: Int)
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(Box(1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "demo.Box",
+        )
+    }
+
+    @Test
     fun deriveSumMayUseInheritedDefaultImplementation() {
         val source =
             """

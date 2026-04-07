@@ -2561,9 +2561,7 @@ private class IrRuleIndex private constructor(
                 directOrNestedCompanion(
                     owner = owner,
                     directCompanion = ownerClass.declarations.filterIsInstance<IrClass>().firstOrNull(IrClass::isCompanion),
-                    nestedLookup = { companionId ->
-                        pluginContext.referenceClass(companionId)?.owner?.also(scanner::registerDiscoveredClass)
-                    },
+                    nestedLookup = { null },
                 )
                     ?.let { companion ->
                         buildList {

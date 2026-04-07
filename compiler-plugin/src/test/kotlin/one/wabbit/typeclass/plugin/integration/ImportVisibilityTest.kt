@@ -596,6 +596,58 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun publicAssociatedNamedCompanionInstancesFromDependenciesParticipateInResolution() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-public-named-companion",
+                sources =
+                    mapOf(
+                        "dep/Api.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.Instance
+                            import one.wabbit.typeclass.Typeclass
+
+                            @Typeclass
+                            interface Show<A> {
+                                fun show(value: A): String
+                            }
+
+                            data class Box(val value: Int) {
+                                companion object NamedEvidence {
+                                    @Instance
+                                    val show =
+                                        object : Show<Box> {
+                                            override fun show(value: Box): String = "named-box:${'$'}{value.value}"
+                                        }
+                                }
+                            }
+
+                            context(show: Show<Box>)
+                            fun render(value: Box): String = show.show(value)
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.Box
+            import dep.render
+
+            fun main() {
+                println(render(Box(1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "named-box:1",
+            dependencies = listOf(dependency),
+        )
+    }
+
     @Test fun publicTopLevelDependencyInstancesParticipateInIrResolution() {
         val dependency =
             HarnessDependency(

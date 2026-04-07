@@ -69,7 +69,6 @@ import org.jetbrains.kotlin.fir.types.type
 import org.jetbrains.kotlin.fir.visitors.FirDefaultVisitorVoid
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
-import org.jetbrains.kotlin.name.SpecialNames
 
 internal class TypeclassFirCheckersExtension(
     session: FirSession,
@@ -566,8 +565,7 @@ internal class TypeclassFirCheckersExtension(
                     if (contract == DeriveMethodContract.ENUM) {
                         reportCannotDerive(declaration, cannotDeriveMissingEnumOverride(typeclassId.shortClassName.asString()))
                     } else {
-                        val companionId =
-                            typeclassId.createNestedClassId(SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT).asString()
+                        val companionId = typeclassCompanionSymbol(typeclassId, session)?.classId?.asString() ?: typeclassId.asString()
                         reportCannotDerive(
                             declaration,
                             cannotDeriveDiagnostic("Typeclass deriver $companionId is missing ${contract.methodName}"),
@@ -613,7 +611,8 @@ internal class TypeclassFirCheckersExtension(
         val companion =
             declaration.declarations
                 .filterIsInstance<FirRegularClass>()
-                .singleOrNull { nested -> nested.symbol.classId.shortClassName == SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT }
+                .singleOrNull(FirRegularClass::isTypeclassCompanionDeclaration)
+                ?: session.companionSymbolOrNull(declaration.symbol.classId)?.fir
                 ?: return
         val typeclassId = declaration.symbol.classId
         val deriveMethods =
