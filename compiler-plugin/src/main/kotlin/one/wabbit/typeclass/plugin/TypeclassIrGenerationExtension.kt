@@ -2401,7 +2401,6 @@ private class IrRuleIndex private constructor(
 ) {
     private val lazilyDiscoveredAssociatedRulesByOwner: MutableMap<ClassId, List<ResolvedRule>> = linkedMapOf()
     private val lazilyDiscoveredRulesById: MutableMap<String, ResolvedRule> = linkedMapOf()
-    private val deriverReturnValidationCache: MutableMap<IrSimpleFunction, Boolean> = linkedMapOf()
 
     fun originalForWrapperLikeFunction(wrapperLikeFunction: IrSimpleFunction): IrSimpleFunction? {
         val callableId = wrapperLikeFunction.safeCallableIdOrNull() ?: return null
