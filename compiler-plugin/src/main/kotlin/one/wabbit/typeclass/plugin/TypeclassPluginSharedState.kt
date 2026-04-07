@@ -70,16 +70,12 @@ internal class TypeclassPluginSharedState(
     internal val configuration: TypeclassConfiguration = TypeclassConfiguration(),
     private val binaryClassPathRoots: List<File> = emptyList(),
 ) {
-    private val discoveryIndexes = SessionScopedCache<FirSession, DiscoveryIndexes>()
+    private val discoveryIndexes = SessionScopedCache<FirSession, ResolutionIndex>()
     private val binaryGeneratedMetadataLoader = BinaryGeneratedDerivedMetadataLoader(binaryClassPathRoots)
     @Volatile
     private var latestIrImportedTopLevelRules: List<ImportedTopLevelInstanceRule> = emptyList()
     @Volatile
     private var latestIrImportedGeneratedDerivedMetadataByOwner: Map<String, List<GeneratedDerivedMetadata>> = emptyMap()
-
-    fun topLevelContextualCallables(session: FirSession): Set<CallableId> {
-        return sourceIndex(session).topLevelContextualCallables
-    }
 
     fun importedTopLevelRulesForIr(): List<ImportedTopLevelInstanceRule> = latestIrImportedTopLevelRules
 
@@ -88,17 +84,6 @@ internal class TypeclassPluginSharedState(
 
     fun binaryGeneratedDerivedMetadataForIr(owner: ClassId): List<GeneratedDerivedMetadata> =
         binaryGeneratedMetadataLoader.generatedMetadataFor(owner)
-
-    fun topLevelContextualPackages(session: FirSession): Set<FqName> {
-        return sourceIndex(session).topLevelContextualPackages
-    }
-
-    fun memberContextualNames(
-        session: FirSession,
-        ownerClassId: ClassId,
-    ): Set<Name> {
-        return sourceIndex(session).memberContextualNames[ownerClassId].orEmpty()
-    }
 
     fun rulesForGoal(
         session: FirSession,
@@ -155,13 +140,10 @@ internal class TypeclassPluginSharedState(
         type: ConeKotlinType,
     ): Boolean = isTypeclassType(type, session, configuration)
 
-    private fun sourceIndex(session: FirSession): SourceIndex =
-        discoveryIndexes(session).sourceIndex
-
     private fun resolutionIndex(session: FirSession): ResolutionIndex =
-        discoveryIndexes(session).resolutionIndex
+        discoveryIndexes(session)
 
-    private fun discoveryIndexes(session: FirSession): DiscoveryIndexes =
+    private fun discoveryIndexes(session: FirSession): ResolutionIndex =
         discoveryIndexes.getOrPut(session) {
             buildDiscoveryIndexes(session)
         }
@@ -199,110 +181,40 @@ internal class TypeclassPluginSharedState(
         latestIrImportedGeneratedDerivedMetadataByOwner = existingByOwner + (ownerId to mergedEntries)
     }
 
-    private fun buildDiscoveryIndexes(session: FirSession): DiscoveryIndexes {
+    private fun buildDiscoveryIndexes(session: FirSession): ResolutionIndex {
         BinaryGeneratedDerivedMetadataRegistry.install(session, binaryClassPathRoots)
-        val topLevelCallables = linkedSetOf<CallableId>()
-        val topLevelPackages = linkedSetOf<FqName>()
-        val memberNamesByOwner = linkedMapOf<ClassId, MutableSet<Name>>()
         val scanner = FirResolutionScanner(session, configuration)
-        scanTopLevelDeclarations(
-            source = FirTopLevelDeclarationSource(session),
-            visit = { declaration ->
-                collectContextualFunctions(
-                    declaration = declaration,
-                    topLevelCallables = topLevelCallables,
-                    topLevelPackages = topLevelPackages,
-                    memberNamesByOwner = memberNamesByOwner,
-                )
-                scanner.scanDeclaration(declaration, associatedOwner = null)
-            },
+        return scanner.build(
+            recordImportedTopLevelRulesForIr = ::recordImportedTopLevelRulesForIr,
+            recordImportedGeneratedDerivedMetadataForIr = ::recordImportedGeneratedDerivedMetadataForIr,
         )
-        val resolutionIndex =
-            scanner.build(
-                recordImportedTopLevelRulesForIr = ::recordImportedTopLevelRulesForIr,
-                recordImportedGeneratedDerivedMetadataForIr = ::recordImportedGeneratedDerivedMetadataForIr,
-            )
-
-        return DiscoveryIndexes(
-            sourceIndex =
-                SourceIndex(
-                    topLevelContextualCallables = topLevelCallables,
-                    topLevelContextualPackages = topLevelPackages,
-                    memberContextualNames = memberNamesByOwner.mapValues { (_, names) -> names.toSet() },
-                ),
-            resolutionIndex = resolutionIndex,
-        )
-    }
-
-    @OptIn(DirectDeclarationsAccess::class)
-    private fun collectContextualFunctions(
-        declaration: FirDeclaration,
-        topLevelCallables: MutableSet<CallableId>,
-        topLevelPackages: MutableSet<FqName>,
-        memberNamesByOwner: MutableMap<ClassId, MutableSet<Name>>,
-    ) {
-        when (declaration) {
-            is FirTypeclassFunctionDeclaration -> {
-                if (declaration.contextParameters.isEmpty()) {
-                    return
-                }
-                val callableId = declaration.symbol.callableId
-                val ownerClassId = callableId.classId
-                if (ownerClassId == null) {
-                    topLevelCallables += callableId
-                    topLevelPackages += callableId.packageName
-                } else {
-                    memberNamesByOwner.getOrPut(ownerClassId, ::linkedSetOf) += callableId.callableName
-                }
-            }
-
-            is FirRegularClass -> {
-                declaration.declarations.forEach { nestedDeclaration ->
-                    collectContextualFunctions(
-                        declaration = nestedDeclaration,
-                        topLevelCallables = topLevelCallables,
-                        topLevelPackages = topLevelPackages,
-                        memberNamesByOwner = memberNamesByOwner,
-                    )
-                }
-            }
-
-            else -> Unit
-        }
     }
 }
 
-private data class DiscoveryIndexes(
-    val sourceIndex: SourceIndex,
-    val resolutionIndex: ResolutionIndex,
-)
+private fun FirSession.topLevelDeclarationProviders(): List<org.jetbrains.kotlin.fir.resolve.providers.FirSymbolProvider> =
+    buildList {
+        add(firProvider.symbolProvider)
+        add(dependenciesSymbolProvider)
+    }.distinct()
 
-internal interface TopLevelDeclarationSource<D> {
-    fun packageNames(): Sequence<FqName>
-
+internal interface TopLevelDeclarationsInPackageSource<D> {
     fun declarationsInPackage(packageName: FqName): Sequence<D>
 }
 
-internal fun <D> scanTopLevelDeclarations(
-    source: TopLevelDeclarationSource<D>,
+internal fun <D> scanTopLevelDeclarationsInPackage(
+    packageName: FqName,
+    source: TopLevelDeclarationsInPackageSource<D>,
     visit: (D) -> Unit,
 ) {
-    source.packageNames().forEach { packageName ->
-        source.declarationsInPackage(packageName).forEach(visit)
-    }
+    source.declarationsInPackage(packageName).forEach(visit)
 }
 
-private class FirTopLevelDeclarationSource(
-    session: FirSession,
-) : TopLevelDeclarationSource<FirDeclaration> {
-    private val symbolProviders = session.topLevelDeclarationProviders()
-    private val symbolNamesProvider = FirCompositeSymbolNamesProvider.fromSymbolProviders(symbolProviders)
-
-    override fun packageNames(): Sequence<FqName> =
-        symbolNamesProvider.getPackageNames().orEmpty().asSequence().map(::FqName)
-
+private class FirTopLevelDeclarationsInPackageSource(
+    private val symbolProviders: List<org.jetbrains.kotlin.fir.resolve.providers.FirSymbolProvider>,
+) : TopLevelDeclarationsInPackageSource<FirDeclaration> {
     override fun declarationsInPackage(packageName: FqName): Sequence<FirDeclaration> =
         sequence {
+            val symbolNamesProvider = FirCompositeSymbolNamesProvider.fromSymbolProviders(symbolProviders)
             symbolNamesProvider.getTopLevelCallableNamesInPackage(packageName).orEmpty().forEach { callableName ->
                 symbolProviders.forEach { symbolProvider ->
                     symbolProvider.getTopLevelFunctionSymbols(packageName, callableName).forEach { functionSymbol ->
@@ -324,11 +236,17 @@ private class FirTopLevelDeclarationSource(
         }
 }
 
-private fun FirSession.topLevelDeclarationProviders(): List<org.jetbrains.kotlin.fir.resolve.providers.FirSymbolProvider> =
-    buildList {
-        add(firProvider.symbolProvider)
-        add(dependenciesSymbolProvider)
-    }.distinct()
+internal fun scanTopLevelDeclarationsInPackage(
+    packageName: FqName,
+    symbolProviders: List<org.jetbrains.kotlin.fir.resolve.providers.FirSymbolProvider>,
+    visit: (FirDeclaration) -> Unit,
+) {
+    scanTopLevelDeclarationsInPackage(
+        packageName = packageName,
+        source = FirTopLevelDeclarationsInPackageSource(symbolProviders),
+        visit = visit,
+    )
+}
 
 private class FirResolutionScanner(
     private val session: FirSession,
@@ -977,24 +895,13 @@ private data class ResolutionIndex(
         session: FirSession,
     ): List<VisibleInstanceRule> {
         val symbolProviders = session.topLevelDeclarationProviders()
-        val symbolNamesProvider = FirCompositeSymbolNamesProvider.fromSymbolProviders(symbolProviders)
         return buildList {
-            symbolNamesProvider.getTopLevelCallableNamesInPackage(packageName).orEmpty().forEach { callableName ->
-                symbolProviders.forEach { symbolProvider ->
-                    symbolProvider.getTopLevelFunctionSymbols(packageName, callableName).forEach { functionSymbol ->
-                        addAll(functionSymbol.fir.toFunctionRules(session, configuration))
-                    }
-                    symbolProvider.getTopLevelPropertySymbols(packageName, callableName).forEach { propertySymbol ->
-                        addAll(propertySymbol.fir.toPropertyRules(session, configuration))
-                    }
-                }
-            }
-            symbolNamesProvider.getTopLevelClassifierNamesInPackage(packageName).orEmpty().forEach { classifierName ->
-                symbolProviders.forEach { symbolProvider ->
-                    val classSymbol =
-                        symbolProvider.getClassLikeSymbolByClassId(ClassId(packageName, classifierName))
-                            as? FirRegularClassSymbol ?: return@forEach
-                    addAll(classSymbol.fir.toObjectRules(session, configuration))
+            scanTopLevelDeclarationsInPackage(packageName, symbolProviders) { declaration ->
+                when (declaration) {
+                    is FirTypeclassFunctionDeclaration -> addAll(declaration.toFunctionRules(session, configuration))
+                    is FirProperty -> addAll(declaration.toPropertyRules(session, configuration))
+                    is FirRegularClass -> addAll(declaration.toObjectRules(session, configuration))
+                    else -> Unit
                 }
             }
         }
@@ -2730,12 +2637,6 @@ internal class SessionScopedCache<K : Any, V> {
         }
     }
 }
-
-internal data class SourceIndex(
-    val topLevelContextualCallables: Set<CallableId>,
-    val topLevelContextualPackages: Set<FqName>,
-    val memberContextualNames: Map<ClassId, Set<Name>>,
-)
 
 internal fun isTypeclassType(
     type: ConeKotlinType,

@@ -8,21 +8,15 @@ import kotlin.test.assertEquals
 
 class TypeclassDiscoveryScanTest {
     @Test
-    fun sharedTopLevelDiscoveryPassFeedsMultipleCollectorsWithoutRescanningPackages() {
-        val packageRequests = mutableListOf<FqName>()
+    fun packageScopedDiscoveryOnlyScansTheRequestedPackage() {
         val declarationRequests = mutableListOf<FqName>()
         val source =
-            object : TopLevelDeclarationSource<String> {
+            object : TopLevelDeclarationsInPackageSource<String> {
                 private val declarationsByPackage =
                     linkedMapOf(
                         FqName("alpha") to listOf("alpha.fun", "alpha.Type"),
                         FqName("beta") to listOf("beta.fun"),
                     )
-
-                override fun packageNames(): Sequence<FqName> {
-                    packageRequests += declarationsByPackage.keys
-                    return declarationsByPackage.keys.asSequence()
-                }
 
                 override fun declarationsInPackage(packageName: FqName): Sequence<String> {
                     declarationRequests += packageName
@@ -30,29 +24,12 @@ class TypeclassDiscoveryScanTest {
                 }
             }
 
-        val contextualCollector = mutableListOf<String>()
-        val resolutionCollector = mutableListOf<String>()
-
-        scanTopLevelDeclarations(source) { declaration ->
-            contextualCollector += declaration
-            resolutionCollector += declaration
+        val collected = mutableListOf<String>()
+        scanTopLevelDeclarationsInPackage(FqName("beta"), source) { declaration ->
+            collected += declaration
         }
 
-        assertEquals(
-            listOf(FqName("alpha"), FqName("beta")),
-            packageRequests,
-        )
-        assertEquals(
-            listOf(FqName("alpha"), FqName("beta")),
-            declarationRequests,
-        )
-        assertEquals(
-            listOf("alpha.fun", "alpha.Type", "beta.fun"),
-            contextualCollector,
-        )
-        assertEquals(
-            contextualCollector,
-            resolutionCollector,
-        )
+        assertEquals(listOf(FqName("beta")), declarationRequests)
+        assertEquals(listOf("beta.fun"), collected)
     }
 }
