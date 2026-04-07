@@ -165,54 +165,63 @@ internal fun IrClass.findIsoMethods(): ResolvedIsoMethods? {
 }
 
 private fun IrClass.findIsoMethodsByOverrides(): ResolvedIsoMethods? {
-    val toMethod =
+    val toMethods =
         declarations
             .filterIsInstance<IrSimpleFunction>()
-                    .singleOrNull { function ->
+            .filter { function ->
                 function.valueParameters.size == 1 &&
                     function.overriddenSymbols.any { overridden ->
                         overridden.owner.name.asString() == "to" &&
                             overridden.owner.parentAsClass.implementsInterface(ISO_CLASS_ID, linkedSetOf())
                     }
-            } ?: return null
-    val fromMethod =
+            }
+    val fromMethods =
         declarations
             .filterIsInstance<IrSimpleFunction>()
-                    .singleOrNull { function ->
+            .filter { function ->
                 function.valueParameters.size == 1 &&
                     function.overriddenSymbols.any { overridden ->
                         overridden.owner.name.asString() == "from" &&
                             overridden.owner.parentAsClass.implementsInterface(ISO_CLASS_ID, linkedSetOf())
                     }
-            } ?: return null
-    val leftType = toMethod.valueParameters.single().type
-    val rightType = toMethod.returnType
-    if (!fromMethod.valueParameters.single().type.sameTypeShape(rightType)) {
-        return null
-    }
-    if (!fromMethod.returnType.sameTypeShape(leftType)) {
-        return null
-    }
-    return ResolvedIsoMethods(
-        leftType = leftType,
-        rightType = rightType,
-        toMethod = toMethod,
-        fromMethod = fromMethod,
-    )
+            }
+    val candidates =
+        toMethods.mapNotNull { toMethod ->
+            val leftType = toMethod.valueParameters.single().type
+            val rightType = toMethod.returnType
+            val fromMethod =
+                fromMethods.singleOrNull { candidate ->
+                    candidate.valueParameters.single().type.sameTypeShape(rightType) &&
+                        candidate.returnType.sameTypeShape(leftType)
+                } ?: return@mapNotNull null
+            ResolvedIsoMethods(
+                leftType = leftType,
+                rightType = rightType,
+                toMethod = toMethod,
+                fromMethod = fromMethod,
+            )
+        }.distinctBy { methods ->
+            methods.leftType.transportTypeShapeKey() to methods.rightType.transportTypeShapeKey()
+        }
+    return candidates.singleOrNull()
 }
 
 private fun IrClass.declaredIsoEndpoints(): Pair<IrType, IrType>? =
     superTypes
         .filterIsInstance<IrSimpleType>()
-        .firstNotNullOfOrNull { superType ->
+        .mapNotNull { superType ->
             val superClassId = superType.classOrNull?.owner?.classId
             if (superClassId != ISO_CLASS_ID) {
-                return@firstNotNullOfOrNull null
+                return@mapNotNull null
             }
-            val leftType = superType.arguments.getOrNull(0).asIrTypeOrNull() ?: return@firstNotNullOfOrNull null
-            val rightType = superType.arguments.getOrNull(1).asIrTypeOrNull() ?: return@firstNotNullOfOrNull null
+            val leftType = superType.arguments.getOrNull(0).asIrTypeOrNull() ?: return@mapNotNull null
+            val rightType = superType.arguments.getOrNull(1).asIrTypeOrNull() ?: return@mapNotNull null
             leftType to rightType
         }
+        .distinctBy { (leftType, rightType) ->
+            leftType.transportTypeShapeKey() to rightType.transportTypeShapeKey()
+        }
+        .singleOrNull()
 
 private fun org.jetbrains.kotlin.ir.types.IrTypeArgument?.asIrTypeOrNull(): IrType? =
     when (this) {

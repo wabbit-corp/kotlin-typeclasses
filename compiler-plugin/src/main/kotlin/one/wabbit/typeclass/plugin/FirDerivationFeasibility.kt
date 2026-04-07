@@ -960,39 +960,51 @@ private fun FirExpression.asReferencedClassId(): ClassId? =
     }
 
 private fun FirRegularClass.isoEndpoints(session: FirSession): Pair<TcType.Constructor, TcType.Constructor>? {
-    return isoEndpointsInConcreteContext(
-        session = session,
-        concreteType = defaultConcreteType(),
-        visited = linkedSetOf(),
-    )
+    val endpointPairs = linkedMapOf<String, Pair<TcType.Constructor, TcType.Constructor>>()
+    val collected =
+        collectIsoEndpointPairsInConcreteContext(
+            session = session,
+            concreteType = defaultConcreteType(),
+            visited = linkedSetOf(),
+            endpointPairs = endpointPairs,
+        )
+    return endpointPairs.values.singleOrNull().takeIf { collected }
 }
 
-private fun FirRegularClass.isoEndpointsInConcreteContext(
+private fun FirRegularClass.collectIsoEndpointPairsInConcreteContext(
     session: FirSession,
     concreteType: TcType.Constructor,
     visited: MutableSet<String>,
-): Pair<TcType.Constructor, TcType.Constructor>? {
+    endpointPairs: MutableMap<String, Pair<TcType.Constructor, TcType.Constructor>>,
+): Boolean {
     val visitKey = "${symbol.classId.asString()}:${concreteType.render()}"
     if (!visited.add(visitKey)) {
-        return null
+        return true
     }
 
     for (superType in declaredOrResolvedSuperTypes()) {
         val superConcreteType = superType.toConcreteType(this, concreteType) as? TcType.Constructor ?: continue
         if (superConcreteType.classifierId == ISO_CLASS_ID.asString()) {
-            val leftType = superConcreteType.arguments.getOrNull(0) as? TcType.Constructor ?: return null
-            val rightType = superConcreteType.arguments.getOrNull(1) as? TcType.Constructor ?: return null
-            return leftType to rightType
+            val leftType = superConcreteType.arguments.getOrNull(0) as? TcType.Constructor ?: return false
+            val rightType = superConcreteType.arguments.getOrNull(1) as? TcType.Constructor ?: return false
+            endpointPairs.putIfAbsent(
+                "${leftType.normalizedKey()}->${rightType.normalizedKey()}",
+                leftType to rightType,
+            )
+            continue
         }
         val superClassId = superConcreteType.classIdOrNull() ?: continue
         val superClass = session.regularClassSymbolOrNull(superClassId)?.fir ?: continue
-        superClass.isoEndpointsInConcreteContext(
+        if (!superClass.collectIsoEndpointPairsInConcreteContext(
             session = session,
             concreteType = superConcreteType,
             visited = visited,
-        )?.let { return it }
+            endpointPairs = endpointPairs,
+        )) {
+            return false
+        }
     }
-    return null
+    return true
 }
 
 private fun ConeKotlinType.transportabilityViolation(
