@@ -561,9 +561,18 @@ internal class TypeclassFirCheckersExtension(
                 )
                 return@forEach
             }
-            declaration.requiredDeriveMethodNameForDeriveShape()?.let { deriveMethodName ->
-                if (!typeclassCompanionDeclaresDeriveMethod(typeclassId, deriveMethodName, session)) {
-                    reportCannotDerive(declaration, cannotDeriveMissingEnumOverride(typeclassId.shortClassName.asString()))
+            declaration.requiredDeriveMethodContractForDeriveShape()?.let { contract ->
+                if (typeclassCompanionResolveDeriveMethod(typeclassId, contract, session) == null) {
+                    if (contract == DeriveMethodContract.ENUM) {
+                        reportCannotDerive(declaration, cannotDeriveMissingEnumOverride(typeclassId.shortClassName.asString()))
+                    } else {
+                        val companionId =
+                            typeclassId.createNestedClassId(SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT).asString()
+                        reportCannotDerive(
+                            declaration,
+                            cannotDeriveDiagnostic("Typeclass deriver $companionId is missing ${contract.methodName}"),
+                        )
+                    }
                 }
             }
         }

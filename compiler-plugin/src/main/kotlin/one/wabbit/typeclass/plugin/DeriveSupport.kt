@@ -96,6 +96,18 @@ internal fun FirRegularClass.requiredDeriverInterfaceForDeriveShape(): ClassId =
         else -> PRODUCT_TYPECLASS_DERIVER_CLASS_ID
     }
 
+internal fun deriveMethodContractForShape(
+    classKind: ClassKind,
+    modality: Modality?,
+): DeriveMethodContract? =
+    when {
+        classKind == ClassKind.ENUM_CLASS -> DeriveMethodContract.ENUM
+        modality == Modality.SEALED -> DeriveMethodContract.SUM
+        classKind == ClassKind.OBJECT -> DeriveMethodContract.PRODUCT
+        modality == Modality.FINAL && classKind != ClassKind.INTERFACE -> DeriveMethodContract.PRODUCT
+        else -> null
+    }
+
 internal fun FirRegularClass.supportsDerivationForTypeclass(
     typeclassId: String,
     session: FirSession,
@@ -104,21 +116,15 @@ internal fun FirRegularClass.supportsDerivationForTypeclass(
     if (typeclassTypeParameterCount(classId, session) != 1) {
         return false
     }
-    val requiredDeriverInterface = requiredDeriverInterfaceForDeriveShape()
-    return typeclassSupportsDeriveShape(classId, requiredDeriverInterface, session)
+    val requiredContract = requiredDeriveMethodContractForDeriveShape() ?: return false
+    return typeclassCompanionResolveDeriveMethod(classId, requiredContract, session) != null
 }
 
 internal fun FirRegularClass.requiredDeriveMethodNameForDeriveShape(): String? =
-    when {
-        classKind == ClassKind.ENUM_CLASS -> "deriveEnum"
-        else -> null
-    }
+    requiredDeriveMethodContractForDeriveShape()?.methodName
 
 internal fun FirRegularClass.requiredDeriveMethodContractForDeriveShape(): DeriveMethodContract? =
-    when {
-        classKind == ClassKind.ENUM_CLASS -> DeriveMethodContract.ENUM
-        else -> null
-    }
+    deriveMethodContractForShape(classKind = classKind, modality = status.modality)
 
 internal fun FirRegularClass.generatedDerivedTypeclassIds(session: FirSession): Set<String> {
     val ownerId = symbol.classId.asString()
