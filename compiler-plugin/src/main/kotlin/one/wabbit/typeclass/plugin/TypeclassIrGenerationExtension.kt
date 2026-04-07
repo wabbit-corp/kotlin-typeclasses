@@ -3737,6 +3737,16 @@ private class IrModuleScanner(
                     )
                     return@flatMap emptyList()
                 }
+            if (viaTypeModel.normalizedKey() == targetType.normalizedKey()) {
+                pluginContext.reportCannotDeriveWithTrace(
+                    owner = this,
+                    configuration = configuration,
+                    goal = rootGoal,
+                    message = "DeriveVia path must not resolve back to the annotated class",
+                    location = location,
+                )
+                return@flatMap emptyList()
+            }
             pluginContext.reportDerivationSuccessTrace(
                 owner = this,
                 configuration = configuration,

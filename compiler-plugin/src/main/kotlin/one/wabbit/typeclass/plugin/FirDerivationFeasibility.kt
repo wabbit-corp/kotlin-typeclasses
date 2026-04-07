@@ -802,12 +802,22 @@ private fun FirAnnotation.parseDeriveViaAnnotation(
         .resolveViaPathDetailed(
             sourceType = TcType.Constructor(owner.symbol.classId.asString(), emptyList()),
             path = path,
-        ).exceptionOrNull()?.let { error ->
+        ).fold(
+            onSuccess = { resolvedType ->
+                if (resolvedType.normalizedKey() == TcType.Constructor(owner.symbol.classId.asString(), emptyList()).normalizedKey()) {
+                    return FirDeriveViaAnnotationParseResult.Invalid(
+                        annotation = this,
+                        message = "DeriveVia path must not resolve back to the annotated class",
+                    )
+                }
+            },
+            onFailure = { error ->
             return FirDeriveViaAnnotationParseResult.Invalid(
                 annotation = this,
                 message = error.message ?: "Failed to resolve DeriveVia path",
             )
-        }
+            },
+        )
     return FirDeriveViaAnnotationParseResult.Valid(
         annotation = this,
         request = FirDeriveViaRequest(typeclassId = typeclassId, path = path),

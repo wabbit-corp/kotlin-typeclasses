@@ -253,6 +253,36 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
+    // Exact intended semantics:
+    // - DeriveVia must not accept a path that resolves straight back to the annotated class
+    // - that would only publish a useless direct-recursive rule with identical prerequisite and provided goals
+    @Test fun rejectsIdentityDeriveViaPathsThatResolveBackToTheAnnotatedClass() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @JvmInline
+            @DeriveVia(Show::class, UserId::class) // E:TC_CANNOT_DERIVE self/identity DeriveVia paths must be rejected
+            value class UserId(val value: Int)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("resolve back", "annotated class"),
+                ),
+        )
+    }
+
     @Test fun deriveViaRejectsNonTypeclassTargetsInFir() {
         val source =
             """
