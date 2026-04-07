@@ -17,7 +17,7 @@ internal class TypeclassCommandLineProcessor : CommandLineProcessor {
             valueDescription = "<disabled|enabled>",
             description = "Controls synthetic KClass typeclass evidence generation.",
             required = false,
-            allowMultipleOccurrences = true,
+            allowMultipleOccurrences = false,
         )
 
     private val builtinKSerializerTypeclassOption =
@@ -26,7 +26,7 @@ internal class TypeclassCommandLineProcessor : CommandLineProcessor {
             valueDescription = "<disabled|enabled>",
             description = "Controls synthetic KSerializer typeclass evidence generation.",
             required = false,
-            allowMultipleOccurrences = true,
+            allowMultipleOccurrences = false,
         )
 
     private val traceModeOption =
@@ -35,7 +35,7 @@ internal class TypeclassCommandLineProcessor : CommandLineProcessor {
             valueDescription = "<inherit|disabled|failures|failures-and-alternatives|all|all-and-alternatives>",
             description = "Controls scoped typeclass-resolution tracing.",
             required = false,
-            allowMultipleOccurrences = true,
+            allowMultipleOccurrences = false,
         )
 
     override val pluginId: String = TYPECLASS_PLUGIN_ID
@@ -53,25 +53,40 @@ internal class TypeclassCommandLineProcessor : CommandLineProcessor {
         configuration: CompilerConfiguration,
     ) {
         when (option.optionName) {
-            builtinKClassTypeclassOption.optionName ->
+            builtinKClassTypeclassOption.optionName -> {
+                rejectDuplicateOption(option.optionName, configuration.get(TypeclassConfigurationKeys.BUILTIN_KCLASS_TYPECLASS))
                 configuration.put(
                     TypeclassConfigurationKeys.BUILTIN_KCLASS_TYPECLASS,
                     parseBuiltinMode(option.optionName, value),
                 )
+            }
 
-            builtinKSerializerTypeclassOption.optionName ->
+            builtinKSerializerTypeclassOption.optionName -> {
+                rejectDuplicateOption(option.optionName, configuration.get(TypeclassConfigurationKeys.BUILTIN_KSERIALIZER_TYPECLASS))
                 configuration.put(
                     TypeclassConfigurationKeys.BUILTIN_KSERIALIZER_TYPECLASS,
                     parseBuiltinMode(option.optionName, value),
                 )
+            }
 
-            traceModeOption.optionName ->
+            traceModeOption.optionName -> {
+                rejectDuplicateOption(option.optionName, configuration.get(TypeclassConfigurationKeys.TRACE_MODE))
                 configuration.put(
                     TypeclassConfigurationKeys.TRACE_MODE,
                     parseTraceMode(option.optionName, value),
                 )
+            }
 
             else -> throw CliOptionProcessingException("Unknown option ${option.optionName}")
+        }
+    }
+
+    private fun rejectDuplicateOption(
+        optionName: String,
+        existingValue: Any?,
+    ) {
+        if (existingValue != null) {
+            throw CliOptionProcessingException("Option '$optionName' may be specified at most once.")
         }
     }
 

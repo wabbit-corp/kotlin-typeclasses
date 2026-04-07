@@ -17,7 +17,7 @@ internal enum class TypeclassBuiltinMode(
             optionName: String,
             value: String,
         ): TypeclassBuiltinMode =
-            entries.firstOrNull { mode -> mode.cliValue == value }
+            entries.firstOrNull { mode -> mode.cliValue == value.lowercase() }
                 ?: throw IllegalArgumentException(
                     "Unknown value '$value' for option '$optionName'. Expected one of: ${entries.joinToString { it.cliValue }}",
                 )
