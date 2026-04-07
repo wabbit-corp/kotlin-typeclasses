@@ -854,19 +854,7 @@ private data class ResolutionIndex(
         session: FirSession,
     ): String? {
         val rootClassId = declaration.symbol.classId
-        val subclassIds =
-            buildSet {
-                addAll(
-                    classInfoById
-                        .filterValues { info -> rootClassId.asString() in info.superClassifiers }
-                        .keys,
-                )
-                addAll(
-                    declaration
-                        .getSealedClassInheritors(session)
-                        .map(ClassId::asString),
-                )
-            }
+        val subclassIds = stableSealedSubclassIds(rootClassId, declaration, session)
         if (subclassIds.isEmpty()) {
             return "Cannot derive ${rootClassId.asFqNameString()} because no sealed subclasses are admissible for the requested typeclass"
         }
@@ -1320,19 +1308,7 @@ private data class ResolutionIndex(
             return null
         }
         val rootClassId = declaration.symbol.classId
-        val subclassIds =
-            buildSet {
-                addAll(
-                    classInfoById
-                        .filterValues { info -> rootClassId.asString() in info.superClassifiers }
-                        .keys,
-                )
-                addAll(
-                    declaration
-                        .getSealedClassInheritors(session)
-                        .map(ClassId::asString),
-                )
-            }
+        val subclassIds = stableSealedSubclassIds(rootClassId, declaration, session)
         if (subclassIds.isEmpty()) {
             return fail("Cannot derive ${rootClassId.asFqNameString()} because no sealed subclasses are admissible for the requested typeclass")
         }
@@ -1374,6 +1350,31 @@ private data class ResolutionIndex(
         }
         return prerequisiteGoals.takeIf { it.isNotEmpty() }
             ?: fail("Cannot derive ${rootClassId.asFqNameString()} because no sealed subclasses are admissible for the requested typeclass")
+    }
+
+    private fun stableSealedSubclassIds(
+        rootClassId: ClassId,
+        declaration: FirRegularClass,
+        session: FirSession,
+    ): List<String> {
+        val discoveredSubclassIds =
+            buildSet {
+                addAll(
+                    classInfoById
+                        .filterValues { info -> rootClassId.asString() in info.superClassifiers }
+                        .keys,
+                )
+                addAll(
+                    declaration
+                        .getSealedClassInheritors(session)
+                        .map(ClassId::asString),
+                )
+            }
+        val sourceOrderedSubclassIds =
+            declaration
+                .getSealedClassInheritors(session)
+                .map(ClassId::asString)
+        return stableSealedSubclassIds(sourceOrderedSubclassIds, discoveredSubclassIds)
     }
 
     private fun FirRegularClass.defaultExactShapeDerivationTargetType(): TcType.Constructor {

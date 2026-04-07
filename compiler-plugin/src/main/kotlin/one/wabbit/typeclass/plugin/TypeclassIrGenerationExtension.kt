@@ -2988,7 +2988,10 @@ private class IrModuleScanner(
             }
             val (classId, typeclassId) = next
             if (classInfoById[classId]?.isSealed == true) {
-                subclassesBySuper[classId].orEmpty().forEach { subclassId ->
+                val directSubclasses =
+                    classesById[classId]?.stableDirectSealedSubclassIds(subclassesBySuper)
+                        ?: subclassesBySuper[classId].orEmpty().toList()
+                directSubclasses.forEach { subclassId ->
                     queue += subclassId to typeclassId
                 }
             }
@@ -3125,12 +3128,15 @@ private class IrModuleScanner(
         }
 
     private fun subclassesBySuper(): Map<String, Set<String>> =
-        classInfoById.entries.fold(linkedMapOf<String, MutableSet<String>>()) { acc, (classId, info) ->
-            info.superClassifiers.forEach { superClassifier ->
-                acc.getOrPut(superClassifier, ::linkedSetOf) += classId
+        classInfoById.entries
+            .fold(linkedMapOf<String, MutableSet<String>>()) { acc, (classId, info) ->
+                info.superClassifiers.forEach { superClassifier ->
+                    acc.getOrPut(superClassifier, ::linkedSetOf) += classId
+                }
+                acc
+            }.mapValues { (_, subclassIds) ->
+                subclassIds.sorted().toCollection(linkedSetOf())
             }
-            acc
-        }
 
     private fun sealedOwnerChain(classifierId: String): Set<String> {
         val result = linkedSetOf(classifierId)
@@ -4006,7 +4012,7 @@ private class IrModuleScanner(
         rootTargetType: TcType.Constructor,
         subclassesBySuper: Map<String, Set<String>>,
     ): DerivedSumRuleBuildResult {
-        val directSubclasses = subclassesBySuper[classIdOrFail.asString()].orEmpty()
+        val directSubclasses = stableDirectSealedSubclassIds(subclassesBySuper)
         if (directSubclasses.isEmpty()) {
             return DerivedSumRuleBuildResult(
                 specs = null,
@@ -4140,6 +4146,18 @@ private class IrModuleScanner(
         }
 
         return DerivedSumRuleBuildResult(specs = specs)
+    }
+
+    private fun IrClass.stableDirectSealedSubclassIds(
+        subclassesBySuper: Map<String, Set<String>>,
+    ): List<String> {
+        val discoveredSubclassIds = subclassesBySuper[classIdOrFail.asString()].orEmpty()
+        val sourceOrderedSubclassIds =
+            sealedSubclasses
+                .mapNotNull { subclassSymbol ->
+                    runCatching { subclassSymbol.owner }.getOrNull()?.classId?.asString()
+                }
+        return stableSealedSubclassIds(sourceOrderedSubclassIds, discoveredSubclassIds)
     }
 
     private fun IrClass.buildDerivedEnumShape(
