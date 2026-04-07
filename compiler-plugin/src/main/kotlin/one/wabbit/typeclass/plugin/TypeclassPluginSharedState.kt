@@ -2341,22 +2341,22 @@ private fun supportsBuiltinKSerializerGoal(
     }
     val constructor = goal as? TcType.Constructor ?: return true
     val targetType = constructor.arguments.single()
-    return isPotentiallySerializableType(
+    return isProvablySerializableType(
         type = targetType,
         session = session,
         visiting = linkedSetOf(),
     )
 }
 
-private fun isPotentiallySerializableType(
+private fun isProvablySerializableType(
     type: TcType,
     session: FirSession,
     visiting: MutableSet<String>,
 ): Boolean {
     return when (type) {
-        TcType.StarProjection -> true
-        is TcType.Projected -> isPotentiallySerializableType(type.type, session, visiting)
-        is TcType.Variable -> true
+        TcType.StarProjection -> false
+        is TcType.Projected -> isProvablySerializableType(type.type, session, visiting)
+        is TcType.Variable -> false
 
         is TcType.Constructor -> {
             val visitKey = type.normalizedKey()
@@ -2365,7 +2365,7 @@ private fun isPotentiallySerializableType(
             }
             if (type.classifierId in BUILTIN_SERIALIZABLE_CLASSIFIER_IDS) {
                 return type.arguments.all { argument ->
-                    isPotentiallySerializableType(argument, session, visiting)
+                    isProvablySerializableType(argument, session, visiting)
                 }
             }
             val classId = runCatching { ClassId.fromString(type.classifierId) }.getOrNull() ?: return false
@@ -2377,7 +2377,7 @@ private fun isPotentiallySerializableType(
                 } ?: return false
             classSymbol.hasAnnotation(SERIALIZABLE_ANNOTATION_CLASS_ID, session) &&
                 type.arguments.all { argument ->
-                    isPotentiallySerializableType(argument, session, visiting)
+                    isProvablySerializableType(argument, session, visiting)
                 }
         }
     }

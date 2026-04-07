@@ -95,7 +95,7 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun reifiedHelpersCanSummonSyntheticKSerializers() {
+    @Test fun concreteContextualAndDirectSummonsCanUseSyntheticKSerializers() {
         val source =
             """
             package demo
@@ -107,15 +107,12 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             @Serializable
             data class User(val name: String)
 
-            context(serializer: KSerializer<T>)
-            fun <T> contextualSerialName(): String = serializer.descriptor.serialName
-
-            inline fun <reified T> reifiedSerialName(): String =
-                summon<KSerializer<T>>().descriptor.serialName
+            context(serializer: KSerializer<User>)
+            fun contextualSerialName(): String = serializer.descriptor.serialName
 
             fun main() {
-                println(contextualSerialName<User>())
-                println(reifiedSerialName<User>())
+                println(contextualSerialName())
+                println(summon<KSerializer<User>>().descriptor.serialName)
             }
             """.trimIndent()
 
@@ -126,6 +123,30 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 demo.User
                 demo.User
                 """.trimIndent(),
+            requiredPlugins = serializationPlugins,
+            pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
+        )
+    }
+
+    @Test fun rejectsArbitraryReifiedGenericKSerializerMaterialization() {
+        val source =
+            """
+            package demo
+
+            import kotlinx.serialization.KSerializer
+            import one.wabbit.typeclass.summon
+
+            inline fun <reified T> impossible(): String =
+                summon<KSerializer<T>>().descriptor.serialName // E:TC_NO_CONTEXT_ARGUMENT arbitrary reified T is not provably serializable
+
+            fun main() {
+                println("unused")
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "value")),
             requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
@@ -173,11 +194,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             @Serializable
             data class Box<T>(val value: T)
 
-            inline fun <reified T> boxSerialName(): String =
-                summon<KSerializer<Box<T>>>().descriptor.serialName
-
             fun main() {
-                println(boxSerialName<Int>())
+                println(summon<KSerializer<Box<Int>>>().descriptor.serialName)
             }
             """.trimIndent()
 
@@ -202,15 +220,14 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             @Serializable
             data class Box<T>(val value: T)
 
-            inline fun <reified T> sameSerializerMetadata(): Boolean {
-                val builtin = summon<KSerializer<T>>()
-                val official = serializer<T>()
-                return builtin.descriptor.serialName == official.descriptor.serialName
-            }
-
             fun main() {
-                println(sameSerializerMetadata<Box<String?>>())
-                println(sameSerializerMetadata<List<Int?>>())
+                val builtinBox = summon<KSerializer<Box<String?>>>()
+                val officialBox = serializer<Box<String?>>()
+                println(builtinBox.descriptor.serialName == officialBox.descriptor.serialName)
+
+                val builtinList = summon<KSerializer<List<Int?>>>()
+                val officialList = serializer<List<Int?>>()
+                println(builtinList.descriptor.serialName == officialList.descriptor.serialName)
             }
             """.trimIndent()
 
@@ -299,15 +316,11 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 override fun deserialize(decoder: Decoder): UserId = error("unused")
             }
 
-            inline fun <reified T> sameSerializerRuntimeType(): Boolean {
-                val builtin = summon<KSerializer<T>>()
-                val official = serializer<T>()
-                return builtin::class == official::class
-            }
-
             fun main() {
-                println(summon<KSerializer<UserId>>() === UserIdAsStringSerializer)
-                println(sameSerializerRuntimeType<UserId>())
+                val builtin = summon<KSerializer<UserId>>()
+                val official = serializer<UserId>()
+                println(builtin === UserIdAsStringSerializer)
+                println(builtin::class == official::class)
             }
             """.trimIndent()
 
@@ -354,17 +367,12 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 val value: Int,
             )
 
-            inline fun <reified T> sameContainerSerializerRuntimeType(): Boolean {
-                val builtin = summon<KSerializer<T>>()
-                val official = serializer<T>()
-                return builtin::class == official::class
-            }
-
             fun main() {
                 val wrapperSerializer = summon<KSerializer<Wrapper>>()
+                val officialWrapper = serializer<Wrapper>()
                 println(wrapperSerializer.descriptor.getElementDescriptor(0).serialName == IntAsStringSerializer.descriptor.serialName)
                 println(summon<KSerializer<Int>>() !== IntAsStringSerializer)
-                println(sameContainerSerializerRuntimeType<Wrapper>())
+                println(wrapperSerializer::class == officialWrapper::class)
             }
             """.trimIndent()
 
@@ -408,15 +416,14 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
 
             typealias FancyInt = @Serializable(with = IntAsStringSerializer::class) Int
 
-            inline fun <reified T> sameSerializerRuntimeType(): Boolean {
-                val builtin = summon<KSerializer<T>>()
-                val official = serializer<T>()
-                return builtin::class == official::class
-            }
-
             fun main() {
-                println(sameSerializerRuntimeType<FancyInt>())
-                println(sameSerializerRuntimeType<FancyInt?>())
+                val builtin = summon<KSerializer<FancyInt>>()
+                val official = serializer<FancyInt>()
+                println(builtin::class == official::class)
+
+                val nullableBuiltin = summon<KSerializer<FancyInt?>>()
+                val nullableOfficial = serializer<FancyInt?>()
+                println(nullableBuiltin::class == nullableOfficial::class)
             }
             """.trimIndent()
 
@@ -462,16 +469,10 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             @Serializable
             data class Wrapper(val value: FancyInt)
 
-            inline fun <reified T> sameContainerSerializerRuntimeType(): Boolean {
-                val builtin = summon<KSerializer<T>>()
-                val official = serializer<T>()
-                return builtin::class == official::class
-            }
-
             fun main() {
                 val builtin = summon<KSerializer<Wrapper>>()
                 val official = serializer<Wrapper>()
-                println(sameContainerSerializerRuntimeType<Wrapper>())
+                println(builtin::class == official::class)
                 println(builtin.descriptor.getElementDescriptor(0).serialName ==
                     official.descriptor.getElementDescriptor(0).serialName)
             }
@@ -616,16 +617,10 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             @Serializable
             data class UsesContextual(@Contextual val point: Point)
 
-            inline fun <reified T> sameSerializerRuntimeType(): Boolean {
-                val builtin = summon<KSerializer<T>>()
-                val official = serializer<T>()
-                return builtin::class == official::class
-            }
-
             fun main() {
                 val builtinUses = summon<KSerializer<UsesSerializer>>()
                 val officialUses = serializer<UsesSerializer>()
-                println(sameSerializerRuntimeType<UsesSerializer>())
+                println(builtinUses::class == officialUses::class)
                 println(
                     builtinUses.descriptor.getElementDescriptor(0).serialName ==
                         officialUses.descriptor.getElementDescriptor(0).serialName,
@@ -633,7 +628,7 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
 
                 val builtinContextual = summon<KSerializer<UsesContextual>>()
                 val officialContextual = serializer<UsesContextual>()
-                println(sameSerializerRuntimeType<UsesContextual>())
+                println(builtinContextual::class == officialContextual::class)
                 println(
                     builtinContextual.descriptor.getElementDescriptor(0).serialName ==
                         officialContextual.descriptor.getElementDescriptor(0).serialName,
@@ -675,16 +670,10 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             @Serializable
             data object End : Token
 
-            inline fun <reified T> sameSerializerRuntimeType(): Boolean {
-                val builtin = summon<KSerializer<T>>()
-                val official = serializer<T>()
-                return builtin::class == official::class
-            }
-
             fun main() {
                 val builtin = summon<KSerializer<Token>>()
                 val official = serializer<Token>()
-                println(sameSerializerRuntimeType<Token>())
+                println(builtin::class == official::class)
                 println(builtin.descriptor.serialName == official.descriptor.serialName)
                 println(builtin.descriptor.elementsCount == official.descriptor.elementsCount)
             }

@@ -192,7 +192,7 @@ class RuntimeTypeBuiltinMaterializationTest : IntegrationTestSupport() {
     }
 
     @Test
-    fun reifiedNestedKSerializerPrerequisiteStillParticipatesInRuleSearch() {
+    fun reifiedNestedKSerializerPrerequisiteDoesNotCountAsProvenEvidence() {
         val source =
             """
             package demo
@@ -216,16 +216,16 @@ class RuntimeTypeBuiltinMaterializationTest : IntegrationTestSupport() {
             context(witness: Witness<A>)
             fun <A> render(): String = witness.label()
 
-            inline fun <reified T> generic(): String = render<T>()
+            inline fun <reified T> generic(): String =
+                render<T>() // E:TC_NO_CONTEXT_ARGUMENT KSerializer<List<T>> is not provably available for arbitrary reified T
 
-            fun main() {
-                println(generic<Int>())
-            }
+            fun main() = println("unused")
             """.trimIndent()
 
-        assertCompilesAndRuns(
+        assertDoesNotCompile(
             source = source,
-            expectedStdout = "serializer",
+            expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("witness")),
+            unexpectedMessages = listOf("builtin kserializer", "reified target type"),
             requiredPlugins = listOf(CompilerHarnessPlugin.Serialization),
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )

@@ -4491,7 +4491,7 @@ private fun supportsBuiltinKSerializerGoal(
     }
     val constructor = goal as? TcType.Constructor ?: return true
     val targetType = constructor.arguments.single()
-    return isPotentiallySerializableType(
+    return isProvablySerializableType(
         type = targetType,
         pluginContext = pluginContext,
         visiting = linkedSetOf(),
@@ -4568,15 +4568,15 @@ private fun irBuiltinNotNullableFeasibility(
     }
 }
 
-private fun isPotentiallySerializableType(
+private fun isProvablySerializableType(
     type: TcType,
     pluginContext: IrPluginContext,
     visiting: MutableSet<String>,
 ): Boolean {
     return when (type) {
-        TcType.StarProjection -> true
-        is TcType.Projected -> isPotentiallySerializableType(type.type, pluginContext, visiting)
-        is TcType.Variable -> true
+        TcType.StarProjection -> false
+        is TcType.Projected -> isProvablySerializableType(type.type, pluginContext, visiting)
+        is TcType.Variable -> false
 
         is TcType.Constructor -> {
             val visitKey = type.normalizedKey()
@@ -4585,14 +4585,14 @@ private fun isPotentiallySerializableType(
             }
             if (type.classifierId in BUILTIN_SERIALIZABLE_CLASSIFIER_IDS) {
                 return type.arguments.all { argument ->
-                    isPotentiallySerializableType(argument, pluginContext, visiting)
+                    isProvablySerializableType(argument, pluginContext, visiting)
                 }
             }
             val classId = runCatching { ClassId.fromString(type.classifierId) }.getOrNull() ?: return false
             val klass = pluginContext.referenceClass(classId)?.owner ?: return false
             klass.hasAnnotation(SERIALIZABLE_ANNOTATION_CLASS_ID) &&
                 type.arguments.all { argument ->
-                    isPotentiallySerializableType(argument, pluginContext, visiting)
+                    isProvablySerializableType(argument, pluginContext, visiting)
                 }
         }
     }
