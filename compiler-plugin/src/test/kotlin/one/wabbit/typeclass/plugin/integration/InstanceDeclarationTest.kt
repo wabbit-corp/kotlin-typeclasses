@@ -239,6 +239,39 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun allowsSiblingMarkerSupertypesAlongsideAValidTypeclassHead() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import java.io.Serializable
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object IntShow : Show<Int>, Serializable {
+                override fun show(value: Int): String = "show:${'$'}value"
+            }
+
+            context(show: Show<Int>)
+            fun render(): String = show.show(7)
+
+            fun main() {
+                println(render())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "show:7",
+        )
+    }
+
     @Test fun rejectsInstanceFunctionsWithNonTypeclassContextParametersAtDeclarationSite() {
         val source =
             """
