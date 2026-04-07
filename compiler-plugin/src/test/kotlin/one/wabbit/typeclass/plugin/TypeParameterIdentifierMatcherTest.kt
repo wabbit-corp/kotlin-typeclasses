@@ -40,6 +40,38 @@ class TypeParameterIdentifierMatcherTest {
     }
 
     @Test
+    fun `unicode and backticked transported type parameter references match`() {
+        assertTrue(
+            "Map<`alpha beta`, String>".containsStandaloneTypeParameterIdentifier(
+                transportedName = "alpha beta",
+                opaqueNames = emptySet(),
+            ),
+        )
+        assertTrue(
+            "Α & T".containsStandaloneTypeParameterIdentifier(
+                transportedName = "Α",
+                opaqueNames = setOf("T"),
+            ),
+        )
+    }
+
+    @Test
+    fun `qualified unicode and backticked names do not count as transported references`() {
+        assertFalse(
+            "demo.`alpha beta`".containsStandaloneTypeParameterIdentifier(
+                transportedName = "alpha beta",
+                opaqueNames = emptySet(),
+            ),
+        )
+        assertFalse(
+            "demo.Α.Inner".containsStandaloneTypeParameterIdentifier(
+                transportedName = "Α",
+                opaqueNames = emptySet(),
+            ),
+        )
+    }
+
+    @Test
     fun `opaque names remain excluded even when they match textually`() {
         assertFalse(
             "T & Any".containsStandaloneTypeParameterIdentifier(

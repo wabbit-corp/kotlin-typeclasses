@@ -5,45 +5,83 @@ package one.wabbit.typeclass.plugin
 internal fun String.containsStandaloneTypeParameterIdentifier(
     transportedName: String,
     opaqueNames: Set<String>,
-): Boolean =
-    Regex("""[A-Za-z_][A-Za-z0-9_]*""")
-        .findAll(this)
-        .any { match ->
-            val identifier = match.value
-            identifier == transportedName &&
-                identifier !in opaqueNames &&
-                !isQualifiedIdentifier(match.range.first, match.range.last)
-        }
-
-private fun String.isQualifiedIdentifier(
-    startInclusive: Int,
-    endInclusive: Int,
 ): Boolean {
-    val previous = previousNonWhitespaceChar(startInclusive - 1)
-    val next = nextNonWhitespaceChar(endInclusive + 1)
-    return previous == '.' || next == '.'
-}
-
-private fun String.previousNonWhitespaceChar(index: Int): Char? {
-    var cursor = index
-    while (cursor >= 0) {
-        val candidate = this[cursor]
-        if (!candidate.isWhitespace()) {
-            return candidate
-        }
-        cursor -= 1
+    val tokens = kotlinIdentifierTokens()
+    return tokens.anyIndexed { index, token ->
+        token is KotlinIdentifierToken.Identifier &&
+            token.text == transportedName &&
+            token.text !in opaqueNames &&
+            !tokens.isQualifiedIdentifier(index)
     }
-    return null
 }
 
-private fun String.nextNonWhitespaceChar(index: Int): Char? {
-    var cursor = index
+private sealed interface KotlinIdentifierToken {
+    data class Identifier(
+        val text: String,
+    ) : KotlinIdentifierToken
+
+    data object Dot : KotlinIdentifierToken
+
+    data object Other : KotlinIdentifierToken
+}
+
+private fun String.kotlinIdentifierTokens(): List<KotlinIdentifierToken> {
+    val tokens = ArrayList<KotlinIdentifierToken>()
+    var cursor = 0
     while (cursor < length) {
-        val candidate = this[cursor]
-        if (!candidate.isWhitespace()) {
-            return candidate
+        when (val candidate = this[cursor]) {
+            '.' -> {
+                tokens += KotlinIdentifierToken.Dot
+                cursor += 1
+            }
+
+            '`' -> {
+                val end = indexOf('`', startIndex = cursor + 1)
+                if (end < 0) {
+                    tokens += KotlinIdentifierToken.Other
+                    break
+                }
+                tokens += KotlinIdentifierToken.Identifier(substring(cursor + 1, end))
+                cursor = end + 1
+            }
+
+            else ->
+                when {
+                    candidate.isWhitespace() -> cursor += 1
+                    candidate.isKotlinIdentifierStart() -> {
+                        val start = cursor
+                        cursor += 1
+                        while (cursor < length && this[cursor].isKotlinIdentifierPart()) {
+                            cursor += 1
+                        }
+                        tokens += KotlinIdentifierToken.Identifier(substring(start, cursor))
+                    }
+
+                    else -> {
+                        tokens += KotlinIdentifierToken.Other
+                        cursor += 1
+                    }
+                }
         }
-        cursor += 1
     }
-    return null
+    return tokens
 }
+
+private inline fun <T> List<T>.anyIndexed(predicate: (index: Int, value: T) -> Boolean): Boolean {
+    for (index in indices) {
+        if (predicate(index, this[index])) {
+            return true
+        }
+    }
+    return false
+}
+
+private fun List<KotlinIdentifierToken>.isQualifiedIdentifier(index: Int): Boolean {
+    val previous = getOrNull(index - 1)
+    val next = getOrNull(index + 1)
+    return previous is KotlinIdentifierToken.Dot || next is KotlinIdentifierToken.Dot
+}
+
+private fun Char.isKotlinIdentifierStart(): Boolean = this == '_' || Character.isUnicodeIdentifierStart(this)
+
+private fun Char.isKotlinIdentifierPart(): Boolean = this == '_' || Character.isUnicodeIdentifierPart(this)
