@@ -38,40 +38,55 @@ internal class BinaryGeneratedDerivedMetadataLoader(
     private val classpathRoots: List<File>,
 ) {
     private val metadataByOwnerId = ConcurrentHashMap<String, List<GeneratedDerivedMetadata>>()
+    private val metadataRoots: List<BinaryGeneratedDerivedMetadataRoot> =
+        classpathRoots.mapNotNull(::binaryGeneratedDerivedMetadataRoot)
 
     fun generatedMetadataFor(classId: ClassId): List<GeneratedDerivedMetadata> =
         metadataByOwnerId.computeIfAbsent(classId.asString()) { ownerId ->
-            loadGeneratedMetadata(classId, ownerId)
+            metadataRoots.firstNotNullOfOrNull { root ->
+                root.generatedMetadataFor(classId)?.takeIf(List<GeneratedDerivedMetadata>::isNotEmpty)
+            }.orEmpty()
         }
+}
 
-    private fun loadGeneratedMetadata(
-        classId: ClassId,
-        ownerId: String,
-    ): List<GeneratedDerivedMetadata> {
-        val classFilePath = classId.classFilePath()
-        return classpathRoots.firstNotNullOfOrNull { root ->
-            when {
-                root.isDirectory -> {
-                    val classFile = root.resolve(classFilePath)
-                    classFile.takeIf(File::isFile)?.readBytes()?.let { bytes ->
-                        parseGeneratedDerivedMetadata(bytes, ownerId)
-                    }
-                }
+internal interface BinaryGeneratedDerivedMetadataRoot {
+    fun generatedMetadataFor(classId: ClassId): List<GeneratedDerivedMetadata>?
+}
 
-                root.isFile && root.extension.equals("jar", ignoreCase = true) ->
-                    JarFile(root).use { jarFile ->
-                        jarFile.getJarEntry(classFilePath)?.let { entry ->
-                            jarFile.getInputStream(entry).use { stream ->
-                                parseGeneratedDerivedMetadata(stream.readBytes(), ownerId)
-                            }
-                        }
-                    }
-
-                else -> null
-            }?.takeIf(List<GeneratedDerivedMetadata>::isNotEmpty)
-        }.orEmpty()
+internal class DirectoryBinaryGeneratedDerivedMetadataRoot(
+    private val root: File,
+) : BinaryGeneratedDerivedMetadataRoot {
+    override fun generatedMetadataFor(classId: ClassId): List<GeneratedDerivedMetadata>? {
+        val classFile = root.resolve(classId.classFilePath())
+        if (!classFile.isFile) {
+            return null
+        }
+        return parseGeneratedDerivedMetadata(classFile.readBytes(), classId.asString())
     }
 }
+
+internal class JarBinaryGeneratedDerivedMetadataRoot(
+    private val root: File,
+    private val jarFileOpener: (File) -> JarFile = ::JarFile,
+) : BinaryGeneratedDerivedMetadataRoot {
+    private val jarFile: JarFile by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        jarFileOpener(root)
+    }
+
+    override fun generatedMetadataFor(classId: ClassId): List<GeneratedDerivedMetadata>? {
+        val entry = jarFile.getJarEntry(classId.classFilePath()) ?: return null
+        return jarFile.getInputStream(entry).use { stream ->
+            parseGeneratedDerivedMetadata(stream.readBytes(), classId.asString())
+        }
+    }
+}
+
+private fun binaryGeneratedDerivedMetadataRoot(root: File): BinaryGeneratedDerivedMetadataRoot? =
+    when {
+        root.isDirectory -> DirectoryBinaryGeneratedDerivedMetadataRoot(root)
+        root.isFile && root.extension.equals("jar", ignoreCase = true) -> JarBinaryGeneratedDerivedMetadataRoot(root)
+        else -> null
+    }
 
 private fun parseGeneratedDerivedMetadata(
     classBytes: ByteArray,
@@ -94,7 +109,8 @@ private fun parseGeneratedDerivedMetadata(
         },
         ClassReader.SKIP_CODE or ClassReader.SKIP_DEBUG or ClassReader.SKIP_FRAMES,
     )
-    return entries
+    return entries.takeIf(List<GeneratedDerivedMetadata>::isNotEmpty)
+        ?: emptyList()
 }
 
 private fun generatedMetadataContainerVisitor(
