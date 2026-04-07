@@ -327,14 +327,35 @@ internal class TypeclassFirCheckersExtension(
         val goal =
             coneTypeToModel(substitutedType, typeContext.typeParameterModels)
                 ?: return
+        val useDerivedAwareRules = function.typeParameters.isEmpty()
+        val exactBuiltinGoalContext =
+            FirBuiltinGoalExactContext(
+                session = session,
+                typeParameterModels = typeContext.typeParameterModels,
+                variableSymbolsById =
+                    typeContext.typeParameterModels.entries.associate { (symbol, parameter) ->
+                        parameter.id to symbol
+                    },
+            )
         val planner =
             TypeclassResolutionPlanner(
                 ruleProvider = { desiredGoal ->
-                    sharedState.rulesForGoal(
-                        session = session,
-                        goal = desiredGoal,
-                        canMaterializeVariable = typeContext.runtimeMaterializableVariableIds::contains,
-                    )
+                    if (!useDerivedAwareRules) {
+                        sharedState.rulesForGoal(
+                            session = session,
+                            goal = desiredGoal,
+                            canMaterializeVariable = typeContext.runtimeMaterializableVariableIds::contains,
+                            builtinGoalAcceptance = BuiltinGoalAcceptance.PROVABLE_ONLY,
+                            exactBuiltinGoalContext = exactBuiltinGoalContext,
+                        )
+                    } else {
+                        sharedState.refinementRulesForGoal(
+                            session = session,
+                            goal = desiredGoal,
+                            canMaterializeVariable = typeContext.runtimeMaterializableVariableIds::contains,
+                            exactBuiltinGoalContext = exactBuiltinGoalContext,
+                        )
+                    }
                 },
                 bindableDesiredVariableIds = typeContext.bindableVariableIds,
             )

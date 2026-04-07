@@ -599,6 +599,97 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
     }
 
     @Test
+    fun checkerCallFailureTraceIncludesDerivedCandidates() {
+        val result =
+            compileSourceInternal(
+                sources =
+                    mapOf(
+                        "shared/Show.kt" to
+                            """
+                            package shared
+
+                            import one.wabbit.typeclass.ProductTypeclassDeriver
+                            import one.wabbit.typeclass.ProductTypeclassMetadata
+                            import one.wabbit.typeclass.Typeclass
+
+                            @Typeclass
+                            interface Show<A> {
+                                fun show(value: A): String
+
+                                companion object : ProductTypeclassDeriver {
+                                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                                        object : Show<Any?> {
+                                            override fun show(value: Any?): String = metadata.typeName
+                                        }
+                                }
+                            }
+                            """.trimIndent(),
+                        "shared/ShownString.kt" to
+                            """
+                            package shared
+
+                            import one.wabbit.typeclass.Instance
+
+                            data class ShownString(val value: String) {
+                                companion object {
+                                    @Instance
+                                    val show: Show<ShownString> =
+                                        object : Show<ShownString> {
+                                            override fun show(value: ShownString): String = value.value
+                                        }
+                                }
+                            }
+                            """.trimIndent(),
+                        "shared/Box.kt" to
+                            """
+                            package shared
+
+                            import one.wabbit.typeclass.Derive
+                            import one.wabbit.typeclass.Instance
+
+                            @Derive(Show::class)
+                            data class Box(val value: ShownString) {
+                                companion object {
+                                    @Instance
+                                    val show: Show<Box> =
+                                        object : Show<Box> {
+                                            override fun show(value: Box): String = "manual"
+                                        }
+                                }
+                            }
+                            """.trimIndent(),
+                        "demo/Main.kt" to
+                            """
+                            package demo
+
+                            import one.wabbit.typeclass.DebugTypeclassResolution
+                            import one.wabbit.typeclass.TypeclassTraceMode
+                            import shared.Box
+                            import shared.Show
+                            import shared.ShownString
+
+                            context(_: Show<Box>)
+                            fun render(value: Box): String = "context"
+
+                            fun render(value: Box): String = "plain"
+
+                            @DebugTypeclassResolution(mode = TypeclassTraceMode.FAILURES_AND_ALTERNATIVES)
+                            fun tracedFailure(): String = render(Box(ShownString("clash"))) // E:TC_AMBIGUOUS_INSTANCE
+                            """.trimIndent(),
+                    ),
+            )
+        assertEquals(ExitCode.COMPILATION_ERROR, result.exitCode, result.stdout)
+        assertOutputContains(
+            result.stdout,
+            "[TC_AMBIGUOUS_INSTANCE]",
+            "[TC_TRACE] Typeclass resolution trace for shared.Show<shared.Box>",
+            "derived rules:",
+            "derived:shared.Show:shared.Box:shared.Box",
+            "[TC_TRACE] result: ambiguity",
+        )
+    }
+
+    @Test
     fun successfulTraceRequestsAreEmittedAsInfoLevelMessages() {
         val source =
             """
