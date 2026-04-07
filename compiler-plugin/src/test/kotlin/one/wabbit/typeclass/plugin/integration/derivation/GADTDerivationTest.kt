@@ -678,7 +678,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $jsonReaderDeriverPrelude
 
-            @Derive(JsonReader::class)
+            @Derive(JsonReader::class) // E:TC_CANNOT_DERIVE covariant readers reject result-head refinements
             sealed interface Expr<A>
 
             @Derive(JsonReader::class)
@@ -695,7 +695,11 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedNoContextArgument(phase = DiagnosticPhase.FIR)),
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("sealed subclass", "conservative admissibility policy"),
+                    expectedNoContextArgument(phase = DiagnosticPhase.FIR),
+                ),
         )
     }
 
@@ -718,14 +722,14 @@ class GADTDerivationTest : IntegrationTestSupport() {
             data class Many<A>(val values: List<A>) : Container<List<A>>
 
             fun main() {
-                val value: Container<List<Int>> = roundTrip<Container<List<Int>>>("[]") // E:TC_NO_CONTEXT_ARGUMENT no derived Codec<Container<List<Int>>> should exist after rejection
+                val value: Container<List<Int>> = roundTrip<Container<List<Int>>>("[]")
                 println(value)
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedNoContextArgument(phase = DiagnosticPhase.IR)),
+            expectedDiagnostics = listOf(expectedCannotDerive("conservative admissibility policy")),
         )
     }
 
@@ -1024,7 +1028,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $constructorsDeriverPrelude
 
-            @Derive(Constructors::class)
+            @Derive(Constructors::class) // E:TC_CANNOT_DERIVE observationally phantom constructors still reject relaxed admission
             sealed interface Expr<A>
 
             @Derive(Constructors::class)
@@ -1040,7 +1044,11 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedNoContextArgument(phase = DiagnosticPhase.FIR)),
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("conservative admissibility policy"),
+                    expectedNoContextArgument(phase = DiagnosticPhase.FIR),
+                ),
         )
     }
 
@@ -1055,7 +1063,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $phantomTagDeriverPrelude
 
-            @Derive(Tag::class)
+            @Derive(Tag::class) // E:TC_CANNOT_DERIVE hidden subclass type parameters still reject eager phantom derivation
             sealed interface Packed<A>
 
             @Derive(Tag::class)
@@ -1068,7 +1076,11 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedNoContextArgument(phase = DiagnosticPhase.FIR)),
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("not quantified", "admitted result head"),
+                    expectedNoContextArgument(phase = DiagnosticPhase.FIR),
+                ),
         )
     }
 
@@ -1202,7 +1214,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $projectedSinkDeriverPrelude
 
-            @Derive(InvariantBoxSink::class)
+            @Derive(InvariantBoxSink::class) // E:TC_CANNOT_DERIVE invariant nesting should reject concrete result refinements
             sealed interface Expr<A>
 
             @Derive(InvariantBoxSink::class)
@@ -1219,7 +1231,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedNoContextArgument(phase = DiagnosticPhase.FIR)),
+            expectedDiagnostics = listOf(expectedCannotDerive("conservative admissibility policy")),
         )
     }
 
@@ -1233,7 +1245,7 @@ class GADTDerivationTest : IntegrationTestSupport() {
             """
             $projectedSinkDeriverPrelude
 
-            @Derive(ReverseProjectedSink::class)
+            @Derive(ReverseProjectedSink::class) // E:TC_CANNOT_DERIVE use-site in projections should keep rejection conservative
             sealed interface Expr<A>
 
             @Derive(ReverseProjectedSink::class)
@@ -1250,7 +1262,11 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedNoContextArgument(phase = DiagnosticPhase.FIR)),
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("conservative admissibility policy"),
+                    expectedNoContextArgument(phase = DiagnosticPhase.FIR),
+                ),
         )
     }
 
@@ -1407,18 +1423,14 @@ class GADTDerivationTest : IntegrationTestSupport() {
             data class Lit(val value: Int) : Expr<Int>
 
             fun main() {
-                val value: Expr<Int> = roundTrip<Expr<Int>>("ignored") // E:TC_NO_CONTEXT_ARGUMENT no derived Codec<Expr<Int>> should exist after rejection
+                val value: Expr<Int> = roundTrip<Expr<Int>>("ignored")
                 println(value)
             }
             """.trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("conservative", "result head"),
-                    expectedNoContextArgument(phase = DiagnosticPhase.IR),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("conservative", "result head")),
         )
     }
 }

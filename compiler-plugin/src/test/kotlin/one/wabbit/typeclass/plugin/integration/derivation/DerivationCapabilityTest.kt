@@ -1336,7 +1336,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             expectedDiagnostics =
                 listOf(
                     expectedTypeclassDiagnostic(
-                        cannotDeriveConstructiveProductStoredPropertyMismatch("demo/Stats"),
+                        cannotDeriveConstructiveProductStoredPropertyMismatch("demo.Stats"),
                         phase = null,
                     ),
                 ),
@@ -1497,7 +1497,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
             data class Public(val value: Int) : Token
 
-            data class Secret private constructor(val value: Int) : Token // E:TC_CANNOT_DERIVE
+            data class Secret private constructor(val value: Int) : Token
             """.trimIndent()
 
         assertDoesNotCompile(
@@ -1505,11 +1505,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             expectedDiagnostics =
                 listOf(
                     expectedExactCannotDerive(
-                        "Cannot derive demo/Token because sealed subclass demo/Secret is not itself derivable: constructive product derivation requires a public primary constructor for demo.Secret.",
-                        phase = null,
-                    ),
-                    expectedExactCannotDerive(
-                        "constructive product derivation requires a public primary constructor for demo.Secret.",
+                        "Cannot derive demo.Token because sealed subclass demo.Secret is not itself derivable: constructive product derivation requires a public primary constructor for demo.Secret.",
                         phase = null,
                     ),
                 ),

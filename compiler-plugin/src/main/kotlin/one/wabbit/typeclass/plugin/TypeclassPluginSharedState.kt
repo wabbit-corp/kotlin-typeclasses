@@ -146,6 +146,28 @@ internal class TypeclassPluginSharedState(
         providedType: TcType,
     ): Set<ClassId> = resolutionIndex(session).allowedAssociatedOwnersForGoal(providedType, session)
 
+    fun declarationShapeDerivationFailure(
+        session: FirSession,
+        directTypeclassId: String,
+        declaration: FirRegularClass,
+    ): String? =
+        resolutionIndex(session).declarationShapeDerivationFailure(
+            directTypeclassId = directTypeclassId,
+            declaration = declaration,
+            session = session,
+        )
+
+    fun exactShapeDerivationFailure(
+        session: FirSession,
+        directTypeclassId: String,
+        declaration: FirRegularClass,
+    ): String? =
+        resolutionIndex(session).exactShapeDerivationFailure(
+            directTypeclassId = directTypeclassId,
+            declaration = declaration,
+            session = session,
+        )
+
     fun isTypeclassType(
         session: FirSession,
         type: ConeKotlinType,
@@ -747,9 +769,9 @@ private data class ResolutionIndex(
             declaration.declarations
                 .filterIsInstance<org.jetbrains.kotlin.fir.declarations.FirConstructor>()
                 .singleOrNull { candidate -> candidate.isPrimary }
-                ?: return fail("Cannot derive ${declaration.symbol.classId.asString()} because constructive product derivation requires a primary constructor")
+                ?: return fail("Cannot derive ${declaration.symbol.classId.asFqNameString()} because constructive product derivation requires a primary constructor")
         if (constructor.status.visibility != Visibilities.Public) {
-            return fail("constructive product derivation requires a public primary constructor for ${declaration.symbol.classId.asString()}.")
+            return fail("constructive product derivation requires a public primary constructor for ${declaration.symbol.classId.asFqNameString()}.")
         }
         val storedProperties =
             declaration.declarations
@@ -757,10 +779,10 @@ private data class ResolutionIndex(
                 .filter { property -> property.getter != null && property.backingField != null }
         val visibleStoredProperties =
             storedProperties.map { property ->
-                val getter = property.getter ?: return fail("Cannot derive ${declaration.symbol.classId.asString()} because constructive product derivation requires constructor parameters to exactly match stored properties")
+                val getter = property.getter ?: return fail("Cannot derive ${declaration.symbol.classId.asFqNameString()} because constructive product derivation requires constructor parameters to exactly match stored properties")
                 if (property.status.visibility != Visibilities.Public || getter.status.visibility != Visibilities.Public) {
                     return fail(
-                        "constructive product derivation requires public stored properties; ${declaration.symbol.classId.asString()}.${property.name.asString()} is not public.",
+                        "constructive product derivation requires public stored properties; ${declaration.symbol.classId.asFqNameString()}.${property.name.asString()} is not public.",
                     )
                 }
                 property
@@ -768,16 +790,171 @@ private data class ResolutionIndex(
         val constructorParameterNames = constructor.valueParameters.map { parameter -> parameter.name.asString() }
         val fieldNames = visibleStoredProperties.map { property -> property.name.asString() }
         if (constructorParameterNames != fieldNames) {
-            return fail("Cannot derive ${declaration.symbol.classId.asString()} because constructive product derivation requires constructor parameters to exactly match stored properties")
+            return fail("Cannot derive ${declaration.symbol.classId.asFqNameString()} because constructive product derivation requires constructor parameters to exactly match stored properties")
         }
         return visibleStoredProperties.map { property ->
-            val getter = property.getter ?: return fail("Cannot derive ${declaration.symbol.classId.asString()} because constructive product derivation requires constructor parameters to exactly match stored properties")
+            val getter = property.getter ?: return fail("Cannot derive ${declaration.symbol.classId.asFqNameString()} because constructive product derivation requires constructor parameters to exactly match stored properties")
             val fieldType = coneTypeToModel(getter.returnTypeRef.coneType, typeParameterBySymbol)
-                ?: return fail("Cannot derive ${declaration.symbol.classId.asString()} because constructive product derivation requires all stored property types to be representable")
+                ?: return fail("Cannot derive ${declaration.symbol.classId.asFqNameString()} because constructive product derivation requires all stored property types to be representable")
             TcType.Constructor(
                 classifierId = directTypeclassId,
                 arguments = listOf(fieldType.substituteType(appliedBindings)),
             )
+        }
+    }
+
+    internal fun declarationShapeDerivationFailure(
+        directTypeclassId: String,
+        declaration: FirRegularClass,
+        session: FirSession,
+    ): String? =
+        if (declaration.status.modality == Modality.SEALED) {
+            declarationSealedShapeDerivationFailure(
+                directTypeclassId = directTypeclassId,
+                declaration = declaration,
+                session = session,
+            )
+        } else {
+            exactShapeDerivationFailure(
+                directTypeclassId = directTypeclassId,
+                declaration = declaration,
+                session = session,
+            )
+        }
+
+    internal fun exactShapeDerivationFailure(
+        directTypeclassId: String,
+        declaration: FirRegularClass,
+        session: FirSession,
+        targetType: TcType.Constructor = declaration.defaultExactShapeDerivationTargetType(),
+    ): String? {
+        var failure: String? = null
+        val prerequisiteGoals =
+            exactShapeDerivedPrerequisiteGoals(
+                directTypeclassId = directTypeclassId,
+                targetType = targetType,
+                declaration = declaration,
+                session = session,
+                reportFailure = { message ->
+                    if (failure == null) {
+                        failure = message
+                    }
+                },
+            )
+        return if (prerequisiteGoals != null) {
+            null
+        } else {
+            failure
+        }
+    }
+
+    private fun declarationSealedShapeDerivationFailure(
+        directTypeclassId: String,
+        declaration: FirRegularClass,
+        session: FirSession,
+    ): String? {
+        val rootClassId = declaration.symbol.classId
+        val subclassIds =
+            buildSet {
+                addAll(
+                    classInfoById
+                        .filterValues { info -> rootClassId.asString() in info.superClassifiers }
+                        .keys,
+                )
+                addAll(
+                    declaration
+                        .getSealedClassInheritors(session)
+                        .map(ClassId::asString),
+                )
+            }
+        if (subclassIds.isEmpty()) {
+            return "Cannot derive ${rootClassId.asFqNameString()} because no sealed subclasses are admissible for the requested typeclass"
+        }
+        val caseInfos =
+            subclassIds.map { subclassId ->
+                buildFirDerivedSumCaseInfo(
+                    rootClassId = rootClassId,
+                    subclassId = subclassId,
+                    session = session,
+                ) ?: return "Cannot derive ${rootClassId.asFqNameString()} because one or more sealed subclasses cannot be expressed from the sealed root's type parameters"
+            }
+        val typeclassId = runCatching { ClassId.fromString(directTypeclassId) }.getOrNull() ?: return null
+        val typeclassInterface = session.regularClassSymbolOrNull(typeclassId)?.fir ?: return null
+        val admissionMode = typeclassInterface.firGadtAdmissionMode(session)
+        val rootVariances = declaration.typeParameters.map { typeParameter -> typeParameter.symbol.fir.variance }
+        val defaultTargetType = declaration.defaultExactShapeDerivationTargetType()
+        val candidates =
+            when (admissionMode) {
+                FirGadtAdmissionMode.CONSERVATIVE_ONLY -> listOf(defaultTargetType)
+                FirGadtAdmissionMode.SURFACE_TRUSTED ->
+                    caseInfos
+                        .map { caseInfo ->
+                            caseInfo.projectedHead.toFirDerivedSumCandidate(
+                                ownerId = rootClassId.asString(),
+                                seed = caseInfo.subclassDeclaration.name.asString(),
+                            )
+                        }.distinctBy(TcType.Constructor::normalizedKey)
+            }
+        val conservativeOnly = admissionMode == FirGadtAdmissionMode.CONSERVATIVE_ONLY
+        val firstRejectionMessages = mutableListOf<String>()
+        val admittedCaseIds = linkedSetOf<String>()
+        val unrecoverableCaseMessages = linkedMapOf<String, String>()
+
+        candidates.forEach { candidate ->
+            val admissions = caseInfos.map { caseInfo -> caseInfo.admitToTargetCandidate(candidate, rootVariances, conservativeOnly) }
+            admissions.forEachIndexed { index, admission ->
+                val caseInfo = caseInfos[index]
+                val caseId = caseInfo.subclassDeclaration.symbol.classId.asString()
+                when (admission) {
+                    is FirCaseAdmission.Admitted -> {
+                        val caseFailure =
+                            exactShapeDerivationFailure(
+                                directTypeclassId = directTypeclassId,
+                                declaration = caseInfo.subclassDeclaration,
+                                session = session,
+                                targetType = admission.caseType,
+                            )
+                        if (caseFailure == null) {
+                            admittedCaseIds += caseId
+                        } else {
+                            val message =
+                                "Cannot derive ${rootClassId.asFqNameString()} because sealed subclass ${caseInfo.subclassDeclaration.symbol.classId.asFqNameString()} is not itself derivable: $caseFailure"
+                            unrecoverableCaseMessages.putIfAbsent(caseId, message)
+                            firstRejectionMessages += message
+                        }
+                    }
+                    FirCaseAdmission.Ignored -> Unit
+                    is FirCaseAdmission.Rejected -> {
+                        val message = admission.rejectionMessage
+                        unrecoverableCaseMessages.putIfAbsent(caseId, message)
+                        firstRejectionMessages += message
+                    }
+                }
+            }
+            if (conservativeOnly && admissions.any { admission -> admission !is FirCaseAdmission.Admitted }) {
+                return firstRejectionMessages.firstOrNull()
+                    ?: "Cannot derive ${rootClassId.asFqNameString()} because one or more sealed subclasses require result-head refinements beyond the conservative admissibility policy"
+            }
+        }
+
+        val unrecoverableCaseMessage =
+            caseInfos.firstNotNullOfOrNull { caseInfo ->
+                val caseId = caseInfo.subclassDeclaration.symbol.classId.asString()
+                if (caseId !in admittedCaseIds) {
+                    unrecoverableCaseMessages[caseId]
+                } else {
+                    null
+                }
+            }
+        if (unrecoverableCaseMessage != null) {
+            return unrecoverableCaseMessage
+        }
+
+        return if (admittedCaseIds.isEmpty()) {
+            firstRejectionMessages.firstOrNull()
+                ?: "Cannot derive ${rootClassId.asFqNameString()} because no sealed subclasses are admissible for the requested typeclass"
+        } else {
+            null
         }
     }
 
@@ -1157,7 +1334,7 @@ private data class ResolutionIndex(
                 )
             }
         if (subclassIds.isEmpty()) {
-            return null
+            return fail("Cannot derive ${rootClassId.asFqNameString()} because no sealed subclasses are admissible for the requested typeclass")
         }
         val caseInfos =
             subclassIds.map { subclassId ->
@@ -1165,7 +1342,7 @@ private data class ResolutionIndex(
                     rootClassId = rootClassId,
                     subclassId = subclassId,
                     session = session,
-                ) ?: return null
+                ) ?: return fail("Cannot derive ${rootClassId.asFqNameString()} because one or more sealed subclasses cannot be expressed from the sealed root's type parameters")
             }
         val typeclassId = runCatching { ClassId.fromString(directTypeclassId) }.getOrNull() ?: return null
         val typeclassInterface = session.regularClassSymbolOrNull(typeclassId)?.fir ?: return null
@@ -1174,17 +1351,43 @@ private data class ResolutionIndex(
         val prerequisiteGoals = mutableListOf<TcType>()
         caseInfos.forEach { caseInfo ->
             when (val admission = caseInfo.admitToTargetCandidate(targetType, rootVariances, conservativeOnly)) {
-                is FirCaseAdmission.Rejected -> return fail("Cannot derive ${rootClassId.asString()} because one or more sealed subclasses require result-head refinements beyond the conservative admissibility policy")
+                is FirCaseAdmission.Rejected -> return fail(admission.rejectionMessage)
                 FirCaseAdmission.Ignored -> Unit
-                is FirCaseAdmission.Admitted ->
+                is FirCaseAdmission.Admitted -> {
+                    exactShapeDerivationFailure(
+                        directTypeclassId = directTypeclassId,
+                        declaration = caseInfo.subclassDeclaration,
+                        session = session,
+                        targetType = admission.caseType,
+                    )?.let { caseFailure ->
+                        return fail(
+                            "Cannot derive ${rootClassId.asFqNameString()} because sealed subclass ${caseInfo.subclassDeclaration.symbol.classId.asFqNameString()} is not itself derivable: $caseFailure",
+                        )
+                    }
                     prerequisiteGoals +=
                         TcType.Constructor(
                             classifierId = directTypeclassId,
                             arguments = listOf(admission.caseType),
                         )
+                }
             }
         }
         return prerequisiteGoals.takeIf { it.isNotEmpty() }
+            ?: fail("Cannot derive ${rootClassId.asFqNameString()} because no sealed subclasses are admissible for the requested typeclass")
+    }
+
+    private fun FirRegularClass.defaultExactShapeDerivationTargetType(): TcType.Constructor {
+        val targetTypeParameters =
+            typeParameters.mapIndexed { index, typeParameter ->
+                TcTypeParameter(
+                    id = "validate-derived:${symbol.classId.asString()}#$index",
+                    displayName = typeParameter.symbol.name.asString(),
+                )
+            }
+        return TcType.Constructor(
+            classifierId = symbol.classId.asString(),
+            arguments = targetTypeParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) },
+        )
     }
 
     private fun buildFirDerivedSumCaseInfo(
@@ -1246,26 +1449,64 @@ private data class ResolutionIndex(
                     projectedHead.isVarianceCompatibleWithTargetCandidate(targetType, rootVariances) ->
                     emptyMap()
 
-                conservativeOnly -> return FirCaseAdmission.Rejected
+                conservativeOnly ->
+                    return FirCaseAdmission.Rejected(
+                        "Cannot derive ${targetType.classifierId.toFqNameOrSelf()} because sealed subclass ${subclassDeclaration.symbol.classId.asFqNameString()} refines the result head beyond the conservative admissibility policy",
+                    )
                 else -> return FirCaseAdmission.Ignored
             }
 
         val allowedVariableIds = targetType.referencedVariableIds()
-        val caseType = subclassDeclaredType.substituteType(bindings) as? TcType.Constructor ?: return FirCaseAdmission.Rejected
+        val caseType =
+            subclassDeclaredType.substituteType(bindings) as? TcType.Constructor
+                ?: return FirCaseAdmission.Rejected(
+                    "Cannot derive ${targetType.classifierId.toFqNameOrSelf()} because sealed subclass ${subclassDeclaration.symbol.classId.asFqNameString()} cannot be expressed as an admitted result case",
+                )
         if (!caseType.referencedVariableIds().all(allowedVariableIds::contains)) {
-            return FirCaseAdmission.Rejected
+            return FirCaseAdmission.Rejected(
+                "Cannot derive ${targetType.classifierId.toFqNameOrSelf()} because sealed subclass ${subclassDeclaration.symbol.classId.asFqNameString()} introduces type parameters that are not quantified by the admitted result head",
+            )
         }
         fieldTypes.forEach { fieldType ->
             val substitutedFieldType = fieldType.substituteType(bindings)
             if (substitutedFieldType.containsStarProjection()) {
-                return FirCaseAdmission.Rejected
+                return FirCaseAdmission.Rejected(
+                    "Cannot derive ${targetType.classifierId.toFqNameOrSelf()} because sealed subclass ${subclassDeclaration.symbol.classId.asFqNameString()} requires proof/equality-carrying field evidence hidden from the admitted result head",
+                )
             }
             if (!substitutedFieldType.referencedVariableIds().all(allowedVariableIds::contains)) {
-                return FirCaseAdmission.Rejected
+                return FirCaseAdmission.Rejected(
+                    "Cannot derive ${targetType.classifierId.toFqNameOrSelf()} because sealed subclass ${subclassDeclaration.symbol.classId.asFqNameString()} requires field evidence that is not recoverable from the admitted result head",
+                )
             }
         }
         return FirCaseAdmission.Admitted(caseType)
     }
+
+    private fun TcType.Constructor.toFirDerivedSumCandidate(
+        ownerId: String,
+        seed: String,
+    ): TcType.Constructor {
+        val referencedVariables = referencedVariableIds().toList()
+        if (referencedVariables.isEmpty()) {
+            return this
+        }
+        val ruleTypeParameters =
+            referencedVariables.mapIndexed { index, variableId ->
+                TcTypeParameter(
+                    id = "derived-sum:$ownerId:$seed:$index",
+                    displayName = "A$index",
+                ) to variableId
+            }
+        return substituteType(
+            ruleTypeParameters.associate { (parameter, variableId) ->
+                variableId to TcType.Variable(parameter.id, parameter.displayName)
+            },
+        ) as TcType.Constructor
+    }
+
+    private fun String.toFqNameOrSelf(): String =
+        runCatching { ClassId.fromString(this).asFqNameString() }.getOrDefault(this)
 
     private fun TcType.isVarianceCompatibleWithTargetCandidate(
         targetType: TcType.Constructor,
@@ -1633,7 +1874,9 @@ private data class ResolutionIndex(
 
     private sealed interface FirCaseAdmission {
         data object Ignored : FirCaseAdmission
-        data object Rejected : FirCaseAdmission
+        data class Rejected(
+            val rejectionMessage: String,
+        ) : FirCaseAdmission
         data class Admitted(
             val caseType: TcType.Constructor,
         ) : FirCaseAdmission

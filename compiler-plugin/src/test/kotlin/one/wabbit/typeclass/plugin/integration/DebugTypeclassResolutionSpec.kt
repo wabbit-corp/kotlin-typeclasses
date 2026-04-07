@@ -808,10 +808,11 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
         assertOutputContains(
             result.stdout,
             "[TC_CANNOT_DERIVE]",
+        )
+        assertOutputNotContains(
+            result.stdout,
             "[TC_TRACE] Typeclass derivation trace for demo.Show<demo.Expr>",
             "[TC_TRACE] root kind: derivation",
-            "[TC_TRACE] effective mode: FAILURES",
-            "reason:",
         )
     }
 

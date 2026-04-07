@@ -563,6 +563,22 @@ internal class TypeclassFirCheckersExtension(
                     return@forEach
                 }
             }
+            sharedState.declarationShapeDerivationFailure(
+                session = session,
+                directTypeclassId = typeclassId.asString(),
+                declaration = declaration,
+            )?.let { failure ->
+                val storedPropertyMismatchMessage =
+                    "Cannot derive ${declaration.symbol.classId.asFqNameString()} because constructive product derivation requires constructor parameters to exactly match stored properties"
+                val narrative =
+                    if (failure == storedPropertyMismatchMessage) {
+                        cannotDeriveConstructiveProductStoredPropertyMismatch(declaration.symbol.classId.asFqNameString())
+                    } else {
+                        cannotDeriveDiagnostic(failure)
+                    }
+                reportCannotDerive(declaration, narrative)
+                return@forEach
+            }
         }
     }
 

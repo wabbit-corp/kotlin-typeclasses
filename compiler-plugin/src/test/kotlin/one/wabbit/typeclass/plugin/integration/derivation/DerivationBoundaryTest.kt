@@ -388,7 +388,7 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                     import one.wabbit.typeclass.Derive
 
-                    @Derive(Show::class)
+                    @Derive(Show::class) // E:TC_CANNOT_DERIVE
                     class Stats(count: ShownInt) {
                         val total: ShownInt = count
                     }
@@ -409,7 +409,14 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             sources = sources,
-            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.FIR)),
+            expectedDiagnostics =
+                listOf(
+                    expectedExactCannotDerive(
+                        "Cannot derive shared.Stats because constructive product derivation requires constructor parameters to exactly match stored properties.",
+                        phase = null,
+                    ),
+                    expectedNoContextArgument("show", phase = DiagnosticPhase.FIR),
+                ),
             unexpectedMessages = listOf("internal compiler error"),
         )
     }
@@ -425,7 +432,7 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                     import one.wabbit.typeclass.Derive
 
-                    @Derive(Show::class)
+                    @Derive(Show::class) // E:TC_CANNOT_DERIVE
                     sealed interface Expr
                     """.trimIndent(),
                 "shared/Lit.kt" to
@@ -451,7 +458,11 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             sources = sources,
-            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.FIR)),
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("not quantified", "admitted result head"),
+                    expectedNoContextArgument("show", phase = DiagnosticPhase.FIR),
+                ),
             unexpectedMessages = listOf("internal compiler error"),
         )
     }
