@@ -1860,13 +1860,15 @@ private fun collectAssociatedRules(
 }
 
 internal fun FirRegularClass.derivedTypeclassIds(session: FirSession): Set<String> {
-    return derivedAnnotationClassIds(session).filterTo(linkedSetOf()) { classifierId ->
-        val classId = runCatching { ClassId.fromString(classifierId) }.getOrNull() ?: return@filterTo false
-        session.regularClassSymbolOrNull(classId)?.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session) == true
-    }
+    return derivedAnnotationTargetClassIds(session)
+        .filterTo(linkedSetOf()) { classId ->
+            session.regularClassSymbolOrNull(classId)?.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session) == true
+        }.mapTo(linkedSetOf()) { classId ->
+            classId.asString()
+        }
 }
 
-internal fun FirRegularClass.derivedAnnotationClassIds(session: FirSession): Set<String> {
+internal fun FirRegularClass.derivedAnnotationTargetClassIds(session: FirSession): Set<ClassId> {
     val referencedClassIds =
         resolvedAnnotationsByClassId(
             annotationClassId = DERIVE_ANNOTATION_CLASS_ID,
@@ -2050,9 +2052,9 @@ private fun FirAnnotation.deriveValueExpressions(): Sequence<FirExpression> {
     return mappedArguments
 }
 
-private fun FirAnnotation.derivedReferencedClassIds(): Set<String> =
+private fun FirAnnotation.derivedReferencedClassIds(): Set<ClassId> =
     deriveValueExpressions()
-        .mapNotNull { expression -> expression.derivedReferencedClassId()?.asString() }
+        .mapNotNull { expression -> expression.derivedReferencedClassId() }
         .toCollection(linkedSetOf())
 
 private fun FirExpression.derivedReferencedClassId(): ClassId? =

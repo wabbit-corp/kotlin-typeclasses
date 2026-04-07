@@ -492,6 +492,13 @@ private fun FirAnnotation.parseDeriveViaAnnotation(
         )
     }
     val typeclassId = getClassIdArgument("typeclass", session) ?: return null
+    val typeclassInterface = session.regularClassSymbolOrNull(typeclassId)?.fir
+    if (typeclassInterface?.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session) != true) {
+        return FirDeriveViaAnnotationParseResult.Invalid(
+            annotation = this,
+            message = "${typeclassId.shortClassName.asString()} is not annotated with @Typeclass",
+        )
+    }
     val pathArguments = getArgumentExpressions("path")
     if (pathArguments.isEmpty()) {
         return FirDeriveViaAnnotationParseResult.Invalid(
@@ -525,10 +532,6 @@ private fun FirAnnotation.parseDeriveViaAnnotation(
             annotation = this,
             message = "DeriveVia requires a typeclass with at least one type parameter",
         )
-    }
-    val typeclassInterface = session.regularClassSymbolOrNull(typeclassId)?.fir ?: return null
-    if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)) {
-        return null
     }
     typeclassInterface.validateDeriveViaTransportability(session)?.let { message ->
         return FirDeriveViaAnnotationParseResult.Invalid(

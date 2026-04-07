@@ -507,6 +507,15 @@ internal class TypeclassFirCheckersExtension(
             return
         }
 
+        declaration.derivedAnnotationTargetClassIds(session).forEach { targetClassId ->
+            if (session.regularClassSymbolOrNull(targetClassId)?.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session) != true) {
+                reportCannotDerive(
+                    declaration,
+                    cannotDeriveDiagnostic("${targetClassId.shortClassName.asString()} is not annotated with @Typeclass"),
+                )
+            }
+        }
+
         declaration.derivedTypeclassIds(session).forEach { typeclassIdString ->
             val typeclassId = runCatching { ClassId.fromString(typeclassIdString) }.getOrNull() ?: return@forEach
             if (typeclassTypeParameterCount(typeclassId, session) != 1) {

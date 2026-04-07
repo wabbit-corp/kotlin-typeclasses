@@ -197,6 +197,32 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun invalidNonTypeclassDeriveTargetsAreDiagnosedExplicitly() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+
+            interface Plain<A>
+            interface Other<A>
+
+            @Derive(Plain::class, Other::class) // E:TC_CANNOT_DERIVE invalid non-typeclass derive targets must be diagnosed explicitly
+            data class User(val value: String)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("plain", "@typeclass"),
+                    expectedCannotDerive("other", "@typeclass"),
+                ),
+            unexpectedMessages = listOf("internal compiler error"),
+        )
+    }
+
+    @Test
     fun invalidConstructiveProductShapeFailsAtFirUseSites() {
         val sources =
             mapOf(

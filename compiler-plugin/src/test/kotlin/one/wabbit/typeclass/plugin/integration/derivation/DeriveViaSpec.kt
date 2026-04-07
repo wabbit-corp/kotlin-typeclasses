@@ -253,6 +253,32 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
+    @Test fun deriveViaRejectsNonTypeclassTargetsInFir() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+
+            interface Plain<A>
+
+            data class Wire(val value: String)
+
+            @DeriveVia(Plain::class, Wire::class) // E:TC_CANNOT_DERIVE non-typeclass DeriveVia targets must be diagnosed explicitly
+            data class UserId(val value: String)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedCannotDerive("plain", "@typeclass")),
+            unexpectedMessages =
+                listOf(
+                    "no context argument",
+                    "overload resolution ambiguity",
+                ),
+        )
+    }
+
     // Exact intended semantics:
     // - Equiv search is canonical by endpoint pair, not by proof tree
     // - if multiple direct/composed Equiv derivations all establish the same endpoint pair, they do not by themselves
