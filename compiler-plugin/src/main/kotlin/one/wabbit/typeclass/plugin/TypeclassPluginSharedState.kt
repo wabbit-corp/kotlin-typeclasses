@@ -483,7 +483,7 @@ private data class ResolutionIndex(
     private val lazilyDiscoveredDeriveEquivTargetIdsByOwner: MutableMap<String, Set<String>> = linkedMapOf()
 
     private data class ShapeDerivationOption(
-        val ownerId: String,
+        val targetOwnerId: String,
         val directTypeclassId: String,
         val targetType: TcType.Constructor,
         val prerequisiteTypes: List<TcType>,
@@ -699,7 +699,7 @@ private data class ResolutionIndex(
                 id =
                     directRuleId(
                         prefix = "derived",
-                        declarationKey = "${option.directTypeclassId}:${option.ownerId}:${option.targetType.normalizedKey()}",
+                        declarationKey = "${option.directTypeclassId}:${option.targetOwnerId}:${option.targetType.normalizedKey()}",
                         providedType = goal,
                         prerequisiteTypes = option.prerequisiteTypes,
                     ),
@@ -722,6 +722,9 @@ private data class ResolutionIndex(
             val ownerDeclaration = session.regularClassSymbolOrNull(ownerClassId)?.fir ?: return@flatMap emptyList()
             ownerDeclaration.matchingShapeDerivedGoalMatches(goal, session, configuration).mapNotNull { match ->
                 val targetClassId = runCatching { ClassId.fromString(match.targetType.classifierId) }.getOrNull() ?: return@mapNotNull null
+                if (ownerId !in derivationOwnersForTarget(targetClassId.asString(), session)) {
+                    return@mapNotNull null
+                }
                 val targetDeclaration = session.regularClassSymbolOrNull(targetClassId)?.fir ?: return@mapNotNull null
                 val prerequisiteTypes =
                     exactShapeDerivedPrerequisiteGoals(
@@ -731,7 +734,7 @@ private data class ResolutionIndex(
                         session = session,
                     ) ?: return@mapNotNull null
                 ShapeDerivationOption(
-                    ownerId = ownerId,
+                    targetOwnerId = targetClassId.asString(),
                     directTypeclassId = match.directTypeclassId,
                     targetType = match.targetType,
                     prerequisiteTypes = prerequisiteTypes,
@@ -739,7 +742,7 @@ private data class ResolutionIndex(
             }
         }.distinctBy { option ->
             listOf(
-                option.ownerId,
+                option.targetOwnerId,
                 option.directTypeclassId,
                 option.targetType.normalizedKey(),
                 option.prerequisiteTypes.joinToString("|", transform = TcType::normalizedKey),

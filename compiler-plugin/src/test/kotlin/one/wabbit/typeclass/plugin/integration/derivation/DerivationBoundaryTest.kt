@@ -225,6 +225,100 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun unrelatedAssociatedOwnersMustNotAuthorizeShapeDerivationTargets() {
+        val sources =
+            mapOf(
+                "shared/Show.kt" to showTypeclassSource(packageName = "shared"),
+                "shared/ShownString.kt" to shownStringSource("shared"),
+                "shared/Leaf.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Derive
+
+                    @Derive(Show::class)
+                    data class Leaf(val value: ShownString)
+                    """.trimIndent(),
+                "shared/Wrapper.kt" to
+                    """
+                    package shared
+
+                    data class Wrapper<A>(val value: A)
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import shared.Leaf
+                    import shared.ShownString
+                    import shared.Wrapper
+                    import shared.render
+
+                    fun main() {
+                        println(render(Wrapper(Leaf(ShownString("ok"))))) // E:TC_NO_CONTEXT_ARGUMENT a derived Leaf must not authorize Show<Wrapper<Leaf>>
+                    }
+                    """.trimIndent(),
+            )
+
+        assertDoesNotCompile(
+            sources = sources,
+            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.FIR)),
+            unexpectedMessages = listOf("internal compiler error", "overload resolution ambiguity"),
+        )
+    }
+
+    @Test
+    fun rootAndLeafDeriveAnnotationsDoNotDuplicateFirShapeCandidates() {
+        val sources =
+            mapOf(
+                "shared/Show.kt" to showTypeclassSource(packageName = "shared"),
+                "shared/ShownString.kt" to shownStringSource("shared"),
+                "shared/Token.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Derive
+
+                    @Derive(Show::class)
+                    sealed interface Token
+                    """.trimIndent(),
+                "shared/Word.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Derive
+
+                    @Derive(Show::class)
+                    data class Word(val value: ShownString) : Token
+                    """.trimIndent(),
+                "shared/End.kt" to
+                    """
+                    package shared
+
+                    object End : Token
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import shared.ShownString
+                    import shared.Word
+                    import shared.render
+
+                    fun main() {
+                        println(render(Word(ShownString("ok"))))
+                    }
+                    """.trimIndent(),
+            )
+
+        assertCompilesAndRuns(
+            sources = sources,
+            expectedStdout = "Word(value=ok)",
+            mainClass = "demo.MainKt",
+        )
+    }
+
+    @Test
     fun inheritedDeriverReturnValidationMustBePerExpectedTypeclass() {
         val source =
             """
