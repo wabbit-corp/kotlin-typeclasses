@@ -8,6 +8,7 @@ import org.jetbrains.org.objectweb.asm.MethodVisitor
 import org.jetbrains.org.objectweb.asm.Opcodes
 import java.io.File
 import java.nio.file.Files
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.jar.JarEntry
 import java.util.jar.JarFile
 import java.util.jar.JarOutputStream
@@ -31,7 +32,7 @@ class BinaryGeneratedDerivedMetadataLoaderTest {
     }
 
     @Test
-    fun jarRootReusesSingleJarOpenAcrossMultipleColdLookups() {
+    fun jarRootClosesJarFilesAfterEachLookup() {
         val ownerA = ClassId.fromString("demo/Alpha")
         val ownerB = ClassId.fromString("demo/Beta")
         val metadataA =
@@ -50,16 +51,20 @@ class BinaryGeneratedDerivedMetadataLoaderTest {
                 ownerB to metadataB,
             )
 
-        var openCount = 0
+        val openCount = AtomicInteger(0)
+        val closeCount = AtomicInteger(0)
         val root =
             JarBinaryGeneratedDerivedMetadataRoot(jarFile) { file ->
-                openCount += 1
-                JarFile(file)
+                openCount.incrementAndGet()
+                CountingJarFile(file) {
+                    closeCount.incrementAndGet()
+                }
             }
 
         assertEquals(listOf(metadataA), root.generatedMetadataFor(ownerA).metadataForTest())
         assertEquals(listOf(metadataB), root.generatedMetadataFor(ownerB).metadataForTest())
-        assertEquals(1, openCount)
+        assertEquals(2, openCount.get())
+        assertEquals(2, closeCount.get())
     }
 
     @Test
@@ -191,3 +196,16 @@ private fun BinaryGeneratedDerivedMetadataLookupResult.metadataForTest(): List<G
         BinaryGeneratedDerivedMetadataLookupResult.NotFound -> error("expected classfile hit")
         is BinaryGeneratedDerivedMetadataLookupResult.Found -> metadata
     }
+
+private class CountingJarFile(
+    file: File,
+    private val onClose: () -> Unit,
+) : JarFile(file) {
+    override fun close() {
+        try {
+            super.close()
+        } finally {
+            onClose()
+        }
+    }
+}

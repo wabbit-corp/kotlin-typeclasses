@@ -82,18 +82,16 @@ internal class JarBinaryGeneratedDerivedMetadataRoot(
     private val root: File,
     private val jarFileOpener: (File) -> JarFile = ::JarFile,
 ) : BinaryGeneratedDerivedMetadataRoot {
-    private val jarFile: JarFile by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        jarFileOpener(root)
-    }
-
     override fun generatedMetadataFor(classId: ClassId): BinaryGeneratedDerivedMetadataLookupResult {
-        val entry = jarFile.getJarEntry(classId.classFilePath())
-            ?: return BinaryGeneratedDerivedMetadataLookupResult.NotFound
-        return BinaryGeneratedDerivedMetadataLookupResult.Found(
-            jarFile.getInputStream(entry).use { stream ->
-                parseGeneratedDerivedMetadata(stream.readBytes(), classId.asString())
-            },
-        )
+        return jarFileOpener(root).use { jarFile ->
+            val entry = jarFile.getJarEntry(classId.classFilePath())
+                ?: return BinaryGeneratedDerivedMetadataLookupResult.NotFound
+            BinaryGeneratedDerivedMetadataLookupResult.Found(
+                jarFile.getInputStream(entry).use { stream ->
+                    parseGeneratedDerivedMetadata(stream.readBytes(), classId.asString())
+                },
+            )
+        }
     }
 }
 
