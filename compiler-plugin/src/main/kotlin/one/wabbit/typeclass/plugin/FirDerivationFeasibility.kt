@@ -869,13 +869,39 @@ private fun FirExpression.asReferencedClassId(): ClassId? =
     }
 
 private fun FirRegularClass.isoEndpoints(session: FirSession): Pair<TcType.Constructor, TcType.Constructor>? {
-    val superType =
-        declaredOrResolvedSuperTypes()
-            .firstOrNull { candidate -> candidate.lowerBoundIfFlexible().classId == ISO_CLASS_ID }
-            as? ConeClassLikeType ?: return null
-    val leftType = coneTypeToModel(superType.typeArguments.getOrNull(0)?.type ?: return null, emptyMap()) as? TcType.Constructor ?: return null
-    val rightType = coneTypeToModel(superType.typeArguments.getOrNull(1)?.type ?: return null, emptyMap()) as? TcType.Constructor ?: return null
-    return leftType to rightType
+    return isoEndpointsInConcreteContext(
+        session = session,
+        concreteType = defaultConcreteType(),
+        visited = linkedSetOf(),
+    )
+}
+
+private fun FirRegularClass.isoEndpointsInConcreteContext(
+    session: FirSession,
+    concreteType: TcType.Constructor,
+    visited: MutableSet<String>,
+): Pair<TcType.Constructor, TcType.Constructor>? {
+    val visitKey = "${symbol.classId.asString()}:${concreteType.render()}"
+    if (!visited.add(visitKey)) {
+        return null
+    }
+
+    for (superType in declaredOrResolvedSuperTypes()) {
+        val superConcreteType = superType.toConcreteType(this, concreteType) as? TcType.Constructor ?: continue
+        if (superConcreteType.classifierId == ISO_CLASS_ID.asString()) {
+            val leftType = superConcreteType.arguments.getOrNull(0) as? TcType.Constructor ?: return null
+            val rightType = superConcreteType.arguments.getOrNull(1) as? TcType.Constructor ?: return null
+            return leftType to rightType
+        }
+        val superClassId = superConcreteType.classIdOrNull() ?: continue
+        val superClass = session.regularClassSymbolOrNull(superClassId)?.fir ?: continue
+        superClass.isoEndpointsInConcreteContext(
+            session = session,
+            concreteType = superConcreteType,
+            visited = visited,
+        )?.let { return it }
+    }
+    return null
 }
 
 private fun ConeKotlinType.transportabilityViolation(

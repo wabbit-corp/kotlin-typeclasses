@@ -3454,6 +3454,60 @@ class DeriveViaSpec : IntegrationTestSupport() {
     }
 
     // Exact intended semantics:
+    // - FIR and IR should agree on pinned Iso endpoint discovery
+    // - an object that inherits Iso through an intermediate interface is still one exact pinned Iso edge
+    @Test fun supportsPinnedIsoObjectsThatInheritIsoThroughIntermediateInterfaces() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Iso
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooShow : Show<Foo> {
+                override fun show(value: Foo): String = "foo:${'$'}{value.value}"
+            }
+
+            data class Token(val raw: Int)
+
+            interface TokenFooBridge : Iso<Token, Foo>
+
+            object TokenFooIso : TokenFooBridge {
+                override fun to(value: Token): Foo = Foo(value.raw)
+
+                override fun from(value: Foo): Token = Token(value.value)
+            }
+
+            @JvmInline
+            @DeriveVia(Show::class, TokenFooIso::class)
+            value class UserId(val value: Token)
+
+            context(show: Show<UserId>)
+            fun render(value: UserId): String = show.show(value)
+
+            fun main() {
+                println(render(UserId(Token(9))))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "foo:9",
+        )
+    }
+
+    // Exact intended semantics:
     // - pinned Iso segments may use inserted Equiv glue around them
     // - but if no Equiv-augmented attachment can connect the current type to either endpoint, the path is disconnected
     // - a disconnected pinned path must fail rather than being ignored
