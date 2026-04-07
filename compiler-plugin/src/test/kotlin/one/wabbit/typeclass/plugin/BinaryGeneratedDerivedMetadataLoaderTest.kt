@@ -32,7 +32,7 @@ class BinaryGeneratedDerivedMetadataLoaderTest {
     }
 
     @Test
-    fun jarRootClosesJarFilesAfterEachLookup() {
+    fun jarRootBuildsItsIndexWithASingleJarOpenAndClosesItAfterward() {
         val ownerA = ClassId.fromString("demo/Alpha")
         val ownerB = ClassId.fromString("demo/Beta")
         val metadataA =
@@ -63,8 +63,8 @@ class BinaryGeneratedDerivedMetadataLoaderTest {
 
         assertEquals(listOf(metadataA), root.generatedMetadataFor(ownerA).metadataForTest())
         assertEquals(listOf(metadataB), root.generatedMetadataFor(ownerB).metadataForTest())
-        assertEquals(2, openCount.get())
-        assertEquals(2, closeCount.get())
+        assertEquals(1, openCount.get())
+        assertEquals(1, closeCount.get())
     }
 
     @Test
