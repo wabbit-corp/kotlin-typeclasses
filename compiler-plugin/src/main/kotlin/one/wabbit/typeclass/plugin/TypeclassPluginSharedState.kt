@@ -1855,13 +1855,20 @@ private data class ResolutionIndex(
         if (associatedRulesByOwner.containsKey(owner)) {
             emptyList()
         } else lazilyDiscoveredAssociatedRulesByOwner.getOrPut(owner) {
-            val ownerSymbol = session.symbolProvider.getClassLikeSymbolByClassId(owner) as? FirRegularClassSymbol ?: return@getOrPut emptyList()
+            val ownerSymbol = session.regularClassSymbolOrNull(owner) ?: return@getOrPut emptyList()
             val companion =
-                ownerSymbol.fir.declarations
-                    .filterIsInstance<FirRegularClass>()
-                    .firstOrNull { declaration ->
-                        declaration.symbol.classId.shortClassName == SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT
-                    } ?: return@getOrPut emptyList()
+                directOrNestedCompanion(
+                    owner = owner,
+                    directCompanion =
+                        ownerSymbol.fir.declarations
+                            .filterIsInstance<FirRegularClass>()
+                            .firstOrNull { declaration ->
+                                declaration.symbol.classId.shortClassName == SpecialNames.DEFAULT_NAME_FOR_COMPANION_OBJECT
+                            },
+                    nestedLookup = { companionId ->
+                        session.regularClassSymbolOrNull(companionId)?.fir
+                    },
+                ) ?: return@getOrPut emptyList()
             buildList {
                 collectAssociatedRules(
                     declaration = companion,

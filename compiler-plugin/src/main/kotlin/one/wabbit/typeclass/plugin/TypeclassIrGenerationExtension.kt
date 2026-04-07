@@ -2515,9 +2515,13 @@ private class IrRuleIndex private constructor(
         } else lazilyDiscoveredAssociatedRulesByOwner.getOrPut(owner) {
             val ownerClass = discoverReferencedClass(owner) ?: return@getOrPut emptyList()
             val companionRules =
-                ownerClass.declarations
-                    .filterIsInstance<IrClass>()
-                    .firstOrNull(IrClass::isCompanion)
+                directOrNestedCompanion(
+                    owner = owner,
+                    directCompanion = ownerClass.declarations.filterIsInstance<IrClass>().firstOrNull(IrClass::isCompanion),
+                    nestedLookup = { companionId ->
+                        pluginContext.referenceClass(companionId)?.owner?.also(scanner::registerDiscoveredClass)
+                    },
+                )
                     ?.let { companion ->
                         buildList {
                             collectAssociatedRules(
