@@ -220,28 +220,3 @@ private fun org.jetbrains.kotlin.ir.types.IrTypeArgument?.asIrTypeOrNull(): IrTy
         is IrTypeProjection -> type
         else -> null
     }
-
-private fun IrType.sameTypeShape(other: IrType): Boolean {
-    val thisSimple = this as? IrSimpleType ?: return this == other
-    val otherSimple = other as? IrSimpleType ?: return false
-    if (thisSimple.classifier != otherSimple.classifier) {
-        return false
-    }
-    if (thisSimple.nullability != otherSimple.nullability) {
-        return false
-    }
-    if (thisSimple.arguments.size != otherSimple.arguments.size) {
-        return false
-    }
-    return thisSimple.arguments.zip(otherSimple.arguments).all { (leftArgument, rightArgument) ->
-        when {
-            leftArgument is IrTypeProjection && rightArgument is IrTypeProjection ->
-                leftArgument.variance == rightArgument.variance && leftArgument.type.sameTypeShape(rightArgument.type)
-
-            leftArgument is IrType && rightArgument is IrType ->
-                leftArgument.sameTypeShape(rightArgument)
-
-            else -> leftArgument::class == rightArgument::class
-        }
-    }
-}

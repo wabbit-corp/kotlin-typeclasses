@@ -324,13 +324,13 @@ internal class DirectTransportPlanner(
     private fun synthesize(
         sourceType: IrType,
         targetType: IrType,
-        visiting: MutableSet<Pair<String, String>>,
+        visiting: MutableSet<Pair<TransportTypeShapeKey, TransportTypeShapeKey>>,
     ): TransportPlan? {
-        if (sourceType.render() == targetType.render()) {
+        if (sourceType.sameTypeShape(targetType)) {
             return TransportPlan.Identity(sourceType, targetType)
         }
 
-        val visitKey = sourceType.render() to targetType.render()
+        val visitKey = sourceType.transportTypeShapeKey() to targetType.transportTypeShapeKey()
         if (!visiting.add(visitKey)) {
             return null
         }
@@ -354,7 +354,7 @@ internal class DirectTransportPlanner(
                 return null
             }
 
-            if (sourceClass.isTransparentValueClass() && targetType.render() != sourceType.render()) {
+            if (sourceClass.isTransparentValueClass() && !targetType.sameTypeShape(sourceType)) {
                 val sourceField =
                     sourceClass.transparentValueField(
                         accessContext = sourceClass.transportAccessContext(),
@@ -364,7 +364,7 @@ internal class DirectTransportPlanner(
                 return TransportPlan.ValueUnwrap(sourceType, targetType, sourceField.getter, nested)
             }
 
-            if (targetClass.isTransparentValueClass() && targetType.render() != sourceType.render()) {
+            if (targetClass.isTransparentValueClass() && !targetType.sameTypeShape(sourceType)) {
                 val targetField =
                     targetClass.transparentValueField(
                         accessContext = targetClass.transportAccessContext(),
@@ -389,7 +389,7 @@ internal class DirectTransportPlanner(
     private fun synthesizeFunction(
         sourceType: IrType,
         targetType: IrType,
-        visiting: MutableSet<Pair<String, String>>,
+        visiting: MutableSet<Pair<TransportTypeShapeKey, TransportTypeShapeKey>>,
     ): TransportPlan? {
         val sourceInfo = sourceType.functionTypeInfoOrNull() ?: return null
         val targetInfo = targetType.functionTypeInfoOrNull() ?: return null
@@ -416,7 +416,7 @@ internal class DirectTransportPlanner(
         targetType: IrType,
         sourceClass: IrClass,
         targetClass: IrClass,
-        visiting: MutableSet<Pair<String, String>>,
+        visiting: MutableSet<Pair<TransportTypeShapeKey, TransportTypeShapeKey>>,
     ): TransportPlan? {
         val sourceInfo =
             sourceClass.transparentProductInfo(
@@ -496,7 +496,7 @@ internal class DirectTransportPlanner(
         targetType: IrType,
         sourceClass: IrClass,
         targetClass: IrClass,
-        visiting: MutableSet<Pair<String, String>>,
+        visiting: MutableSet<Pair<TransportTypeShapeKey, TransportTypeShapeKey>>,
     ): TransportPlan? {
         if (sourceClass.modality != Modality.SEALED || targetClass.modality != Modality.SEALED) {
             return null
@@ -1067,10 +1067,10 @@ private fun planMemberTransport(
     backwardPlan: TransportPlan,
     pluginContext: IrPluginContext,
 ): TransportPlan? {
-    if (sourceType.render() == viaType.render() && targetType.render() == targetValueType.render()) {
+    if (sourceType.sameTypeShape(viaType) && targetType.sameTypeShape(targetValueType)) {
         return backwardPlan
     }
-    if (sourceType.render() == targetValueType.render() && targetType.render() == viaType.render()) {
+    if (sourceType.sameTypeShape(targetValueType) && targetType.sameTypeShape(viaType)) {
         return forwardPlan
     }
     return DirectTransportPlanner(pluginContext).synthesize(sourceType, targetType)
