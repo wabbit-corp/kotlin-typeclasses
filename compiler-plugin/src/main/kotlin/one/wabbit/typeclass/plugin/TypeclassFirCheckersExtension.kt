@@ -571,6 +571,7 @@ internal class TypeclassFirCheckersExtension(
                             cannotDeriveDiagnostic("Typeclass deriver $companionId is missing ${contract.methodName}"),
                         )
                     }
+                    return@forEach
                 }
             }
         }

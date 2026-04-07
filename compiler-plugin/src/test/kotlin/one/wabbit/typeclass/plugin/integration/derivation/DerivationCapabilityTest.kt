@@ -1402,6 +1402,59 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
         )
     }
 
+    @Test
+    fun sealedRootDerivationRejectsCasesThatCannotDeriveProducts() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : TypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+
+                    override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+                }
+            }
+
+            @Derive(Show::class) // E:TC_CANNOT_DERIVE
+            sealed interface Token
+
+            data class Public(val value: Int) : Token
+
+            data class Secret private constructor(val value: Int) : Token // E:TC_CANNOT_DERIVE
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedExactCannotDerive(
+                        "Cannot derive demo/Token because sealed subclass demo/Secret is not itself derivable: constructive product derivation requires a public primary constructor for demo.Secret.",
+                        phase = null,
+                    ),
+                    expectedExactCannotDerive(
+                        "constructive product derivation requires a public primary constructor for demo.Secret.",
+                        phase = null,
+                    ),
+                ),
+        )
+    }
+
     private fun requestedHeadOnlySource(
         extraDeclarations: String,
         mainBody: String,

@@ -686,14 +686,30 @@ private data class ResolutionIndex(
         targetType: TcType.Constructor,
         declaration: FirRegularClass,
         session: FirSession,
+        reportFailure: ((String) -> Unit)? = null,
     ): List<TcType>? {
-        if (!declaration.supportsDeriveShape()) {
+        fun fail(message: String): List<TcType>? {
+            reportFailure?.invoke(message)
             return null
         }
-        if (declaration.classKind == ClassKind.ENUM_CLASS) {
-            val typeclassClassId = runCatching { ClassId.fromString(directTypeclassId) }.getOrNull() ?: return null
-            if (typeclassCompanionResolveDeriveMethod(typeclassClassId, DeriveMethodContract.ENUM, session) == null) {
-                return null
+        if (!declaration.supportsDeriveShape()) {
+            return fail("@Derive is only supported on sealed or final classes and objects.")
+        }
+        val typeclassClassId = runCatching { ClassId.fromString(directTypeclassId) }.getOrNull()
+            ?: return fail("@Derive currently only supports typeclasses with exactly one type parameter")
+        declaration.requiredDeriveMethodContractForDeriveShape()?.let { contract ->
+            if (typeclassCompanionResolveDeriveMethod(typeclassClassId, contract, session) == null) {
+                val typeclassName = typeclassClassId.shortClassName.asString()
+                return fail(
+                    if (contract == DeriveMethodContract.ENUM) {
+                        "$typeclassName companion must override deriveEnum to derive enum classes"
+                    } else {
+                        val companionId =
+                            typeclassCompanionSymbol(typeclassClassId, session)?.classId?.asString()
+                                ?: typeclassClassId.asString()
+                        "Typeclass deriver $companionId is missing ${contract.methodName}"
+                    },
+                )
             }
         }
         if (declaration.classKind == ClassKind.OBJECT || declaration.classKind == ClassKind.ENUM_CLASS) {
@@ -705,6 +721,7 @@ private data class ResolutionIndex(
                 targetType = targetType,
                 declaration = declaration,
                 session = session,
+                reportFailure = reportFailure,
             )
         }
         val ruleTypeParameters =
@@ -725,9 +742,9 @@ private data class ResolutionIndex(
             declaration.declarations
                 .filterIsInstance<org.jetbrains.kotlin.fir.declarations.FirConstructor>()
                 .singleOrNull { candidate -> candidate.isPrimary }
-                ?: return null
+                ?: return fail("Cannot derive ${declaration.symbol.classId.asString()} because constructive product derivation requires a primary constructor")
         if (constructor.status.visibility != Visibilities.Public) {
-            return null
+            return fail("constructive product derivation requires a public primary constructor for ${declaration.symbol.classId.asString()}.")
         }
         val storedProperties =
             declaration.declarations
@@ -735,20 +752,23 @@ private data class ResolutionIndex(
                 .filter { property -> property.getter != null && property.backingField != null }
         val visibleStoredProperties =
             storedProperties.map { property ->
-                val getter = property.getter ?: return null
+                val getter = property.getter ?: return fail("Cannot derive ${declaration.symbol.classId.asString()} because constructive product derivation requires constructor parameters to exactly match stored properties")
                 if (property.status.visibility != Visibilities.Public || getter.status.visibility != Visibilities.Public) {
-                    return null
+                    return fail(
+                        "constructive product derivation requires public stored properties; ${declaration.symbol.classId.asString()}.${property.name.asString()} is not public.",
+                    )
                 }
                 property
             }
         val constructorParameterNames = constructor.valueParameters.map { parameter -> parameter.name.asString() }
         val fieldNames = visibleStoredProperties.map { property -> property.name.asString() }
         if (constructorParameterNames != fieldNames) {
-            return null
+            return fail("Cannot derive ${declaration.symbol.classId.asString()} because constructive product derivation requires constructor parameters to exactly match stored properties")
         }
         return visibleStoredProperties.map { property ->
-            val getter = property.getter ?: return null
-            val fieldType = coneTypeToModel(getter.returnTypeRef.coneType, typeParameterBySymbol) ?: return null
+            val getter = property.getter ?: return fail("Cannot derive ${declaration.symbol.classId.asString()} because constructive product derivation requires constructor parameters to exactly match stored properties")
+            val fieldType = coneTypeToModel(getter.returnTypeRef.coneType, typeParameterBySymbol)
+                ?: return fail("Cannot derive ${declaration.symbol.classId.asString()} because constructive product derivation requires all stored property types to be representable")
             TcType.Constructor(
                 classifierId = directTypeclassId,
                 arguments = listOf(fieldType.substituteType(appliedBindings)),
@@ -1111,7 +1131,12 @@ private data class ResolutionIndex(
         targetType: TcType.Constructor,
         declaration: FirRegularClass,
         session: FirSession,
+        reportFailure: ((String) -> Unit)? = null,
     ): List<TcType>? {
+        fun fail(message: String): List<TcType>? {
+            reportFailure?.invoke(message)
+            return null
+        }
         val rootClassId = declaration.symbol.classId
         val subclassIds =
             buildSet {
@@ -1144,7 +1169,7 @@ private data class ResolutionIndex(
         val prerequisiteGoals = mutableListOf<TcType>()
         caseInfos.forEach { caseInfo ->
             when (val admission = caseInfo.admitToTargetCandidate(targetType, rootVariances, conservativeOnly)) {
-                is FirCaseAdmission.Rejected -> return null
+                is FirCaseAdmission.Rejected -> return fail("Cannot derive ${rootClassId.asString()} because one or more sealed subclasses require result-head refinements beyond the conservative admissibility policy")
                 FirCaseAdmission.Ignored -> Unit
                 is FirCaseAdmission.Admitted ->
                     prerequisiteGoals +=
@@ -1189,6 +1214,7 @@ private data class ResolutionIndex(
                     coneTypeToModel(getter.returnTypeRef.coneType, typeParameterBySymbol) ?: return null
                 }
         return FirDerivedSumCaseInfo(
+            subclassDeclaration = subclassDeclaration,
             projectedHead = projectedHead,
             subclassDeclaredType =
                 TcType.Constructor(
@@ -1593,6 +1619,7 @@ private data class ResolutionIndex(
     }
 
     private data class FirDerivedSumCaseInfo(
+        val subclassDeclaration: FirRegularClass,
         val projectedHead: TcType.Constructor,
         val subclassDeclaredType: TcType.Constructor,
         val caseTypeParameters: List<TcTypeParameter>,

@@ -3869,15 +3869,141 @@ private class IrModuleScanner(
         return DerivedShape.Product(fields = fields, constructor = constructor)
     }
 
+    private fun IrClass.exactShapeDerivationFailure(
+        typeclassId: ClassId,
+        targetType: TcType.Constructor,
+        subclassesBySuper: Map<String, Set<String>>,
+    ): String? {
+        if (!supportsDeriveShape()) {
+            return "@Derive is only supported on sealed or final classes and objects"
+        }
+        val typeclassInterface = pluginContext.referenceClass(typeclassId)?.owner ?: return null
+        requiredDeriveMethodContractForDeriveShape()?.let { contract ->
+            val requiredDeriverInterface =
+                when (contract) {
+                    DeriveMethodContract.PRODUCT -> PRODUCT_TYPECLASS_DERIVER_CLASS_ID
+                    DeriveMethodContract.SUM, DeriveMethodContract.ENUM -> TYPECLASS_DERIVER_CLASS_ID
+                }
+            val deriverCompanion =
+                typeclassInterface.findDeriverCompanion(requiredDeriverInterface)
+                    ?: return when (contract) {
+                        DeriveMethodContract.ENUM ->
+                            "${typeclassId.shortClassName.asString()} companion must implement ${requiredDeriverInterface.shortClassName.asString()}; ProductTypeclassDeriver only supports products, not enums"
+
+                        DeriveMethodContract.SUM ->
+                            "${typeclassId.shortClassName.asString()} companion must implement ${requiredDeriverInterface.shortClassName.asString()}; ProductTypeclassDeriver only supports products, not sealed sums"
+
+                        DeriveMethodContract.PRODUCT ->
+                            "${typeclassId.shortClassName.asString()} companion must implement ${requiredDeriverInterface.shortClassName.asString()} to derive products"
+                    }
+            if (deriverCompanion.resolveDeriveMethod(contract) == null) {
+                return if (contract == DeriveMethodContract.ENUM) {
+                    "${typeclassId.shortClassName.asString()} companion must override deriveEnum to derive enum classes"
+                } else {
+                    "Typeclass deriver ${deriverCompanion.classIdOrFail.asString()} is missing ${contract.methodName}"
+                }
+            }
+        }
+        if (isObject || kind == ClassKind.ENUM_CLASS) {
+            return null
+        }
+        if (modality == Modality.SEALED) {
+            val buildResult =
+                buildDerivedSumRuleSpecsResult(
+                    typeclassInterface = typeclassInterface,
+                    rootTargetType = targetType,
+                    subclassesBySuper = subclassesBySuper,
+                )
+            val specs = buildResult.specs
+                ?: return buildResult.failureMessage
+                    ?: "Cannot derive ${classIdOrFail.asString()} because no sealed subclasses are admissible for the requested typeclass"
+            if (
+                specs.any { spec ->
+                    unifyTypes(
+                        left = spec.targetType,
+                        right = targetType,
+                        bindableVariableIds = spec.ruleTypeParameters.mapTo(linkedSetOf(), TcTypeParameter::id),
+                    ) != null
+                }
+            ) {
+                return null
+            }
+            return buildResult.failureMessage ?: "Cannot derive ${classIdOrFail.asString()} because no sealed subclasses are admissible for the requested typeclass"
+        }
+
+        val ruleTypeParameters =
+            typeParameters.mapIndexed { index, typeParameter ->
+                TcTypeParameter(
+                    id = "exact-derived:${classIdOrFail.asString()}#$index",
+                    displayName = typeParameter.name.asString(),
+                )
+            }
+        val typeParameterBySymbol = typeParameters.zip(ruleTypeParameters).associate { (symbol, parameter) -> symbol.symbol to parameter }
+        val storedProperties = structuralProperties()
+        storedProperties.firstOrNull { property ->
+            property.visibility != DescriptorVisibilities.PUBLIC ||
+                property.getter?.visibility != DescriptorVisibilities.PUBLIC
+        }?.let { nonPublicProperty ->
+            return "constructive product derivation requires public stored properties; ${renderClassName()}.${nonPublicProperty.name.asString()} is not public."
+        }
+        storedProperties.forEach { property ->
+            val getter = property.getter ?: return "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires constructor parameters to exactly match stored properties"
+            if (irTypeToModel(getter.returnType, typeParameterBySymbol) == null) {
+                return "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires all stored property types to be representable"
+            }
+        }
+        val constructor = primaryConstructorOrNull()
+            ?: return "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires a primary constructor"
+        if (constructor.visibility != DescriptorVisibilities.PUBLIC) {
+            return "constructive product derivation requires a public primary constructor for ${renderClassName()}."
+        }
+        val constructorParameterNames = constructor.valueParameters.map { parameter -> parameter.name.asString() }
+        val fieldNames = storedProperties.map { property -> property.name.asString() }
+        if (constructorParameterNames != fieldNames) {
+            return "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires constructor parameters to exactly match stored properties"
+        }
+        return null
+    }
+
     private fun IrClass.buildDerivedSumRuleSpecs(
         typeclassInterface: IrClass,
         rootTargetType: TcType.Constructor,
         subclassesBySuper: Map<String, Set<String>>,
         rootGoal: String,
     ): List<DerivedRuleSpec>? {
+        val buildResult =
+            buildDerivedSumRuleSpecsResult(
+                typeclassInterface = typeclassInterface,
+                rootTargetType = rootTargetType,
+                subclassesBySuper = subclassesBySuper,
+            )
+        val specs = buildResult.specs
+        if (specs != null) {
+            return specs
+        }
+        pluginContext.reportCannotDeriveWithTrace(
+            owner = this,
+            configuration = configuration,
+            goal = rootGoal,
+            message =
+                buildResult.failureMessage
+                    ?: "Cannot derive ${classIdOrFail.asString()} because no sealed subclasses are admissible for the requested typeclass",
+            location = compilerMessageLocation(),
+        )
+        return null
+    }
+
+    private fun IrClass.buildDerivedSumRuleSpecsResult(
+        typeclassInterface: IrClass,
+        rootTargetType: TcType.Constructor,
+        subclassesBySuper: Map<String, Set<String>>,
+    ): DerivedSumRuleBuildResult {
         val directSubclasses = subclassesBySuper[classIdOrFail.asString()].orEmpty()
         if (directSubclasses.isEmpty()) {
-            return null
+            return DerivedSumRuleBuildResult(
+                specs = null,
+                failureMessage = "Cannot derive ${classIdOrFail.asString()} because no sealed subclasses are admissible for the requested typeclass",
+            )
         }
         val caseInfos =
             directSubclasses.mapNotNull { subclassId ->
@@ -3885,15 +4011,10 @@ private class IrModuleScanner(
                 subclass.buildDerivedSumCaseInfo(this)
             }
         if (caseInfos.size != directSubclasses.size) {
-            pluginContext.reportCannotDeriveWithTrace(
-                owner = this,
-                configuration = configuration,
-                goal = rootGoal,
-                message =
-                    "Cannot derive ${classIdOrFail.asString()} because one or more sealed subclasses cannot be expressed from the sealed root's type parameters",
-                location = compilerMessageLocation(),
+            return DerivedSumRuleBuildResult(
+                specs = null,
+                failureMessage = "Cannot derive ${classIdOrFail.asString()} because one or more sealed subclasses cannot be expressed from the sealed root's type parameters",
             )
-            return null
         }
 
         val admissionMode = typeclassInterface.gadtAdmissionMode()
@@ -3938,7 +4059,25 @@ private class IrModuleScanner(
             admissions.forEachIndexed { index, admission ->
                 val caseInfo = caseInfos[index]
                 if (admission.derivedCase != null) {
-                    admittedCaseIds += caseInfo.subclass.classIdOrFail.asString()
+                    val derivedCaseType = admission.derivedCase.type as? TcType.Constructor
+                    val exactCaseFailure =
+                        if (derivedCaseType == null) {
+                            "Cannot derive ${classIdOrFail.asString()} because sealed subclass ${caseInfo.subclass.classIdOrFail.asString()} cannot be expressed as a typeclass goal"
+                        } else {
+                            caseInfo.subclass.exactShapeDerivationFailure(
+                                typeclassId = typeclassInterface.classIdOrFail,
+                                targetType = derivedCaseType,
+                                subclassesBySuper = subclassesBySuper,
+                            )
+                        }
+                    if (exactCaseFailure == null) {
+                        admittedCaseIds += caseInfo.subclass.classIdOrFail.asString()
+                    } else {
+                        val message =
+                            "Cannot derive ${classIdOrFail.asString()} because sealed subclass ${caseInfo.subclass.classIdOrFail.asString()} is not itself derivable: $exactCaseFailure"
+                        unrecoverableCaseMessages.putIfAbsent(caseInfo.subclass.classIdOrFail.asString(), message)
+                        firstRejectionMessages += message
+                    }
                 } else {
                     admission.rejectionMessage?.let { message ->
                         unrecoverableCaseMessages.putIfAbsent(caseInfo.subclass.classIdOrFail.asString(), message)
@@ -3948,17 +4087,12 @@ private class IrModuleScanner(
             }
 
             if (admissionMode == GadtAdmissionMode.CONSERVATIVE_ONLY && admittedCases.size != caseInfos.size) {
-                val message =
+                return DerivedSumRuleBuildResult(
+                    specs = null,
+                    failureMessage =
                     admissions.mapNotNull(CaseAdmission::rejectionMessage).firstOrNull()
-                        ?: "Cannot derive ${classIdOrFail.asString()} because one or more sealed subclasses require result-head refinements beyond the conservative admissibility policy"
-                pluginContext.reportCannotDeriveWithTrace(
-                    owner = this,
-                    configuration = configuration,
-                    goal = rootGoal,
-                    message = message,
-                    location = compilerMessageLocation(),
+                        ?: "Cannot derive ${classIdOrFail.asString()} because one or more sealed subclasses require result-head refinements beyond the conservative admissibility policy",
                 )
-                return null
             }
 
             if (admittedCases.isNotEmpty()) {
@@ -3982,30 +4116,22 @@ private class IrModuleScanner(
                 }
             }
         if (unrecoverableCaseMessage != null) {
-            pluginContext.reportCannotDeriveWithTrace(
-                owner = this,
-                configuration = configuration,
-                goal = rootGoal,
-                message = unrecoverableCaseMessage,
-                location = compilerMessageLocation(),
+            return DerivedSumRuleBuildResult(
+                specs = null,
+                failureMessage = unrecoverableCaseMessage,
             )
-            return null
         }
 
         if (specs.isEmpty()) {
-            pluginContext.reportCannotDeriveWithTrace(
-                owner = this,
-                configuration = configuration,
-                goal = rootGoal,
-                message =
+            return DerivedSumRuleBuildResult(
+                specs = null,
+                failureMessage =
                     firstRejectionMessages.firstOrNull()
                         ?: "Cannot derive ${classIdOrFail.asString()} because no sealed subclasses are admissible for the requested typeclass",
-                location = compilerMessageLocation(),
             )
-            return null
         }
 
-        return specs
+        return DerivedSumRuleBuildResult(specs = specs)
     }
 
     private fun IrClass.buildDerivedEnumShape(
@@ -4913,6 +5039,11 @@ private data class DerivedRuleSpec(
     val priority: Int = 0,
 )
 
+private data class DerivedSumRuleBuildResult(
+    val specs: List<DerivedRuleSpec>?,
+    val failureMessage: String? = null,
+)
+
 private data class DerivedSumCandidate(
     val targetType: TcType.Constructor,
     val ruleTypeParameters: List<TcTypeParameter>,
@@ -5679,6 +5810,15 @@ private fun IrClass.supportsDeriveShape(): Boolean =
         modality == Modality.SEALED -> true
         modality == Modality.FINAL && kind != ClassKind.INTERFACE -> true
         else -> false
+    }
+
+private fun IrClass.requiredDeriveMethodContractForDeriveShape(): DeriveMethodContract? =
+    when {
+        kind == ClassKind.ENUM_CLASS -> DeriveMethodContract.ENUM
+        modality == Modality.SEALED -> DeriveMethodContract.SUM
+        isObject -> DeriveMethodContract.PRODUCT
+        modality == Modality.FINAL && kind != ClassKind.INTERFACE -> DeriveMethodContract.PRODUCT
+        else -> null
     }
 
 private fun lookupFunctionShape(
