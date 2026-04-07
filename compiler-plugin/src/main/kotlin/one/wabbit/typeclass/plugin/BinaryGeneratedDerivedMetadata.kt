@@ -19,12 +19,10 @@ internal object BinaryGeneratedDerivedMetadataRegistry {
 
     fun install(
         session: FirSession,
-        classpathRoots: List<File>,
+        loader: BinaryGeneratedDerivedMetadataLoader,
     ) {
         synchronized(loaders) {
-            loaders.getOrPut(session) {
-                BinaryGeneratedDerivedMetadataLoader(classpathRoots.distinct())
-            }
+            loaders.getOrPut(session) { loader }
         }
     }
 

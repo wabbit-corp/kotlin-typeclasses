@@ -182,7 +182,7 @@ internal class TypeclassPluginSharedState(
     }
 
     private fun buildDiscoveryIndexes(session: FirSession): ResolutionIndex {
-        BinaryGeneratedDerivedMetadataRegistry.install(session, binaryClassPathRoots)
+        BinaryGeneratedDerivedMetadataRegistry.install(session, binaryGeneratedMetadataLoader)
         val scanner = FirResolutionScanner(session, configuration)
         return scanner.build(
             recordImportedTopLevelRulesForIr = ::recordImportedTopLevelRulesForIr,
