@@ -134,6 +134,54 @@ class ResolutionTest : IntegrationTestSupport() {
         assertCompiles(source)
     }
 
+    @Test fun infersConstructedClassTypesFromNamedAndDefaultConstructorArguments() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Eq<A> {
+                fun eq(left: A, right: A): Boolean
+            }
+
+            @Instance
+            object IntEq : Eq<Int> {
+                override fun eq(left: Int, right: Int): Boolean = left == right
+            }
+
+            data class Box<A>(val label: String = "box", val value: A) {
+                companion object {
+                    @Instance
+                    context(_: Eq<A>)
+                    fun <A> boxEq(): Eq<Box<A>> =
+                        object : Eq<Box<A>> {
+                            override fun eq(left: Box<A>, right: Box<A>): Boolean = true
+                        }
+                }
+            }
+
+            context(_: Eq<A>)
+            fun <A> useBox(box: Box<A>): Boolean = true
+
+            fun main() {
+                println(useBox(Box(value = 1)))
+                println(useBox(Box(value = 1, label = "named")))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                """.trimIndent(),
+        )
+    }
+
     @Test fun resolvesCompanionInstancesForMultiParameterTypeclasses() {
         val source =
             """
