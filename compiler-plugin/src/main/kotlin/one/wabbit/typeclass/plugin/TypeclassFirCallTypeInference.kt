@@ -494,31 +494,53 @@ private fun FirFunctionCall.parameterByArgumentMappingOrNull(
 private fun FirFunctionCall.buildNamedAndPositionalArgumentMapping(
     parameters: List<FirValueParameter>,
 ): LinkedHashMap<FirExpression, FirValueParameter> {
+    return buildNamedAndPositionalArgumentMapping(
+        arguments =
+            arguments.map { argument ->
+                (argument as? FirNamedArgumentExpression)?.name to argument.unwrapArgument()
+            },
+        parameters = parameters,
+        parameterName = FirValueParameter::name,
+        isVararg = FirValueParameter::isVararg,
+    )
+}
+
+internal fun <A, P, N> buildNamedAndPositionalArgumentMapping(
+    arguments: List<Pair<N?, A>>,
+    parameters: List<P>,
+    parameterName: (P) -> N,
+    isVararg: (P) -> Boolean,
+): LinkedHashMap<A, P> {
     if (arguments.isEmpty() || parameters.isEmpty()) {
         return linkedMapOf()
     }
 
-    val parametersByName = parameters.associateBy { parameter -> parameter.name }
-    val assignedParameters = linkedSetOf<FirValueParameter>()
+    val parametersByName = parameters.associateBy(parameterName)
+    val assignedNonVarargParameters = linkedSetOf<P>()
     var nextPositionalIndex = 0
-    val mapping = linkedMapOf<FirExpression, FirValueParameter>()
+    val mapping = linkedMapOf<A, P>()
 
-    arguments.forEach { argument ->
-        val parameter =
-            when (argument) {
-                is FirNamedArgumentExpression -> parametersByName[argument.name]
-                else -> {
-                    while (nextPositionalIndex < parameters.size && parameters[nextPositionalIndex] in assignedParameters) {
-                        nextPositionalIndex++
-                    }
-                    parameters.getOrNull(nextPositionalIndex)?.also { nextPositionalIndex++ }
-                }
-            } ?: return@forEach
+    fun nextPositionalParameter(): P? {
+        while (nextPositionalIndex < parameters.size) {
+            val candidate = parameters[nextPositionalIndex]
+            if (isVararg(candidate)) {
+                return candidate
+            }
+            nextPositionalIndex++
+            if (candidate in assignedNonVarargParameters) {
+                continue
+            }
+            return candidate
+        }
+        return null
+    }
 
-        if (!assignedParameters.add(parameter)) {
+    arguments.forEach { (name, argument) ->
+        val parameter = name?.let(parametersByName::get) ?: nextPositionalParameter() ?: return@forEach
+        if (!isVararg(parameter) && !assignedNonVarargParameters.add(parameter)) {
             return@forEach
         }
-        mapping[argument.unwrapArgument()] = parameter
+        mapping[argument] = parameter
     }
 
     return mapping
