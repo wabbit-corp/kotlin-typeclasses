@@ -418,112 +418,17 @@ internal fun FirRegularClass.validateDeriveViaTransportability(session: FirSessi
     val typeParameterBySymbol = typeParameters.zip(classParameters).associate { (typeParameter, parameter) ->
         typeParameter.symbol to parameter
     }
-    val classOpaqueParameters =
-        typeParameters.mapTo(linkedSetOf()) { typeParameter -> typeParameter.symbol }.apply {
-            remove(transported)
-        }
-
-    for (property in declarations.filterIsInstance<FirProperty>()) {
-        val getter = property.getter ?: continue
-        val message =
-            getter.returnTypeRef.coneType.transportabilityViolation(
-                transported = transported,
-                typeParameterBySymbol = typeParameterBySymbol,
-                opaqueParameters = classOpaqueParameters,
-                session = session,
-            )
-        if (message != null) {
-            return message
-        }
-    }
-
-    for (function in declarations.filterIsInstance<FirTypeclassFunctionDeclaration>()) {
-        val methodOpaqueParameters = classOpaqueParameters.toMutableSet()
-        methodOpaqueParameters += function.typeParameters.mapTo(linkedSetOf()) { typeParameter -> typeParameter.symbol }
-        if (function.typeParameters.any { typeParameter ->
-                typeParameter.bounds.any { bound ->
-                    bound.coneType.mentionsTransportedType(
-                        transported = transported,
-                        opaqueParameters = methodOpaqueParameters,
-                    )
-                }
-            }
-        ) {
-            return "DeriveVia does not support method type-parameter bounds that mention the transported type parameter"
-        }
-        function.receiverParameter?.typeRef?.coneType?.let { receiverType ->
-            val message =
-                receiverType.transportabilityViolation(
-                    transported = transported,
-                    typeParameterBySymbol = typeParameterBySymbol + function.typeParameters.toMethodTypeParameterModels(function),
-                    opaqueParameters = methodOpaqueParameters,
-                    session = session,
-                )
-            if (message != null) {
-                return message
-            }
-        }
-        function.contextParameters.forEach { parameter ->
-            if (parameter.valueParameterKind == FirValueParameterKind.ContextParameter &&
-                parameter.returnTypeRef.coneType.mentionsTransportedType(
-                    transported = transported,
-                    opaqueParameters = methodOpaqueParameters,
-                )
-            ) {
-                return "DeriveVia does not support context parameters that mention the transported type parameter"
-            }
-        }
-        function.valueParameters.forEach { parameter ->
-            val message =
-                parameter.returnTypeRef.coneType.transportabilityViolation(
-                    transported = transported,
-                    typeParameterBySymbol = typeParameterBySymbol + function.typeParameters.toMethodTypeParameterModels(function),
-                    opaqueParameters = methodOpaqueParameters,
-                    session = session,
-                )
-            if (message != null) {
-                return message
-            }
-        }
-        val returnMessage =
-            function.returnTypeRef.coneType.transportabilityViolation(
-                transported = transported,
-                typeParameterBySymbol = typeParameterBySymbol + function.typeParameters.toMethodTypeParameterModels(function),
-                opaqueParameters = methodOpaqueParameters,
-                session = session,
-            )
-        if (returnMessage != null) {
-            return returnMessage
-        }
-    }
 
     val concreteType = defaultConcreteType()
     val transportedId = typeParameterBySymbol[transported]?.id ?: return "DeriveVia requires a typeclass with a final transported type parameter"
-    val seenPropertyKeys = linkedSetOf<String>()
-    val seenFunctionKeys = linkedSetOf<String>()
-    recordDeclaredTypeclassMemberSignatures(
+    return validateInheritedAbstractTypeclassSurface(
+        session = session,
         concreteType = concreteType,
-        seenPropertyKeys = seenPropertyKeys,
-        seenFunctionKeys = seenFunctionKeys,
+        transportedId = transportedId,
+        seenPropertyKeys = linkedSetOf(),
+        seenFunctionKeys = linkedSetOf(),
+        visited = linkedSetOf(),
     )
-    for (superType in declaredOrResolvedSuperTypes()) {
-        val superConcreteType = superType.toConcreteType(this, concreteType) as? TcType.Constructor ?: continue
-        val superClassId = superConcreteType.classIdOrNull() ?: continue
-        val superClass = session.regularClassSymbolOrNull(superClassId)?.fir ?: continue
-        val message =
-            superClass.validateInheritedAbstractTypeclassSurface(
-                session = session,
-                concreteType = superConcreteType,
-                transportedId = transportedId,
-                seenPropertyKeys = seenPropertyKeys,
-                seenFunctionKeys = seenFunctionKeys,
-                visited = linkedSetOf(),
-            )
-        if (message != null) {
-            return message
-        }
-    }
-    return null
 }
 
 private fun FirRegularClass.defaultConcreteType(): TcType.Constructor =
@@ -537,20 +442,6 @@ private fun FirRegularClass.defaultConcreteType(): TcType.Constructor =
                 )
             },
     )
-
-private fun FirRegularClass.recordDeclaredTypeclassMemberSignatures(
-    concreteType: TcType.Constructor,
-    seenPropertyKeys: MutableSet<String>,
-    seenFunctionKeys: MutableSet<String>,
-) {
-    for (property in declarations.filterIsInstance<FirProperty>()) {
-        val getter = property.getter ?: continue
-        seenPropertyKeys += property.signatureKey(this, concreteType, getter)
-    }
-    for (function in declarations.filterIsInstance<FirTypeclassFunctionDeclaration>()) {
-        seenFunctionKeys += function.signatureKey(this, concreteType)
-    }
-}
 
 private fun FirRegularClass.validateInheritedAbstractTypeclassSurface(
     session: FirSession,

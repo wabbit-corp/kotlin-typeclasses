@@ -2725,6 +2725,52 @@ class DeriveViaSpec : IntegrationTestSupport() {
     }
 
     // Exact intended semantics:
+    // - DeriveVia only needs to transport the effective abstract typeclass surface
+    // - concrete helper members can mention A in unsupported ways because the adapter inherits them unchanged
+    @Test fun ignoresConcreteHelperMembersWhenValidatingFirTransportability() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Fancy<A> {
+                fun render(value: A): String
+
+                context(dep: A)
+                fun helper(): String = dep.toString()
+            }
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooFancy : Fancy<Foo> {
+                override fun render(value: Foo): String = "foo:${'$'}{value.value}"
+            }
+
+            @JvmInline
+            @DeriveVia(Fancy::class, Foo::class)
+            value class UserId(val value: Int)
+
+            context(fancy: Fancy<A>)
+            fun <A> probe(value: A): String = fancy.render(value)
+
+            fun main() {
+                println(probe(UserId(7)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "foo:7",
+        )
+    }
+
+    // Exact intended semantics:
     // - the transport closure F(A) does not automatically admit arbitrary nominal containers
     // - nominal types like List<A> or Comparator<A> are outside the structural subset unless the compiler grows
     //   an explicit rule for them
