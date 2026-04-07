@@ -4,7 +4,6 @@ package one.wabbit.typeclass.plugin.integration
 
 import one.wabbit.typeclass.plugin.TypeclassDiagnosticIds
 import org.junit.Ignore
-import org.jetbrains.kotlin.config.KotlinCompilerVersion
 import kotlin.test.Test
 
 class ResolutionTest : IntegrationTestSupport() {
@@ -2010,7 +2009,7 @@ class ResolutionTest : IntegrationTestSupport() {
             fun choose(): String = "plain"
 
             context(_: WrappedIntShow)
-            fun run(): String = choose() // E overload resolution ambiguity on Kotlin 2.4
+            fun run(): String = choose() // E overload resolution ambiguity
 
             fun main() {
                 context(WrappedIntShow()) {
@@ -2019,22 +2018,15 @@ class ResolutionTest : IntegrationTestSupport() {
             }
             """.trimIndent()
 
-        if (KotlinCompilerVersion.VERSION.startsWith("2.4")) {
-            assertDoesNotCompile(
-                source = source,
-                expectedDiagnostics =
-                    listOf(
-                        ExpectedDiagnostic.Error(
-                            messageRegex = "(?i)(ambiguity|overload resolution ambiguity)",
-                        ),
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(
+                        messageRegex = "(?i)(ambiguity|overload resolution ambiguity)",
                     ),
-            )
-        } else {
-            assertCompilesAndRuns(
-                source = source,
-                expectedStdout = "context:wrapped",
-            )
-        }
+                ),
+        )
     }
 
     @Test fun wrapperLocalEvidenceCanInferGenericContextualCallsInFir() {

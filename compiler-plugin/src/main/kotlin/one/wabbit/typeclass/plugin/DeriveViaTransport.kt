@@ -53,8 +53,10 @@ import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.declarations.IrTypeParameter
 import org.jetbrains.kotlin.ir.declarations.IrValueParameter
 import org.jetbrains.kotlin.ir.declarations.IrParameterKind
+import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol
 import org.jetbrains.kotlin.ir.types.IrSimpleType
+import org.jetbrains.kotlin.ir.types.IrTypeArgument
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.classOrNull
 import org.jetbrains.kotlin.ir.types.defaultType
@@ -171,6 +173,17 @@ internal data class ResolvedViaPath(
     val viaType: IrType,
     val forwardPlan: TransportPlan,
     val backwardPlan: TransportPlan,
+)
+
+private data class EffectiveAbstractProperty(
+    val property: IrProperty,
+    val getter: IrSimpleFunction,
+    val ownerSubstitution: Map<IrTypeParameterSymbol, IrType>,
+)
+
+private data class EffectiveAbstractFunction(
+    val function: IrSimpleFunction,
+    val ownerSubstitution: Map<IrTypeParameterSymbol, IrType>,
 )
 
 internal sealed interface TransportabilityFailure {
@@ -818,12 +831,11 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
         typeclassInterface.typeParameters.zip(viaArguments).associate { (parameter, argument) ->
             parameter.symbol to argument
         }
+    val abstractSurface = typeclassInterface.effectiveAbstractTypeclassSurface()
 
-    typeclassInterface.declarations.filterIsInstance<IrProperty>().forEach { property ->
+    abstractSurface.properties.forEach { member ->
+        val property = member.property
         val getter = property.getter ?: return@forEach
-        if (getter.modality != Modality.ABSTRACT) {
-            return@forEach
-        }
         val targetProperty =
             adapterClass.addProperty {
                 startOffset = property.startOffset
@@ -842,7 +854,10 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
                 name = getter.name
                 visibility = getter.visibility
                 modality = Modality.OPEN
-                returnType = getter.returnType.substitute(targetSubstitutionBase)
+                returnType =
+                    member
+                        .substituteInOwnerContext(getter.returnType)
+                        .substitute(targetSubstitutionBase)
             }
         targetGetter.dispatchReceiverParameter =
             adapterClass.thisReceiver?.copyTo(
@@ -862,8 +877,14 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
                     buildTransportExpression(
                         plan =
                             planMemberTransport(
-                                sourceType = getter.returnType.substitute(viaSubstitutionBase),
-                                targetType = getter.returnType.substitute(targetSubstitutionBase),
+                                sourceType =
+                                    member
+                                        .substituteInOwnerContext(getter.returnType)
+                                        .substitute(viaSubstitutionBase),
+                                targetType =
+                                    member
+                                        .substituteInOwnerContext(getter.returnType)
+                                        .substitute(targetSubstitutionBase),
                                 viaType = viaType,
                                 targetValueType = targetType,
                                 forwardPlan = forwardPlan,
@@ -878,10 +899,8 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
             }
     }
 
-    typeclassInterface.declarations.filterIsInstance<IrSimpleFunction>().forEach { function ->
-        if (function.name.asString() == "<init>" || function.modality != Modality.ABSTRACT) {
-            return@forEach
-        }
+    abstractSurface.functions.forEach { member ->
+        val function = member.function
         val overrideFunction =
             adapterClass.addFunction {
                 startOffset = function.startOffset
@@ -891,7 +910,10 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
                 visibility = function.visibility
                 modality = Modality.OPEN
                 isSuspend = function.isSuspend
-                returnType = function.returnType.substitute(targetSubstitutionBase)
+                returnType =
+                    member
+                        .substituteInOwnerContext(function.returnType)
+                        .substitute(targetSubstitutionBase)
             }
         overrideFunction.dispatchReceiverParameter =
             adapterClass.thisReceiver?.copyTo(
@@ -911,7 +933,10 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
             overrideFunction.extensionReceiverParameter =
                 receiver.copyTo(
                     overrideFunction,
-                    type = receiver.type.substitute(targetSubstitution),
+                    type =
+                        member
+                            .substituteInOwnerContext(receiver.type)
+                            .substitute(targetSubstitution),
                     kind = receiver.kind,
                 )
         }
@@ -926,7 +951,9 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
                             org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context,
                             org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular,
                             org.jetbrains.kotlin.ir.declarations.IrParameterKind.ExtensionReceiver ->
-                                parameter.type.substitute(targetSubstitution)
+                                member
+                                    .substituteInOwnerContext(parameter.type)
+                                    .substitute(targetSubstitution)
                             else -> parameter.type
                         },
                     kind = parameter.kind,
@@ -938,7 +965,10 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
                 overrideFunction.extensionReceiverParameter?.let(::add)
                 addAll(copiedParameters.filter { it.kind != org.jetbrains.kotlin.ir.declarations.IrParameterKind.ExtensionReceiver })
             }
-        overrideFunction.returnType = function.returnType.substitute(targetSubstitution)
+        overrideFunction.returnType =
+            member
+                .substituteInOwnerContext(function.returnType)
+                .substitute(targetSubstitution)
         overrideFunction.body =
             DeclarationIrBuilder(pluginContext, overrideFunction.symbol, startOffset, endOffset).irBlockBody {
                 val viaCall =
@@ -954,7 +984,10 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
                     val plan =
                         planMemberTransport(
                             sourceType = receiver.type,
-                            targetType = originalReceiver.type.substitute(viaSubstitution),
+                            targetType =
+                                member
+                                    .substituteInOwnerContext(originalReceiver.type)
+                                    .substitute(viaSubstitution),
                             viaType = viaType,
                             targetValueType = targetType,
                             forwardPlan = forwardPlan,
@@ -978,7 +1011,10 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
                     val plan =
                         planMemberTransport(
                             sourceType = parameter.type,
-                            targetType = originalParameter.type.substitute(viaSubstitution),
+                            targetType =
+                                member
+                                    .substituteInOwnerContext(originalParameter.type)
+                                    .substitute(viaSubstitution),
                             viaType = viaType,
                             targetValueType = targetType,
                             forwardPlan = forwardPlan,
@@ -992,8 +1028,14 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
                 }
                 val returnPlan =
                     planMemberTransport(
-                        sourceType = function.returnType.substitute(viaSubstitution),
-                        targetType = function.returnType.substitute(targetSubstitution),
+                        sourceType =
+                            member
+                                .substituteInOwnerContext(function.returnType)
+                                .substitute(viaSubstitution),
+                        targetType =
+                            member
+                                .substituteInOwnerContext(function.returnType)
+                                .substitute(targetSubstitution),
                         viaType = viaType,
                         targetValueType = targetType,
                         forwardPlan = forwardPlan,
@@ -1072,18 +1114,27 @@ internal fun IrStatementsBuilder<*>.buildTransportLambda(
 internal fun IrClass.validateDeriveViaTransportability(): String? {
     val transported = typeParameters.lastOrNull()?.symbol ?: return "DeriveVia requires a typeclass with a final transported type parameter"
     val classOpaqueParameters = typeParameters.map { it.symbol }.filterNot { it == transported }.toSet()
-    for (property in declarations.filterIsInstance<IrProperty>()) {
-        val getter = property.getter ?: continue
-        val message = getter.returnType.transportabilityViolation(transported, classOpaqueParameters)
+    val abstractSurface = effectiveAbstractTypeclassSurface()
+    for (property in abstractSurface.properties) {
+        val getter = property.getter
+        val message =
+            property
+                .substituteInOwnerContext(getter.returnType)
+                .transportabilityViolation(transported, classOpaqueParameters)
         if (message != null) {
             return message
         }
     }
-    for (function in declarations.filterIsInstance<IrSimpleFunction>()) {
+    for (member in abstractSurface.functions) {
+        val function = member.function
         val methodOpaqueParameters = classOpaqueParameters.toMutableSet()
         methodOpaqueParameters += function.typeParameters.map { it.symbol }
         if (function.typeParameters.any { typeParameter ->
-                typeParameter.superTypes.any { superType -> superType.mentionsTransportedType(transported, methodOpaqueParameters) }
+                typeParameter.superTypes.any { superType ->
+                    member
+                        .substituteInOwnerContext(superType)
+                        .mentionsTransportedType(transported, methodOpaqueParameters)
+                }
             }
         ) {
             return "DeriveVia does not support method type-parameter bounds that mention the transported type parameter"
@@ -1092,24 +1143,178 @@ internal fun IrClass.validateDeriveViaTransportability(): String? {
             when (parameter.kind) {
                 IrParameterKind.DispatchReceiver -> Unit
                 IrParameterKind.Context ->
-                    if (parameter.type.mentionsTransportedType(transported, methodOpaqueParameters)) {
+                    if (member.substituteInOwnerContext(parameter.type).mentionsTransportedType(transported, methodOpaqueParameters)) {
                         return "DeriveVia does not support context parameters that mention the transported type parameter"
                     }
                 else -> {
-                    val message = parameter.type.transportabilityViolation(transported, methodOpaqueParameters)
+                    val message =
+                        member
+                            .substituteInOwnerContext(parameter.type)
+                            .transportabilityViolation(transported, methodOpaqueParameters)
                     if (message != null) {
                         return message
                     }
                 }
             }
         }
-        val returnMessage = function.returnType.transportabilityViolation(transported, methodOpaqueParameters)
+        val returnMessage =
+            member
+                .substituteInOwnerContext(function.returnType)
+                .transportabilityViolation(transported, methodOpaqueParameters)
         if (returnMessage != null) {
             return returnMessage
         }
     }
     return null
 }
+
+private fun IrClass.effectiveAbstractTypeclassSurface(): EffectiveAbstractTypeclassSurface {
+    val concreteType = symbol.defaultType
+    val properties = mutableListOf<EffectiveAbstractProperty>()
+    val functions = mutableListOf<EffectiveAbstractFunction>()
+    collectEffectiveAbstractTypeclassSurface(
+        concreteType = concreteType,
+        properties = properties,
+        functions = functions,
+        seenPropertyKeys = linkedSetOf(),
+        seenFunctionKeys = linkedSetOf(),
+        coveredPropertyGetters = linkedSetOf(),
+        coveredFunctions = linkedSetOf(),
+        visited = linkedSetOf(),
+    )
+    return EffectiveAbstractTypeclassSurface(
+        properties = properties,
+        functions = functions,
+    )
+}
+
+private data class EffectiveAbstractTypeclassSurface(
+    val properties: List<EffectiveAbstractProperty>,
+    val functions: List<EffectiveAbstractFunction>,
+)
+
+private fun IrClass.collectEffectiveAbstractTypeclassSurface(
+    concreteType: IrSimpleType,
+    properties: MutableList<EffectiveAbstractProperty>,
+    functions: MutableList<EffectiveAbstractFunction>,
+    seenPropertyKeys: MutableSet<String>,
+    seenFunctionKeys: MutableSet<String>,
+    coveredPropertyGetters: MutableSet<IrSimpleFunctionSymbol>,
+    coveredFunctions: MutableSet<IrSimpleFunctionSymbol>,
+    visited: MutableSet<String>,
+) {
+    val visitKey = concreteType.render()
+    if (!visited.add(visitKey)) {
+        return
+    }
+
+    val ownerSubstitution = ownerSubstitution(concreteType)
+    declarations.filterIsInstance<IrProperty>().forEach { property ->
+        val getter = property.getter ?: return@forEach
+        if (getter.symbol in coveredPropertyGetters) {
+            return@forEach
+        }
+        val member = EffectiveAbstractProperty(property, getter, ownerSubstitution)
+        if (getter.modality == Modality.ABSTRACT && seenPropertyKeys.add(member.signatureKey())) {
+            properties += member
+        }
+        getter.markCovered(coveredPropertyGetters)
+    }
+
+    declarations.filterIsInstance<IrSimpleFunction>().forEach { function ->
+        if (function.name.asString() == "<init>" || function.symbol in coveredFunctions) {
+            return@forEach
+        }
+        val member = EffectiveAbstractFunction(function, ownerSubstitution)
+        if (function.modality == Modality.ABSTRACT && seenFunctionKeys.add(member.signatureKey())) {
+            functions += member
+        }
+        function.markCovered(coveredFunctions)
+    }
+
+    superTypes.forEach { superType ->
+        val substitutedSuper = if (ownerSubstitution.isEmpty()) superType else superType.substitute(ownerSubstitution)
+        val superSimpleType = substitutedSuper as? IrSimpleType ?: return@forEach
+        val superClass = superSimpleType.classOrNull?.owner ?: return@forEach
+        superClass.collectEffectiveAbstractTypeclassSurface(
+            concreteType = superSimpleType,
+            properties = properties,
+            functions = functions,
+            seenPropertyKeys = seenPropertyKeys,
+            seenFunctionKeys = seenFunctionKeys,
+            coveredPropertyGetters = coveredPropertyGetters,
+            coveredFunctions = coveredFunctions,
+            visited = visited,
+        )
+    }
+}
+
+private fun IrClass.ownerSubstitution(concreteType: IrSimpleType): Map<IrTypeParameterSymbol, IrType> =
+    typeParameters.mapIndexedNotNull { index, parameter ->
+        concreteType.arguments.getOrNull(index)?.argumentTypeOrNull()?.let { argumentType ->
+            parameter.symbol to argumentType
+        }
+    }.toMap()
+
+private fun IrSimpleFunction.markCovered(coveredFunctions: MutableSet<IrSimpleFunctionSymbol>) {
+    if (!coveredFunctions.add(symbol)) {
+        return
+    }
+    overriddenSymbols.forEach { overridden ->
+        overridden.owner.markCovered(coveredFunctions)
+    }
+}
+
+private fun EffectiveAbstractProperty.substituteInOwnerContext(type: IrType): IrType =
+    if (ownerSubstitution.isEmpty()) {
+        type
+    } else {
+        type.substitute(ownerSubstitution)
+    }
+
+private fun EffectiveAbstractFunction.substituteInOwnerContext(type: IrType): IrType =
+    if (ownerSubstitution.isEmpty()) {
+        type
+    } else {
+        type.substitute(ownerSubstitution)
+    }
+
+private fun EffectiveAbstractProperty.signatureKey(): String =
+    buildString {
+        append("property:")
+        append(property.name.asString())
+        append(":")
+        append(substituteInOwnerContext(getter.returnType).render())
+    }
+
+private fun EffectiveAbstractFunction.signatureKey(): String =
+    buildString {
+        append("function:")
+        append(function.name.asString())
+        append(":suspend=")
+        append(function.isSuspend)
+        append(":typeParams=")
+        append(function.typeParameters.size)
+        append(":ext=")
+        append(function.extensionReceiverParameter?.let { parameter -> substituteInOwnerContext(parameter.type).render() } ?: "-")
+        function.parameters
+            .filter { parameter -> parameter.kind != IrParameterKind.DispatchReceiver }
+            .forEach { parameter ->
+                append(":")
+                append(parameter.kind.name)
+                append("=")
+                append(substituteInOwnerContext(parameter.type).render())
+            }
+        append(":ret=")
+        append(substituteInOwnerContext(function.returnType).render())
+    }
+
+private fun IrTypeArgument.argumentTypeOrNull(): IrType? =
+    when (this) {
+        is IrType -> this
+        is org.jetbrains.kotlin.ir.types.IrTypeProjection -> type
+        else -> null
+    }
 
 private fun IrType.transportabilityViolation(
     transported: IrTypeParameterSymbol,

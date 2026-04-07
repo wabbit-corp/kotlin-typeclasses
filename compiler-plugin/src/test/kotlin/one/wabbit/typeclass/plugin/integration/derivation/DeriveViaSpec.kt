@@ -1522,6 +1522,189 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
+    @Test fun deriveViaRejectsUnsupportedTransitivelyInheritedAbstractMembers() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            data class MutableBox<A>(var value: A)
+
+            @Typeclass
+            interface Render<A> {
+                fun renderAll(value: MutableBox<A>): MutableBox<A>
+            }
+
+            @Typeclass
+            interface MidPretty<A> : Render<A>
+
+            @Typeclass
+            interface Pretty<A> : MidPretty<A> {
+                fun pretty(value: A): String
+            }
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooPretty : Pretty<Foo> {
+                override fun renderAll(value: MutableBox<Foo>): MutableBox<Foo> = value
+
+                override fun pretty(value: Foo): String = value.value.toString()
+            }
+
+            @JvmInline
+            @DeriveVia(Pretty::class, Foo::class) // E:TC_CANNOT_DERIVE transitively inherited abstract members must participate in DeriveVia validation
+            value class UserId(val value: Int)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedCannotDerive("opaque or mutable nominal containers")),
+        )
+    }
+
+    @Test fun deriveViaAdaptsInheritedAbstractMembersAcrossInterfaceChains() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Render<A> {
+                fun render(value: A): String
+            }
+
+            @Typeclass
+            interface MidPretty<A> : Render<A>
+
+            @Typeclass
+            interface Pretty<A> : MidPretty<A> {
+                fun pretty(value: A): String
+            }
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooPretty : Pretty<Foo> {
+                override fun render(value: Foo): String = "render:" + value.value
+
+                override fun pretty(value: Foo): String = "pretty:" + value.value
+            }
+
+            @JvmInline
+            @DeriveVia(Pretty::class, Foo::class)
+            value class UserId(val value: Int)
+
+            fun main() {
+                val pretty = summon<Pretty<UserId>>()
+                println(pretty.render(UserId(7)))
+                println(pretty.pretty(UserId(7)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                render:7
+                pretty:7
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun deriveViaAdaptsPurelyInheritedAbstractTypeclassSurfaces() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Render<A> {
+                fun render(value: A): String
+            }
+
+            @Typeclass
+            interface Pretty<A> : Render<A>
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooPretty : Pretty<Foo> {
+                override fun render(value: Foo): String = "render:" + value.value
+            }
+
+            @JvmInline
+            @DeriveVia(Pretty::class, Foo::class)
+            value class UserId(val value: Int)
+
+            fun main() {
+                val pretty = summon<Pretty<UserId>>()
+                println(pretty.render(UserId(9)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "render:9",
+        )
+    }
+
+    @Test fun deriveViaAdaptsInheritedAbstractProperties() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface HasValue<A> {
+                val zero: A
+            }
+
+            @Typeclass
+            interface Pretty<A> : HasValue<A>
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooPretty : Pretty<Foo> {
+                override val zero: Foo = Foo(11)
+            }
+
+            @JvmInline
+            @DeriveVia(Pretty::class, Foo::class)
+            value class UserId(val value: Int)
+
+            fun main() {
+                val pretty = summon<Pretty<UserId>>()
+                println(pretty.zero.value)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "11",
+        )
+    }
+
     @Test fun genericDeriveEquivTargetsAreRejectedAtTheAnnotationSite() {
         val source =
             """
