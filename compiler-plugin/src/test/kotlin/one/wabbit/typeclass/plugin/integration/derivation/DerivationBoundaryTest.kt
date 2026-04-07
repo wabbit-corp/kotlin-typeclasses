@@ -5,7 +5,9 @@ package one.wabbit.typeclass.plugin.integration.derivation
 import one.wabbit.typeclass.plugin.integration.HarnessDependency
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import one.wabbit.typeclass.plugin.integration.DiagnosticPhase
+import org.jetbrains.kotlin.cli.common.ExitCode
 import kotlin.test.Test
+import kotlin.test.assertEquals
 
 class DerivationBoundaryTest : IntegrationTestSupport() {
     @Test
@@ -219,6 +221,64 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     expectedCannotDerive("other", "@typeclass"),
                 ),
             unexpectedMessages = listOf("internal compiler error"),
+        )
+    }
+
+    @Test
+    fun inheritedDeriverReturnValidationMustBePerExpectedTypeclass() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            abstract class ParentOnlyDeriver : ProductTypeclassDeriver {
+                override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                    object : Parent<Any?> {
+                        override fun render(value: Any?): String = "parent:${'$'}value"
+                    }
+            }
+
+            @Typeclass
+            interface Parent<A> {
+                fun render(value: A): String
+
+                companion object : ParentOnlyDeriver()
+            }
+
+            @Typeclass
+            interface Child<A> {
+                fun render(value: A): String
+
+                companion object : ParentOnlyDeriver()
+            }
+
+            @Derive(Parent::class)
+            data class ParentBox(val value: String)
+
+            @Derive(Child::class) // E:TC_CANNOT_DERIVE shared inherited deriver bodies must still validate against Child
+            data class ChildBox(val value: String)
+
+            fun useParent(): String = summon<Parent<ParentBox>>().render(ParentBox("ok"))
+
+            fun useChild(): String = summon<Child<ChildBox>>().render(ChildBox("bad"))
+
+            fun main() {
+                println(useParent())
+                println(useChild())
+            }
+            """.trimIndent()
+
+        val result = compileSourceResult(source)
+        assertEquals(ExitCode.COMPILATION_ERROR, result.exitCode, result.stdout)
+        assertOutputContains(
+            result.stdout,
+            "[TC_CANNOT_DERIVE]",
+            "deriveProduct must return Child<...>; found Parent",
         )
     }
 

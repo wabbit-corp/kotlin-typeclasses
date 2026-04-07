@@ -140,7 +140,7 @@ private class TypeclassIrCallTransformer(
     private val ruleIndex: IrRuleIndex,
 ) : IrElementTransformerVoid() {
     private val configuration: TypeclassConfiguration = ruleIndex.configuration
-    private val deriverReturnValidationCache: MutableMap<IrSimpleFunction, Boolean> = linkedMapOf()
+    private val deriverReturnValidationCache = DeriverReturnValidationCache<IrSimpleFunction>()
     private val declarationStack = ArrayDeque<IrDeclarationBase>()
     private val functionStack = ArrayDeque<IrFunction>()
     private val traceScopeStack = ArrayDeque<TypeclassTraceScope>()
@@ -1502,7 +1502,10 @@ private class TypeclassIrCallTransformer(
         typeclassInterface: IrClass,
         deriveMethod: IrSimpleFunction,
     ): Boolean =
-        deriverReturnValidationCache.getOrPut(deriveMethod) {
+        deriverReturnValidationCache.getOrPut(
+            method = deriveMethod,
+            expectedTypeclassId = typeclassInterface.classIdOrFail.asString(),
+        ) {
             val expectedTypeclassId = typeclassInterface.classIdOrFail.asString()
             val declaredReturnTypeclassConstructors =
                 listOf(deriveMethod.returnType)
@@ -2201,6 +2204,16 @@ private fun IrFile.compilerMessageLocation(offset: Int): CompilerMessageSourceLo
 
         override val lineContent: String? = null
     }
+}
+
+internal class DeriverReturnValidationCache<M : Any> {
+    private val values: MutableMap<Pair<M, String>, Boolean> = linkedMapOf()
+
+    fun getOrPut(
+        method: M,
+        expectedTypeclassId: String,
+        compute: () -> Boolean,
+    ): Boolean = values.getOrPut(method to expectedTypeclassId, compute)
 }
 
 private fun IrSimpleFunction.knownDeriverReturnExpressions(): List<IrExpression> {
