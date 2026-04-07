@@ -6517,14 +6517,8 @@ private fun inferOriginalTypeArguments(
         expectedType: IrType,
         actualType: IrType,
     ) {
-        val expectedSimpleType = expectedType as? IrSimpleType ?: return
-        val actualSimpleType = actualType as? IrSimpleType ?: return
-        val expectedClass = expectedSimpleType.classOrNull?.owner ?: return
-        if (expectedClass.typeParameters.isEmpty()) {
-            return
-        }
-        expectedClass.typeParameters.zip(actualSimpleType.arguments).forEach { (parameter, argument) ->
-            val actualArgumentType = argument.argumentTypeOrNull() ?: return@forEach
+        receiverTypeArgumentBindings(expectedType, actualType).forEach { (parameterSymbol, actualArgumentType) ->
+            val parameter = parameterSymbol.owner
             val tcParameter = originalTypeParameterBySymbol[parameter.symbol] ?: return@forEach
             val actualModel = irTypeToModel(actualArgumentType, visibleTypeParameters.bySymbol) ?: return@forEach
             mergeTypeBindings(
@@ -6603,6 +6597,51 @@ private fun inferOriginalTypeArguments(
         callTypeArguments = callTypeArguments,
         substitutionBySymbol = substitutionBySymbol,
     )
+}
+
+internal fun receiverTypeArgumentBindings(
+    expectedType: IrType,
+    actualType: IrType,
+): Map<IrTypeParameterSymbol, IrType> {
+    val expectedSimpleType = expectedType as? IrSimpleType ?: return emptyMap()
+    val expectedClass = expectedSimpleType.classOrNull?.owner ?: return emptyMap()
+    if (expectedClass.typeParameters.isEmpty()) {
+        return emptyMap()
+    }
+    val projectedActualType = actualType.projectToMatchingReceiverSupertype(expectedClass) ?: return emptyMap()
+    return expectedClass.typeParameters.mapIndexedNotNull { index, parameter ->
+        projectedActualType.arguments.getOrNull(index)?.argumentTypeOrNull()?.let { argumentType ->
+            parameter.symbol to argumentType
+        }
+    }.toMap()
+}
+
+private fun IrType.projectToMatchingReceiverSupertype(
+    expectedClass: IrClass,
+    visited: MutableSet<org.jetbrains.kotlin.ir.symbols.IrClassSymbol> = linkedSetOf(),
+): IrSimpleType? {
+    val actualSimpleType = this as? IrSimpleType ?: return null
+    val actualClass = actualSimpleType.classOrNull?.owner ?: return null
+    if (actualClass.symbol == expectedClass.symbol) {
+        return actualSimpleType
+    }
+    if (!visited.add(actualClass.symbol)) {
+        return null
+    }
+    val substitutions =
+        actualClass.typeParameters.mapIndexedNotNull { index, parameter ->
+            actualSimpleType.arguments.getOrNull(index)?.argumentTypeOrNull()?.let { argumentType ->
+                parameter.symbol to argumentType
+            }
+        }.toMap()
+    actualClass.superTypes.forEach { superType ->
+        val substitutedSuperType = if (substitutions.isEmpty()) superType else superType.substitute(substitutions)
+        val projected = substitutedSuperType.projectToMatchingReceiverSupertype(expectedClass, visited)
+        if (projected != null) {
+            return projected
+        }
+    }
+    return null
 }
 
 private class TypeArgumentInferenceFailure(
