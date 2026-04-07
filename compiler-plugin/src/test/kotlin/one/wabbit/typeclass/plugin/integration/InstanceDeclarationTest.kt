@@ -3,7 +3,9 @@
 package one.wabbit.typeclass.plugin.integration
 
 import one.wabbit.typeclass.plugin.invalidInstanceExtensionFunction
+import one.wabbit.typeclass.plugin.invalidInstanceMustProvideTypeclassType
 import one.wabbit.typeclass.plugin.invalidInstanceNonTypeclassPrerequisites
+import one.wabbit.typeclass.plugin.invalidInstanceNonTypeclassSupertypes
 import one.wabbit.typeclass.plugin.invalidInstanceRegularParameter
 import one.wabbit.typeclass.plugin.invalidInstanceStarProjectedPrerequisites
 import kotlin.test.Test
@@ -167,6 +169,72 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             expectedDiagnostics =
                 listOf(
                     expectedTypeclassDiagnostic(invalidInstanceRegularParameter()),
+                ),
+        )
+    }
+
+    @Test fun reportsMissingProvidedTypeclassBeforeNonTypeclassSupertypeExpansionNoise() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            interface WrappedShow<A> : Show<A>
+
+            @Instance
+            object WrappedIntShow : WrappedShow<Int> { // E:TC_INVALID_INSTANCE_DECL no direct @Typeclass head is provided here
+                override fun show(value: Int): String = value.toString()
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(invalidInstanceMustProvideTypeclassType()),
+                ),
+        )
+    }
+
+    @Test fun stillReportsNonTypeclassIntermediateSupertypesWhenAValidHeadAlsoExists() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Typeclass
+            interface Eq<A> {
+                fun eq(left: A, right: A): Boolean
+            }
+
+            interface WrappedEq<A> : Eq<A>
+
+            @Instance
+            object IntEvidence : Show<Int>, WrappedEq<Int> { // E:TC_INVALID_INSTANCE_DECL mixed valid and invalid provided heads should keep the non-typeclass-supertype diagnostic
+                override fun show(value: Int): String = value.toString()
+                override fun eq(left: Int, right: Int): Boolean = left == right
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(invalidInstanceNonTypeclassSupertypes()),
                 ),
         )
     }

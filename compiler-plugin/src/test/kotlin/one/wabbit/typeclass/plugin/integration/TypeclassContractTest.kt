@@ -330,7 +330,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun rejectsNonTypeclassIntermediateSupertypesThatExtendTypeclasses() {
+    @Test fun reportsMissingProvidedTypeclassWhenOnlyNonTypeclassIntermediateSupertypesRemain() {
         val source =
             """
             package demo
@@ -343,10 +343,10 @@ class TypeclassContractTest : IntegrationTestSupport() {
                 fun show(value: A): String
             }
 
-            abstract class IntShowBase : Show<Int> // non-typeclass intermediate supertypes should not extend typeclasses
+            abstract class IntShowBase : Show<Int> // this still does not provide a valid direct typeclass head
 
             @Instance
-            object IntShow : IntShowBase() { // E:TC_INVALID_INSTANCE_DECL non-typeclass intermediate supertypes should not extend typeclasses
+            object IntShow : IntShowBase() { // E:TC_INVALID_INSTANCE_DECL no valid @Typeclass head is provided here
                 override fun show(value: Int): String = "int:${'$'}value"
             }
             """.trimIndent()
@@ -356,7 +356,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
             expectedDiagnostics =
                 listOf(
                     expectedExactInvalidInstanceDecl(
-                        why = "non-@Typeclass intermediate supertypes cannot provide inherited typeclass instances.",
+                        why = "@Instance declarations must provide a @Typeclass type.",
                     ),
                 ),
         )

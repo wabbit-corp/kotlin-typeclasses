@@ -427,13 +427,13 @@ internal class TypeclassFirCheckersExtension(
         declaration: org.jetbrains.kotlin.fir.declarations.FirDeclaration,
     ) {
         when {
-            providedTypes.invalidTypes.isNotEmpty() -> {
-                reportInvalid(declaration, invalidInstanceNonTypeclassSupertypes())
+            providedTypes.validTypes.isEmpty() -> {
+                reportInvalid(declaration, invalidInstanceMustProvideTypeclassType())
                 return
             }
 
-            providedTypes.validTypes.isEmpty() -> {
-                reportInvalid(declaration, invalidInstanceMustProvideTypeclassType())
+            providedTypes.invalidTypes.isNotEmpty() -> {
+                reportInvalid(declaration, invalidInstanceNonTypeclassSupertypes())
                 return
             }
         }
