@@ -974,12 +974,7 @@ private fun TypeclassConfiguration.supportsReturnedTypeclassClassifierId(
     if (classId.isLocal) {
         return false
     }
-    val classSymbol =
-        try {
-            session.firProvider.symbolProvider.getClassLikeSymbolByClassId(classId) as? FirRegularClassSymbol
-        } catch (_: IllegalArgumentException) {
-            null
-        } ?: return false
+    val classSymbol = session.regularClassSymbolOrNull(classId) ?: return false
     return classSymbol.fir.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)
 }
 

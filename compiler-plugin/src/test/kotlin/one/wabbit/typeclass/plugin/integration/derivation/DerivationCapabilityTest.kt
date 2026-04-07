@@ -11,6 +11,7 @@ import one.wabbit.typeclass.plugin.cannotDeriveUnsupportedShape
 import one.wabbit.typeclass.plugin.cannotDeriveWrongDeriverReturnType
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import one.wabbit.typeclass.plugin.integration.DiagnosticPhase
+import one.wabbit.typeclass.plugin.integration.HarnessDependency
 import kotlin.test.Test
 
 class DerivationCapabilityTest : IntegrationTestSupport() {
@@ -576,6 +577,66 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             expectedDiagnostics =
                 listOf(
                     expectedTypeclassDiagnostic(cannotDeriveWrongDeriverReturnType("deriveProduct", "Show")),
+                ),
+        )
+    }
+
+    @Test
+    fun deriveProductAnonymousObjectReturnRecognizesDependencyTypeclassHeads() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-eq-head",
+                sources =
+                    mapOf(
+                        "dep/Eq.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.Typeclass
+
+                            @Typeclass
+                            interface Eq<A> {
+                                fun eqv(left: A, right: A): Boolean
+                            }
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.Eq
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : ProductTypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any { // E:TC_CANNOT_DERIVE
+                        return object : Eq<Any?> {
+                            override fun eqv(left: Any?, right: Any?): Boolean = true
+                        }
+                    }
+                }
+            }
+
+            @Derive(Show::class)
+            data class Box(val value: Int)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            dependencies = listOf(dependency),
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(
+                        cannotDeriveWrongDeriverReturnType("deriveProduct", "Show", "Eq"),
+                        phase = null,
+                    ),
                 ),
         )
     }
