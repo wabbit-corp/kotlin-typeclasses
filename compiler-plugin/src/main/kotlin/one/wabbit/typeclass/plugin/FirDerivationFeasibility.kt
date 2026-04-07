@@ -643,11 +643,18 @@ private fun ConeKotlinType.referencesTransportedTypeInOwnerContext(
     transportedId: String,
     additionalTypeParameters: Map<FirTypeParameterSymbol, TcTypeParameter> = emptyMap(),
 ): Boolean =
-    toConcreteType(
+    ownerContextTransportabilityStatus(
         owner = owner,
         concreteType = concreteType,
+        transportedId = transportedId,
         additionalTypeParameters = additionalTypeParameters,
-    )?.references(transportedId) == true
+        concreteModel =
+            toConcreteType(
+                owner = owner,
+                concreteType = concreteType,
+                additionalTypeParameters = additionalTypeParameters,
+            ),
+    ) !is FirOwnerContextTransportabilityStatus.NotTransportedReference
 
 private fun ConeKotlinType.transportabilityViolationInOwnerContext(
     owner: FirRegularClass,
@@ -657,21 +664,95 @@ private fun ConeKotlinType.transportabilityViolationInOwnerContext(
     additionalTypeParameters: Map<FirTypeParameterSymbol, TcTypeParameter> = emptyMap(),
     visiting: MutableSet<String> = linkedSetOf(),
 ): String? {
-    val lowered = approximateIntegerLiteralType().lowerBoundIfFlexible()
-    val rendered = lowered.toString()
-    val concreteModel =
+    val status =
+        ownerContextTransportabilityStatus(
+            owner = owner,
+            concreteType = concreteType,
+            transportedId = transportedId,
+            additionalTypeParameters = additionalTypeParameters,
+            concreteModel =
+                toConcreteType(
+                    owner = owner,
+                    concreteType = concreteType,
+                    additionalTypeParameters = additionalTypeParameters,
+                ),
+        )
+    return when (status) {
+        FirOwnerContextTransportabilityStatus.NotTransportedReference -> null
+        is FirOwnerContextTransportabilityStatus.Unsupported -> status.message
+        is FirOwnerContextTransportabilityStatus.Concrete ->
+            status.model.transportabilityViolation(transportedId, session, visiting)
+    }
+}
+
+internal sealed interface FirOwnerContextTransportabilityStatus {
+    data object NotTransportedReference : FirOwnerContextTransportabilityStatus
+
+    data class Unsupported(
+        val message: String,
+    ) : FirOwnerContextTransportabilityStatus
+
+    data class Concrete(
+        val model: TcType,
+    ) : FirOwnerContextTransportabilityStatus
+}
+
+internal fun ConeKotlinType.ownerContextTransportabilityStatus(
+    owner: FirRegularClass,
+    concreteType: TcType.Constructor,
+    transportedId: String,
+    additionalTypeParameters: Map<FirTypeParameterSymbol, TcTypeParameter> = emptyMap(),
+    concreteModel: TcType? =
         toConcreteType(
             owner = owner,
             concreteType = concreteType,
             additionalTypeParameters = additionalTypeParameters,
-        )
-    if (concreteModel?.references(transportedId) != true) {
-        return null
+        ),
+): FirOwnerContextTransportabilityStatus {
+    val lowered = approximateIntegerLiteralType().lowerBoundIfFlexible()
+    val rendered = lowered.toString()
+    val transportedSymbol =
+        owner.ownerContextTypeParameters(additionalTypeParameters)
+            .firstOrNull { (_, parameter) -> parameter.id == transportedId }
+            ?.first
+    return transportabilityStatusForTransportedType(
+        transported = transportedSymbol,
+        transportedId = transportedId,
+        opaqueParameters = additionalTypeParameters.keys,
+        concreteModel = concreteModel,
+        rendered = rendered,
+    )
+}
+
+internal fun ConeKotlinType.transportabilityStatusForTransportedType(
+    transported: FirTypeParameterSymbol?,
+    transportedId: String,
+    opaqueParameters: Set<FirTypeParameterSymbol> = emptySet(),
+    concreteModel: TcType?,
+    rendered: String = approximateIntegerLiteralType().lowerBoundIfFlexible().toString(),
+): FirOwnerContextTransportabilityStatus {
+    val lowered = approximateIntegerLiteralType().lowerBoundIfFlexible()
+    val rawMention =
+        transported != null &&
+            lowered.mentionsTransportedType(
+                transported = transported,
+                opaqueParameters = opaqueParameters,
+            )
+    val modeledMention = concreteModel?.references(transportedId) == true
+    if (!rawMention && !modeledMention) {
+        return FirOwnerContextTransportabilityStatus.NotTransportedReference
     }
     if (rendered.contains("&")) {
-        return "DeriveVia does not support definitely-non-null or intersection member types"
+        return FirOwnerContextTransportabilityStatus.Unsupported(
+            "DeriveVia does not support definitely-non-null or intersection member types",
+        )
     }
-    return concreteModel.transportabilityViolation(transportedId, session, visiting)
+    if (concreteModel == null) {
+        return FirOwnerContextTransportabilityStatus.Unsupported(
+            "DeriveVia does not support unsupported transported member type shape",
+        )
+    }
+    return FirOwnerContextTransportabilityStatus.Concrete(concreteModel)
 }
 
 internal fun FirRegularClass.matchingShapeDerivedGoalMatches(
@@ -1184,14 +1265,7 @@ private fun ConeKotlinType.toConcreteType(
     concreteType: TcType.Constructor,
     additionalTypeParameters: Map<FirTypeParameterSymbol, TcTypeParameter> = emptyMap(),
 ): TcType? {
-    val typeParameters =
-        owner.typeParameters.mapIndexed { index, typeParameter ->
-            typeParameter.symbol to
-                TcTypeParameter(
-                    id = "${owner.symbol.classId.asString()}#$index",
-                    displayName = typeParameter.symbol.name.asString(),
-                )
-        } + additionalTypeParameters.toList()
+    val typeParameters = owner.ownerContextTypeParameters(additionalTypeParameters)
     if (typeParameters.size != concreteType.arguments.size) {
         val ownerParameterCount = owner.typeParameters.size
         if (ownerParameterCount != concreteType.arguments.size) {
@@ -1206,6 +1280,17 @@ private fun ConeKotlinType.toConcreteType(
         }.toMap()
     return coneTypeToModel(this, parameterModels)?.substituteType(bindings)
 }
+
+private fun FirRegularClass.ownerContextTypeParameters(
+    additionalTypeParameters: Map<FirTypeParameterSymbol, TcTypeParameter>,
+): List<Pair<FirTypeParameterSymbol, TcTypeParameter>> =
+    typeParameters.mapIndexed { index, typeParameter ->
+        typeParameter.symbol to
+            TcTypeParameter(
+                id = "${symbol.classId.asString()}#$index",
+                displayName = typeParameter.symbol.name.asString(),
+            )
+    } + additionalTypeParameters.toList()
 
 private data class FirTransparentProductInfo(
     val isObjectLike: Boolean,
