@@ -115,6 +115,60 @@ class TypeArgumentInferenceSupportTest {
         assertTrue("T" !in resolved.conflictingKeys)
     }
 
+    @Test
+    fun exactConstraintsUseSemanticModelNotRawRepresentative() {
+        val constraints = linkedMapOf<String, MutableTypeBindingConstraints<String>>()
+        recordTypeBindingConstraint(
+            constraintsByKey = constraints,
+            key = "T",
+            candidate = TypeBindingBound(value = "alias", model = constructor("kotlin.String")),
+            position = ExactTypeArgumentPosition.EXACT,
+        )
+        recordTypeBindingConstraint(
+            constraintsByKey = constraints,
+            key = "T",
+            candidate = TypeBindingBound(value = "expanded", model = constructor("kotlin.String")),
+            position = ExactTypeArgumentPosition.EXACT,
+        )
+
+        val resolved = resolveTypeBindingConstraints(constraints, ::isSubtype)
+
+        assertEquals("alias", resolved.resolvedByKey["T"])
+        assertTrue("T" !in resolved.conflictingKeys)
+    }
+
+    @Test
+    fun duplicateLowerBoundRepresentativesResolveToCanonicalValue() {
+        val resolved =
+            resolveTypeBindingFromBounds(
+                lowerBounds =
+                    listOf(
+                        TypeBindingBound(value = "alias", model = constructor("kotlin.Any")),
+                        TypeBindingBound(value = "expanded", model = constructor("kotlin.Any")),
+                    ),
+                upperBounds = emptyList(),
+                isProvableSubtype = ::isSubtype,
+            )
+
+        assertEquals("alias", resolved)
+    }
+
+    @Test
+    fun duplicateUpperBoundRepresentativesResolveToCanonicalValue() {
+        val resolved =
+            resolveTypeBindingFromBounds(
+                lowerBounds = emptyList(),
+                upperBounds =
+                    listOf(
+                        TypeBindingBound(value = "alias", model = constructor("kotlin.String")),
+                        TypeBindingBound(value = "expanded", model = constructor("kotlin.String")),
+                    ),
+                isProvableSubtype = ::isSubtype,
+            )
+
+        assertEquals("alias", resolved)
+    }
+
     private fun variancesFor(classifierId: String): List<Variance> =
         when (classifierId) {
             "demo.Use" -> listOf(Variance.INVARIANT)

@@ -65,20 +65,20 @@ internal fun <K, T> recordTypeBindingConstraint(
             val existing = constraints.exact
             if (existing == null) {
                 constraints.exact = candidate
-            } else if (existing.model != candidate.model || existing.value != candidate.value) {
+            } else if (existing.model != candidate.model) {
                 constraints.exact = null
                 constraints.conflicting = true
             }
         }
 
         ExactTypeArgumentPosition.COVARIANT -> {
-            if (constraints.lowerBounds.none { bound -> bound.model == candidate.model && bound.value == candidate.value }) {
+            if (constraints.lowerBounds.none { bound -> bound.model == candidate.model }) {
                 constraints.lowerBounds += candidate
             }
         }
 
         ExactTypeArgumentPosition.CONTRAVARIANT -> {
-            if (constraints.upperBounds.none { bound -> bound.model == candidate.model && bound.value == candidate.value }) {
+            if (constraints.upperBounds.none { bound -> bound.model == candidate.model }) {
                 constraints.upperBounds += candidate
             }
         }
@@ -213,7 +213,7 @@ private fun collectTypeBindingConstraints(
         is TcType.Constructor -> Unit
     }
 
-    val expectedConstructor = expected as? TcType.Constructor ?: return
+    val expectedConstructor = expected
     val actualConstructor = actual as? TcType.Constructor ?: return
     if (expectedConstructor.classifierId != actualConstructor.classifierId || expectedConstructor.arguments.size != actualConstructor.arguments.size) {
         return
@@ -277,15 +277,28 @@ internal fun <T> resolveTypeBindingFromBounds(
     upperBounds: List<TypeBindingBound<T>>,
     isProvableSubtype: (TcType, TcType) -> Boolean,
 ): T? {
-    val chosenLower = selectWidestLowerBound(lowerBounds, isProvableSubtype)
-    if (chosenLower != null && upperBounds.all { upper -> isProvableSubtype(chosenLower.model, upper.model) }) {
+    val canonicalLowerBounds = canonicalBoundsByModel(lowerBounds)
+    val canonicalUpperBounds = canonicalBoundsByModel(upperBounds)
+    val chosenLower = selectWidestLowerBound(canonicalLowerBounds, isProvableSubtype)
+    if (chosenLower != null && canonicalUpperBounds.all { upper -> isProvableSubtype(chosenLower.model, upper.model) }) {
         return chosenLower.value
     }
-    val chosenUpper = selectNarrowestUpperBound(upperBounds, isProvableSubtype)
-    if (chosenUpper != null && lowerBounds.all { lower -> isProvableSubtype(lower.model, chosenUpper.model) }) {
+    val chosenUpper = selectNarrowestUpperBound(canonicalUpperBounds, isProvableSubtype)
+    if (chosenUpper != null && canonicalLowerBounds.all { lower -> isProvableSubtype(lower.model, chosenUpper.model) }) {
         return chosenUpper.value
     }
     return null
+}
+
+private fun <T> canonicalBoundsByModel(bounds: List<TypeBindingBound<T>>): List<TypeBindingBound<T>> {
+    if (bounds.size < 2) {
+        return bounds
+    }
+    val canonicalByModel = linkedMapOf<TcType, TypeBindingBound<T>>()
+    bounds.forEach { bound ->
+        canonicalByModel.putIfAbsent(bound.model, bound)
+    }
+    return canonicalByModel.values.toList()
 }
 
 private fun <T> selectWidestLowerBound(
