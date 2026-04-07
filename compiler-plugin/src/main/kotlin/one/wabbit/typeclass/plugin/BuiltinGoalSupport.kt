@@ -5,6 +5,7 @@ package one.wabbit.typeclass.plugin
 import one.wabbit.typeclass.plugin.model.TcType
 import one.wabbit.typeclass.plugin.model.containsStarProjection
 import one.wabbit.typeclass.plugin.model.isProvablyNullable
+import one.wabbit.typeclass.plugin.model.isProvablyNotNullable
 import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.referencedVariableIds
 import org.jetbrains.kotlin.fir.FirSession
@@ -89,6 +90,26 @@ internal fun provablySupportsBuiltinStrictSubtypeGoal(
     exactContext: FirBuiltinGoalExactContext? = null,
 ): Boolean = builtinStrictSubtypeGoalFeasibility(goal, classInfoById, exactContext) == BuiltinGoalFeasibility.PROVABLE
 
+internal fun supportsBuiltinNullableGoal(
+    goal: TcType,
+    exactContext: FirBuiltinGoalExactContext? = null,
+): Boolean = builtinNullableGoalFeasibility(goal, exactContext) != BuiltinGoalFeasibility.IMPOSSIBLE
+
+internal fun provablySupportsBuiltinNullableGoal(
+    goal: TcType,
+    exactContext: FirBuiltinGoalExactContext? = null,
+): Boolean = builtinNullableGoalFeasibility(goal, exactContext) == BuiltinGoalFeasibility.PROVABLE
+
+internal fun supportsBuiltinNotNullableGoal(
+    goal: TcType,
+    exactContext: FirBuiltinGoalExactContext? = null,
+): Boolean = builtinNotNullableGoalFeasibility(goal, exactContext) != BuiltinGoalFeasibility.IMPOSSIBLE
+
+internal fun provablySupportsBuiltinNotNullableGoal(
+    goal: TcType,
+    exactContext: FirBuiltinGoalExactContext? = null,
+): Boolean = builtinNotNullableGoalFeasibility(goal, exactContext) == BuiltinGoalFeasibility.PROVABLE
+
 private fun builtinSubtypeGoalFeasibility(
     goal: TcType,
     classInfoById: Map<String, VisibleClassHierarchyInfo>,
@@ -118,6 +139,40 @@ private fun builtinStrictSubtypeGoalFeasibility(
         return BuiltinGoalFeasibility.IMPOSSIBLE
     }
     return subtypeFeasibility(sub, sup, classInfoById, exactContext)
+}
+
+private fun builtinNullableGoalFeasibility(
+    goal: TcType,
+    exactContext: FirBuiltinGoalExactContext?,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != NULLABLE_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val target = constructor.arguments.singleOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    exactContext?.exactNullableFeasibility(target)?.let { return it }
+    return if (target.isProvablyNullable()) {
+        BuiltinGoalFeasibility.PROVABLE
+    } else {
+        BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+}
+
+private fun builtinNotNullableGoalFeasibility(
+    goal: TcType,
+    exactContext: FirBuiltinGoalExactContext?,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != NOT_NULLABLE_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val target = constructor.arguments.singleOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    exactContext?.exactNotNullableFeasibility(target)?.let { return it }
+    return if (target.isProvablyNotNullable()) {
+        BuiltinGoalFeasibility.PROVABLE
+    } else {
+        BuiltinGoalFeasibility.IMPOSSIBLE
+    }
 }
 
 internal fun supportsBuiltinSameTypeConstructorGoal(goal: TcType): Boolean {
@@ -441,3 +496,63 @@ private fun FirBuiltinGoalExactContext.exactSubtypeFeasibility(
         else -> BuiltinGoalFeasibility.IMPOSSIBLE
     }
 }
+
+private fun FirBuiltinGoalExactContext.exactNullableFeasibility(
+    target: TcType,
+): BuiltinGoalFeasibility? =
+    when (target) {
+        TcType.StarProjection -> BuiltinGoalFeasibility.IMPOSSIBLE
+        is TcType.Projected -> BuiltinGoalFeasibility.IMPOSSIBLE
+        is TcType.Constructor ->
+            if (target.isNullable) {
+                BuiltinGoalFeasibility.PROVABLE
+            } else {
+                BuiltinGoalFeasibility.IMPOSSIBLE
+            }
+
+        is TcType.Variable ->
+            if (target.isNullable) {
+                BuiltinGoalFeasibility.PROVABLE
+            } else {
+                BuiltinGoalFeasibility.IMPOSSIBLE
+            }
+    }
+
+private fun FirBuiltinGoalExactContext.exactNotNullableFeasibility(
+    target: TcType,
+    visiting: MutableSet<String> = linkedSetOf(),
+): BuiltinGoalFeasibility? =
+    when (target) {
+        TcType.StarProjection -> BuiltinGoalFeasibility.IMPOSSIBLE
+        is TcType.Projected -> BuiltinGoalFeasibility.IMPOSSIBLE
+        is TcType.Constructor ->
+            if (!target.isNullable) {
+                BuiltinGoalFeasibility.PROVABLE
+            } else {
+                BuiltinGoalFeasibility.IMPOSSIBLE
+            }
+
+        is TcType.Variable -> {
+            if (target.isNullable) {
+                return BuiltinGoalFeasibility.IMPOSSIBLE
+            }
+            val visitKey = "not-nullable:${target.id}"
+            if (!visiting.add(visitKey)) {
+                return BuiltinGoalFeasibility.IMPOSSIBLE
+            }
+            try {
+                val symbol = variableSymbolsById[target.id] ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+                val bounds =
+                    symbol.resolvedBounds.mapNotNull { boundTypeRef ->
+                        coneTypeToModel(boundTypeRef.coneType, typeParameterModels)
+                    }
+                if (bounds.any { bound -> exactNotNullableFeasibility(bound, visiting) == BuiltinGoalFeasibility.PROVABLE }) {
+                    BuiltinGoalFeasibility.PROVABLE
+                } else {
+                    BuiltinGoalFeasibility.IMPOSSIBLE
+                }
+            } finally {
+                visiting.remove(visitKey)
+            }
+        }
+    }

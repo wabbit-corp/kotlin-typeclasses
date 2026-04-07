@@ -2436,10 +2436,16 @@ private class IrRuleIndex private constructor(
                 resolvedRule.rule.id != "builtin:notsame" || supportsBuiltinNotSameGoal(goal)
             }
             .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:nullable" || supportsBuiltinNullableGoal(goal)
+                resolvedRule.rule.id != "builtin:nullable" ||
+                    builtinGoalAcceptance.accepts(
+                        irBuiltinNullableFeasibility(goal, exactBuiltinGoalContext),
+                    )
             }
             .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:not-nullable" || supportsBuiltinNotNullableGoal(goal)
+                resolvedRule.rule.id != "builtin:not-nullable" ||
+                    builtinGoalAcceptance.accepts(
+                        irBuiltinNotNullableFeasibility(goal, exactBuiltinGoalContext),
+                    )
             }
             .filter { resolvedRule ->
                 resolvedRule.rule.id != "builtin:is-typeclass-instance" ||
@@ -4483,6 +4489,58 @@ private fun supportsBuiltinNotNullableGoal(goal: TcType): Boolean {
     }
     val targetType = constructor.arguments.singleOrNull() ?: return false
     return targetType.isProvablyNotNullable()
+}
+
+private fun irBuiltinNullableFeasibility(
+    goal: TcType,
+    exactBuiltinGoalContext: IrBuiltinGoalExactContext?,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != NULLABLE_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val targetModel = constructor.arguments.singleOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    if (exactBuiltinGoalContext == null) {
+        return if (supportsBuiltinNullableGoal(goal)) {
+            BuiltinGoalFeasibility.PROVABLE
+        } else {
+            BuiltinGoalFeasibility.IMPOSSIBLE
+        }
+    }
+    val targetType =
+        runCatching { modelToIrType(targetModel, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    return if (canProveNullable(targetType, exactBuiltinGoalContext.pluginContext)) {
+        BuiltinGoalFeasibility.PROVABLE
+    } else {
+        BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+}
+
+private fun irBuiltinNotNullableFeasibility(
+    goal: TcType,
+    exactBuiltinGoalContext: IrBuiltinGoalExactContext?,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != NOT_NULLABLE_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val targetModel = constructor.arguments.singleOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    if (exactBuiltinGoalContext == null) {
+        return if (supportsBuiltinNotNullableGoal(goal)) {
+            BuiltinGoalFeasibility.PROVABLE
+        } else {
+            BuiltinGoalFeasibility.IMPOSSIBLE
+        }
+    }
+    val targetType =
+        runCatching { modelToIrType(targetModel, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    return if (canProveNotNullable(targetType, exactBuiltinGoalContext.pluginContext)) {
+        BuiltinGoalFeasibility.PROVABLE
+    } else {
+        BuiltinGoalFeasibility.IMPOSSIBLE
+    }
 }
 
 private fun isPotentiallySerializableType(

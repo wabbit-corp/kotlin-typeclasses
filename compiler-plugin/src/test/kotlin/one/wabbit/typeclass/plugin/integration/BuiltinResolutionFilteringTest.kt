@@ -144,6 +144,54 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun provableNotNullableGoalFromBoundsStillParticipatesInRefinement() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.NotNullable
+
+            context(_: NotNullable<T>)
+            fun <T : Any> render(): String = "not-nullable"
+
+            fun <T : Any> choose(): String = render<T>()
+
+            fun main() {
+                println(choose<String>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "not-nullable",
+        )
+    }
+
+    @Test
+    fun provableNullableGoalFromExplicitNullableVariableStillParticipatesInRefinement() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Nullable
+
+            context(_: Nullable<T?>)
+            fun <T> render(): String = "nullable"
+
+            fun <T> choose(): String = render<T>()
+
+            fun main() {
+                println(choose<String>())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "nullable",
+        )
+    }
+
+    @Test
     fun speculativeSubtypePrerequisiteFailsInFirInsteadOfIr() {
         val source =
             """

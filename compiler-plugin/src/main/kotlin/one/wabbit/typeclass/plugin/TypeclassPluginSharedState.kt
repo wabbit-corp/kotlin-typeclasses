@@ -14,8 +14,6 @@ import one.wabbit.typeclass.plugin.model.TcTypeParameter
 import one.wabbit.typeclass.plugin.model.TypeclassResolutionPlanner
 import one.wabbit.typeclass.plugin.model.containsStarProjection
 import one.wabbit.typeclass.plugin.model.isExactTypeIdentity
-import one.wabbit.typeclass.plugin.model.isProvablyNotNullable
-import one.wabbit.typeclass.plugin.model.isProvablyNullable
 import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.referencedVariableIds
 import one.wabbit.typeclass.plugin.model.render
@@ -565,10 +563,44 @@ private data class ResolutionIndex(
                 visibleRule.rule.id != "builtin:notsame" || supportsBuiltinNotSameGoal(goal)
             }
             .filter { visibleRule ->
-                visibleRule.rule.id != "builtin:nullable" || supportsBuiltinNullableGoal(goal)
+                visibleRule.rule.id != "builtin:nullable" ||
+                    builtinGoalAcceptance.accepts(
+                        if (builtinGoalAcceptance == BuiltinGoalAcceptance.PROVABLE_ONLY) {
+                            if (provablySupportsBuiltinNullableGoal(goal, exactBuiltinGoalContext)) {
+                                BuiltinGoalFeasibility.PROVABLE
+                            } else {
+                                BuiltinGoalFeasibility.IMPOSSIBLE
+                            }
+                        } else if (supportsBuiltinNullableGoal(goal, exactBuiltinGoalContext)) {
+                            if (provablySupportsBuiltinNullableGoal(goal, exactBuiltinGoalContext)) {
+                                BuiltinGoalFeasibility.PROVABLE
+                            } else {
+                                BuiltinGoalFeasibility.SPECULATIVE
+                            }
+                        } else {
+                            BuiltinGoalFeasibility.IMPOSSIBLE
+                        },
+                    )
             }
             .filter { visibleRule ->
-                visibleRule.rule.id != "builtin:not-nullable" || supportsBuiltinNotNullableGoal(goal)
+                visibleRule.rule.id != "builtin:not-nullable" ||
+                    builtinGoalAcceptance.accepts(
+                        if (builtinGoalAcceptance == BuiltinGoalAcceptance.PROVABLE_ONLY) {
+                            if (provablySupportsBuiltinNotNullableGoal(goal, exactBuiltinGoalContext)) {
+                                BuiltinGoalFeasibility.PROVABLE
+                            } else {
+                                BuiltinGoalFeasibility.IMPOSSIBLE
+                            }
+                        } else if (supportsBuiltinNotNullableGoal(goal, exactBuiltinGoalContext)) {
+                            if (provablySupportsBuiltinNotNullableGoal(goal, exactBuiltinGoalContext)) {
+                                BuiltinGoalFeasibility.PROVABLE
+                            } else {
+                                BuiltinGoalFeasibility.SPECULATIVE
+                            }
+                        } else {
+                            BuiltinGoalFeasibility.IMPOSSIBLE
+                        },
+                    )
             }
             .filter { visibleRule ->
                 visibleRule.rule.id != "builtin:is-typeclass-instance" ||
@@ -2305,24 +2337,6 @@ private fun supportsBuiltinKSerializerGoal(
         session = session,
         visiting = linkedSetOf(),
     )
-}
-
-private fun supportsBuiltinNullableGoal(goal: TcType): Boolean {
-    val constructor = goal as? TcType.Constructor ?: return true
-    if (constructor.classifierId != NULLABLE_CLASS_ID.asString()) {
-        return true
-    }
-    val targetType = constructor.arguments.singleOrNull() ?: return false
-    return targetType.isProvablyNullable()
-}
-
-private fun supportsBuiltinNotNullableGoal(goal: TcType): Boolean {
-    val constructor = goal as? TcType.Constructor ?: return true
-    if (constructor.classifierId != NOT_NULLABLE_CLASS_ID.asString()) {
-        return true
-    }
-    val targetType = constructor.arguments.singleOrNull() ?: return false
-    return targetType.isProvablyNotNullable()
 }
 
 private fun isPotentiallySerializableType(

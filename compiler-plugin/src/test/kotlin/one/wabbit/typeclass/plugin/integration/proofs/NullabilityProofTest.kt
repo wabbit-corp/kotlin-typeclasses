@@ -34,6 +34,35 @@ class NullabilityProofTest : IntegrationTestSupport() {
                 true
                 true
                 true
+            """.trimIndent(),
+        )
+    }
+
+    @Test fun materializesNullableAndNotNullableProofsForExactGenericCases() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.NotNullable
+            import one.wabbit.typeclass.Nullable
+            import one.wabbit.typeclass.summon
+
+            fun <T> proveNullable(): Nullable<T?> = summon<Nullable<T?>>()
+
+            fun <T : Any> proveNotNullable(): NotNullable<T> = summon<NotNullable<T>>()
+
+            fun main() {
+                println(proveNullable<String>() != null)
+                println(proveNotNullable<String>() != null)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
                 """.trimIndent(),
         )
     }
