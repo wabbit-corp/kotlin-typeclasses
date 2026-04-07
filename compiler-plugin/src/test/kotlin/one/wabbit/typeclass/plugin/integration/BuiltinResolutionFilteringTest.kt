@@ -423,6 +423,30 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun topLevelStarKnownTypeDoesNotHidePlainOverload() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.KnownType
+
+            context(_: KnownType<*>)
+            fun choose(): String = "builtin"
+
+            fun choose(label: String = "plain"): String = label
+
+            fun main() {
+                println(choose())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain",
+        )
+    }
+
+    @Test
     fun nonMaterializableTypeIdDoesNotHidePlainOverload() {
         val source =
             """
@@ -432,6 +456,30 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
 
             context(_: TypeId<T>)
             fun <T> choose(): String = "builtin"
+
+            fun choose(label: String = "plain"): String = label
+
+            fun main() {
+                println(choose())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain",
+        )
+    }
+
+    @Test
+    fun topLevelProjectedTypeIdDoesNotHidePlainOverload() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.TypeId
+
+            context(_: TypeId<out Any?>)
+            fun choose(): String = "builtin"
 
             fun choose(label: String = "plain"): String = label
 
@@ -472,6 +520,31 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun topLevelStarBuiltinKClassDoesNotHidePlainOverload() {
+        val source =
+            """
+            package demo
+
+            import kotlin.reflect.KClass
+
+            context(_: KClass<*>)
+            fun choose(): String = "builtin"
+
+            fun choose(label: String = "plain"): String = label
+
+            fun main() {
+                println(choose())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain",
+            pluginOptions = listOf("builtinKClassTypeclass=enabled"),
+        )
+    }
+
+    @Test
     fun nonMaterializableBuiltinKSerializerDoesNotHidePlainOverload() {
         val source =
             """
@@ -481,6 +554,32 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
 
             context(_: KSerializer<T>)
             fun <T> choose(): String = "builtin"
+
+            fun choose(label: String = "plain"): String = label
+
+            fun main() {
+                println(choose())
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "plain",
+            requiredPlugins = listOf(CompilerHarnessPlugin.Serialization),
+            pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
+        )
+    }
+
+    @Test
+    fun topLevelProjectedBuiltinKSerializerDoesNotHidePlainOverload() {
+        val source =
+            """
+            package demo
+
+            import kotlinx.serialization.KSerializer
+
+            context(_: KSerializer<out Any?>)
+            fun choose(): String = "builtin"
 
             fun choose(label: String = "plain"): String = label
 

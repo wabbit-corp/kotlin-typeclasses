@@ -40,6 +40,53 @@ class BuiltinGoalSupportTest {
     }
 
     @Test
+    fun `runtime type materialization rejects top level stars and projections but keeps nested ones`() {
+        val topLevelProjection = projected(Variance.OUT_VARIANCE, typeVariable("T"))
+
+        assertFalse(supportsRuntimeTypeMaterialization(TcType.StarProjection) { true })
+        assertFalse(supportsRuntimeTypeMaterialization(topLevelProjection) { true })
+        assertTrue(
+            supportsRuntimeTypeMaterialization(
+                typeConstructor("demo.Box", TcType.StarProjection),
+            ) { true },
+        )
+        assertTrue(
+            supportsRuntimeTypeMaterialization(
+                typeConstructor("demo.Box", projected(Variance.OUT_VARIANCE, typeVariable("T"))),
+            ) { it == "T" },
+        )
+    }
+
+    @Test
+    fun `builtin admissibility rejects top level stars and projections`() {
+        val knownTypeStarGoal =
+            typeConstructor(
+                KNOWN_TYPE_CLASS_ID.asString(),
+                TcType.StarProjection,
+            )
+        val typeIdProjectedGoal =
+            typeConstructor(
+                TYPE_ID_CLASS_ID.asString(),
+                projected(Variance.OUT_VARIANCE, typeConstructor("kotlin.Any", isNullable = true)),
+            )
+        val kClassStarGoal =
+            typeConstructor(
+                KCLASS_CLASS_ID.asString(),
+                TcType.StarProjection,
+            )
+        val kSerializerProjectedGoal =
+            typeConstructor(
+                KSERIALIZER_CLASS_ID.asString(),
+                projected(Variance.OUT_VARIANCE, typeConstructor("kotlin.Any", isNullable = true)),
+            )
+
+        assertFalse(supportsBuiltinKnownTypeGoal(knownTypeStarGoal) { true })
+        assertFalse(supportsBuiltinTypeIdGoal(typeIdProjectedGoal) { true })
+        assertFalse(supportsBuiltinKClassGoal(kClassStarGoal) { true })
+        assertFalse(supportsBuiltinKSerializerShape(kSerializerProjectedGoal) { true })
+    }
+
+    @Test
     fun `kserializer shape rejects stars and non-materializable nested variables`() {
         val starGoal =
             typeConstructor(
@@ -55,6 +102,31 @@ class BuiltinGoalSupportTest {
         assertFalse(supportsBuiltinKSerializerShape(starGoal))
         assertFalse(supportsBuiltinKSerializerShape(variableGoal) { false })
         assertTrue(supportsBuiltinKSerializerShape(variableGoal) { it == "T" })
+    }
+
+    @Test
+    fun `is typeclass instance rejects top level projected typeclass applications`() {
+        val projectedTargetGoal =
+            typeConstructor(
+                IS_TYPECLASS_INSTANCE_CLASS_ID.asString(),
+                projected(
+                    Variance.OUT_VARIANCE,
+                    typeConstructor(KCLASS_CLASS_ID.asString(), typeConstructor("kotlin.Int")),
+                ),
+            )
+
+        assertFalse(
+            supportsBuiltinIsTypeclassInstanceGoal(
+                goal = projectedTargetGoal,
+                isTypeclassClassifier = { classifierId -> classifierId == KCLASS_CLASS_ID.asString() },
+            ),
+        )
+        assertFalse(
+            provablySupportsBuiltinIsTypeclassInstanceGoal(
+                goal = projectedTargetGoal,
+                isTypeclassClassifier = { classifierId -> classifierId == KCLASS_CLASS_ID.asString() },
+            ),
+        )
     }
 
     @Test

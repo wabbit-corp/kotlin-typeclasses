@@ -202,7 +202,7 @@ private fun TcType.isPotentialTypeclassApplication(
     when (this) {
         TcType.StarProjection -> BuiltinGoalFeasibility.IMPOSSIBLE
         is TcType.Variable -> BuiltinGoalFeasibility.SPECULATIVE
-        is TcType.Projected -> type.isPotentialTypeclassApplication(isTypeclassClassifier)
+        is TcType.Projected -> BuiltinGoalFeasibility.IMPOSSIBLE
         is TcType.Constructor ->
             if (isTypeclassClassifier(classifierId)) {
                 BuiltinGoalFeasibility.PROVABLE
@@ -215,12 +215,24 @@ internal fun supportsRuntimeTypeMaterialization(
     type: TcType,
     canMaterializeVariable: (String) -> Boolean,
 ): Boolean =
+    supportsRuntimeTypeMaterialization(
+        type = type,
+        canMaterializeVariable = canMaterializeVariable,
+        isTopLevel = true,
+    )
+
+private fun supportsRuntimeTypeMaterialization(
+    type: TcType,
+    canMaterializeVariable: (String) -> Boolean,
+    isTopLevel: Boolean,
+): Boolean =
     when (type) {
-        TcType.StarProjection -> true
-        is TcType.Projected -> supportsRuntimeTypeMaterialization(type.type, canMaterializeVariable)
+        TcType.StarProjection -> !isTopLevel
+        is TcType.Projected ->
+            !isTopLevel && supportsRuntimeTypeMaterialization(type.type, canMaterializeVariable, isTopLevel = false)
         is TcType.Variable -> canMaterializeVariable(type.id)
         is TcType.Constructor -> type.arguments.all { argument ->
-            supportsRuntimeTypeMaterialization(argument, canMaterializeVariable)
+            supportsRuntimeTypeMaterialization(argument, canMaterializeVariable, isTopLevel = false)
         }
     }
 
