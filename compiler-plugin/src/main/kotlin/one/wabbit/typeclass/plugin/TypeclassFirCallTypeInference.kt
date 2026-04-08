@@ -93,7 +93,7 @@ internal fun inferFunctionTypeArgumentsFromCallSite(
             containingClassTypeParameters = containingClassTypeParameters,
             containingFunctions = containingFunctions,
         )
-    function.typeParameters.zip(functionCall.typeArguments).forEach { (typeParameter, typeArgument) ->
+    resolvedFunction.explicitCallTypeParameters(functionCall.typeArguments.size, session, sharedState).zip(functionCall.typeArguments).forEach { (typeParameter, typeArgument) ->
         val explicitType = (typeArgument as? FirTypeProjectionWithVariance)?.typeRef?.coneType ?: return@forEach
         inferred[typeParameter.symbol] = explicitType
     }
@@ -225,6 +225,21 @@ internal fun inferFunctionTypeArgumentsFromCallSite(
     }
 
     return inferred
+}
+
+internal fun FirNamedFunctionSymbol.explicitCallTypeParameters(
+    explicitTypeArgumentCount: Int,
+    session: FirSession,
+    sharedState: TypeclassPluginSharedState,
+): List<FirTypeParameterRef> {
+    val visibleTypeParameterNames = wrapperVisibleTypeParameterNames(session, sharedState).toSet()
+    return if (explicitTypeArgumentCount <= visibleTypeParameterNames.size) {
+        fir.typeParameters.filter { typeParameter ->
+            typeParameter.symbol.name.asString() in visibleTypeParameterNames
+        }
+    } else {
+        fir.typeParameters
+    }
 }
 
 internal fun FirFunctionCall.inferReturnTypeOrNull(

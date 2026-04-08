@@ -349,12 +349,7 @@ private class TypeclassIrCallTransformer(
                     inferOriginalTypeArguments(
                         original = original,
                         normalizedCall = normalizedCall,
-                        currentCallTypeArgumentsByName =
-                            original.typeParameters.mapIndexedNotNull { index, typeParameter ->
-                                call.typeArgumentOrNull(index)?.let { irType ->
-                                    typeParameter.name.asString() to irType
-                                }
-                            }.toMap(),
+                        currentCallTypeArgumentsByName = currentCallTypeArgumentsByOriginalName(call, original, configuration),
                         visibleTypeParameters = visibleTypeParameters,
                         localContexts = localContexts,
                         pluginContext = pluginContext,
@@ -7014,7 +7009,13 @@ private fun IrValueParameter.isTypeclassWrapperMarkerParameter(): Boolean =
 private fun IrSimpleFunction.visibleSignatureTypeParameterCount(
     dropTypeclassContexts: Boolean,
     configuration: TypeclassConfiguration,
-): Int {
+): Int =
+    visibleSignatureTypeParameterNames(dropTypeclassContexts, configuration).size
+
+private fun IrSimpleFunction.visibleSignatureTypeParameterNames(
+    dropTypeclassContexts: Boolean,
+    configuration: TypeclassConfiguration,
+): List<String> {
     val referenced = linkedSetOf<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol>()
 
     extensionReceiverParameter?.type?.collectReferencedTypeParameters(referenced)
@@ -7028,7 +7029,9 @@ private fun IrSimpleFunction.visibleSignatureTypeParameterCount(
             parameter.type.collectReferencedTypeParameters(referenced)
         }
 
-    return typeParameters.count { it.symbol in referenced }
+    return typeParameters.mapNotNull { typeParameter ->
+        typeParameter.name.asString().takeIf { typeParameter.symbol in referenced }
+    }
 }
 
 private fun IrType.collectReferencedTypeParameters(
@@ -7047,6 +7050,37 @@ private fun IrType.collectReferencedTypeParameters(
             is IrStarProjection -> Unit
         }
     }
+}
+
+internal fun currentCallTypeArgumentsByOriginalName(
+    call: IrCall,
+    original: IrSimpleFunction,
+    configuration: TypeclassConfiguration,
+): Map<String, IrType> {
+    val visibleNames = original.visibleSignatureTypeParameterNames(dropTypeclassContexts = true, configuration)
+    return mapCallTypeArgumentsByOriginalParameterName(
+        typeArguments = call.typeArguments,
+        visibleTypeParameterNames = visibleNames,
+        originalTypeParameterNames = original.typeParameters.map { typeParameter -> typeParameter.name.asString() },
+    )
+}
+
+internal fun mapCallTypeArgumentsByOriginalParameterName(
+    typeArguments: List<IrType?>,
+    visibleTypeParameterNames: List<String>,
+    originalTypeParameterNames: List<String>,
+): Map<String, IrType> {
+    val targetNames =
+        if (typeArguments.count { it != null } <= visibleTypeParameterNames.size) {
+            visibleTypeParameterNames
+        } else {
+            originalTypeParameterNames
+        }
+    return targetNames.mapIndexedNotNull { index, typeParameterName ->
+        typeArguments.getOrNull(index)?.let { irType ->
+            typeParameterName to irType
+        }
+    }.toMap()
 }
 
 private fun inferOriginalTypeArguments(

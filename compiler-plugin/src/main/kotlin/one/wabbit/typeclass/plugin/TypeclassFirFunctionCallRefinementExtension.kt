@@ -330,7 +330,7 @@ internal class TypeclassFirFunctionCallRefinementExtension(
         val inferenceTypeParameterModels = typeContext.typeParameterModels.toMutableMap()
         val directConstraints = linkedMapOf<FirTypeParameterSymbol, MutableTypeBindingConstraints<org.jetbrains.kotlin.fir.types.ConeKotlinType>>()
 
-        function.typeParameters.zip(callInfo.typeArguments).forEach { (typeParameter, typeArgument) ->
+        symbol.explicitCallTypeParameters(callInfo.typeArguments.size, session, sharedState).zip(callInfo.typeArguments).forEach { (typeParameter, typeArgument) ->
             val explicitType = (typeArgument as? FirTypeProjectionWithVariance)?.typeRef?.coneType ?: return@forEach
             inferred[typeParameter.symbol] = explicitType
         }
@@ -458,7 +458,9 @@ internal class TypeclassFirFunctionCallRefinementExtension(
         val originalParametersByName = originalFunction.valueParameters.associateBy { it.name }
         val refinedParameters = refinedSymbol?.fir?.valueParameters.orEmpty()
 
-        val currentTypeParameters = refinedSymbol?.fir?.typeParameters ?: originalFunction.typeParameters
+        val currentTypeParameters =
+            refinedSymbol?.fir?.typeParameters
+                ?: originalSymbol.explicitCallTypeParameters(call.typeArguments.size, session, sharedState)
         currentTypeParameters.zip(call.typeArguments).forEach { (typeParameter, typeArgument) ->
             val explicitType = (typeArgument as? FirTypeProjectionWithVariance)?.typeRef?.coneType ?: return@forEach
             val originalTypeParameter =
