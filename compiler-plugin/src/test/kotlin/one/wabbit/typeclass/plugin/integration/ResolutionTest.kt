@@ -2825,7 +2825,49 @@ class ResolutionTest : IntegrationTestSupport() {
                     ExpectedDiagnostic.Error(
                         messageRegex = "(?i)(conflicting|cannot infer|inferred as|type mismatch|no context argument)",
                     ),
-                ),
+            ),
+        )
+    }
+
+    @Test fun ambiguousLocalContextsDoNotMakeContextualCallsLookSolvedInFir() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            class WrappedShowOne : Show<String> {
+                override fun show(): String = "one"
+            }
+
+            class WrappedShowTwo : Show<String> {
+                override fun show(): String = "two"
+            }
+
+            context(show: Show<String>)
+            fun choose(): String = show.show()
+
+        context(_: WrappedShowOne, _: WrappedShowTwo)
+        fun run(): String = choose() // E ambiguous local contexts must fail in FIR
+
+            fun main() {
+                context(WrappedShowOne()) {
+                    context(WrappedShowTwo()) {
+                println(run())
+            }
+        }
+    }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedErrorContaining("potential context arguments", "show")),
+            unexpectedMessages = listOf("multiple candidates matched", "ambiguous typeclass instance", "required instance"),
         )
     }
 

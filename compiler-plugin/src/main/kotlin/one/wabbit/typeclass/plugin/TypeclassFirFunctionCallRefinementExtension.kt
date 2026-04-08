@@ -203,21 +203,16 @@ internal class TypeclassFirFunctionCallRefinementExtension(
                         exactBuiltinGoalContext = exactBuiltinGoalContext,
                     )
                 is ResolutionSearchResult.Ambiguous -> {
+                    if (tracedResolution.result.matchingPlans.all { plan -> plan is one.wabbit.typeclass.plugin.model.ResolutionPlan.LocalContext }) {
+                        return@map false
+                    }
                     inferredTypeArgumentsWithContextResolution.mergeAmbiguousResolutionInferredTypeArguments(
                         goal = goalModel,
                         ambiguous = tracedResolution.result,
                         variableSymbolsById = exactBuiltinGoalContext.variableSymbolsById,
                         eligibleSymbols = eligibleTypeParameters,
                     )
-                    if (tracedResolution.result.matchingPlans.all { plan -> plan is one.wabbit.typeclass.plugin.model.ResolutionPlan.LocalContext }) {
-                        goalModel.hasAllEligibleBindings(
-                            variableSymbolsById = exactBuiltinGoalContext.variableSymbolsById,
-                            eligibleSymbols = eligibleTypeParameters,
-                            inferredTypeArguments = inferredTypeArgumentsWithContextResolution,
-                        )
-                    } else {
-                        function.typeParameters.isNotEmpty()
-                    }
+                    function.typeParameters.isNotEmpty()
                 }
                 else -> false
             }
