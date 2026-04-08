@@ -1142,6 +1142,45 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun rejectsLocalInstanceFunctionDeclarationsEvenWhenSameFileHostingWouldOtherwiseAllowTopLevelPlacement() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            data class Box(val value: Int)
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                @Instance // E:TC_INVALID_INSTANCE_DECL local @Instance functions are not indexable top-level rules
+                fun localBoxShow(): Show<Box> =
+                    object : Show<Box> {
+                        override fun show(value: Box): String = "box:${'$'}{value.value}"
+                    }
+
+                println(render(Box(1))) // E:TC_NO_CONTEXT_ARGUMENT local @Instance declarations should not be auto-discovered
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedInvalidInstanceDecl("top-level", "companion"),
+                    expectedNoContextArgument(),
+                ),
+        )
+    }
+
     @Test fun doesNotDiscoverLocalInstanceDeclarationsGlobally() {
         val source =
             """
@@ -1173,7 +1212,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
             source = source,
             expectedDiagnostics =
                 listOf(
-                    expectedInvalidInstanceDecl("top-level orphan"),
+                    expectedInvalidInstanceDecl("top-level", "companion"),
                     expectedNoContextArgument(),
                 ),
         )

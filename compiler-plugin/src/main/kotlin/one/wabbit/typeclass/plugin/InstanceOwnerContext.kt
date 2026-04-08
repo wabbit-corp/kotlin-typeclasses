@@ -9,6 +9,7 @@ import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
 import org.jetbrains.kotlin.ir.declarations.IrClass
+import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrProperty
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.util.classId
@@ -47,7 +48,12 @@ internal fun firInstanceOwnerContext(
 internal fun firInstanceOwnerContext(
     session: FirSession,
     callableId: CallableId?,
-): InstanceOwnerContext = firNestedOwnerContext(session, callableId?.classId)
+): InstanceOwnerContext =
+    when {
+        callableId == null || callableId.isLocal ->
+            InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = null)
+        else -> firNestedOwnerContext(session, callableId.classId)
+    }
 
 private fun firNestedOwnerContext(
     session: FirSession,
@@ -85,10 +91,18 @@ internal fun irInstanceOwnerContext(irClass: IrClass): InstanceOwnerContext {
 }
 
 internal fun irInstanceOwnerContext(function: IrSimpleFunction): InstanceOwnerContext =
-    irNestedOwnerContext(function.parent as? IrClass)
+    when (val parent = function.parent) {
+        is IrClass -> irNestedOwnerContext(parent)
+        is IrFile -> InstanceOwnerContext(isTopLevel = true, isCompanionScope = false, associatedOwner = null)
+        else -> InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = null)
+    }
 
 internal fun irInstanceOwnerContext(property: IrProperty): InstanceOwnerContext =
-    irNestedOwnerContext(property.parent as? IrClass)
+    when (val parent = property.parent) {
+        is IrClass -> irNestedOwnerContext(parent)
+        is IrFile -> InstanceOwnerContext(isTopLevel = true, isCompanionScope = false, associatedOwner = null)
+        else -> InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = null)
+    }
 
 private fun irNestedOwnerContext(ownerClass: IrClass?): InstanceOwnerContext {
     if (ownerClass == null) {
