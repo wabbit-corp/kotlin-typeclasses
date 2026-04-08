@@ -660,7 +660,7 @@ internal class TypeclassFirCheckersExtension(
                     }
                     continue
                 }
-                for (expression in function.knownDeriverReturnExpressions()) {
+                for (expression in function.knownFunctionReturnExpressions()) {
                     val knownTypeclassConstructors =
                         expression.knownReturnedTypeclassConstructors(session, sharedState.configuration)
                     if (knownTypeclassConstructors.isEmpty()) {
@@ -831,7 +831,7 @@ private fun FirRegularClass.directlyExtendsEquiv(): Boolean =
 private fun isEquivType(type: TcType): Boolean =
     (type as? TcType.Constructor)?.classifierId == EQUIV_CLASS_ID.asString()
 
-private fun FirTypeclassFunctionDeclaration.knownDeriverReturnExpressions(): List<FirExpression> {
+private fun FirFunction.knownFunctionReturnExpressions(): List<FirExpression> {
     val expressions = linkedSetOf<FirExpression>()
     val body = body ?: return emptyList()
     body.statements.lastOrNull()?.let { statement ->
@@ -859,7 +859,7 @@ private fun FirTypeclassFunctionDeclaration.knownDeriverReturnExpressions(): Lis
             }
 
             override fun visitReturnExpression(returnExpression: FirReturnExpression) {
-                if (returnExpression.target.labeledElement === this@knownDeriverReturnExpressions) {
+                if (returnExpression.target.labeledElement === this@knownFunctionReturnExpressions) {
                     expressions += returnExpression.result
                 }
                 returnExpression.result.acceptChildren(this)
@@ -970,7 +970,7 @@ private fun FirExpression.knownReturnedTypeclassConstructors(
                         }.forEach(::addNested)
 
                     is FirTypeclassFunctionDeclaration ->
-                        declaration.knownDeriverReturnExpressions()
+                        declaration.knownFunctionReturnExpressions()
                             .forEach(::addNested)
 
                     else -> Unit
@@ -986,8 +986,9 @@ private fun FirExpression.knownReturnedTypeclassConstructors(
                 return knownConstructors.toList()
             }
             try {
-                (symbol.fir as? FirTypeclassFunctionDeclaration)
-                    ?.knownDeriverReturnExpressions()
+                (symbol.fir as? FirFunction)
+                    ?.takeUnless { it is FirConstructor }
+                    ?.knownFunctionReturnExpressions()
                     ?.forEach(::addNested)
             } finally {
                 visitedCallables.remove(symbol)
