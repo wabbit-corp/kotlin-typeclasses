@@ -301,6 +301,10 @@ internal class TypeclassFirFunctionCallRefinementExtension(
         symbol: FirNamedFunctionSymbol,
         typeContext: FirTypeclassResolutionContext,
     ): Map<FirTypeParameterSymbol, org.jetbrains.kotlin.fir.types.ConeKotlinType> {
+        val containingFunctions =
+            callInfo.containingDeclarations
+                .filterIsInstance<FirFunction>()
+                .mapNotNull { declaration -> declaration.symbol as? FirNamedFunctionSymbol }
         val containingFunction =
             callInfo.containingDeclarations.filterIsInstance<FirTypeclassFunctionDeclaration>().lastOrNull()?.symbol
         val containingClassTypeParameters =
@@ -316,6 +320,7 @@ internal class TypeclassFirFunctionCallRefinementExtension(
                 containingFunction = containingFunction,
                 containingClassTypeParameters = containingClassTypeParameters,
                 sharedState = sharedState,
+                containingFunctions = containingFunctions,
             )
         }
 
@@ -333,7 +338,9 @@ internal class TypeclassFirFunctionCallRefinementExtension(
         function.receiverParameter?.typeRef?.coneType?.let { receiverType ->
             callInfo.explicitReceiver?.safeResolvedOrInferredTypeOrNull(
                 session = session,
+                containingFunction = containingFunction,
                 containingClassTypeParameters = containingClassTypeParameters,
+                containingFunctions = containingFunctions,
             )?.let { explicitReceiverType ->
                 collectFunctionTypeArgumentConstraintsForInference(
                     session = session,
@@ -352,7 +359,9 @@ internal class TypeclassFirFunctionCallRefinementExtension(
             val argumentType =
                 argument.safeResolvedOrInferredTypeOrNull(
                     session = session,
+                    containingFunction = containingFunction,
                     containingClassTypeParameters = containingClassTypeParameters,
+                    containingFunctions = containingFunctions,
                 ) ?: return@forEach
             collectFunctionTypeArgumentConstraintsForInference(
                 session = session,

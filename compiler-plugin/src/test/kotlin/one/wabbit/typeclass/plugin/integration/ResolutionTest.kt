@@ -2345,6 +2345,44 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun nestedReturnInferenceCanUseOuterContextualScopesToRecoverGenericReturnTypesInFir() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Default<A> {
+                fun value(): A
+            }
+
+            object StringDefault : Default<String> {
+                override fun value(): String = "nested"
+            }
+
+            context(default: Default<A>)
+            fun <A> reveal(): A = default.value()
+
+            context(_: Default<String>)
+            fun run(): Int {
+                fun inner() = reveal()
+                return inner().length
+            }
+
+            fun main() {
+                context(StringDefault) {
+                    println(run())
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "6",
+        )
+    }
+
     @Test fun explicitVisibleTypeArgumentsStillElideHiddenTypeclassParametersInFir() {
         val source =
             """

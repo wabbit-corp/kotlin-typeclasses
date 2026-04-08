@@ -319,6 +319,11 @@ internal class TypeclassFirCheckersExtension(
                 resolvedFunction = resolvedFunction,
                 containingFunction = declaration.symbol,
                 sharedState = sharedState,
+                containingFunctions =
+                    buildList {
+                        addAll(context.containingDeclarations.mapNotNull { symbol -> (symbol.fir as? FirFunction)?.symbol as? FirNamedFunctionSymbol })
+                        add(declaration.symbol)
+                    },
             )
         val substitutedType =
             substituteInferredTypes(
