@@ -2450,6 +2450,170 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun nullableWrapperLocalEvidenceDoesNotSatisfyNonNullTypeclassGoalsInFir() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            class WrappedStringShow : Show<String> {
+                override fun show(): String = "wrapped"
+            }
+
+            context(show: Show<String>)
+            fun choose(): String = show.show()
+
+            context(_: WrappedStringShow?)
+            fun run(): String = choose() // E nullable carriers must not count as Show<String>
+
+            fun main() {
+                println(run()) // E outer nullable context must also stay unsatisfied
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(
+                        messageRegex = "(?i)(no context argument|context parameter|type mismatch)",
+                    ),
+                ),
+        )
+    }
+
+    @Test fun projectedWrapperLocalEvidenceDoesNotSatisfyExactTypeclassGoalsInFir() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            class Carrier<A>(private val delegate: Show<A>) : Show<A> {
+                override fun show(): String = delegate.show()
+            }
+
+            object StringShow : Show<String> {
+                override fun show(): String = "wrapped"
+            }
+
+            context(show: Show<String>)
+            fun choose(): String = show.show()
+
+            context(_: Carrier<out String>)
+            fun run(): String = choose() // E projected carriers must not flatten to exact Show<String>
+
+            fun main() {
+                context(Carrier(StringShow)) {
+                    println(run())
+                }
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(
+                        messageRegex = "(?i)(no context argument|context parameter|type mismatch)",
+                    ),
+                ),
+        )
+    }
+
+    @Test fun nullableCarrierInstancesDoNotExportNonNullTypeclassEvidence() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            class Carrier<A>(private val delegate: Show<A>) : Show<A> {
+                override fun show(): String = delegate.show()
+            }
+
+            object StringShow : Show<String> {
+                override fun show(): String = "wrapped"
+            }
+
+            @Instance // E nullable carriers do not provide a real @Typeclass head
+            fun nullableCarrier(): Carrier<String>? = Carrier(StringShow)
+
+            fun main() {
+                println(summon<Show<String>>().show()) // E nullable carrier must not export Show<String>
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(
+                        messageRegex = "(?i)(no context argument|context parameter|cannot infer|type mismatch)",
+                    ),
+                ),
+        )
+    }
+
+    @Test fun projectedCarrierInstancesDoNotExportExactTypeclassEvidence() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            class Carrier<A>(private val delegate: Show<A>) : Show<A> {
+                override fun show(): String = delegate.show()
+            }
+
+            object StringShow : Show<String> {
+                override fun show(): String = "wrapped"
+            }
+
+            @Instance // E projected carriers do not provide a real @Typeclass head
+            fun projectedCarrier(): Carrier<out String> = Carrier(StringShow)
+
+            fun main() {
+                println(summon<Show<String>>().show()) // E projected carrier must not export exact Show<String>
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    ExpectedDiagnostic.Error(
+                        messageRegex = "(?i)(no context argument|context parameter|cannot infer|type mismatch)",
+                    ),
+                ),
+        )
+    }
+
     @Test fun wrapperLocalEvidenceCanInferSummonDrivenGenericCallsInFir() {
         val source =
             """

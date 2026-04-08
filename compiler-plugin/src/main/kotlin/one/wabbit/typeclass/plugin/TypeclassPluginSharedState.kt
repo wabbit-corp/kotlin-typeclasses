@@ -3097,6 +3097,10 @@ private fun ConeKotlinType.localEvidenceTypes(
         collected[visitKey] = lowered
     }
 
+    if (!lowered.canLiftExactEvidenceViaSupertypes()) {
+        return collected.values.toList()
+    }
+
     val substitutions =
         classSymbol.fir.typeParameters.zip(lowered.typeArguments).mapNotNull { (parameter, argument) ->
             argument.type?.let { type -> parameter.symbol to type }
@@ -3172,6 +3176,14 @@ private fun ConeKotlinType.expandProvidedTypes(
         }
     }
 
+    if (!lowered.canLiftExactEvidenceViaSupertypes()) {
+        return ProvidedTypeExpansion(
+            declaredTypes = emptyList(),
+            validTypes = validTypes.values.toList(),
+            invalidTypes = invalidTypes.values.toList(),
+        )
+    }
+
     val substitutions =
         classSymbol.fir.typeParameters.zip(lowered.typeArguments).mapNotNull { (parameter, argument) ->
             argument.type?.let { type -> parameter.symbol to type }
@@ -3201,3 +3213,9 @@ private fun ConeKotlinType.expandProvidedTypes(
         invalidTypes = invalidTypes.values.toList(),
     )
 }
+
+private fun ConeClassLikeType.canLiftExactEvidenceViaSupertypes(): Boolean =
+    !isMarkedNullable &&
+        typeArguments.all { argument ->
+            argument.kind == ProjectionKind.INVARIANT && argument.type != null
+        }

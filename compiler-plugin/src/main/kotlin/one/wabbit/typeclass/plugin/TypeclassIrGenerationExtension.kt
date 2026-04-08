@@ -6549,6 +6549,14 @@ private fun IrType.providedTypeExpansion(
         }
     }
 
+    if (!simpleType.canLiftExactEvidenceViaSupertypes()) {
+        return ProvidedTypeExpansion(
+            declaredTypes = emptyList(),
+            validTypes = validTypes.values.toList(),
+            invalidTypes = invalidTypes.values.toList(),
+        )
+    }
+
     val substitutions =
         classSymbol.owner.typeParameters.zip(simpleType.arguments).mapNotNull { (parameter, argument) ->
             argument.argumentTypeOrNull()?.let { type -> parameter.symbol to type }
@@ -7385,6 +7393,10 @@ private fun IrType.localEvidenceTypes(
         collected[visitKey] = currentModel
     }
 
+    if (!simpleType.canLiftExactEvidenceViaSupertypes()) {
+        return collected.values.toList()
+    }
+
     val substitutions =
         classSymbol.owner.typeParameters.zip(simpleType.arguments).mapNotNull { (parameter, argument) ->
             argument.argumentTypeOrNull()?.let { type -> parameter.symbol to type }
@@ -7398,6 +7410,16 @@ private fun IrType.localEvidenceTypes(
 
     return collected.values.toList()
 }
+
+private fun IrSimpleType.canLiftExactEvidenceViaSupertypes(): Boolean =
+    !isNullable() &&
+        arguments.all { argument ->
+            when (argument) {
+                is IrType -> true
+                is org.jetbrains.kotlin.ir.types.IrTypeProjection -> argument.variance == Variance.INVARIANT
+                is IrStarProjection -> false
+            }
+        }
 
 private fun IrFunction.renderIdentity(): String =
     (this as? IrSimpleFunction)?.let { function ->
