@@ -3777,10 +3777,10 @@ private class IrModuleScanner(
             return emptyList()
         }
         val planner = DirectTransportPlanner(pluginContext)
-        return requestSpecs.mapNotNull { (otherClassId, location) ->
+        return requestSpecs.flatMap { (otherClassId, location) ->
             val otherClass =
                 pluginContext.referenceClass(otherClassId)?.owner
-                    ?: return@mapNotNull null
+                    ?: return@flatMap emptyList()
             if (otherClass.typeParameters.isNotEmpty()) {
                 pluginContext.reportCannotDeriveWithTrace(
                     owner = this,
@@ -3789,7 +3789,7 @@ private class IrModuleScanner(
                     message = "@DeriveEquiv only supports monomorphic classes for now",
                     location = location,
                 )
-                return@mapNotNull null
+                return@flatMap emptyList()
             }
             val plans =
                 planner.planEquiv(symbol.defaultType, otherClass.symbol.defaultType)
@@ -3802,36 +3802,71 @@ private class IrModuleScanner(
                                 "Cannot derive Equiv between ${targetClassId.asString()} and ${otherClassId.asString()}",
                             location = location,
                         )
-                        return@mapNotNull null
+                        return@flatMap emptyList()
                     }
-            ResolvedRule(
-                rule =
-                    InstanceRule(
-                        id = "derived-equiv:${targetClassId.asString()}:${otherClassId.asString()}",
-                        typeParameters = emptyList(),
-                        providedType =
-                            TcType.Constructor(
-                                classifierId = EQUIV_CLASS_ID.asString(),
-                                arguments =
-                                    listOf(
-                                        TcType.Constructor(targetClassId.asString(), emptyList()),
-                                        TcType.Constructor(otherClassId.asString(), emptyList()),
-                                    ),
-                            ),
-                        prerequisiteTypes = emptyList(),
-                    ),
-                reference =
-                    RuleReference.DerivedEquiv(
-                        targetClass = this,
-                        otherClassId = otherClassId,
-                        sourceType = symbol.defaultType,
-                        targetType = otherClass.symbol.defaultType,
-                        forwardPlan = plans.first,
-                        backwardPlan = plans.second,
-                    ),
-                associatedOwner = targetClassId,
+            listOf(
+                buildDerivedEquivRule(
+                    owner = this,
+                    associatedOwner = targetClassId,
+                    otherClassId = otherClassId,
+                    sourceType = symbol.defaultType,
+                    targetType = otherClass.symbol.defaultType,
+                    forwardPlan = plans.first,
+                    backwardPlan = plans.second,
+                ),
+                buildDerivedEquivRule(
+                    owner = this,
+                    associatedOwner = targetClassId,
+                    otherClassId = otherClassId,
+                    sourceType = otherClass.symbol.defaultType,
+                    targetType = symbol.defaultType,
+                    forwardPlan = plans.second,
+                    backwardPlan = plans.first,
+                ),
             )
         }
+    }
+
+    private fun buildDerivedEquivRule(
+        owner: IrClass,
+        associatedOwner: ClassId,
+        otherClassId: ClassId,
+        sourceType: IrType,
+        targetType: IrType,
+        forwardPlan: TransportPlan,
+        backwardPlan: TransportPlan,
+    ): ResolvedRule {
+        val sourceClassId = sourceType.classOrNull?.owner?.classId
+            ?: error("Derived Equiv source type ${sourceType.render()} must be a class type")
+        val targetClassId = targetType.classOrNull?.owner?.classId
+            ?: error("Derived Equiv target type ${targetType.render()} must be a class type")
+        return ResolvedRule(
+            rule =
+                InstanceRule(
+                    id = "derived-equiv:${sourceClassId.asString()}:${targetClassId.asString()}",
+                    typeParameters = emptyList(),
+                    providedType =
+                        TcType.Constructor(
+                            classifierId = EQUIV_CLASS_ID.asString(),
+                            arguments =
+                                listOf(
+                                    TcType.Constructor(sourceClassId.asString(), emptyList()),
+                                    TcType.Constructor(targetClassId.asString(), emptyList()),
+                                ),
+                        ),
+                    prerequisiteTypes = emptyList(),
+                ),
+            reference =
+                RuleReference.DerivedEquiv(
+                    targetClass = owner,
+                    otherClassId = otherClassId,
+                    sourceType = sourceType,
+                    targetType = targetType,
+                    forwardPlan = forwardPlan,
+                    backwardPlan = backwardPlan,
+                ),
+            associatedOwner = associatedOwner,
+        )
     }
 
     private fun IrClass.toDeriveViaRules(): List<ResolvedRule> {

@@ -322,7 +322,10 @@ private class FirResolutionScanner(
                                     } == true
                             }
                         if (deriveEquivTargets.isNotEmpty()) {
-                            deriveEquivTargetIdsByOwner.getOrPut(classId.asString(), ::linkedSetOf) += deriveEquivTargets
+                            deriveEquivTargetIdsByOwner.recordSymmetricDeriveEquivTargetsInPlace(
+                                owner = classId.asString(),
+                                targets = deriveEquivTargets,
+                            )
                         }
                     }
                     if (declaration.source == null) {
@@ -1975,9 +1978,9 @@ private data class ResolutionIndex(
         deriveEquivTargetIdsByOwner[owner]
             ?: lazilyDiscoveredDeriveEquivTargetIdsByOwner[owner]
             ?: session?.let { activeSession ->
-                lazilyDiscoveredDeriveEquivTargetIdsByOwner.getOrPut(owner) {
-                    val classId = runCatching { ClassId.fromString(owner) }.getOrNull() ?: return@getOrPut emptySet()
-                    val symbol = activeSession.regularClassSymbolOrNull(classId) ?: return@getOrPut emptySet()
+                run {
+                    val classId = runCatching { ClassId.fromString(owner) }.getOrNull() ?: return@run emptySet()
+                    val symbol = activeSession.regularClassSymbolOrNull(classId) ?: return@run emptySet()
                     if (symbol.fir.source == null) {
                         val generatedMetadata = symbol.fir.generatedDerivedMetadata(activeSession)
                         if (generatedMetadata.isNotEmpty()) {
@@ -1985,14 +1988,21 @@ private data class ResolutionIndex(
                         }
                     }
                     if (symbol.fir.typeParameters.isNotEmpty()) {
-                        return@getOrPut emptySet()
+                        lazilyDiscoveredDeriveEquivTargetIdsByOwner.putIfAbsent(owner, emptySet())
+                        return@run emptySet()
                     }
-                    symbol.fir.deriveEquivRequests(activeSession).filterTo(linkedSetOf()) { otherClassId ->
-                        runCatching { ClassId.fromString(otherClassId) }.getOrNull()
-                            ?.let { otherClassIdValue ->
-                                activeSession.regularClassSymbolOrNull(otherClassIdValue)?.fir?.typeParameters?.isEmpty() == true
-                            } == true
-                    }
+                    val discoveredTargets =
+                        symbol.fir.deriveEquivRequests(activeSession).filterTo(linkedSetOf()) { otherClassId ->
+                            runCatching { ClassId.fromString(otherClassId) }.getOrNull()
+                                ?.let { otherClassIdValue ->
+                                    activeSession.regularClassSymbolOrNull(otherClassIdValue)?.fir?.typeParameters?.isEmpty() == true
+                                } == true
+                        }
+                    lazilyDiscoveredDeriveEquivTargetIdsByOwner.recordSymmetricDeriveEquivTargetsByCopy(
+                        owner = owner,
+                        targets = discoveredTargets,
+                    )
+                    lazilyDiscoveredDeriveEquivTargetIdsByOwner[owner].orEmpty()
                 }
             }
             ?: emptySet()
@@ -3219,3 +3229,23 @@ private fun ConeClassLikeType.canLiftExactEvidenceViaSupertypes(): Boolean =
         typeArguments.all { argument ->
             argument.kind == ProjectionKind.INVARIANT && argument.type != null
         }
+
+private fun MutableMap<String, MutableSet<String>>.recordSymmetricDeriveEquivTargetsInPlace(
+    owner: String,
+    targets: Iterable<String>,
+) {
+    for (target in targets) {
+        getOrPut(owner, ::linkedSetOf) += target
+        getOrPut(target, ::linkedSetOf) += owner
+    }
+}
+
+private fun MutableMap<String, Set<String>>.recordSymmetricDeriveEquivTargetsByCopy(
+    owner: String,
+    targets: Iterable<String>,
+) {
+    for (target in targets) {
+        this[owner] = this[owner].orEmpty() + target
+        this[target] = this[target].orEmpty() + owner
+    }
+}

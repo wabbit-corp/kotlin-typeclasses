@@ -1195,8 +1195,44 @@ class DeriveViaSpec : IntegrationTestSupport() {
     }
 
     // Exact intended semantics:
+    // - @DeriveEquiv(A::class) should make both Equiv<B, A> and Equiv<A, B> summonable in the same source module.
+    @Test fun deriveEquivPublishesBothOrientationsInSameModule() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveEquiv
+            import one.wabbit.typeclass.Equiv
+            import one.wabbit.typeclass.InternalTypeclassApi
+            import one.wabbit.typeclass.summon
+
+            data class A(val value: Int)
+
+            @DeriveEquiv(A::class)
+            data class B(val value: Int)
+
+            @OptIn(InternalTypeclassApi::class)
+            fun main() {
+                val forward = summon<Equiv<B, A>>()
+                val reverse = summon<Equiv<A, B>>()
+                println(forward.to(B(7)))
+                println(reverse.to(A(8)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                A(value=7)
+                B(value=8)
+                """.trimIndent(),
+        )
+    }
+
+    // Exact intended semantics:
     // - @DeriveEquiv(A::class) compiled in module B should export a summonable Equiv<B, A>,
-    //   even when A itself is declared in a different upstream module.
+    //   and the reverse Equiv<A, B>, even when A itself is declared in a different upstream module.
     @Test fun consumerModuleCanSummonDependencyDeriveEquivAcrossDependencyModules() {
         val moduleA =
             HarnessDependency(
@@ -1241,9 +1277,10 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
             @OptIn(InternalTypeclassApi::class)
             fun main() {
-                val equiv = summon<Equiv<B, A>>()
-                println(equiv.to(B(7)))
-                println(equiv.from(A(8)))
+                val forward = summon<Equiv<B, A>>()
+                val reverse = summon<Equiv<A, B>>()
+                println(forward.to(B(7)))
+                println(reverse.to(A(8)))
             }
             """.trimIndent()
 
