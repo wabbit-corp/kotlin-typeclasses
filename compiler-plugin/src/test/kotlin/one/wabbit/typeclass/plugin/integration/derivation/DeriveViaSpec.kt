@@ -182,6 +182,110 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
+    @Test fun deriveViaNullableReturnTransportEvaluatesUnderlyingMethodOnlyOnce() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface MaybeValue<A> {
+                fun current(): A?
+            }
+
+            @JvmInline
+            value class Via(val value: Int)
+
+            @Instance
+            object ViaMaybeValue : MaybeValue<Via> {
+                var calls: Int = 0
+
+                override fun current(): Via? {
+                    calls += 1
+                    return Via(7)
+                }
+            }
+
+            @JvmInline
+            @DeriveVia(MaybeValue::class, Via::class)
+            value class UserId(val value: Int)
+
+            context(maybeValue: MaybeValue<A>)
+            fun <A> current(): A? = maybeValue.current()
+
+            fun main() {
+                println(current<UserId>())
+                println(ViaMaybeValue.calls)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                UserId(value=7)
+                1
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun deriveViaSumReturnTransportEvaluatesUnderlyingMethodOnlyOnce() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Picker<A> {
+                fun pick(): A
+            }
+
+            sealed interface Via {
+                data class Num(val value: Int) : Via
+                data class Txt(val value: String) : Via
+            }
+
+            @Instance
+            object ViaPicker : Picker<Via> {
+                var calls: Int = 0
+
+                override fun pick(): Via {
+                    calls += 1
+                    return Via.Num(5)
+                }
+            }
+
+            @DeriveVia(Picker::class, Via::class)
+            sealed interface User {
+                data class Num(val value: Int) : User
+                data class Txt(val value: String) : User
+            }
+
+            context(picker: Picker<A>)
+            fun <A> pick(): A = picker.pick()
+
+            fun main() {
+                println(pick<User>())
+                println(ViaPicker.calls)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                Num(value=5)
+                1
+                """.trimIndent(),
+        )
+    }
+
     // Exact intended semantics:
     // - DeriveVia must not accept an empty path
     // - the annotation must name at least one via-type waypoint or pinned Iso segment

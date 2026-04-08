@@ -553,19 +553,20 @@ internal fun IrBuilderWithScope.buildTransportExpression(
             current
         }
 
-        is TransportPlan.Nullable ->
+        is TransportPlan.Nullable -> {
+            val stableValue = stabilizeTransportValueIfNeeded(value, "deriveViaNullableValue")
             irIfThenElse(
                 type = plan.targetType,
                 condition =
                     irCall(pluginContext.irBuiltIns.eqeqSymbol).apply {
-                        putValueArgument(0, value)
+                        putValueArgument(0, stableValue)
                         putValueArgument(1, irNull())
                     },
                 thenPart = irNull(),
                 elsePart =
                     buildTransportExpression(
                         plan = plan.inner,
-                        value = irAs(value, plan.inner.sourceType),
+                        value = irAs(stableValue, plan.inner.sourceType),
                         pluginContext = pluginContext,
                         lambdaParent = lambdaParent,
                     ).let { expression ->
@@ -576,6 +577,7 @@ internal fun IrBuilderWithScope.buildTransportExpression(
                         }
                     },
             )
+        }
 
         is TransportPlan.ValueUnwrap ->
             buildTransportExpression(
@@ -632,6 +634,7 @@ internal fun IrBuilderWithScope.buildTransportExpression(
             }
 
         is TransportPlan.Sum -> {
+            val stableValue = stabilizeTransportValueIfNeeded(value, "deriveViaSumValue")
             var elseBranch: IrExpression =
                 irTypeclassInternalError(
                     pluginContext = pluginContext,
@@ -645,11 +648,11 @@ internal fun IrBuilderWithScope.buildTransportExpression(
                 elseBranch =
                     irIfThenElse(
                         type = plan.targetType,
-                        condition = irIs(value, mapping.sourceCase.symbol.defaultType),
+                        condition = irIs(stableValue, mapping.sourceCase.symbol.defaultType),
                         thenPart =
                             buildTransportExpression(
                                 plan = mapping.plan,
-                                value = irAs(value, mapping.sourceCase.symbol.defaultType),
+                                value = irAs(stableValue, mapping.sourceCase.symbol.defaultType),
                                 pluginContext = pluginContext,
                                 lambdaParent = lambdaParent,
                             ),
@@ -732,6 +735,16 @@ internal fun IrBuilderWithScope.buildTransportExpression(
                 dispatchReceiver = irGetObject(plan.isoObject.symbol)
                 putValueArgument(0, irAs(value, plan.sourceType))
             }
+    }
+
+private fun IrBuilderWithScope.stabilizeTransportValueIfNeeded(
+    value: IrExpression,
+    nameHint: String,
+): IrExpression =
+    if (this is IrStatementsBuilder<*>) {
+        irGet(irTemporary(value, nameHint = nameHint))
+    } else {
+        value
     }
 
 internal fun IrStatementsBuilder<*>.buildGeneratedEquivExpression(
