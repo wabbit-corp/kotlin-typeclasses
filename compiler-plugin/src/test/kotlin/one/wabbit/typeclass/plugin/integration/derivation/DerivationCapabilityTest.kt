@@ -1384,6 +1384,53 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun invalidDeriverReturnDiagnosticsDoNotSuppressLaterCompanionMethods() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.EnumTypeclassMetadata
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+
+            @Typeclass
+            interface Eq<A> {
+                fun eqv(left: A, right: A): Boolean
+            }
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : TypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName
+                        }
+
+                    override fun deriveSum(metadata: SumTypeclassMetadata): Any = // sum@E:TC_CANNOT_DERIVE
+                        object : Eq<Any?> {
+                            override fun eqv(left: Any?, right: Any?): Boolean = true
+                        }
+
+                    override fun deriveEnum(metadata: EnumTypeclassMetadata): Any = 42 // enum@E:TC_CANNOT_DERIVE
+                }
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                mapOf(
+                    "sum" to cannotDeriveWrongDeriverReturnType("deriveSum", "Show", "Eq"),
+                    "enum" to cannotDeriveWrongDeriverReturnType("deriveEnum", "Show"),
+                ),
+        )
+    }
+
+    @Test
     fun enumDerivationRequiresExplicitDeriveEnumOverride() {
         val source =
             """

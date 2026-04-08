@@ -628,7 +628,7 @@ internal class TypeclassFirCheckersExtension(
                 .mapNotNull { contract ->
                     companion.symbol.resolveDeriveMethod(contract, session)?.let { function -> contract.methodName to function }
                 }
-        deriveMethods.forEach { (deriveMethodName, function) ->
+        for ((deriveMethodName, function) in deriveMethods) {
                 val declaredReturnConstructors =
                     listOf(function.returnTypeRef.coneType)
                         .expandProvidedTypes(session, emptyMap(), sharedState.configuration)
@@ -649,9 +649,9 @@ internal class TypeclassFirCheckersExtension(
                             ),
                         )
                     }
-                    return@forEach
+                    continue
                 }
-                function.knownDeriverReturnExpressions().forEach { expression ->
+                for (expression in function.knownDeriverReturnExpressions()) {
                     val knownTypeclassConstructors =
                         expression.knownReturnedTypeclassConstructors(session, sharedState.configuration)
                     if (knownTypeclassConstructors.isEmpty()) {
@@ -662,10 +662,10 @@ internal class TypeclassFirCheckersExtension(
                                 typeclassName = typeclassId.shortClassName.asString(),
                             ),
                         )
-                        return
+                        break
                     }
                     if (typeclassId.asString() in knownTypeclassConstructors) {
-                        return@forEach
+                        continue
                     }
                     reportCannotDerive(
                         function,
@@ -678,7 +678,7 @@ internal class TypeclassFirCheckersExtension(
                                 },
                         ),
                     )
-                    return
+                    break
                 }
             }
     }
