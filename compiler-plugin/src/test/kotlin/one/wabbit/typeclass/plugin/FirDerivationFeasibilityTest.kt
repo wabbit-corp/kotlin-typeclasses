@@ -24,7 +24,7 @@ import kotlin.test.assertTrue
 
 class FirDerivationFeasibilityTest {
     @Test
-    fun `greedy fallback assignment preserves multiplicity for equal sources`() {
+    fun `unique assignment preserves multiplicity for equal sources`() {
         val sources =
             listOf(
                 CollapsingField(identity = "first", kind = "dup"),
@@ -32,31 +32,75 @@ class FirDerivationFeasibilityTest {
             )
         val targets = listOf("first", "second")
 
-        assertTrue(
-            greedyUniqueAssignmentPreservingMultiplicity(
+        val assignments =
+            uniquePerfectAssignmentPreservingMultiplicity(
                 sources = sources,
                 targets = targets,
             ) { source, target ->
-                source.identity == target
+                source.takeIf { it.identity == target }
+            }
+
+        assertTrue(assignments != null)
+        assertEquals(listOf("first", "second"), assignments.map { it.value.identity })
+    }
+
+    @Test
+    fun `unique assignment finds globally forced product-style matching`() {
+        val assignments =
+            uniquePerfectAssignmentPreservingMultiplicity(
+                sources = listOf("string", "int"),
+                targets = listOf("any", "string"),
+            ) { source, target ->
+                when (target) {
+                    "any" -> source
+                    "string" -> source.takeIf { it == "string" }
+                    else -> null
+                }
+            }
+
+        assertEquals(
+            listOf("int", "string"),
+            assignments?.sortedBy { it.targetIndex }?.map { it.value },
+        )
+    }
+
+    @Test
+    fun `unique assignment finds globally forced sum-style matching`() {
+        val assignments =
+            uniquePerfectAssignmentPreservingMultiplicity(
+                sources = listOf("textCase", "intCase"),
+                targets = listOf("wideTarget", "textTarget"),
+            ) { source, target ->
+                when (target) {
+                    "wideTarget" -> source
+                    "textTarget" -> source.takeIf { it == "textCase" }
+                    else -> null
+                }
+            }
+
+        assertEquals(
+            mapOf("wideTarget" to "intCase", "textTarget" to "textCase"),
+            assignments?.associate { it.targetIndex to it.value }?.mapKeys { (targetIndex, _) ->
+                listOf("wideTarget", "textTarget")[targetIndex]
             },
         )
     }
 
     @Test
-    fun `greedy fallback assignment still rejects ambiguous matches`() {
-        val sources =
-            listOf(
-                CollapsingField(identity = "first", kind = "dup"),
-                CollapsingField(identity = "second", kind = "dup"),
-            )
+    fun `unique assignment rejects ambiguous positional matches`() {
+        val sources = listOf("left", "count", "right")
 
         assertFalse(
-            greedyUniqueAssignmentPreservingMultiplicity(
+            uniquePerfectAssignmentPreservingMultiplicity(
                 sources = sources,
-                targets = listOf("either"),
-            ) { _, _ ->
-                true
-            },
+                targets = listOf("firstString", "int", "secondString"),
+            ) { source, target ->
+                when (target) {
+                    "firstString", "secondString" -> source.takeIf { it != "count" }
+                    "int" -> source.takeIf { it == "count" }
+                    else -> null
+                }
+            } != null,
         )
     }
 

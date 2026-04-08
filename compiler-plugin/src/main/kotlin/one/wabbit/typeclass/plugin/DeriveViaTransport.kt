@@ -440,40 +440,32 @@ internal class DirectTransportPlanner(
             return null
         }
 
-        val positionalAssignments =
-            targetNonUnit.zip(sourceNonUnit).map { (targetField, sourceField) ->
-                val plan = synthesize(sourceField.type, targetField.type, visiting) ?: return@map null
-                ProductAssignment(targetField, sourceField, plan)
-            }
         val normalizedAssignments =
-            if (positionalAssignments.all { assignment -> assignment != null }) {
-                positionalAssignments.filterNotNull()
+            if (sourceClass.classIdOrFail == targetClass.classIdOrFail) {
+                val sourceBySymbol = sourceNonUnit.associateBy { it.property.symbol }
+                targetNonUnit.mapIndexedNotNull { targetIndex, targetField ->
+                    val sourceField = sourceBySymbol[targetField.property.symbol] ?: return null
+                    val plan = synthesize(sourceField.type, targetField.type, visiting) ?: return null
+                    UniquePerfectAssignment(
+                        sourceIndex = sourceNonUnit.indexOf(sourceField),
+                        targetIndex = targetIndex,
+                        value = ProductAssignment(targetField, sourceField, plan),
+                    )
+                }
             } else {
-                val allMatches =
-                    targetNonUnit.map { targetField ->
-                        sourceNonUnit.mapNotNull { sourceField ->
-                            val plan = synthesize(sourceField.type, targetField.type, visiting) ?: return@mapNotNull null
-                            ProductAssignment(targetField, sourceField, plan)
-                        }
-                    }
-                if (allMatches.any(List<ProductAssignment>::isEmpty)) {
-                    return null
-                }
-                val remaining = sourceNonUnit.toMutableSet()
-                val assignments = mutableListOf<ProductAssignment>()
-                for (choices in allMatches) {
-                    val viable = choices.filter { choice -> choice.sourceField in remaining }
-                    if (viable.size != 1) {
-                        return null
-                    }
-                    val selected = viable.single()
-                    remaining -= selected.sourceField!!
-                    assignments += selected
-                }
-                assignments
+                uniquePerfectAssignmentPreservingMultiplicity(
+                    sources = sourceNonUnit,
+                    targets = targetNonUnit,
+                ) { sourceField, targetField ->
+                    val plan = synthesize(sourceField.type, targetField.type, visiting) ?: return@uniquePerfectAssignmentPreservingMultiplicity null
+                    ProductAssignment(targetField, sourceField, plan)
+                } ?: return null
             }
 
-        val assignmentsByTarget = normalizedAssignments.associateBy { assignment -> assignment.targetField.property.symbol }
+        val assignmentsByTarget =
+            normalizedAssignments.associate { assignment ->
+                assignment.value.targetField.property.symbol to assignment.value
+            }
         val finalAssignments =
             targetInfo.fields.map { targetField ->
                 if (targetField.isUnitLike) {
@@ -506,21 +498,23 @@ internal class DirectTransportPlanner(
         if (sourceCases.size != targetCases.size) {
             return null
         }
-        val remainingTargets = targetCases.toMutableSet()
-        val mappings = mutableListOf<SumCaseMapping>()
-        for (sourceCase in sourceCases) {
-            val viable =
-                remainingTargets.mapNotNull { targetCase ->
-                    val plan = synthesize(sourceCase.symbol.defaultType, targetCase.symbol.defaultType, visiting) ?: return@mapNotNull null
+        val mappings =
+            if (sourceClass.classIdOrFail == targetClass.classIdOrFail) {
+                val sourceCasesById = sourceCases.associateBy { it.classIdOrFail }
+                targetCases.map { targetCase ->
+                    val sourceCase = sourceCasesById[targetCase.classIdOrFail] ?: return null
+                    val plan = synthesize(sourceCase.symbol.defaultType, targetCase.symbol.defaultType, visiting) ?: return null
                     SumCaseMapping(sourceCase = sourceCase, targetCase = targetCase, plan = plan)
                 }
-            if (viable.size != 1) {
-                return null
+            } else {
+                uniquePerfectAssignmentPreservingMultiplicity(
+                    sources = sourceCases,
+                    targets = targetCases,
+                ) { sourceCase, targetCase ->
+                    val plan = synthesize(sourceCase.symbol.defaultType, targetCase.symbol.defaultType, visiting) ?: return@uniquePerfectAssignmentPreservingMultiplicity null
+                    SumCaseMapping(sourceCase = sourceCase, targetCase = targetCase, plan = plan)
+                }?.sortedBy { it.sourceIndex }?.map { it.value } ?: return null
             }
-            val chosen = viable.single()
-            remainingTargets -= chosen.targetCase
-            mappings += chosen
-        }
         return TransportPlan.Sum(sourceType, targetType, mappings)
     }
 

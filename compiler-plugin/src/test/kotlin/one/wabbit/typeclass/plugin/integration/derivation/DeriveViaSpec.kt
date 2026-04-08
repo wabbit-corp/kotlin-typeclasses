@@ -1486,15 +1486,12 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
-    @Test fun deriveEquivSupportsRepeatedSiblingTransportPairs() {
+    @Test fun deriveEquivRejectsRepeatedSiblingTransportPairsAsAmbiguous() {
         val source =
             """
             package demo
 
             import one.wabbit.typeclass.DeriveEquiv
-            import one.wabbit.typeclass.Equiv
-            import one.wabbit.typeclass.InternalTypeclassApi
-            import one.wabbit.typeclass.summon
 
             @JvmInline
             value class A(val value: Int)
@@ -1502,26 +1499,18 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             value class B(val value: Int)
 
-            @DeriveEquiv(Right::class)
+            @DeriveEquiv(Right::class) // E:TC_CANNOT_DERIVE repeated sibling fields make the product transport ambiguous
             data class Left(val first: A, val second: A)
 
             data class Right(val first: B, val second: B)
-
-            @OptIn(InternalTypeclassApi::class)
-            fun main() {
-                val equiv = summon<Equiv<Left, Right>>()
-                println(equiv.to(Left(A(1), A(2))))
-                println(equiv.from(Right(B(3), B(4))))
-            }
             """.trimIndent()
 
-        assertCompilesAndRuns(
+        assertDoesNotCompile(
             source = source,
-            expectedStdout =
-                """
-                Right(first=B(value=1), second=B(value=2))
-                Left(first=A(value=3), second=A(value=4))
-                """.trimIndent(),
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("equiv", "left", "right"),
+                ),
         )
     }
 
@@ -3347,10 +3336,10 @@ class DeriveViaSpec : IntegrationTestSupport() {
     }
 
     // Exact intended semantics:
-    // - products are matched positionally first
-    // - repeated field types do not create ambiguity when the positional match already succeeds
-    // - unambiguous permutation is only needed when positional alignment fails
-    @Test fun prefersPositionalProductMatchEvenWhenRepeatedFieldTypesExist() {
+    // - product transport requires one unique global field bijection
+    // - repeated field types remain ambiguous even when declaration order happens to line up
+    // - positional alignment is an implementation detail, not a semantic tie-breaker
+    @Test fun rejectsStructuralDeriveEquivWhenPositionalProductMatchIsStillAmbiguous() {
         val source =
             """
             package demo
@@ -3372,21 +3361,20 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 override fun show(value: RightShape): String = "${'$'}{value.left}|${'$'}{value.count}|${'$'}{value.right}"
             }
 
-            @DeriveEquiv(RightShape::class)
-            @DeriveVia(Show::class, RightShape::class)
+            @DeriveEquiv(RightShape::class) // E:TC_CANNOT_DERIVE repeated field types keep the product transport ambiguous
+            @DeriveVia(Show::class, RightShape::class) // E:TC_CANNOT_DERIVE repeated field types keep the transport path ambiguous
             data class LeftShape(val first: String, val amount: Int, val second: String)
 
             context(show: Show<A>)
             fun <A> render(value: A): String = show.show(value)
-
-            fun main() {
-                println(render(LeftShape("x", 1, "y")))
-            }
             """.trimIndent()
 
-        assertCompilesAndRuns(
+        assertDoesNotCompile(
             source = source,
-            expectedStdout = "x|1|y",
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("equiv", "leftshape", "rightshape"),
+                ),
         )
     }
 

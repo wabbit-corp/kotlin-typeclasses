@@ -295,20 +295,18 @@ internal class FirDirectTransportPlanner(
             return false
         }
 
-        val positionalWorks =
-            targetNonUnit.zip(sourceNonUnit).all { (targetField, sourceField) ->
+        if (sourceClass.symbol.classId == targetClass.symbol.classId) {
+            return targetNonUnit.zip(sourceNonUnit).all { (targetField, sourceField) ->
                 canTransport(sourceField.type, targetField.type, visiting)
             }
-        if (positionalWorks) {
-            return true
         }
 
-        return greedyUniqueAssignmentPreservingMultiplicity(
+        return uniquePerfectAssignmentPreservingMultiplicity(
             sources = sourceNonUnit,
             targets = targetNonUnit,
         ) { sourceField, targetField ->
-            canTransport(sourceField.type, targetField.type, visiting)
-        }
+            sourceField.takeIf { canTransport(sourceField.type, targetField.type, visiting) }
+        } != null
     }
 
     private fun canTransportSum(
@@ -327,19 +325,24 @@ internal class FirDirectTransportPlanner(
             return false
         }
 
-        val remainingTargets = targetCases.toMutableSet()
-        for (sourceCase in sourceCases) {
-            val sourceCaseType = TcType.Constructor(sourceCase.classId.asString(), emptyList())
-            val viable =
-                remainingTargets.filter { targetCase ->
-                    canTransport(sourceCaseType, TcType.Constructor(targetCase.classId.asString(), emptyList()), visiting)
-                }
-            if (viable.size != 1) {
-                return false
+        if (sourceClass.symbol.classId == targetClass.symbol.classId) {
+            val sourceCasesById = sourceCases.associateBy { it.classId }
+            return targetCases.all { targetCase ->
+                val sourceCase = sourceCasesById[targetCase.classId] ?: return false
+                val sourceCaseType = TcType.Constructor(sourceCase.classId.asString(), emptyList())
+                val targetCaseType = TcType.Constructor(targetCase.classId.asString(), emptyList())
+                canTransport(sourceCaseType, targetCaseType, visiting)
             }
-            remainingTargets -= viable.single()
         }
-        return true
+
+        return uniquePerfectAssignmentPreservingMultiplicity(
+            sources = sourceCases,
+            targets = targetCases,
+        ) { sourceCase, targetCase ->
+            val sourceCaseType = TcType.Constructor(sourceCase.classId.asString(), emptyList())
+            val targetCaseType = TcType.Constructor(targetCase.classId.asString(), emptyList())
+            sourceCase.takeIf { canTransport(sourceCaseType, targetCaseType, visiting) }
+        } != null
     }
 }
 
@@ -1310,22 +1313,6 @@ private data class FirTransparentFieldInfo(
     val type: TcType,
     val isUnitLike: Boolean,
 )
-
-internal fun <Source, Target> greedyUniqueAssignmentPreservingMultiplicity(
-    sources: List<Source>,
-    targets: List<Target>,
-    compatible: (Source, Target) -> Boolean,
-): Boolean {
-    val remaining = sources.toMutableList()
-    for (target in targets) {
-        val viableIndices = remaining.indices.filter { index -> compatible(remaining[index], target) }
-        if (viableIndices.size != 1) {
-            return false
-        }
-        remaining.removeAt(viableIndices.single())
-    }
-    return true
-}
 
 private data class FirFunctionTypeInfo(
     val kind: String,
