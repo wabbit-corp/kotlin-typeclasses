@@ -170,7 +170,7 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun reportsMissingProvidedTypeclassBeforeNonTypeclassSupertypeExpansionNoise() {
+    @Test fun reportsNonTypeclassIntermediateSupertypesBeforeMissingTypeclassHeadFallback() {
         val source =
             """
             package demo
@@ -191,11 +191,11 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             }
             """.trimIndent()
 
-        assertDoesNotCompile(
+            assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
-                    expectedTypeclassDiagnostic(invalidInstanceMustProvideTypeclassType()),
+                    expectedTypeclassDiagnostic(invalidInstanceNonTypeclassSupertypes()),
                 ),
         )
     }

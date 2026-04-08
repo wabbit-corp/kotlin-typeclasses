@@ -330,7 +330,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun reportsMissingProvidedTypeclassWhenOnlyNonTypeclassIntermediateSupertypesRemain() {
+    @Test fun reportsNonTypeclassIntermediateSupertypesWhenOnlyInvalidExpandedHeadsRemain() {
         val source =
             """
             package demo
@@ -356,7 +356,7 @@ class TypeclassContractTest : IntegrationTestSupport() {
             expectedDiagnostics =
                 listOf(
                     expectedExactInvalidInstanceDecl(
-                        why = "@Instance declarations must provide a @Typeclass type.",
+                        why = "non-@Typeclass intermediate supertypes cannot provide inherited typeclass instances.",
                     ),
                 ),
         )
