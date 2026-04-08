@@ -426,6 +426,7 @@ private class TypeclassIrCallTransformer(
                                 visibleTypeParameters = visibleTypeParameters,
                                 pluginContext = pluginContext,
                                 configuration = configuration,
+                                classInfoById = ruleIndex.classInfoById,
                             ),
                     )
                 },
@@ -764,7 +765,18 @@ private class TypeclassIrCallTransformer(
             ?: return invalidBuiltinProofExpression(expressionType, "NotSame proof requires two type arguments.", diagnosticLocation)
         val right = plan.appliedTypeArguments.getOrNull(1)
             ?: return invalidBuiltinProofExpression(expressionType, "NotSame proof requires two type arguments.", diagnosticLocation)
-        if (!irCanProveNotSame(left, right, IrBuiltinGoalExactContext(visibleTypeParameters, pluginContext, configuration))) {
+        if (
+            !irCanProveNotSame(
+                left,
+                right,
+                IrBuiltinGoalExactContext(
+                    visibleTypeParameters = visibleTypeParameters,
+                    pluginContext = pluginContext,
+                    configuration = configuration,
+                    classInfoById = ruleIndex.classInfoById,
+                ),
+            )
+        ) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
                 message = "NotSame proof could not prove ${left.render()} and ${right.render()} differ.",
@@ -809,7 +821,16 @@ private class TypeclassIrCallTransformer(
         val subType = modelToIrType(subModel, visibleTypeParameters, pluginContext)
         val superType = modelToIrType(superModel, visibleTypeParameters, pluginContext)
         if (!canProveSubtype(subType, superType, pluginContext) ||
-            !irCanProveNotSame(subModel, superModel, IrBuiltinGoalExactContext(visibleTypeParameters, pluginContext, configuration))
+            !irCanProveNotSame(
+                subModel,
+                superModel,
+                IrBuiltinGoalExactContext(
+                    visibleTypeParameters = visibleTypeParameters,
+                    pluginContext = pluginContext,
+                    configuration = configuration,
+                    classInfoById = ruleIndex.classInfoById,
+                ),
+            )
         ) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
@@ -2511,7 +2532,7 @@ private class IrRuleIndex private constructor(
     private val rulesById: Map<String, ResolvedRule>,
     private val topLevelRules: List<ResolvedRule>,
     private val associatedRulesByOwner: Map<ClassId, List<ResolvedRule>>,
-    private val classInfoById: MutableMap<String, VisibleClassHierarchyInfo>,
+    val classInfoById: Map<String, VisibleClassHierarchyInfo>,
 ) {
     private val lazilyDiscoveredAssociatedRulesByOwner: MutableMap<ClassId, List<ResolvedRule>> = linkedMapOf()
     private val lazilyDiscoveredRulesById: MutableMap<String, ResolvedRule> = linkedMapOf()
@@ -5144,6 +5165,12 @@ private fun canProveSubtype(
     pluginContext: IrPluginContext,
 ): Boolean = subType.isSubtypeOf(superType, JvmIrTypeSystemContext(pluginContext.irBuiltIns))
 
+private enum class IrTypeRelationKnowledge {
+    PROVABLE,
+    DISPROVABLE,
+    UNKNOWN,
+}
+
 private fun irCanProveNotSame(
     left: TcType,
     right: TcType,
@@ -5156,15 +5183,10 @@ private fun irCanProveNotSame(
         return true
     }
     exactBuiltinGoalContext ?: return false
-    val leftType =
-        runCatching { modelToIrType(left, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
-            ?: return false
-    val rightType =
-        runCatching { modelToIrType(right, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
-            ?: return false
-    val leftSubtypeRight = canProveSubtype(leftType, rightType, exactBuiltinGoalContext.pluginContext)
-    val rightSubtypeLeft = canProveSubtype(rightType, leftType, exactBuiltinGoalContext.pluginContext)
-    return leftSubtypeRight != rightSubtypeLeft
+    val leftSubtypeRight = exactBuiltinGoalContext.exactSubtypeKnowledge(left, right)
+    val rightSubtypeLeft = exactBuiltinGoalContext.exactSubtypeKnowledge(right, left)
+    return leftSubtypeRight == IrTypeRelationKnowledge.DISPROVABLE ||
+        rightSubtypeLeft == IrTypeRelationKnowledge.DISPROVABLE
 }
 
 private fun irBuiltinSubtypeFeasibility(
@@ -5239,6 +5261,144 @@ private fun irBuiltinStrictSubtypeFeasibility(
     } else {
         BuiltinGoalFeasibility.IMPOSSIBLE
     }
+}
+
+private fun IrBuiltinGoalExactContext.exactSubtypeKnowledge(
+    sub: TcType,
+    sup: TcType,
+    visiting: MutableSet<String> = linkedSetOf(),
+): IrTypeRelationKnowledge {
+    if (sub.normalizedKey() == sup.normalizedKey()) {
+        return IrTypeRelationKnowledge.PROVABLE
+    }
+    when (sub) {
+        TcType.StarProjection -> return IrTypeRelationKnowledge.UNKNOWN
+        is TcType.Projected -> return IrTypeRelationKnowledge.UNKNOWN
+        is TcType.Variable -> {
+            val visitKey = "ir-knowledge-sub:${sub.id}->${sup.normalizedKey()}"
+            if (!visiting.add(visitKey)) {
+                return IrTypeRelationKnowledge.UNKNOWN
+            }
+            try {
+                val symbol = visibleTypeParameters.byId[sub.id] ?: return IrTypeRelationKnowledge.UNKNOWN
+                val bounds =
+                    symbol.owner.superTypes.mapNotNull { boundType ->
+                        irTypeToModel(boundType, visibleTypeParameters.bySymbol)
+                    }
+                if (bounds.any { bound -> exactSubtypeKnowledge(bound, sup, visiting) == IrTypeRelationKnowledge.PROVABLE }) {
+                    return IrTypeRelationKnowledge.PROVABLE
+                }
+                return IrTypeRelationKnowledge.UNKNOWN
+            } finally {
+                visiting.remove(visitKey)
+            }
+        }
+
+        is TcType.Constructor -> Unit
+    }
+
+    when (sup) {
+        TcType.StarProjection -> return IrTypeRelationKnowledge.UNKNOWN
+        is TcType.Projected -> return IrTypeRelationKnowledge.UNKNOWN
+        is TcType.Variable -> {
+            val visitKey = "ir-knowledge-sup:${sub.normalizedKey()}->${sup.id}"
+            if (!visiting.add(visitKey)) {
+                return IrTypeRelationKnowledge.UNKNOWN
+            }
+            try {
+                val symbol = visibleTypeParameters.byId[sup.id] ?: return IrTypeRelationKnowledge.UNKNOWN
+                val bounds =
+                    symbol.owner.superTypes.mapNotNull { boundType ->
+                        irTypeToModel(boundType, visibleTypeParameters.bySymbol)
+                    }
+                if (bounds.isEmpty()) {
+                    return IrTypeRelationKnowledge.UNKNOWN
+                }
+                bounds.forEach { bound ->
+                    if (exactSubtypeKnowledge(sub, bound, visiting) == IrTypeRelationKnowledge.DISPROVABLE) {
+                        return IrTypeRelationKnowledge.DISPROVABLE
+                    }
+                }
+                return IrTypeRelationKnowledge.UNKNOWN
+            } finally {
+                visiting.remove(visitKey)
+            }
+        }
+
+        is TcType.Constructor -> Unit
+    }
+
+    val subConstructor = sub as? TcType.Constructor ?: return IrTypeRelationKnowledge.UNKNOWN
+    val supConstructor = sup as? TcType.Constructor ?: return IrTypeRelationKnowledge.UNKNOWN
+    if (subConstructor.isNullable && !supConstructor.isNullable) {
+        return IrTypeRelationKnowledge.DISPROVABLE
+    }
+    if (subConstructor.classifierId == supConstructor.classifierId) {
+        return exactSameClassifierSubtypeKnowledge(subConstructor, supConstructor, visiting)
+    }
+    if (sub.referencedVariableIds().isNotEmpty() || sup.referencedVariableIds().isNotEmpty()) {
+        val subtype =
+            runCatching {
+                val subType = modelToIrType(sub, visibleTypeParameters, pluginContext)
+                val supType = modelToIrType(sup, visibleTypeParameters, pluginContext)
+                canProveSubtype(subType, supType, pluginContext)
+            }.getOrDefault(false)
+        return if (subtype) IrTypeRelationKnowledge.PROVABLE else IrTypeRelationKnowledge.UNKNOWN
+    }
+    val subType =
+        runCatching { modelToIrType(sub, visibleTypeParameters, pluginContext) }.getOrNull()
+            ?: return IrTypeRelationKnowledge.UNKNOWN
+    val supType =
+        runCatching { modelToIrType(sup, visibleTypeParameters, pluginContext) }.getOrNull()
+            ?: return IrTypeRelationKnowledge.UNKNOWN
+    return if (canProveSubtype(subType, supType, pluginContext)) {
+        IrTypeRelationKnowledge.PROVABLE
+    } else {
+        IrTypeRelationKnowledge.DISPROVABLE
+    }
+}
+
+private fun IrBuiltinGoalExactContext.exactSameClassifierSubtypeKnowledge(
+    sub: TcType.Constructor,
+    sup: TcType.Constructor,
+    visiting: MutableSet<String>,
+): IrTypeRelationKnowledge {
+    val classInfo = classInfoById[sub.classifierId] ?: return IrTypeRelationKnowledge.UNKNOWN
+    if (sub.arguments.size != sup.arguments.size) {
+        return IrTypeRelationKnowledge.DISPROVABLE
+    }
+    val variances = classInfo.typeParameterVariances
+    if (variances.size != sub.arguments.size) {
+        return IrTypeRelationKnowledge.UNKNOWN
+    }
+    var sawUnknown = false
+    sub.arguments.indices.forEach { index ->
+        val subArgument = sub.arguments[index]
+        val superArgument = sup.arguments[index]
+        if (superArgument === TcType.StarProjection) {
+            sawUnknown = true
+            return@forEach
+        }
+        val variance = variances.getOrNull(index) ?: Variance.INVARIANT
+        val argumentKnowledge =
+            when {
+                subArgument is TcType.Projected || superArgument is TcType.Projected -> IrTypeRelationKnowledge.UNKNOWN
+                variance == Variance.OUT_VARIANCE -> exactSubtypeKnowledge(subArgument, superArgument, visiting)
+                variance == Variance.IN_VARIANCE -> exactSubtypeKnowledge(superArgument, subArgument, visiting)
+                else ->
+                    if (subArgument.normalizedKey() == superArgument.normalizedKey()) {
+                        IrTypeRelationKnowledge.PROVABLE
+                    } else {
+                        IrTypeRelationKnowledge.DISPROVABLE
+                    }
+            }
+        when (argumentKnowledge) {
+            IrTypeRelationKnowledge.PROVABLE -> Unit
+            IrTypeRelationKnowledge.UNKNOWN -> sawUnknown = true
+            IrTypeRelationKnowledge.DISPROVABLE -> return IrTypeRelationKnowledge.DISPROVABLE
+        }
+    }
+    return if (sawUnknown) IrTypeRelationKnowledge.UNKNOWN else IrTypeRelationKnowledge.PROVABLE
 }
 
 private fun irBuiltinIsTypeclassInstanceFeasibility(
@@ -5910,6 +6070,7 @@ private data class IrBuiltinGoalExactContext(
     val visibleTypeParameters: VisibleTypeParameters,
     val pluginContext: IrPluginContext,
     val configuration: TypeclassConfiguration,
+    val classInfoById: Map<String, VisibleClassHierarchyInfo>,
 )
 
 private data class LocalTypeclassContext(

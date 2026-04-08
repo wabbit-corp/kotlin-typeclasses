@@ -107,7 +107,7 @@ class EqualityProofTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "notsame")),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument")),
         )
     }
 
@@ -128,7 +128,7 @@ class EqualityProofTest : IntegrationTestSupport() {
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "notsame")),
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument")),
         )
     }
 
@@ -173,6 +173,23 @@ class EqualityProofTest : IntegrationTestSupport() {
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "true",
+        )
+    }
+
+    @Test fun rejectsNotSameProofWhenUpperBoundStillAllowsEquality() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.NotSame
+            import one.wabbit.typeclass.summon
+
+            fun <T : Any> proveDifferent(): NotSame<T, Any> = summon<NotSame<T, Any>>() // E:TC_NO_CONTEXT_ARGUMENT T may still be exactly Any
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument")),
         )
     }
 

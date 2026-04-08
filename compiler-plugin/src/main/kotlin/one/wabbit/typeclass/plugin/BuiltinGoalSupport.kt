@@ -24,6 +24,12 @@ internal enum class BuiltinGoalFeasibility {
     IMPOSSIBLE,
 }
 
+private enum class TypeRelationKnowledge {
+    PROVABLE,
+    DISPROVABLE,
+    UNKNOWN,
+}
+
 internal enum class BuiltinGoalAcceptance {
     PROVABLE_ONLY,
     ALLOW_SPECULATIVE,
@@ -637,16 +643,197 @@ private fun FirBuiltinGoalExactContext.exactNotSameFeasibility(
     if (canProveNotSame(left, right)) {
         return BuiltinGoalFeasibility.PROVABLE
     }
-    val leftSubtypeRight = exactSubtypeFeasibility(left, right, classInfoById) ?: BuiltinGoalFeasibility.IMPOSSIBLE
-    val rightSubtypeLeft = exactSubtypeFeasibility(right, left, classInfoById) ?: BuiltinGoalFeasibility.IMPOSSIBLE
-    return if ((leftSubtypeRight == BuiltinGoalFeasibility.PROVABLE) !=
-        (rightSubtypeLeft == BuiltinGoalFeasibility.PROVABLE)
+    val leftSubtypeRight = exactSubtypeKnowledge(left, right, classInfoById)
+    val rightSubtypeLeft = exactSubtypeKnowledge(right, left, classInfoById)
+    return if (
+        leftSubtypeRight == TypeRelationKnowledge.DISPROVABLE ||
+        rightSubtypeLeft == TypeRelationKnowledge.DISPROVABLE
     ) {
         BuiltinGoalFeasibility.PROVABLE
     } else {
         BuiltinGoalFeasibility.IMPOSSIBLE
     }
 }
+
+private fun FirBuiltinGoalExactContext.exactSubtypeKnowledge(
+    sub: TcType,
+    sup: TcType,
+    classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    visiting: MutableSet<String> = linkedSetOf(),
+): TypeRelationKnowledge {
+    if (sub.normalizedKey() == sup.normalizedKey()) {
+        return TypeRelationKnowledge.PROVABLE
+    }
+    when (sub) {
+        TcType.StarProjection -> return TypeRelationKnowledge.UNKNOWN
+        is TcType.Projected -> return TypeRelationKnowledge.UNKNOWN
+        is TcType.Variable -> {
+            val visitKey = "knowledge-sub:${sub.id}->${sup.normalizedKey()}"
+            if (!visiting.add(visitKey)) {
+                return TypeRelationKnowledge.UNKNOWN
+            }
+            try {
+                val symbol = variableSymbolsById[sub.id] ?: return TypeRelationKnowledge.UNKNOWN
+                val bounds =
+                    symbol.resolvedBounds.mapNotNull { boundTypeRef ->
+                        coneTypeToModel(boundTypeRef.coneType, typeParameterModels)
+                    }
+                if (bounds.any { bound -> exactSubtypeKnowledge(bound, sup, classInfoById, visiting) == TypeRelationKnowledge.PROVABLE }) {
+                    return TypeRelationKnowledge.PROVABLE
+                }
+                return TypeRelationKnowledge.UNKNOWN
+            } finally {
+                visiting.remove(visitKey)
+            }
+        }
+
+        is TcType.Constructor -> Unit
+    }
+
+    when (sup) {
+        TcType.StarProjection -> return TypeRelationKnowledge.UNKNOWN
+        is TcType.Projected -> return TypeRelationKnowledge.UNKNOWN
+        is TcType.Variable -> {
+            val visitKey = "knowledge-sup:${sub.normalizedKey()}->${sup.id}"
+            if (!visiting.add(visitKey)) {
+                return TypeRelationKnowledge.UNKNOWN
+            }
+            try {
+                val symbol = variableSymbolsById[sup.id] ?: return TypeRelationKnowledge.UNKNOWN
+                val bounds =
+                    symbol.resolvedBounds.mapNotNull { boundTypeRef ->
+                        coneTypeToModel(boundTypeRef.coneType, typeParameterModels)
+                    }
+                if (bounds.isEmpty()) {
+                    return TypeRelationKnowledge.UNKNOWN
+                }
+                bounds.forEach { bound ->
+                    if (exactSubtypeKnowledge(sub, bound, classInfoById, visiting) == TypeRelationKnowledge.DISPROVABLE) {
+                        return TypeRelationKnowledge.DISPROVABLE
+                    }
+                }
+                return TypeRelationKnowledge.UNKNOWN
+            } finally {
+                visiting.remove(visitKey)
+            }
+        }
+
+        is TcType.Constructor -> Unit
+    }
+
+    val subConstructor = sub as? TcType.Constructor ?: return TypeRelationKnowledge.UNKNOWN
+    val supConstructor = sup as? TcType.Constructor ?: return TypeRelationKnowledge.UNKNOWN
+    if (subConstructor.isNullable && !supConstructor.isNullable) {
+        return TypeRelationKnowledge.DISPROVABLE
+    }
+    if (subConstructor.classifierId == supConstructor.classifierId) {
+        return exactSameClassifierSubtypeKnowledge(subConstructor, supConstructor, classInfoById, visiting)
+    }
+    val declaredKnowledge =
+        exactDeclaredSupertypeSubtypeKnowledge(subConstructor, supConstructor, classInfoById, visiting)
+            ?: TypeRelationKnowledge.UNKNOWN
+    if (declaredKnowledge == TypeRelationKnowledge.PROVABLE) {
+        return TypeRelationKnowledge.PROVABLE
+    }
+    if (subConstructor.arguments.isNotEmpty() || supConstructor.arguments.isNotEmpty()) {
+        return declaredKnowledge
+    }
+    val pathKnowledge = hasSupertypePathKnowledge(subConstructor.classifierId, supConstructor.classifierId, classInfoById)
+    return when {
+        pathKnowledge == TypeRelationKnowledge.PROVABLE -> TypeRelationKnowledge.PROVABLE
+        declaredKnowledge == TypeRelationKnowledge.UNKNOWN || pathKnowledge == TypeRelationKnowledge.UNKNOWN ->
+            TypeRelationKnowledge.UNKNOWN
+        else -> TypeRelationKnowledge.DISPROVABLE
+    }
+}
+
+private fun FirBuiltinGoalExactContext.exactSameClassifierSubtypeKnowledge(
+    sub: TcType.Constructor,
+    sup: TcType.Constructor,
+    classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    visiting: MutableSet<String>,
+): TypeRelationKnowledge {
+    val classInfo = classInfoById[sub.classifierId] ?: return TypeRelationKnowledge.UNKNOWN
+    if (sub.arguments.size != sup.arguments.size) {
+        return TypeRelationKnowledge.DISPROVABLE
+    }
+    val variances = classInfo.typeParameterVariances
+    if (variances.size != sub.arguments.size) {
+        return TypeRelationKnowledge.UNKNOWN
+    }
+    var sawUnknown = false
+    sub.arguments.indices.forEach { index ->
+        val subArgument = sub.arguments[index]
+        val superArgument = sup.arguments[index]
+        if (superArgument === TcType.StarProjection) {
+            sawUnknown = true
+            return@forEach
+        }
+        val variance = variances.getOrNull(index) ?: Variance.INVARIANT
+        val argumentKnowledge =
+            when {
+                subArgument is TcType.Projected || superArgument is TcType.Projected -> TypeRelationKnowledge.UNKNOWN
+                variance == Variance.OUT_VARIANCE -> exactSubtypeKnowledge(subArgument, superArgument, classInfoById, visiting)
+                variance == Variance.IN_VARIANCE -> exactSubtypeKnowledge(superArgument, subArgument, classInfoById, visiting)
+                else ->
+                    if (subArgument.normalizedKey() == superArgument.normalizedKey()) {
+                        TypeRelationKnowledge.PROVABLE
+                    } else {
+                        TypeRelationKnowledge.DISPROVABLE
+                    }
+            }
+        when (argumentKnowledge) {
+            TypeRelationKnowledge.PROVABLE -> Unit
+            TypeRelationKnowledge.UNKNOWN -> sawUnknown = true
+            TypeRelationKnowledge.DISPROVABLE -> return TypeRelationKnowledge.DISPROVABLE
+        }
+    }
+    return if (sawUnknown) TypeRelationKnowledge.UNKNOWN else TypeRelationKnowledge.PROVABLE
+}
+
+private fun FirBuiltinGoalExactContext.exactDeclaredSupertypeSubtypeKnowledge(
+    sub: TcType.Constructor,
+    sup: TcType.Constructor,
+    classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    visiting: MutableSet<String>,
+): TypeRelationKnowledge? {
+    val classId = runCatching { ClassId.fromString(sub.classifierId) }.getOrNull() ?: return null
+    val classSymbol = session.regularClassSymbolOrNull(classId) ?: return null
+    val visitKey = "declared-super-knowledge:${sub.normalizedKey()}<:${sup.normalizedKey()}"
+    if (!visiting.add(visitKey)) {
+        return TypeRelationKnowledge.UNKNOWN
+    }
+    try {
+        var sawUnknown = false
+        classSymbol.fir.declaredOrResolvedSuperTypes().forEach { superType ->
+            val superModel =
+                exactDeclaredSupertypeModel(classSymbol, sub, superType)
+                    ?: run {
+                        sawUnknown = true
+                        return@forEach
+                    }
+            when (exactSubtypeKnowledge(superModel, sup, classInfoById, visiting)) {
+                TypeRelationKnowledge.PROVABLE -> return TypeRelationKnowledge.PROVABLE
+                TypeRelationKnowledge.UNKNOWN -> sawUnknown = true
+                TypeRelationKnowledge.DISPROVABLE -> Unit
+            }
+        }
+        return if (sawUnknown) TypeRelationKnowledge.UNKNOWN else TypeRelationKnowledge.DISPROVABLE
+    } finally {
+        visiting.remove(visitKey)
+    }
+}
+
+private fun hasSupertypePathKnowledge(
+    sourceClassifierId: String,
+    targetClassifierId: String,
+    classInfoById: Map<String, VisibleClassHierarchyInfo>,
+): TypeRelationKnowledge =
+    when (hasSupertypePathFeasibility(sourceClassifierId, targetClassifierId, classInfoById)) {
+        BuiltinGoalFeasibility.PROVABLE -> TypeRelationKnowledge.PROVABLE
+        BuiltinGoalFeasibility.SPECULATIVE -> TypeRelationKnowledge.UNKNOWN
+        BuiltinGoalFeasibility.IMPOSSIBLE -> TypeRelationKnowledge.DISPROVABLE
+    }
 
 private fun FirBuiltinGoalExactContext.exactNullableFeasibility(
     target: TcType,

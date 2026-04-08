@@ -290,6 +290,23 @@ class SubtypeProofTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun rejectsStrictSubtypeProofWhenUpperBoundStillAllowsEquality() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.StrictSubtype
+            import one.wabbit.typeclass.summon
+
+            fun <T : Any> proveStrict(): StrictSubtype<T, Any> = summon<StrictSubtype<T, Any>>() // E:TC_NO_CONTEXT_ARGUMENT T may still be exactly Any
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument")),
+        )
+    }
+
     @Test fun rejectsStrictSubtypeProofForEqualAliasAndUnrelatedTypes() {
         fun assertStrictSubtypeFailure(
             callSite: String,
