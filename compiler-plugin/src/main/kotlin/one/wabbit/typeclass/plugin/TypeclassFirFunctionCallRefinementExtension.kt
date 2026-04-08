@@ -186,7 +186,11 @@ internal class TypeclassFirFunctionCallRefinementExtension(
                         variableSymbolsById = exactBuiltinGoalContext.variableSymbolsById,
                         eligibleSymbols = eligibleTypeParameters,
                     )
-                    true
+                    goalModel.hasAllEligibleBindings(
+                        variableSymbolsById = exactBuiltinGoalContext.variableSymbolsById,
+                        eligibleSymbols = eligibleTypeParameters,
+                        inferredTypeArguments = inferredTypeArgumentsWithContextResolution,
+                    )
                 }
                 is ResolutionSearchResult.Missing ->
                     sharedState.canDeriveGoal(
@@ -197,7 +201,23 @@ internal class TypeclassFirFunctionCallRefinementExtension(
                         builtinGoalAcceptance = BuiltinGoalAcceptance.PROVABLE_ONLY,
                         exactBuiltinGoalContext = exactBuiltinGoalContext,
                     )
-                is ResolutionSearchResult.Ambiguous -> function.typeParameters.isNotEmpty()
+                is ResolutionSearchResult.Ambiguous -> {
+                    inferredTypeArgumentsWithContextResolution.mergeAmbiguousResolutionInferredTypeArguments(
+                        goal = goalModel,
+                        ambiguous = tracedResolution.result,
+                        variableSymbolsById = exactBuiltinGoalContext.variableSymbolsById,
+                        eligibleSymbols = eligibleTypeParameters,
+                    )
+                    if (tracedResolution.result.matchingPlans.all { plan -> plan is one.wabbit.typeclass.plugin.model.ResolutionPlan.LocalContext }) {
+                        goalModel.hasAllEligibleBindings(
+                            variableSymbolsById = exactBuiltinGoalContext.variableSymbolsById,
+                            eligibleSymbols = eligibleTypeParameters,
+                            inferredTypeArguments = inferredTypeArgumentsWithContextResolution,
+                        )
+                    } else {
+                        function.typeParameters.isNotEmpty()
+                    }
+                }
                 else -> false
             }
         }
@@ -506,6 +526,52 @@ private fun MutableMap<FirTypeParameterSymbol, ConeKotlinType>.mergeResolutionIn
         }
     }
 }
+
+private fun MutableMap<FirTypeParameterSymbol, ConeKotlinType>.mergeAmbiguousResolutionInferredTypeArguments(
+    goal: TcType,
+    ambiguous: ResolutionSearchResult.Ambiguous,
+    variableSymbolsById: Map<String, FirTypeParameterSymbol>,
+    eligibleSymbols: Set<FirTypeParameterSymbol>,
+) {
+    val candidateBindings =
+        ambiguous.matchingPlans.mapNotNull { plan ->
+            unifyTypes(
+                left = goal,
+                right = plan.providedType,
+                bindableVariableIds =
+                    buildSet {
+                        addAll(goal.referencedVariableIds())
+                        addAll(plan.providedType.referencedVariableIds())
+                    },
+            )
+        }
+    if (candidateBindings.isEmpty()) {
+        return
+    }
+    val commonBindings =
+        candidateBindings.first().filter { (variableId, type) ->
+            candidateBindings.drop(1).all { bindings -> bindings[variableId] == type }
+        }
+    commonBindings.forEach { (variableId, modelType) ->
+        val symbol = variableSymbolsById[variableId] ?: return@forEach
+        if (symbol !in eligibleSymbols || symbol in keys) {
+            return@forEach
+        }
+        modelType.toConeKotlinType(variableSymbolsById)?.let { inferredType ->
+            this[symbol] = inferredType
+        }
+    }
+}
+
+private fun TcType.hasAllEligibleBindings(
+    variableSymbolsById: Map<String, FirTypeParameterSymbol>,
+    eligibleSymbols: Set<FirTypeParameterSymbol>,
+    inferredTypeArguments: Map<FirTypeParameterSymbol, ConeKotlinType>,
+): Boolean =
+    referencedVariableIds().all { variableId ->
+        val symbol = variableSymbolsById[variableId] ?: return@all true
+        symbol !in eligibleSymbols || symbol in inferredTypeArguments
+    }
 
 private fun ResolutionTrace.collectSelectedBindings(
     bindings: MutableMap<String, TcType>,

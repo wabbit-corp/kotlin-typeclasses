@@ -85,14 +85,17 @@ internal class TypeclassResolutionPlanner(
         }
 
         try {
-            val exactLocalMatchIndexes = linkedSetOf<Int>()
+            val matchingLocalIndexes = linkedSetOf<Int>()
             val localMatches =
                 localContextTypes.mapIndexedNotNull { index, localType ->
-                    if (desiredType != localType) {
+                    val substitution = Unifier(bindableDesiredVariableIds).unify(desiredType, localType) ?: run {
                         return@mapIndexedNotNull null
                     }
-                    exactLocalMatchIndexes += index
-                    ResolutionPlan.LocalContext(index = index, providedType = desiredType)
+                    matchingLocalIndexes += index
+                    ResolutionPlan.LocalContext(
+                        index = index,
+                        providedType = desiredType.substitute(substitution),
+                    )
                 }
 
             if (localMatches.isNotEmpty()) {
@@ -111,13 +114,13 @@ internal class TypeclassResolutionPlanner(
                                             family = ResolutionTraceCandidateFamily.LOCAL_CONTEXT,
                                             state =
                                                 when {
-                                                    index !in exactLocalMatchIndexes -> ResolutionTraceCandidateState.REJECTED
+                                                    index !in matchingLocalIndexes -> ResolutionTraceCandidateState.REJECTED
                                                     localMatches.size == 1 -> ResolutionTraceCandidateState.SELECTED
                                                     else -> ResolutionTraceCandidateState.MATCHED
                                                 },
                                             providedType = localType,
                                             reason =
-                                                if (index in exactLocalMatchIndexes) {
+                                                if (index in matchingLocalIndexes) {
                                                     null
                                                 } else {
                                                     mismatchReason(desiredType, localType)

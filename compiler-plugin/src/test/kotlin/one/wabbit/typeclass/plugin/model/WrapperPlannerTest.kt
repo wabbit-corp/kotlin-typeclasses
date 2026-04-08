@@ -344,6 +344,29 @@ class WrapperPlannerTest {
         assertEquals("boxIntEq", applied.ruleId)
     }
 
+    @Test
+    fun `bindable desired variables can match concrete local context`() {
+        val a = TcTypeParameter("outer:A", "A")
+
+        val result =
+            TypeclassResolutionPlanner(
+                rules = emptyList(),
+                bindableDesiredVariableIds = setOf(a.id),
+            ).resolve(
+                desiredType = eq(typeVariable(a)),
+                localContextTypes = listOf(eq(box(intType()))),
+            )
+
+        val success = assertIs<ResolutionSearchResult.Success>(result)
+        assertEquals(
+            ResolutionPlan.LocalContext(
+                index = 0,
+                providedType = eq(box(intType())),
+            ),
+            success.plan,
+        )
+    }
+
     private fun typeConstructor(
         classifierId: String,
         vararg arguments: TcType,

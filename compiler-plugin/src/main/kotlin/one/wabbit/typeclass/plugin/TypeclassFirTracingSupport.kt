@@ -91,9 +91,10 @@ internal fun buildFirTypeclassResolutionContext(
         buildList {
             containingFunctions.forEach { declaration ->
                 declaration.receiverParameter?.typeRef?.coneType
-                    ?.takeIf { declaredType -> sharedState.isTypeclassType(session, declaredType) }
-                    ?.let { declaredType -> coneTypeToModel(declaredType, typeParameterModels) }
-                    ?.let(::add)
+                    ?.localEvidenceTypes(session, sharedState.configuration)
+                    ?.forEach { evidenceType ->
+                        coneTypeToModel(evidenceType, typeParameterModels)?.let(::add)
+                    }
                 declaration.contextParameters.forEach { parameter ->
                     parameter.returnTypeRef.coneType
                         .takeIf { declaredType -> sharedState.isTypeclassType(session, declaredType) }
