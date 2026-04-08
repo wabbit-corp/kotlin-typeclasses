@@ -32,11 +32,13 @@ import org.jetbrains.kotlin.fir.types.ConeKotlinType
 import org.jetbrains.kotlin.fir.types.ConeStubType
 import org.jetbrains.kotlin.fir.types.ConeTypeParameterType
 import org.jetbrains.kotlin.fir.types.ConeTypeVariableType
+import org.jetbrains.kotlin.fir.types.ConeTypeProjection
 import org.jetbrains.kotlin.fir.types.FirTypeProjectionWithVariance
 import org.jetbrains.kotlin.fir.types.ProjectionKind
 import org.jetbrains.kotlin.fir.types.coneType
 import org.jetbrains.kotlin.fir.types.lowerBoundIfFlexible
 import org.jetbrains.kotlin.fir.types.resolvedType
+import org.jetbrains.kotlin.fir.types.isMarkedNullable
 import org.jetbrains.kotlin.fir.types.type
 import org.jetbrains.kotlin.fir.types.typeContext
 import org.jetbrains.kotlin.fir.types.withNullabilityOf
@@ -565,43 +567,102 @@ private fun FirExpression.safeResolvedTypeOrNull(): ConeKotlinType? =
 private fun ConeKotlinType.projectToMatchingInferenceSupertype(
     expectedClassId: ClassId,
     session: FirSession,
-    visited: MutableSet<ClassId> = linkedSetOf(),
 ): ConeKotlinType? {
-    val actualSimpleType = lowerBoundIfFlexible() as? ConeClassLikeType ?: return null
-    val actualClassId = actualSimpleType.lookupTag.classId
-    if (actualClassId == expectedClassId) {
-        return actualSimpleType
-    }
-    if (!visited.add(actualClassId)) {
-        return null
-    }
-    val classSymbol =
-        runCatching {
-            session.symbolProvider.getClassLikeSymbolByClassId(actualClassId) as? FirRegularClassSymbol
-        }.getOrNull() ?: return null
-    val substitutions =
-        classSymbol.fir.typeParameters.zip(actualSimpleType.typeArguments).mapNotNull { (parameter, argument) ->
-            argument.type?.let { type -> parameter.symbol to type }
-        }.toMap()
-    classSymbol.fir.declaredOrResolvedSuperTypes().forEach { superType ->
-        val substitutedSuperType =
-            if (substitutions.isEmpty()) {
-                superType
-            } else {
-                substituteInferredTypes(superType, substitutions, session)
-            }.withNullabilityOf(actualSimpleType, session.typeContext)
-        val projected =
-            substitutedSuperType.projectToMatchingInferenceSupertype(
-                expectedClassId = expectedClassId,
-                session = session,
-                visited = visited,
-            )
-        if (projected != null) {
-            return projected
-        }
-    }
-    return null
+    return projectToMatchingSupertype(
+        actualType = this,
+        expectedClassifier = expectedClassId,
+        classifierOf = { type -> (type.lowerBoundIfFlexible() as? ConeClassLikeType)?.lookupTag?.classId },
+        visitKeyOf = ConeKotlinType::inferenceProjectionVisitKey,
+        directSupertypes = { currentType ->
+            val actualSimpleType = currentType.lowerBoundIfFlexible() as? ConeClassLikeType ?: return@projectToMatchingSupertype emptyList()
+            val actualClassId = actualSimpleType.lookupTag.classId
+            val classSymbol =
+                runCatching {
+                    session.symbolProvider.getClassLikeSymbolByClassId(actualClassId) as? FirRegularClassSymbol
+                }.getOrNull() ?: return@projectToMatchingSupertype emptyList()
+            val substitutions =
+                classSymbol.fir.typeParameters.zip(actualSimpleType.typeArguments).mapNotNull { (parameter, argument) ->
+                    argument.type?.let { type -> parameter.symbol to type }
+                }.toMap()
+            classSymbol.fir.declaredOrResolvedSuperTypes().map { superType ->
+                if (substitutions.isEmpty()) {
+                    superType
+                } else {
+                    substituteInferredTypes(superType, substitutions, session)
+                }.withNullabilityOf(actualSimpleType, session.typeContext)
+            }
+        },
+    )
 }
+
+private sealed interface FirInferenceProjectionVisitKey {
+    data class ClassLike(
+        val classId: ClassId,
+        val isNullable: Boolean,
+        val arguments: List<FirInferenceProjectionArgumentKey>,
+    ) : FirInferenceProjectionVisitKey
+
+    data class TypeParameter(
+        val symbol: FirTypeParameterSymbol,
+        val isNullable: Boolean,
+    ) : FirInferenceProjectionVisitKey
+
+    data class TypeVariable(
+        val symbol: FirTypeParameterSymbol?,
+        val isNullable: Boolean,
+    ) : FirInferenceProjectionVisitKey
+
+    data class Stub(
+        val symbol: FirTypeParameterSymbol?,
+        val isNullable: Boolean,
+    ) : FirInferenceProjectionVisitKey
+
+    data class Opaque(
+        val kind: String,
+        val isNullable: Boolean,
+    ) : FirInferenceProjectionVisitKey
+}
+
+private data class FirInferenceProjectionArgumentKey(
+    val kind: ProjectionKind,
+    val type: FirInferenceProjectionVisitKey?,
+)
+
+private fun ConeKotlinType.inferenceProjectionVisitKey(): FirInferenceProjectionVisitKey =
+    when (val lowered = lowerBoundIfFlexible()) {
+        is ConeClassLikeType ->
+            FirInferenceProjectionVisitKey.ClassLike(
+                classId = lowered.lookupTag.classId,
+                isNullable = lowered.isMarkedNullable,
+                arguments = lowered.typeArguments.map(ConeTypeProjection::inferenceProjectionArgumentKey),
+            )
+        is ConeTypeParameterType ->
+            FirInferenceProjectionVisitKey.TypeParameter(
+                symbol = lowered.lookupTag.typeParameterSymbol,
+                isNullable = lowered.isMarkedNullable,
+            )
+        is ConeTypeVariableType ->
+            FirInferenceProjectionVisitKey.TypeVariable(
+                symbol = (lowered.typeConstructor.originalTypeParameter as? ConeTypeParameterLookupTag)?.typeParameterSymbol,
+                isNullable = lowered.isMarkedNullable,
+            )
+        is ConeStubType ->
+            FirInferenceProjectionVisitKey.Stub(
+                symbol = (lowered.constructor.variable.typeConstructor.originalTypeParameter as? ConeTypeParameterLookupTag)?.typeParameterSymbol,
+                isNullable = lowered.isMarkedNullable,
+            )
+        else ->
+            FirInferenceProjectionVisitKey.Opaque(
+                kind = lowered::class.qualifiedName ?: lowered::class.simpleName ?: "opaque",
+                isNullable = lowered.isMarkedNullable,
+            )
+    }
+
+private fun ConeTypeProjection.inferenceProjectionArgumentKey(): FirInferenceProjectionArgumentKey =
+    FirInferenceProjectionArgumentKey(
+        kind = kind,
+        type = type?.inferenceProjectionVisitKey(),
+    )
 
 private fun buildLocalContextConstraintsForInference(
     session: FirSession,

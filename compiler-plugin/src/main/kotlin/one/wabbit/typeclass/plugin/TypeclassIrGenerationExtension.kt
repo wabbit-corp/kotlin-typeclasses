@@ -7226,31 +7226,84 @@ internal fun projectTypeToMatchingInferenceSupertype(
 
 private fun IrType.projectToMatchingSupertype(
     expectedClass: IrClass,
-    visited: MutableSet<org.jetbrains.kotlin.ir.symbols.IrClassSymbol> = linkedSetOf(),
 ): IrSimpleType? {
-    val actualSimpleType = this as? IrSimpleType ?: return null
-    val actualClass = actualSimpleType.classOrNull?.owner ?: return null
-    if (actualClass.symbol == expectedClass.symbol) {
-        return actualSimpleType
-    }
-    if (!visited.add(actualClass.symbol)) {
-        return null
-    }
-    val substitutions =
-        actualClass.typeParameters.mapIndexedNotNull { index, parameter ->
-            actualSimpleType.arguments.getOrNull(index)?.argumentTypeOrNull()?.let { argumentType ->
-                parameter.symbol to argumentType
+    return projectToMatchingSupertype(
+        actualType = this,
+        expectedClassifier = expectedClass.symbol,
+        classifierOf = { type -> (type as? IrSimpleType)?.classOrNull },
+        visitKeyOf = IrType::inferenceProjectionVisitKey,
+        directSupertypes = { currentType ->
+            val actualSimpleType = currentType as? IrSimpleType ?: return@projectToMatchingSupertype emptyList()
+            val actualClass = actualSimpleType.classOrNull?.owner ?: return@projectToMatchingSupertype emptyList()
+            val substitutions =
+                actualClass.typeParameters.mapIndexedNotNull { index, parameter ->
+                    actualSimpleType.arguments.getOrNull(index)?.argumentTypeOrNull()?.let { argumentType ->
+                        parameter.symbol to argumentType
+                    }
+                }.toMap()
+            actualClass.superTypes.map { superType ->
+                if (substitutions.isEmpty()) superType else superType.substitute(substitutions)
             }
-        }.toMap()
-    actualClass.superTypes.forEach { superType ->
-        val substitutedSuperType = if (substitutions.isEmpty()) superType else superType.substitute(substitutions)
-        val projected = substitutedSuperType.projectToMatchingSupertype(expectedClass, visited)
-        if (projected != null) {
-            return projected
-        }
-    }
-    return null
+        },
+    ) as? IrSimpleType
 }
+
+private sealed interface IrInferenceProjectionVisitKey {
+    data class ClassLike(
+        val classifier: org.jetbrains.kotlin.ir.symbols.IrClassSymbol,
+        val isNullable: Boolean,
+        val arguments: List<IrInferenceProjectionArgumentKey>,
+    ) : IrInferenceProjectionVisitKey
+
+    data class TypeParameter(
+        val symbol: IrTypeParameterSymbol,
+        val isNullable: Boolean,
+    ) : IrInferenceProjectionVisitKey
+
+    data class Opaque(
+        val kind: String,
+        val isNullable: Boolean,
+    ) : IrInferenceProjectionVisitKey
+}
+
+private data class IrInferenceProjectionArgumentKey(
+    val variance: Variance?,
+    val type: IrInferenceProjectionVisitKey?,
+)
+
+private fun IrType.inferenceProjectionVisitKey(): IrInferenceProjectionVisitKey =
+    when (this) {
+        is IrSimpleType ->
+            when (val classifier = classifier) {
+                is IrTypeParameterSymbol ->
+                    IrInferenceProjectionVisitKey.TypeParameter(
+                        symbol = classifier,
+                        isNullable = isNullable(),
+                    )
+                is org.jetbrains.kotlin.ir.symbols.IrClassSymbol ->
+                    IrInferenceProjectionVisitKey.ClassLike(
+                        classifier = classifier,
+                        isNullable = isNullable(),
+                        arguments = arguments.map(IrTypeArgument::inferenceProjectionArgumentKey),
+                    )
+                else ->
+                    IrInferenceProjectionVisitKey.Opaque(
+                        kind = classifier::class.qualifiedName ?: classifier::class.simpleName ?: "opaque",
+                        isNullable = isNullable(),
+                    )
+            }
+        else ->
+            IrInferenceProjectionVisitKey.Opaque(
+                kind = this::class.qualifiedName ?: this::class.simpleName ?: "opaque",
+                isNullable = isNullable(),
+            )
+    }
+
+private fun IrTypeArgument.inferenceProjectionArgumentKey(): IrInferenceProjectionArgumentKey =
+    IrInferenceProjectionArgumentKey(
+        variance = (this as? org.jetbrains.kotlin.ir.types.IrTypeProjection)?.variance,
+        type = argumentTypeOrNull()?.inferenceProjectionVisitKey(),
+    )
 
 private class TypeArgumentInferenceFailure(
     message: String,
