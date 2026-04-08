@@ -353,7 +353,7 @@ internal class TypeclassResolutionPlanner(
                     if (substitution == null) {
                         mismatchReason(desiredType, appliedRule.providedType)
                     } else {
-                        "would match the requested goal"
+                        "head matches the requested goal; prerequisites not checked"
                     },
             )
         }

@@ -5,6 +5,7 @@ package one.wabbit.typeclass.plugin.model
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 
 class WrapperPlannerTest {
     @Test
@@ -317,6 +318,36 @@ class WrapperPlannerTest {
                 assertIs<ResolutionPlan.ApplyRule>(plan).ruleId
             }.toSet()
         assertEquals(setOf("fooFromBar", "fooFromBaz"), matchingRuleIds)
+    }
+
+    @Test
+    fun `alternative explanation labels head-only matches when prerequisites are unchecked`() {
+        val a = TcTypeParameter("outer:A", "A")
+        val x = TcTypeParameter("rule:X", "X")
+        val fooFromBar =
+            InstanceRule(
+                id = "fooFromBar",
+                typeParameters = listOf(x),
+                providedType = foo(typeVariable(x)),
+                prerequisiteTypes = listOf(bar(typeVariable(x))),
+            )
+
+        val traced =
+            TypeclassResolutionPlanner(listOf(fooFromBar)).resolveWithTrace(
+                desiredType = foo(typeVariable(a)),
+                localContextTypes = listOf(foo(typeVariable(a))),
+                explainAlternatives = true,
+            )
+
+        val success = assertIs<ResolutionSearchResult.Success>(traced.result)
+        assertEquals(
+            ResolutionPlan.LocalContext(index = 0, providedType = foo(typeVariable(a))),
+            success.plan,
+        )
+        val candidate = traced.trace.ruleCandidates.singleOrNull { it.identity == "fooFromBar" }
+        assertNotNull(candidate)
+        assertEquals(ResolutionTraceCandidateState.EXPLAINED_NOT_SEARCHED, candidate.state)
+        assertEquals("head matches the requested goal; prerequisites not checked", candidate.reason)
     }
 
     @Test
