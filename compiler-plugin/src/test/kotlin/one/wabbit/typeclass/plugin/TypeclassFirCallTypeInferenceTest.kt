@@ -72,6 +72,26 @@ class TypeclassFirCallTypeInferenceTest {
 
         assertEquals(intType, inferred[typeParameter])
     }
+
+    @Test
+    fun `return inference can bind type parameters from local context constraints alone`() {
+        val session = object : FirSession(FirSession.Kind.Library) {}
+        val typeParameter = boundTypeParameterSymbol("A")
+        val contextParameterType = ConeTypeParameterTypeImpl(typeParameter.toLookupTag(), false, ConeAttributes.Empty)
+        val stringType = session.builtinTypes.stringType.coneType
+
+        val inferred =
+            inferTypeArgumentsFromCallSiteTypes(
+                session = session,
+                functionTypeParameters = setOf(typeParameter),
+                explicitTypeArguments = emptyMap(),
+                receiverConstraint = null,
+                argumentConstraints = emptyList(),
+                localContextConstraints = listOf(contextParameterType to stringType),
+            )
+
+        assertEquals(stringType, inferred[typeParameter])
+    }
 }
 
 private fun boundTypeParameterSymbol(name: String): FirTypeParameterSymbol {
