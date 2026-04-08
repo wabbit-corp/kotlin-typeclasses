@@ -7,6 +7,7 @@ import org.jetbrains.org.objectweb.asm.ClassWriter
 import org.jetbrains.org.objectweb.asm.MethodVisitor
 import org.jetbrains.org.objectweb.asm.Opcodes
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.jar.JarEntry
@@ -108,6 +109,53 @@ class BinaryGeneratedDerivedMetadataLoaderTest {
         assertEquals(listOf(metadata), loader.generatedMetadataFor(owner))
     }
 
+    @Test
+    fun loaderIgnoresCorruptJarRootsAndContinuesToLaterClasspathEntries() {
+        val owner = ClassId.fromString("demo/User")
+        val metadata =
+            GeneratedDerivedMetadata.Derive(
+                typeclassId = ClassId.fromString("demo/Show"),
+                targetId = owner,
+            )
+        val corruptJar = Files.createTempFile("typeclass-generated-metadata-corrupt", ".jar").toFile()
+        corruptJar.deleteOnExit()
+        corruptJar.writeText("not a zip")
+        val metadataJar = createMetadataJar(owner to metadata)
+        val loader = BinaryGeneratedDerivedMetadataLoader(listOf(corruptJar, metadataJar))
+
+        assertEquals(listOf(metadata), loader.generatedMetadataFor(owner))
+    }
+
+    @Test
+    fun loaderTreatsMalformedDirectoryClassfilesAsMetadataMissesForExistingClassfiles() {
+        val owner = ClassId.fromString("demo/User")
+        val metadata =
+            GeneratedDerivedMetadata.Derive(
+                typeclassId = ClassId.fromString("demo/Show"),
+                targetId = owner,
+            )
+        val malformedRoot = createClassDirectory(owner to byteArrayOf(0x0))
+        val metadataJar = createMetadataJar(owner to metadata)
+        val loader = BinaryGeneratedDerivedMetadataLoader(listOf(malformedRoot, metadataJar))
+
+        assertEquals(emptyList(), loader.generatedMetadataFor(owner))
+    }
+
+    @Test
+    fun jarRootTreatsUnreadableClassEntriesAsMetadataMissesForExistingClassfiles() {
+        val owner = ClassId.fromString("demo/User")
+        val jarFile = createPlainClassJar(owner)
+        val root =
+            JarBinaryGeneratedDerivedMetadataRoot(jarFile) { file ->
+                object : JarFile(file) {
+                    override fun getInputStream(ze: java.util.zip.ZipEntry) =
+                        throw IOException("synthetic read failure")
+                }
+            }
+
+        assertEquals(emptyList(), root.generatedMetadataFor(owner).metadataForTest())
+    }
+
     private fun createMetadataJar(vararg entries: Pair<ClassId, GeneratedDerivedMetadata>): File {
         val jarFile = Files.createTempFile("typeclass-generated-metadata", ".jar").toFile()
         jarFile.deleteOnExit()
@@ -145,6 +193,18 @@ class BinaryGeneratedDerivedMetadataLoaderTest {
             }
         }
         return jarFile
+    }
+
+    private fun createClassDirectory(vararg entries: Pair<ClassId, ByteArray>): File {
+        val root = Files.createTempDirectory("typeclass-generated-metadata-dir").toFile()
+        root.deleteOnExit()
+        entries.forEach { (owner, classBytes) ->
+            val classFile = root.resolve(owner.classFilePathForTest())
+            classFile.parentFile.mkdirs()
+            classFile.writeBytes(classBytes)
+            classFile.deleteOnExit()
+        }
+        return root
     }
 }
 

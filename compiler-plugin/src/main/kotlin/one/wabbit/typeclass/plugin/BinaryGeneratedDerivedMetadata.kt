@@ -9,6 +9,7 @@ import org.jetbrains.org.objectweb.asm.ClassReader
 import org.jetbrains.org.objectweb.asm.ClassVisitor
 import org.jetbrains.org.objectweb.asm.Opcodes
 import java.io.File
+import java.io.IOException
 import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
@@ -70,8 +71,14 @@ internal class DirectoryBinaryGeneratedDerivedMetadataRoot(
         if (!classFile.isFile) {
             return BinaryGeneratedDerivedMetadataLookupResult.NotFound
         }
+        val metadata =
+            try {
+                parseGeneratedDerivedMetadataOrEmpty(classFile.readBytes(), classId.asString())
+            } catch (_: IOException) {
+                emptyList()
+            }
         return BinaryGeneratedDerivedMetadataLookupResult.Found(
-            parseGeneratedDerivedMetadata(classFile.readBytes(), classId.asString()),
+            metadata,
         )
     }
 }
@@ -96,16 +103,24 @@ internal class JarBinaryGeneratedDerivedMetadataRoot(
         entryPath: String,
         ownerId: String,
     ): BinaryGeneratedDerivedMetadataLookupResult {
-        jarFileOpener(root).use { jarFile ->
-            val entry = jarFile.getEntry(entryPath) ?: return BinaryGeneratedDerivedMetadataLookupResult.NotFound
-            val metadata =
-                jarFile.getInputStream(entry).use { stream ->
-                    parseGeneratedDerivedMetadata(
-                        classBytes = stream.readBytes(),
-                        ownerId = ownerId,
-                    )
-                }
-            return BinaryGeneratedDerivedMetadataLookupResult.Found(metadata)
+        try {
+            jarFileOpener(root).use { jarFile ->
+                val entry = jarFile.getEntry(entryPath) ?: return BinaryGeneratedDerivedMetadataLookupResult.NotFound
+                val metadata =
+                    try {
+                        jarFile.getInputStream(entry).use { stream ->
+                            parseGeneratedDerivedMetadataOrEmpty(
+                                classBytes = stream.readBytes(),
+                                ownerId = ownerId,
+                            )
+                        }
+                    } catch (_: IOException) {
+                        emptyList()
+                    }
+                return BinaryGeneratedDerivedMetadataLookupResult.Found(metadata)
+            }
+        } catch (_: IOException) {
+            return BinaryGeneratedDerivedMetadataLookupResult.NotFound
         }
     }
 }
@@ -141,6 +156,20 @@ private fun parseGeneratedDerivedMetadata(
     return entries.takeIf(List<GeneratedDerivedMetadata>::isNotEmpty)
         ?: emptyList()
 }
+
+private fun parseGeneratedDerivedMetadataOrEmpty(
+    classBytes: ByteArray,
+    ownerId: String,
+): List<GeneratedDerivedMetadata> =
+    try {
+        parseGeneratedDerivedMetadata(
+            classBytes = classBytes,
+            ownerId = ownerId,
+        )
+    } catch (_: RuntimeException) {
+        // Dependency binary scraping must fail closed on malformed classfiles.
+        emptyList()
+    }
 
 private fun generatedMetadataContainerVisitor(
     entries: MutableList<GeneratedDerivedMetadata>,
