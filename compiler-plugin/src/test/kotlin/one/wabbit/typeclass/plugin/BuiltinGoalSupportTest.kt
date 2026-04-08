@@ -105,6 +105,22 @@ class BuiltinGoalSupportTest {
     }
 
     @Test
+    fun `builtin head filtering rejects unrelated constructor goals but keeps variables`() {
+        val unrelatedGoal = typeConstructor("demo.Show", typeConstructor("kotlin.Int"))
+        val kClassGoal = typeConstructor(KCLASS_CLASS_ID.asString(), typeConstructor("kotlin.Int"))
+        val variableGoal = typeVariable("T")
+
+        assertFalse(builtinRuleCanMatchGoalHead("builtin:kclass", unrelatedGoal))
+        assertFalse(builtinRuleCanMatchGoalHead("builtin:nullable", unrelatedGoal))
+        assertFalse(builtinRuleCanMatchGoalHead("builtin:type-id", unrelatedGoal))
+        assertFalse(builtinRuleCanMatchGoalHead("builtin:subtype", unrelatedGoal))
+        assertTrue(builtinRuleCanMatchGoalHead("builtin:kclass", kClassGoal))
+        assertFalse(builtinRuleCanMatchGoalHead("builtin:type-id", kClassGoal))
+        assertTrue(builtinRuleCanMatchGoalHead("builtin:kclass", variableGoal))
+        assertTrue(builtinRuleCanMatchGoalHead("manual:show", unrelatedGoal))
+    }
+
+    @Test
     fun `is typeclass instance rejects top level projected typeclass applications`() {
         val projectedTargetGoal =
             typeConstructor(

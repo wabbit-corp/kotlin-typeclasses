@@ -36,6 +36,29 @@ internal data class FirBuiltinGoalExactContext(
     val variableSymbolsById: Map<String, FirTypeParameterSymbol>,
 )
 
+internal fun builtinRuleCanMatchGoalHead(
+    ruleId: String,
+    goal: TcType,
+): Boolean {
+    val goalConstructor = goal as? TcType.Constructor ?: return true
+    val builtinHead =
+        when (ruleId) {
+            "builtin:kclass" -> KCLASS_CLASS_ID.asString()
+            "builtin:subtype" -> SUBTYPE_CLASS_ID.asString()
+            "builtin:strict-subtype" -> STRICT_SUBTYPE_CLASS_ID.asString()
+            "builtin:kserializer" -> KSERIALIZER_CLASS_ID.asString()
+            "builtin:notsame" -> NOT_SAME_CLASS_ID.asString()
+            "builtin:nullable" -> NULLABLE_CLASS_ID.asString()
+            "builtin:not-nullable" -> NOT_NULLABLE_CLASS_ID.asString()
+            "builtin:is-typeclass-instance" -> IS_TYPECLASS_INSTANCE_CLASS_ID.asString()
+            "builtin:known-type" -> KNOWN_TYPE_CLASS_ID.asString()
+            "builtin:type-id" -> TYPE_ID_CLASS_ID.asString()
+            "builtin:same-type-constructor" -> SAME_TYPE_CONSTRUCTOR_CLASS_ID.asString()
+            else -> return true
+        }
+    return goalConstructor.classifierId == builtinHead
+}
+
 internal fun supportsBuiltinKClassGoal(goal: TcType): Boolean {
     return supportsBuiltinKClassGoal(goal) { true }
 }

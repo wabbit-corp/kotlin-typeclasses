@@ -471,6 +471,9 @@ private data class ResolutionIndex(
             (topLevel + associated)
             .asSequence()
             .filter { visibleRule ->
+                builtinRuleCanMatchGoalHead(visibleRule.rule.id, goal)
+            }
+            .filter { visibleRule ->
                 visibleRule.rule.id != "builtin:kclass" || supportsBuiltinKClassGoal(goal, canMaterializeVariable)
             }
             .filter { visibleRule ->

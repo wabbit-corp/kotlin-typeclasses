@@ -2516,6 +2516,9 @@ private class IrRuleIndex private constructor(
             (topLevelRules + associated)
             .asSequence()
             .filter { resolvedRule ->
+                builtinRuleCanMatchGoalHead(resolvedRule.rule.id, goal)
+            }
+            .filter { resolvedRule ->
                 resolvedRule.rule.id != "builtin:kclass" || supportsBuiltinKClassGoal(goal, canMaterializeVariable)
             }
             .filter { resolvedRule ->
