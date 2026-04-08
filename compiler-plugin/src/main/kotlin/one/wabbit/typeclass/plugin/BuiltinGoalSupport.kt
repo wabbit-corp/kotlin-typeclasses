@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+@file:OptIn(org.jetbrains.kotlin.fir.symbols.SymbolInternals::class)
+
 package one.wabbit.typeclass.plugin
 
 import one.wabbit.typeclass.plugin.model.TcType
@@ -10,6 +12,7 @@ import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.referencedVariableIds
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
+import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.types.Variance
 
 internal enum class BuiltinGoalFeasibility {
@@ -76,13 +79,34 @@ internal fun supportsBuiltinKClassGoal(
 }
 
 internal fun supportsBuiltinNotSameGoal(goal: TcType): Boolean {
-    val constructor = goal as? TcType.Constructor ?: return true
+    return supportsBuiltinNotSameGoal(goal, emptyMap())
+}
+
+internal fun supportsBuiltinNotSameGoal(
+    goal: TcType,
+    classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    exactContext: FirBuiltinGoalExactContext? = null,
+): Boolean {
+    return builtinNotSameGoalFeasibility(goal, classInfoById, exactContext) != BuiltinGoalFeasibility.IMPOSSIBLE
+}
+
+private fun builtinNotSameGoalFeasibility(
+    goal: TcType,
+    classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    exactContext: FirBuiltinGoalExactContext?,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
     if (constructor.classifierId != NOT_SAME_CLASS_ID.asString()) {
-        return true
+        return BuiltinGoalFeasibility.PROVABLE
     }
-    val left = constructor.arguments.getOrNull(0) ?: return false
-    val right = constructor.arguments.getOrNull(1) ?: return false
-    return canProveNotSame(left, right)
+    val left = constructor.arguments.getOrNull(0) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val right = constructor.arguments.getOrNull(1) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    return exactContext?.exactNotSameFeasibility(left, right, classInfoById)
+        ?: if (canProveNotSame(left, right)) {
+            BuiltinGoalFeasibility.PROVABLE
+        } else {
+            BuiltinGoalFeasibility.IMPOSSIBLE
+        }
 }
 
 internal fun supportsBuiltinSubtypeGoal(
@@ -158,7 +182,14 @@ private fun builtinStrictSubtypeGoalFeasibility(
     }
     val sub = constructor.arguments.getOrNull(0) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
     val sup = constructor.arguments.getOrNull(1) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
-    if (!canProveNotSame(sub, sup)) {
+    val notSameFeasibility =
+        exactContext?.exactNotSameFeasibility(sub, sup, classInfoById)
+            ?: if (canProveNotSame(sub, sup)) {
+                BuiltinGoalFeasibility.PROVABLE
+            } else {
+                BuiltinGoalFeasibility.IMPOSSIBLE
+            }
+    if (notSameFeasibility == BuiltinGoalFeasibility.IMPOSSIBLE) {
         return BuiltinGoalFeasibility.IMPOSSIBLE
     }
     return subtypeFeasibility(sub, sup, classInfoById, exactContext)
@@ -514,12 +545,73 @@ private fun FirBuiltinGoalExactContext.exactSubtypeFeasibility(
         return BuiltinGoalFeasibility.IMPOSSIBLE
     }
     if (sub is TcType.Constructor && sup is TcType.Constructor) {
+        if (sub.classifierId != sup.classifierId) {
+            exactDeclaredSupertypeSubtypeFeasibility(sub, sup, classInfoById, visiting)?.let { return it }
+        }
         return constructorSubtypeFeasibility(sub, sup, classInfoById, this)
     }
     return when {
         sub === TcType.StarProjection || sup === TcType.StarProjection -> BuiltinGoalFeasibility.IMPOSSIBLE
         sub is TcType.Projected || sup is TcType.Projected -> BuiltinGoalFeasibility.IMPOSSIBLE
         else -> BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+}
+
+private fun FirBuiltinGoalExactContext.exactDeclaredSupertypeSubtypeFeasibility(
+    sub: TcType.Constructor,
+    sup: TcType.Constructor,
+    classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    visiting: MutableSet<String>,
+): BuiltinGoalFeasibility? {
+    if (sub.isNullable && !sup.isNullable) {
+        return BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+    val classId = runCatching { ClassId.fromString(sub.classifierId) }.getOrNull() ?: return null
+    val classSymbol = session.regularClassSymbolOrNull(classId) ?: return null
+    val visitKey = "declared-super:${sub.normalizedKey()}<:${sup.normalizedKey()}"
+    if (!visiting.add(visitKey)) {
+        return BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+    try {
+        var sawSpeculative = false
+        classSymbol.fir.declaredOrResolvedSuperTypes().forEach { superType ->
+            val superModel =
+                coneTypeToModel(superType, typeParameterModels)
+                    ?: run {
+                        sawSpeculative = true
+                        return@forEach
+                    }
+            when (exactSubtypeFeasibility(superModel, sup, classInfoById, visiting)) {
+                BuiltinGoalFeasibility.PROVABLE -> return BuiltinGoalFeasibility.PROVABLE
+                BuiltinGoalFeasibility.SPECULATIVE, null -> sawSpeculative = true
+                BuiltinGoalFeasibility.IMPOSSIBLE -> Unit
+            }
+        }
+        return if (sawSpeculative) BuiltinGoalFeasibility.SPECULATIVE else BuiltinGoalFeasibility.IMPOSSIBLE
+    } finally {
+        visiting.remove(visitKey)
+    }
+}
+
+private fun FirBuiltinGoalExactContext.exactNotSameFeasibility(
+    left: TcType,
+    right: TcType,
+    classInfoById: Map<String, VisibleClassHierarchyInfo>,
+): BuiltinGoalFeasibility {
+    if (left.normalizedKey() == right.normalizedKey()) {
+        return BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+    if (canProveNotSame(left, right)) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val leftSubtypeRight = exactSubtypeFeasibility(left, right, classInfoById) ?: BuiltinGoalFeasibility.IMPOSSIBLE
+    val rightSubtypeLeft = exactSubtypeFeasibility(right, left, classInfoById) ?: BuiltinGoalFeasibility.IMPOSSIBLE
+    return if ((leftSubtypeRight == BuiltinGoalFeasibility.PROVABLE) !=
+        (rightSubtypeLeft == BuiltinGoalFeasibility.PROVABLE)
+    ) {
+        BuiltinGoalFeasibility.PROVABLE
+    } else {
+        BuiltinGoalFeasibility.IMPOSSIBLE
     }
 }
 

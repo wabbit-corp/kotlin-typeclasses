@@ -768,7 +768,7 @@ private class TypeclassIrCallTransformer(
             ?: return invalidBuiltinProofExpression(expressionType, "NotSame proof requires two type arguments.", diagnosticLocation)
         val right = plan.appliedTypeArguments.getOrNull(1)
             ?: return invalidBuiltinProofExpression(expressionType, "NotSame proof requires two type arguments.", diagnosticLocation)
-        if (!canProveNotSame(left, right)) {
+        if (!irCanProveNotSame(left, right, IrBuiltinGoalExactContext(visibleTypeParameters, pluginContext, configuration))) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
                 message = "NotSame proof could not prove ${left.render()} and ${right.render()} differ.",
@@ -812,7 +812,9 @@ private class TypeclassIrCallTransformer(
             ?: return invalidBuiltinProofExpression(expressionType, "StrictSubtype proof requires two type arguments.", diagnosticLocation)
         val subType = modelToIrType(subModel, visibleTypeParameters, pluginContext)
         val superType = modelToIrType(superModel, visibleTypeParameters, pluginContext)
-        if (!canProveSubtype(subType, superType, pluginContext) || !canProveNotSame(subModel, superModel)) {
+        if (!canProveSubtype(subType, superType, pluginContext) ||
+            !irCanProveNotSame(subModel, superModel, IrBuiltinGoalExactContext(visibleTypeParameters, pluginContext, configuration))
+        ) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
                 message =
@@ -2547,7 +2549,8 @@ private class IrRuleIndex private constructor(
                 resolvedRule.rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, pluginContext, canMaterializeVariable)
             }
             .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:notsame" || supportsBuiltinNotSameGoal(goal)
+                resolvedRule.rule.id != "builtin:notsame" ||
+                    irBuiltinNotSameFeasibility(goal, exactBuiltinGoalContext) != BuiltinGoalFeasibility.IMPOSSIBLE
             }
             .filter { resolvedRule ->
                 resolvedRule.rule.id != "builtin:nullable" ||
@@ -5015,6 +5018,29 @@ private fun canProveSubtype(
     pluginContext: IrPluginContext,
 ): Boolean = subType.isSubtypeOf(superType, JvmIrTypeSystemContext(pluginContext.irBuiltIns))
 
+private fun irCanProveNotSame(
+    left: TcType,
+    right: TcType,
+    exactBuiltinGoalContext: IrBuiltinGoalExactContext?,
+): Boolean {
+    if (left.normalizedKey() == right.normalizedKey()) {
+        return false
+    }
+    if (canProveNotSame(left, right)) {
+        return true
+    }
+    exactBuiltinGoalContext ?: return false
+    val leftType =
+        runCatching { modelToIrType(left, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
+            ?: return false
+    val rightType =
+        runCatching { modelToIrType(right, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
+            ?: return false
+    val leftSubtypeRight = canProveSubtype(leftType, rightType, exactBuiltinGoalContext.pluginContext)
+    val rightSubtypeLeft = canProveSubtype(rightType, leftType, exactBuiltinGoalContext.pluginContext)
+    return leftSubtypeRight != rightSubtypeLeft
+}
+
 private fun irBuiltinSubtypeFeasibility(
     goal: TcType,
     classInfoById: Map<String, VisibleClassHierarchyInfo>,
@@ -5042,6 +5068,23 @@ private fun irBuiltinSubtypeFeasibility(
     }
 }
 
+private fun irBuiltinNotSameFeasibility(
+    goal: TcType,
+    exactBuiltinGoalContext: IrBuiltinGoalExactContext?,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != NOT_SAME_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val left = constructor.arguments.getOrNull(0) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val right = constructor.arguments.getOrNull(1) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    return if (irCanProveNotSame(left, right, exactBuiltinGoalContext)) {
+        BuiltinGoalFeasibility.PROVABLE
+    } else {
+        BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+}
+
 private fun irBuiltinStrictSubtypeFeasibility(
     goal: TcType,
     classInfoById: Map<String, VisibleClassHierarchyInfo>,
@@ -5053,7 +5096,7 @@ private fun irBuiltinStrictSubtypeFeasibility(
     }
     val subModel = constructor.arguments.getOrNull(0) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
     val superModel = constructor.arguments.getOrNull(1) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
-    if (!canProveNotSame(subModel, superModel)) {
+    if (!irCanProveNotSame(subModel, superModel, exactBuiltinGoalContext)) {
         return BuiltinGoalFeasibility.IMPOSSIBLE
     }
     if (exactBuiltinGoalContext == null) {

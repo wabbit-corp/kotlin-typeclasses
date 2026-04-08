@@ -520,7 +520,8 @@ private data class ResolutionIndex(
                 visibleRule.rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, session, canMaterializeVariable)
             }
             .filter { visibleRule ->
-                visibleRule.rule.id != "builtin:notsame" || supportsBuiltinNotSameGoal(goal)
+                visibleRule.rule.id != "builtin:notsame" ||
+                    supportsBuiltinNotSameGoal(goal, classInfoById, exactBuiltinGoalContext)
             }
             .filter { visibleRule ->
                 visibleRule.rule.id != "builtin:nullable" ||

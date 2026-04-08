@@ -152,6 +152,30 @@ class EqualityProofTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun materializesNotSameProofForTypeParametersWithStrictUpperBounds() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.NotSame
+            import one.wabbit.typeclass.summon
+
+            open class Animal
+            open class Dog : Animal()
+
+            fun <T : Dog> proveDifferent(): NotSame<T, Animal> = summon<NotSame<T, Animal>>()
+
+            fun main() {
+                println(proveDifferent<Dog>() != null)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "true",
+        )
+    }
+
     @Test fun sameTypeConstructorRecognizesMatchingOuterConstructors() {
         val source =
             """

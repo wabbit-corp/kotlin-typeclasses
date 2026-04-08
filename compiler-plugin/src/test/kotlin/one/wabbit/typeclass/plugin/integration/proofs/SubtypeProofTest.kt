@@ -201,6 +201,30 @@ class SubtypeProofTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun materializesStrictSubtypeProofForTypeParametersWithStrictUpperBounds() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.StrictSubtype
+            import one.wabbit.typeclass.summon
+
+            open class Animal
+            open class Dog : Animal()
+
+            fun <T : Dog> proveStrict(): StrictSubtype<T, Animal> = summon<StrictSubtype<T, Animal>>()
+
+            fun main() {
+                println(proveStrict<Dog>() != null)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "true",
+        )
+    }
+
     @Test fun rejectsStrictSubtypeProofForEqualAliasAndUnrelatedTypes() {
         fun assertStrictSubtypeFailure(
             callSite: String,
