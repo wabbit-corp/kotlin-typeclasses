@@ -847,11 +847,38 @@ internal fun <A, P, N> buildNamedAndPositionalArgumentMapping(
     val assignedNonVarargParameters = linkedSetOf<P>()
     var nextPositionalIndex = 0
     val mapping = linkedMapOf<A, P>()
+    val remainingNamedParametersByArgumentIndex =
+        Array(arguments.size + 1) { emptySet<N>() }
+    val remainingNamedParameters = linkedSetOf<N>()
 
-    fun nextPositionalParameter(): P? {
+    for (argumentIndex in arguments.indices.reversed()) {
+        arguments[argumentIndex].first?.let(remainingNamedParameters::add)
+        remainingNamedParametersByArgumentIndex[argumentIndex] = remainingNamedParameters.toSet()
+    }
+
+    fun nextPositionalParameter(argumentIndex: Int): P? {
         while (nextPositionalIndex < parameters.size) {
             val candidate = parameters[nextPositionalIndex]
             if (isVararg(candidate)) {
+                val namedParametersAfterCurrentArgument =
+                    remainingNamedParametersByArgumentIndex
+                        .getOrElse(argumentIndex + 1) { emptySet() }
+                val remainingUnnamedArguments =
+                    arguments
+                        .subList(argumentIndex, arguments.size)
+                        .count { (name, _) -> name == null }
+                val laterRequiredPositionalParameters =
+                    parameters
+                        .subList(nextPositionalIndex + 1, parameters.size)
+                        .count { parameter ->
+                            !isVararg(parameter) &&
+                                parameter !in assignedNonVarargParameters &&
+                                parameterName(parameter) !in namedParametersAfterCurrentArgument
+                        }
+                if (remainingUnnamedArguments <= laterRequiredPositionalParameters) {
+                    nextPositionalIndex++
+                    continue
+                }
                 return candidate
             }
             nextPositionalIndex++
@@ -863,10 +890,13 @@ internal fun <A, P, N> buildNamedAndPositionalArgumentMapping(
         return null
     }
 
-    arguments.forEach { (name, argument) ->
-        val parameter = name?.let(parametersByName::get) ?: nextPositionalParameter() ?: return@forEach
+    arguments.forEachIndexed { argumentIndex, (name, argument) ->
+        val parameter =
+            name?.let(parametersByName::get)
+                ?: nextPositionalParameter(argumentIndex)
+                ?: return@forEachIndexed
         if (!isVararg(parameter) && !assignedNonVarargParameters.add(parameter)) {
-            return@forEach
+            return@forEachIndexed
         }
         mapping[argument] = parameter
     }

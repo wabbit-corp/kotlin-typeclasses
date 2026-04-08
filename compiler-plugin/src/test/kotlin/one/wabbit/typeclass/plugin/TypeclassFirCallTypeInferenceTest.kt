@@ -81,6 +81,34 @@ class TypeclassFirCallTypeInferenceTest {
     }
 
     @Test
+    fun `fallback mapping can advance past a non-final vararg for trailing positional arguments`() {
+        val parameters =
+            listOf(
+                FakeParameter("head"),
+                FakeParameter("values", isVararg = true),
+                FakeParameter("tail"),
+            )
+
+        val mapping =
+            buildNamedAndPositionalArgumentMapping(
+                arguments =
+                    listOf(
+                        null to "first",
+                        null to "second",
+                        null to "third",
+                    ),
+                parameters = parameters,
+                parameterName = FakeParameter::name,
+                isVararg = FakeParameter::isVararg,
+            )
+
+        assertEquals(
+            listOf("head", "values", "tail"),
+            mapping.values.map(FakeParameter::name),
+        )
+    }
+
+    @Test
     fun `return inference can bind type parameters from the explicit receiver alone`() {
         val session = object : FirSession(FirSession.Kind.Library) {}
         val typeParameter = boundTypeParameterSymbol("A")
