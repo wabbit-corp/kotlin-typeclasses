@@ -3,6 +3,7 @@
 package one.wabbit.typeclass.plugin.integration.proofs
 
 import one.wabbit.typeclass.plugin.integration.ExpectedDiagnostic
+import one.wabbit.typeclass.plugin.integration.HarnessDependency
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import kotlin.test.Test
 
@@ -170,6 +171,42 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 true
                 true
                 """.trimIndent(),
+        )
+    }
+
+    @Test fun materializesSubtypeProofForDependencyHierarchy() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-hierarchy",
+                sources =
+                    mapOf(
+                        "dep/Model.kt" to
+                            """
+                            package dep
+
+                            open class Animal
+                            class Dog : Animal()
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.Animal
+            import dep.Dog
+            import one.wabbit.typeclass.Subtype
+            import one.wabbit.typeclass.summon
+
+            fun main() {
+                println(summon<Subtype<Dog, Animal>>() != null)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "true",
+            dependencies = listOf(dependency),
         )
     }
 

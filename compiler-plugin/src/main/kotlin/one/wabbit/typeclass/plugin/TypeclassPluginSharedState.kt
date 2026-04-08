@@ -305,15 +305,7 @@ private class FirResolutionScanner(
             is FirRegularClass -> {
                 val classId = declaration.symbol.classId
                 if (!classId.isLocal) {
-                    classInfoById[classId.asString()] =
-                        VisibleClassHierarchyInfo(
-                            superClassifiers =
-                                declaration.superTypeRefs.mapNotNull { superTypeRef ->
-                                    superTypeRef.coneType.classId?.asString()
-                                }.toSet(),
-                            isSealed = declaration.status.modality == Modality.SEALED,
-                            typeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.symbol.fir.variance },
-                        )
+                    classInfoById[classId.asString()] = declaration.visibleClassHierarchyInfo()
                     val derivedTypeclassIds =
                         declaration.supportedDerivedTypeclassIds(session).let { supportedTypeclassIds ->
                             supportedTypeclassIds + supportedTypeclassIds.expandedDerivedTypeclassIds(session, configuration)
@@ -2056,15 +2048,7 @@ private data class ResolutionIndex(
                 null
             } ?: return
         val declaration = classSymbol.fir
-        classInfoById[classifierId] =
-            VisibleClassHierarchyInfo(
-                superClassifiers =
-                    declaration.superTypeRefs.mapNotNull { superTypeRef ->
-                        superTypeRef.coneType.classId?.asString()
-                    }.toSet(),
-                isSealed = declaration.status.modality == Modality.SEALED,
-                typeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.symbol.fir.variance },
-            )
+        classInfoById[classifierId] = declaration.visibleClassHierarchyInfo()
     }
 
     private fun discoverAssociatedRules(
@@ -2696,6 +2680,16 @@ internal fun FirRegularClass.declaredOrResolvedSuperTypes(): List<ConeKotlinType
     }
     return symbol.resolvedSuperTypes
 }
+
+private fun FirRegularClass.visibleClassHierarchyInfo(): VisibleClassHierarchyInfo =
+    VisibleClassHierarchyInfo(
+        superClassifiers =
+            declaredOrResolvedSuperTypes().mapNotNull { superType ->
+                superType.classId?.asString()
+            }.toSet(),
+        isSealed = status.modality == Modality.SEALED,
+        typeParameterVariances = typeParameters.map { typeParameter -> typeParameter.symbol.fir.variance },
+    )
 
 private fun FirRegularClass.toObjectRules(
     session: FirSession,
