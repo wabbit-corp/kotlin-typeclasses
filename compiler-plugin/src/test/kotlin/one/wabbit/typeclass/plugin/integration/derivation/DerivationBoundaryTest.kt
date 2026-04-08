@@ -2,6 +2,7 @@
 
 package one.wabbit.typeclass.plugin.integration.derivation
 
+import one.wabbit.typeclass.plugin.cannotDeriveOnlyUnaryTypeclasses
 import one.wabbit.typeclass.plugin.integration.HarnessDependency
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import one.wabbit.typeclass.plugin.integration.DiagnosticPhase
@@ -219,6 +220,47 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 listOf(
                     expectedCannotDerive("plain", "@typeclass"),
                     expectedCannotDerive("other", "@typeclass"),
+                ),
+            unexpectedMessages = listOf("internal compiler error"),
+        )
+    }
+
+    @Test
+    fun nonUnaryDeriveTargetsDoNotSuppressLaterFirDiagnostics() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Decoder<E, A> {
+                fun decode(env: E): A
+
+                companion object : ProductTypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Decoder<String, Any?> {
+                            override fun decode(env: String): Any? = metadata.typeName
+                        }
+                }
+            }
+
+            interface Plain<A>
+
+            @Derive(Decoder::class, Plain::class) // E:TC_CANNOT_DERIVE multiple invalid derive targets should each be diagnosed
+            data class Box(val value: Int)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedTypeclassDiagnostic(cannotDeriveOnlyUnaryTypeclasses(), phase = DiagnosticPhase.IR),
+                    expectedCannotDerive("plain", "@typeclass"),
                 ),
             unexpectedMessages = listOf("internal compiler error"),
         )

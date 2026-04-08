@@ -529,7 +529,7 @@ internal class TypeclassFirCheckersExtension(
             val typeclassId = runCatching { ClassId.fromString(typeclassIdString) }.getOrNull() ?: return@forEach
             if (typeclassTypeParameterCount(typeclassId, session) != 1) {
                 reportCannotDerive(declaration, cannotDeriveOnlyUnaryTypeclasses())
-                return
+                return@forEach
             }
             val requiredDeriverInterface = declaration.requiredDeriverInterfaceForDeriveShape()
             if (!typeclassSupportsDeriveShape(typeclassId, requiredDeriverInterface, session)) {
