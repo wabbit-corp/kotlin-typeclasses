@@ -25,6 +25,9 @@ internal fun impossibleEnumOrdinalResolverRuntimeMessage(enumClassName: String):
 internal fun impossibleEnumValueResolverRuntimeMessage(enumClassName: String): String =
     "Internal typeclass derivation error: generated enum value resolver for $enumClassName reached an impossible fallback path. This usually means stale generated metadata or ABI drift."
 
+internal fun objectProductConstructorArityRuntimeMessage(className: String): String =
+    "Internal typeclass derivation error: generated product constructor for object $className expected zero arguments. This usually means stale generated metadata or an invalid runtime caller."
+
 internal fun IrBuilderWithScope.irTypeclassInternalError(
     pluginContext: IrPluginContext,
     message: String,

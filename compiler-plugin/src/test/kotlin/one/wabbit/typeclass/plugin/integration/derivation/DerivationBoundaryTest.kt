@@ -203,7 +203,7 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
     }
 
     @Test
-    fun objectDerivationRespectsStoredPropertyPrerequisitesInFirRefinement() {
+    fun objectDerivationTreatsObjectsAsZeroFieldProductsInFirRefinement() {
         val sources =
             mapOf(
                 "shared/Show.kt" to showTypeclassSource(packageName = "shared"),
@@ -233,8 +233,6 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     context(_: shared.Show<Box>)
                     fun render(value: Box): String = "context"
 
-                    fun render(value: Box): String = "plain"
-
                     fun main() {
                         println(render(Box))
                     }
@@ -243,7 +241,7 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
         assertCompilesAndRuns(
             sources = sources,
-            expectedStdout = "plain",
+            expectedStdout = "context",
             mainClass = "demo.MainKt",
         )
     }

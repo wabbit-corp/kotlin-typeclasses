@@ -1658,6 +1658,15 @@ private class TypeclassIrCallTransformer(
                 .singleOrNull { function ->
                     function.name.asString() == "get" && function.valueParameters.size == 1
                 } ?: error("Could not resolve kotlin.collections.List.get(Int)")
+        val collectionClass =
+            pluginContext.referenceClass(ClassId.topLevel(FqName("kotlin.collections.Collection")))?.owner
+                ?: error("Could not resolve kotlin.collections.Collection")
+        val isEmptyFunction =
+            collectionClass.declarations
+                .filterIsInstance<IrSimpleFunction>()
+                .singleOrNull { function ->
+                    function.name.asString() == "isEmpty" && function.valueParameters.isEmpty()
+                } ?: error("Could not resolve kotlin.collections.Collection.isEmpty()")
         val lambdaType =
             pluginContext.irBuiltIns.functionN(1).typeWith(
                 listType,
@@ -1693,7 +1702,21 @@ private class TypeclassIrCallTransformer(
         constructorLambda.body =
             DeclarationIrBuilder(pluginContext, constructorLambda.symbol, startOffset, endOffset).irBlockBody {
                 if (reference.targetClass.isObject) {
-                    +irReturn(irGetObject(reference.targetClass.symbol))
+                    +irReturn(
+                        irIfThenElse(
+                            type = anyType,
+                            condition =
+                                irCall(isEmptyFunction.symbol).apply {
+                                    dispatchReceiver = irGet(argumentsParameter)
+                                },
+                            thenPart = irGetObject(reference.targetClass.symbol),
+                            elsePart =
+                                irTypeclassInternalError(
+                                    pluginContext = pluginContext,
+                                    message = objectProductConstructorArityRuntimeMessage(reference.targetClass.classIdOrFail.asString()),
+                                ),
+                        ),
+                    )
                     return@irBlockBody
                 }
                 val constructor = shape.constructor
@@ -4023,6 +4046,9 @@ private class IrModuleScanner(
         typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
         rootGoal: String,
     ): DerivedShape.Product? {
+        if (isObject) {
+            return DerivedShape.Product(fields = emptyList(), constructor = null)
+        }
         val storedProperties = structuralProperties()
         storedProperties.firstOrNull { property ->
             property.visibility != DescriptorVisibilities.PUBLIC ||
@@ -4039,18 +4065,37 @@ private class IrModuleScanner(
             return null
         }
         val fields =
-            storedProperties.mapNotNull { property ->
-                val getter = property.getter ?: return@mapNotNull null
-                val fieldType = irTypeToModel(getter.returnType, typeParameterBySymbol) ?: return@mapNotNull null
+            storedProperties.map { property ->
+                val getter = property.getter
+                    ?: run {
+                        pluginContext.reportCannotDeriveWithTrace(
+                            owner = this,
+                            configuration = configuration,
+                            goal = rootGoal,
+                            message =
+                                "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires constructor parameters to exactly match stored properties",
+                            location = compilerMessageLocation(),
+                        )
+                        return null
+                    }
+                val fieldType = irTypeToModel(getter.returnType, typeParameterBySymbol)
+                    ?: run {
+                        pluginContext.reportCannotDeriveWithTrace(
+                            owner = this,
+                            configuration = configuration,
+                            goal = rootGoal,
+                            message =
+                                "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires all stored property types to be representable",
+                            location = compilerMessageLocation(),
+                        )
+                        return null
+                    }
                 DerivedField(
                     name = property.name.asString(),
                     type = fieldType,
                     getter = getter,
                 )
             }
-        if (isObject) {
-            return DerivedShape.Product(fields = fields, constructor = null)
-        }
         val constructor = primaryConstructorOrNull()
         if (constructor == null) {
             pluginContext.reportCannotDeriveWithTrace(

@@ -11,6 +11,54 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
     private val serializationRuntime = listOf(CompilerHarnessPlugin.SerializationRuntime)
 
     @Test
+    fun derivesObjectsAsZeroFieldProducts() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Probe<A> {
+                fun describe(value: A): String
+
+                companion object : ProductTypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Probe<Any?> {
+                            override fun describe(value: Any?): String {
+                                val zeroArgConstructMatches = metadata.construct() === value
+                                val nonEmptyConstructFails = runCatching { metadata.construct("unexpected") }.isFailure
+                                return "${'$'}{metadata.fields.size}|${'$'}zeroArgConstructMatches|${'$'}nonEmptyConstructFails"
+                            }
+                        }
+                }
+            }
+
+            data class Missing(val value: String)
+
+            @Derive(Probe::class)
+            object Box {
+                val hidden: Missing = Missing("hidden")
+            }
+
+            context(probe: Probe<A>)
+            fun <A> describe(value: A): String = probe.describe(value)
+
+            fun main() {
+                println(describe(Box))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "0|true|true",
+        )
+    }
+
+    @Test
     fun derivesProductMonoidsSemantically() {
         val source =
             """
