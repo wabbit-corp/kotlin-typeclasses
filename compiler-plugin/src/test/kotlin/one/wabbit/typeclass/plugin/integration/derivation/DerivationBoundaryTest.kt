@@ -203,6 +203,52 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun objectDerivationRespectsStoredPropertyPrerequisitesInFirRefinement() {
+        val sources =
+            mapOf(
+                "shared/Show.kt" to showTypeclassSource(packageName = "shared"),
+                "shared/Missing.kt" to
+                    """
+                    package shared
+
+                    data class Missing(val value: String)
+                    """.trimIndent(),
+                "shared/Box.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Derive
+
+                    @Derive(Show::class)
+                    object Box {
+                        val value: Missing = Missing("hidden")
+                    }
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import shared.Box
+
+                    context(_: shared.Show<Box>)
+                    fun render(value: Box): String = "context"
+
+                    fun render(value: Box): String = "plain"
+
+                    fun main() {
+                        println(render(Box))
+                    }
+                    """.trimIndent(),
+            )
+
+        assertCompilesAndRuns(
+            sources = sources,
+            expectedStdout = "plain",
+            mainClass = "demo.MainKt",
+        )
+    }
+
+    @Test
     fun invalidNonTypeclassDeriveTargetsAreDiagnosedExplicitly() {
         val source =
             """

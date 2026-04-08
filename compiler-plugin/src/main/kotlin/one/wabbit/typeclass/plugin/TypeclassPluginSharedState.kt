@@ -743,7 +743,7 @@ private data class ResolutionIndex(
                 )
             }
         }
-        if (declaration.classKind == ClassKind.OBJECT || declaration.classKind == ClassKind.ENUM_CLASS) {
+        if (declaration.classKind == ClassKind.ENUM_CLASS) {
             return emptyList()
         }
         if (declaration.status.modality == Modality.SEALED) {
@@ -769,14 +769,6 @@ private data class ResolutionIndex(
         val appliedBindings =
             ruleTypeParameters.zip(targetType.arguments)
                 .associate { (parameter, appliedType) -> parameter.id to appliedType }
-        val constructor =
-            declaration.declarations
-                .filterIsInstance<org.jetbrains.kotlin.fir.declarations.FirConstructor>()
-                .singleOrNull { candidate -> candidate.isPrimary }
-                ?: return fail("Cannot derive ${declaration.symbol.classId.asFqNameString()} because constructive product derivation requires a primary constructor")
-        if (constructor.status.visibility != Visibilities.Public) {
-            return fail("constructive product derivation requires a public primary constructor for ${declaration.symbol.classId.asFqNameString()}.")
-        }
         val storedProperties =
             declaration.declarations
                 .filterIsInstance<FirProperty>()
@@ -791,6 +783,28 @@ private data class ResolutionIndex(
                 }
                 property
             }
+        if (declaration.classKind == ClassKind.OBJECT) {
+            return visibleStoredProperties.map { property ->
+                val getter =
+                    property.getter
+                        ?: return fail("Cannot derive ${declaration.symbol.classId.asFqNameString()} because constructive product derivation requires all stored property types to be representable")
+                val fieldType =
+                    coneTypeToModel(getter.returnTypeRef.coneType, typeParameterBySymbol)
+                        ?: return fail("Cannot derive ${declaration.symbol.classId.asFqNameString()} because constructive product derivation requires all stored property types to be representable")
+                TcType.Constructor(
+                    classifierId = directTypeclassId,
+                    arguments = listOf(fieldType.substituteType(appliedBindings)),
+                )
+            }
+        }
+        val constructor =
+            declaration.declarations
+                .filterIsInstance<org.jetbrains.kotlin.fir.declarations.FirConstructor>()
+                .singleOrNull { candidate -> candidate.isPrimary }
+                ?: return fail("Cannot derive ${declaration.symbol.classId.asFqNameString()} because constructive product derivation requires a primary constructor")
+        if (constructor.status.visibility != Visibilities.Public) {
+            return fail("constructive product derivation requires a public primary constructor for ${declaration.symbol.classId.asFqNameString()}.")
+        }
         val constructorParameterNames = constructor.valueParameters.map { parameter -> parameter.name.asString() }
         val fieldNames = visibleStoredProperties.map { property -> property.name.asString() }
         if (constructorParameterNames != fieldNames) {
