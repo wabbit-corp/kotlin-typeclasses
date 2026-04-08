@@ -13,7 +13,6 @@ import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 import java.util.jar.JarFile
-import kotlin.LazyThreadSafetyMode
 
 internal object BinaryGeneratedDerivedMetadataRegistry {
     private val loaders = Collections.synchronizedMap(WeakHashMap<FirSession, BinaryGeneratedDerivedMetadataLoader>())
@@ -81,52 +80,35 @@ internal class JarBinaryGeneratedDerivedMetadataRoot(
     private val root: File,
     private val jarFileOpener: (File) -> JarFile = ::JarFile,
 ) : BinaryGeneratedDerivedMetadataRoot {
-    private val index by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { buildIndex() }
+    private val lookupByEntryPath = ConcurrentHashMap<String, BinaryGeneratedDerivedMetadataLookupResult>()
 
     override fun generatedMetadataFor(classId: ClassId): BinaryGeneratedDerivedMetadataLookupResult {
         val entryPath = classId.classFilePath()
-        if (entryPath !in index.classEntries) {
-            return BinaryGeneratedDerivedMetadataLookupResult.NotFound
+        return lookupByEntryPath.computeIfAbsent(entryPath) {
+            lookupEntry(
+                entryPath = entryPath,
+                ownerId = classId.asString(),
+            )
         }
-        return BinaryGeneratedDerivedMetadataLookupResult.Found(
-            index.metadataByEntryPath[entryPath].orEmpty(),
-        )
     }
 
-    private fun buildIndex(): JarBinaryGeneratedDerivedMetadataIndex {
-        val classEntries = linkedSetOf<String>()
-        val metadataByEntryPath = linkedMapOf<String, List<GeneratedDerivedMetadata>>()
+    private fun lookupEntry(
+        entryPath: String,
+        ownerId: String,
+    ): BinaryGeneratedDerivedMetadataLookupResult {
         jarFileOpener(root).use { jarFile ->
-            val entries = jarFile.entries()
-            while (entries.hasMoreElements()) {
-                val entry = entries.nextElement()
-                if (entry.isDirectory || !entry.name.endsWith(".class")) {
-                    continue
+            val entry = jarFile.getEntry(entryPath) ?: return BinaryGeneratedDerivedMetadataLookupResult.NotFound
+            val metadata =
+                jarFile.getInputStream(entry).use { stream ->
+                    parseGeneratedDerivedMetadata(
+                        classBytes = stream.readBytes(),
+                        ownerId = ownerId,
+                    )
                 }
-                classEntries += entry.name
-                val metadata =
-                    jarFile.getInputStream(entry).use { stream ->
-                        parseGeneratedDerivedMetadata(
-                            classBytes = stream.readBytes(),
-                            ownerId = entry.name.classEntryOwnerId(),
-                        )
-                    }
-                if (metadata.isNotEmpty()) {
-                    metadataByEntryPath[entry.name] = metadata
-                }
-            }
+            return BinaryGeneratedDerivedMetadataLookupResult.Found(metadata)
         }
-        return JarBinaryGeneratedDerivedMetadataIndex(
-            classEntries = classEntries,
-            metadataByEntryPath = metadataByEntryPath,
-        )
     }
 }
-
-private data class JarBinaryGeneratedDerivedMetadataIndex(
-    val classEntries: Set<String>,
-    val metadataByEntryPath: Map<String, List<GeneratedDerivedMetadata>>,
-)
 
 private fun binaryGeneratedDerivedMetadataRoot(root: File): BinaryGeneratedDerivedMetadataRoot? =
     when {
@@ -232,14 +214,3 @@ private fun ClassId.classFilePath(): String {
 }
 
 private fun ClassId.descriptor(): String = "L${classFilePath().removeSuffix(".class")};"
-
-private fun String.classEntryOwnerId(): String {
-    val relativePath = removeSuffix(".class")
-    val packageSeparator = relativePath.lastIndexOf('/')
-    return if (packageSeparator < 0) {
-        relativePath.replace('$', '.')
-    } else {
-        relativePath.substring(0, packageSeparator + 1) +
-            relativePath.substring(packageSeparator + 1).replace('$', '.')
-    }
-}

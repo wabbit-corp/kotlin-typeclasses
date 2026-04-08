@@ -62,9 +62,29 @@ class BinaryGeneratedDerivedMetadataLoaderTest {
             }
 
         assertEquals(listOf(metadataA), root.generatedMetadataFor(ownerA).metadataForTest())
+        assertEquals(listOf(metadataA), root.generatedMetadataFor(ownerA).metadataForTest())
         assertEquals(listOf(metadataB), root.generatedMetadataFor(ownerB).metadataForTest())
-        assertEquals(1, openCount.get())
-        assertEquals(1, closeCount.get())
+        assertEquals(2, openCount.get())
+        assertEquals(2, closeCount.get())
+    }
+
+    @Test
+    fun jarRootParsesOnlyTheRequestedClassEntry() {
+        val ownerA = ClassId.fromString("demo/Alpha")
+        val ownerB = ClassId.fromString("demo/Beta")
+        val metadataA =
+            GeneratedDerivedMetadata.Derive(
+                typeclassId = ClassId.fromString("demo/Show"),
+                targetId = ownerA,
+            )
+        val jarFile =
+            createJarWithClassBytes(
+                ownerA to generatedMetadataAnnotatedClassBytes(ownerA, metadataA),
+                ownerB to byteArrayOf(0x0),
+            )
+        val root = JarBinaryGeneratedDerivedMetadataRoot(jarFile)
+
+        assertEquals(listOf(metadataA), root.generatedMetadataFor(ownerA).metadataForTest())
     }
 
     @Test
@@ -108,6 +128,19 @@ class BinaryGeneratedDerivedMetadataLoaderTest {
             owners.forEach { owner ->
                 jar.putNextEntry(JarEntry(owner.classFilePathForTest()))
                 jar.write(plainClassBytes(owner))
+                jar.closeEntry()
+            }
+        }
+        return jarFile
+    }
+
+    private fun createJarWithClassBytes(vararg entries: Pair<ClassId, ByteArray>): File {
+        val jarFile = Files.createTempFile("typeclass-generated-metadata-raw", ".jar").toFile()
+        jarFile.deleteOnExit()
+        JarOutputStream(jarFile.outputStream().buffered()).use { jar ->
+            entries.forEach { (owner, classBytes) ->
+                jar.putNextEntry(JarEntry(owner.classFilePathForTest()))
+                jar.write(classBytes)
                 jar.closeEntry()
             }
         }
