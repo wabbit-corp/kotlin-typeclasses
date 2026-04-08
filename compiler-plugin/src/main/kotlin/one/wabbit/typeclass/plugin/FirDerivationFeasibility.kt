@@ -754,6 +754,7 @@ internal fun FirRegularClass.matchingShapeDerivedGoalMatches(
         if (source == null) {
             generatedDerivedMetadata(session)
                 .filterIsInstance<GeneratedDerivedMetadata.Derive>()
+                .filter(GeneratedDerivedMetadata.Derive::validatedReturnTypeclass)
                 .mapTo(linkedSetOf()) { metadata -> metadata.typeclassId.asString() }
         } else {
             if (!supportsDeriveShape()) {

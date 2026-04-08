@@ -14,8 +14,16 @@ internal sealed interface GeneratedDerivedMetadata {
     data class Derive(
         override val typeclassId: ClassId,
         override val targetId: ClassId,
+        val validatedReturnTypeclass: Boolean = false,
     ) : GeneratedDerivedMetadata {
         override val kind: String = "derive"
+
+        override fun payload(): String =
+            if (validatedReturnTypeclass) {
+                VALIDATED_DERIVE_PAYLOAD
+            } else {
+                ""
+            }
     }
 
     data class DeriveVia(
@@ -83,9 +91,16 @@ internal fun decodeGeneratedDerivedMetadata(
     return when (kind) {
         "derive" -> {
             val decodedTypeclassId = typeclassId?.let(::decodeClassId) ?: return null
+            val validatedReturnTypeclass =
+                when (payload.orEmpty()) {
+                    "" -> false
+                    VALIDATED_DERIVE_PAYLOAD -> true
+                    else -> return null
+                }
             GeneratedDerivedMetadata.Derive(
                 typeclassId = decodedTypeclassId,
                 targetId = decodedTargetId,
+                validatedReturnTypeclass = validatedReturnTypeclass,
             )
         }
 
@@ -132,3 +147,5 @@ private fun decodeGeneratedDeriveViaPath(payload: String): List<GeneratedDeriveV
 
 private fun decodeClassId(encoded: String): ClassId? =
     runCatching { ClassId.fromString(encoded) }.getOrNull()
+
+private const val VALIDATED_DERIVE_PAYLOAD = "validated-return-typeclass:v1"

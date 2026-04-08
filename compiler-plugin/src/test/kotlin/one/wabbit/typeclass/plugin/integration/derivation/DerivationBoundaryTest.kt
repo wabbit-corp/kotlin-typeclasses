@@ -722,6 +722,7 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 GeneratedDerivedMetadata.Derive(
                     typeclassId = ClassId.fromString("demo/Show"),
                     targetId = tokenId,
+                    validatedReturnTypeclass = true,
                 ),
             )
 
@@ -773,6 +774,7 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 GeneratedDerivedMetadata.Derive(
                     typeclassId = ClassId.fromString("demo/Child"),
                     targetId = boxId,
+                    validatedReturnTypeclass = true,
                 ),
             ),
             loader.generatedMetadataFor(boxId),

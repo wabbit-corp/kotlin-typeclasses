@@ -1468,7 +1468,13 @@ private class TypeclassIrCallTransformer(
                     )
             }
         val deriveMethod = reference.deriveMethod
-        if (!validateKnownDeriverReturnTypeclass(reference.deriverCompanion.parentAsClass, deriveMethod)) {
+        if (
+            !validateKnownDeriverReturnTypeclass(
+                typeclassInterface = reference.deriverCompanion.parentAsClass,
+                deriveMethod = deriveMethod,
+                trustBodylessExternalStub = reference.trustBodylessExternalStub,
+            )
+        ) {
             return irAs(irNull(), resultType)
         }
 
@@ -1518,69 +1524,16 @@ private class TypeclassIrCallTransformer(
     private fun validateKnownDeriverReturnTypeclass(
         typeclassInterface: IrClass,
         deriveMethod: IrSimpleFunction,
+        trustBodylessExternalStub: Boolean,
     ): Boolean =
-        deriverReturnValidationCache.getOrPut(
-            method = deriveMethod,
-            expectedTypeclassId = typeclassInterface.classIdOrFail.asString(),
-        ) {
-            val expectedTypeclassId = typeclassInterface.classIdOrFail.asString()
-            val declaredReturnTypeclassConstructors =
-                listOf(deriveMethod.returnType)
-                    .providedTypeExpansion(emptyMap(), configuration)
-                    .validTypes
-                    .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
-                    .distinct()
-            if (declaredReturnTypeclassConstructors.isNotEmpty()) {
-                if (expectedTypeclassId in declaredReturnTypeclassConstructors) {
-                    return@getOrPut true
-                }
-                pluginContext.reportTypeclassError(
-                    message =
-                        "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>; found ${declaredReturnTypeclassConstructors.joinToString { classifierId -> classifierId.shortClassNameOrSelf() }}",
-                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                    location = deriveMethod.compilerMessageLocation(),
-                )
-                return@getOrPut false
-            }
-            if (deriveMethod.origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB && deriveMethod.body == null) {
-                // External stubs do not carry bodies, so source-validated Any-return derivers are
-                // indistinguishable from invalid ones here. Trust the producer once the declared
-                // return type does not already contradict the owning typeclass.
-                return@getOrPut true
-            }
-            val knownReturnExpressions = deriveMethod.knownDeriverReturnExpressions()
-            if (knownReturnExpressions.isEmpty()) {
-                pluginContext.reportTypeclassError(
-                    message = "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>",
-                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                    location = deriveMethod.compilerMessageLocation(),
-                )
-                return@getOrPut false
-            }
-            knownReturnExpressions.forEach { returnExpression ->
-                val knownTypeclassConstructors =
-                    returnExpression.knownReturnedTypeclassConstructors(configuration)
-                if (knownTypeclassConstructors.isEmpty()) {
-                    pluginContext.reportTypeclassError(
-                        message = "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>",
-                        diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                        location = deriveMethod.compilerMessageLocation(),
-                    )
-                    return@getOrPut false
-                }
-                if (expectedTypeclassId in knownTypeclassConstructors) {
-                    return@forEach
-                }
-                pluginContext.reportTypeclassError(
-                    message =
-                        "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>; found ${knownTypeclassConstructors.joinToString { classifierId -> classifierId.shortClassNameOrSelf() }}",
-                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
-                    location = deriveMethod.compilerMessageLocation(),
-                )
-                return@getOrPut false
-            }
-            true
-        }
+        validateKnownIrDeriverReturnTypeclass(
+            typeclassInterface = typeclassInterface,
+            deriveMethod = deriveMethod,
+            configuration = configuration,
+            pluginContext = pluginContext,
+            cache = deriverReturnValidationCache,
+            trustBodylessExternalStub = trustBodylessExternalStub,
+        )
 
     private fun IrStatementsBuilder<*>.buildProductMetadata(
         reference: RuleReference.Derived,
@@ -2264,6 +2217,82 @@ internal class DeriverReturnValidationCache<M : Any> {
     ): Boolean = values.getOrPut(method to expectedTypeclassId, compute)
 }
 
+private fun validateKnownIrDeriverReturnTypeclass(
+    typeclassInterface: IrClass,
+    deriveMethod: IrSimpleFunction,
+    configuration: TypeclassConfiguration,
+    pluginContext: IrPluginContext,
+    cache: DeriverReturnValidationCache<IrSimpleFunction>,
+    trustBodylessExternalStub: Boolean,
+): Boolean =
+    cache.getOrPut(
+        method = deriveMethod,
+        expectedTypeclassId = typeclassInterface.classIdOrFail.asString(),
+    ) {
+        val expectedTypeclassId = typeclassInterface.classIdOrFail.asString()
+        val declaredReturnTypeclassConstructors =
+            listOf(deriveMethod.returnType)
+                .providedTypeExpansion(emptyMap(), configuration)
+                .validTypes
+                .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
+                .distinct()
+        if (declaredReturnTypeclassConstructors.isNotEmpty()) {
+            if (expectedTypeclassId in declaredReturnTypeclassConstructors) {
+                return@getOrPut true
+            }
+            pluginContext.reportTypeclassError(
+                message =
+                    "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>; found ${declaredReturnTypeclassConstructors.joinToString { classifierId -> classifierId.shortClassNameOrSelf() }}",
+                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                location = deriveMethod.compilerMessageLocation(),
+            )
+            return@getOrPut false
+        }
+        if (deriveMethod.origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB && deriveMethod.body == null) {
+            if (trustBodylessExternalStub) {
+                return@getOrPut true
+            }
+            pluginContext.reportTypeclassError(
+                message = "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>",
+                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                location = deriveMethod.compilerMessageLocation(),
+            )
+            return@getOrPut false
+        }
+        val knownReturnExpressions = deriveMethod.knownDeriverReturnExpressions()
+        if (knownReturnExpressions.isEmpty()) {
+            pluginContext.reportTypeclassError(
+                message = "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>",
+                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                location = deriveMethod.compilerMessageLocation(),
+            )
+            return@getOrPut false
+        }
+        knownReturnExpressions.forEach { returnExpression ->
+            val knownTypeclassConstructors =
+                returnExpression.knownReturnedTypeclassConstructors(configuration)
+            if (knownTypeclassConstructors.isEmpty()) {
+                pluginContext.reportTypeclassError(
+                    message = "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>",
+                    diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                    location = deriveMethod.compilerMessageLocation(),
+                )
+                return@getOrPut false
+            }
+            if (expectedTypeclassId in knownTypeclassConstructors) {
+                return@forEach
+            }
+            pluginContext.reportTypeclassError(
+                message =
+                    "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>; found ${knownTypeclassConstructors.joinToString { classifierId -> classifierId.shortClassNameOrSelf() }}",
+                diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
+                location = deriveMethod.compilerMessageLocation(),
+            )
+            return@getOrPut false
+        }
+        true
+    }
+
 private fun IrSimpleFunction.knownDeriverReturnExpressions(): List<IrExpression> {
     val body = body ?: return emptyList()
     val returnExpressions = linkedSetOf<IrExpression>()
@@ -2916,6 +2945,7 @@ private class IrModuleScanner(
     private val configuration: TypeclassConfiguration,
     private val sharedState: TypeclassPluginSharedState,
 ) {
+    private val deriverReturnValidationCache = DeriverReturnValidationCache<IrSimpleFunction>()
     val classInfoById: MutableMap<String, VisibleClassHierarchyInfo> = linkedMapOf()
 
     val classesById = linkedMapOf<String, IrClass>()
@@ -3356,12 +3386,29 @@ private class IrModuleScanner(
         subclassesBySuper: Map<String, Set<String>>,
     ): GeneratedDerivedMetadata.Derive? {
         val targetClassId = classId ?: return null
-        if (toDerivedRules(typeclassId, subclassesBySuper).isEmpty()) {
+        val derivedRules = toDerivedRules(typeclassId, subclassesBySuper)
+        if (derivedRules.isEmpty()) {
+            return null
+        }
+        val derivedReference =
+            derivedRules.firstOrNull()?.reference as? RuleReference.Derived
+                ?: return null
+        if (
+            !validateKnownIrDeriverReturnTypeclass(
+                typeclassInterface = derivedReference.deriverCompanion.parentAsClass,
+                deriveMethod = derivedReference.deriveMethod,
+                configuration = configuration,
+                pluginContext = pluginContext,
+                cache = deriverReturnValidationCache,
+                trustBodylessExternalStub = true,
+            )
+        ) {
             return null
         }
         return GeneratedDerivedMetadata.Derive(
             typeclassId = typeclassId,
             targetId = targetClassId,
+            validatedReturnTypeclass = true,
         )
     }
 
@@ -3719,6 +3766,7 @@ private class IrModuleScanner(
                             deriveMethod = deriveMethod,
                             shape = spec.shape,
                             ruleTypeParameters = spec.ruleTypeParameters,
+                            trustBodylessExternalStub = true,
                         ),
                     associatedOwner = targetClassId,
                 )
@@ -4580,12 +4628,14 @@ private class IrModuleScanner(
         if (origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB) {
             publishedGeneratedDerivedMetadata()
                 .filterIsInstance<GeneratedDerivedMetadata.Derive>()
+                .filter(GeneratedDerivedMetadata.Derive::validatedReturnTypeclass)
                 .mapTo(linkedSetOf()) { metadata -> metadata.typeclassId }
         } else {
             buildSet {
                 addAll(
                     publishedGeneratedDerivedMetadata()
                         .filterIsInstance<GeneratedDerivedMetadata.Derive>()
+                        .filter(GeneratedDerivedMetadata.Derive::validatedReturnTypeclass)
                         .map { metadata -> metadata.typeclassId },
                 )
                 addAll(derivedTypeclassIds())
@@ -5329,6 +5379,7 @@ private sealed interface RuleReference {
         val deriveMethod: IrSimpleFunction,
         val shape: DerivedShape,
         val ruleTypeParameters: List<TcTypeParameter>,
+        val trustBodylessExternalStub: Boolean,
     ) : RuleReference
 
     data class DerivedEquiv(

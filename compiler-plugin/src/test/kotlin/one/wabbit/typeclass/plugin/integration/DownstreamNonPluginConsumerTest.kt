@@ -310,6 +310,74 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun downstreamPluginIgnoresUnvalidatedGeneratedDeriveMetadataFromDependency() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-raw-generated-derive",
+                useTypeclassPlugin = false,
+                enableContextParameters = false,
+                sources =
+                    mapOf(
+                        "dep/Api.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.GeneratedTypeclassInstance
+                            import one.wabbit.typeclass.Instance
+                            import one.wabbit.typeclass.ProductTypeclassDeriver
+                            import one.wabbit.typeclass.ProductTypeclassMetadata
+                            import one.wabbit.typeclass.Typeclass
+
+                            @Typeclass
+                            interface Show<A> {
+                                fun show(value: A): String
+
+                                companion object : ProductTypeclassDeriver {
+                                    private object ExistingShow : Show<Any?> {
+                                        override fun show(value: Any?): String = "binary-any"
+                                    }
+
+                                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any = ExistingShow
+                                }
+                            }
+
+                            @Instance
+                            object IntShow : Show<Int> {
+                                override fun show(value: Int): String = value.toString()
+                            }
+
+                            @GeneratedTypeclassInstance(
+                                typeclassId = "dep/Show",
+                                targetId = "dep/Box",
+                                kind = "derive",
+                            )
+                            data class Box(val value: Int)
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.Box
+            import dep.Show
+
+            context(show: Show<Box>)
+            fun render(value: Box): String = show.show(value)
+
+            fun main() {
+                println(render(Box(1))) // E:TC_NO_CONTEXT_ARGUMENT unvalidated generated derive metadata must not create binary shape-derived evidence
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedNoContextArgument()),
+            dependencies = listOf(dependency),
+        )
+    }
+
+    @Test
     fun downstreamPluginIgnoresRawDependencyDeriveViaAnnotationsWithoutGeneratedMetadata() {
         val dependency =
             HarnessDependency(
