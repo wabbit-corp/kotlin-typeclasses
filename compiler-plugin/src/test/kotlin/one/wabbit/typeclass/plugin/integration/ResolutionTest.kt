@@ -1218,6 +1218,124 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun memberClassTypeParametersStayVisibleToFirResolutionAndInference() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object StringShow : Show<String> {
+                override fun show(value: String): String = "show:${'$'}value"
+            }
+
+            context(_: Show<A>)
+            fun <A> reveal(): Show<A> = summon()
+
+            class Box<A>(private val value: A) {
+                context(show: Show<A>)
+                fun render(): String =
+                    summon<Show<A>>().show(value) + "|" + reveal().show(value)
+            }
+
+            fun main() {
+                context(StringShow) {
+                    println(Box("ok").render())
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "show:ok|show:ok",
+        )
+    }
+
+    @Test fun memberClassTypeParametersStayVisibleToFirContextualRefinement() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            object StringShow : Show<String> {
+                override fun show(value: String): String = "refined:${'$'}value"
+            }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            class Box<A>(private val value: A) {
+                context(_: Show<A>)
+                fun renderInside(): String = render(value)
+            }
+
+            fun main() {
+                context(StringShow) {
+                    println(Box("ok").renderInside())
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "refined:ok",
+        )
+    }
+
+    @Test fun memberClassTypeParametersStayVisibleToFirWrapperLocalEvidence() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.summon
+
+            @Typeclass
+            interface Show<A> {
+                fun show(): String
+            }
+
+            class WrappedShow<A>(private val label: String) : Show<A> {
+                override fun show(): String = label
+            }
+
+            context(_: Show<A>)
+            fun <A> reveal(): String = summon<Show<A>>().show()
+
+            class Box<A> {
+                context(_: WrappedShow<A>)
+                fun render(): String = summon<Show<A>>().show() + "|" + reveal()
+            }
+
+            fun main() {
+                context(WrappedShow<String>("wrapped")) {
+                    println(Box<String>().render())
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "wrapped|wrapped",
+        )
+    }
+
     @Test fun resolvesOverloadsThatDifferOnlyByTypeclassContexts() {
         val source =
             """

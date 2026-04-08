@@ -92,6 +92,24 @@ class TypeclassFirCallTypeInferenceTest {
 
         assertEquals(stringType, inferred[typeParameter])
     }
+
+    @Test
+    fun `inference type parameter models include enclosing class parameters`() {
+        val classTypeParameter = boundTypeParameterSymbol("A")
+        val functionTypeParameter = boundTypeParameterSymbol("B")
+
+        val models =
+            buildInferenceTypeParameterModels(
+                bindableTypeParameters = setOf(functionTypeParameter),
+                containingFunction = null,
+                containingClassTypeParameters = listOf(classTypeParameter),
+            )
+
+        assertEquals(
+            listOf(classTypeParameter, functionTypeParameter),
+            models.keys.toList(),
+        )
+    }
 }
 
 private fun boundTypeParameterSymbol(name: String): FirTypeParameterSymbol {

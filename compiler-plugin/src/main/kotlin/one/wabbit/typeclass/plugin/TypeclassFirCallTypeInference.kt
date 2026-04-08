@@ -48,11 +48,18 @@ import org.jetbrains.kotlin.types.Variance
 internal fun FirExpression.safeResolvedOrInferredTypeOrNull(
     session: FirSession,
     containingFunction: FirNamedFunctionSymbol? = null,
+    containingClassTypeParameters: Iterable<FirTypeParameterSymbol> = emptyList(),
     sharedState: TypeclassPluginSharedState? = null,
 ): ConeKotlinType? {
     val resolved = safeResolvedTypeOrNull()
     val functionCall = this as? FirFunctionCall ?: return resolved
-    val inferred = functionCall.inferReturnTypeOrNull(session, containingFunction, sharedState)
+    val inferred =
+        functionCall.inferReturnTypeOrNull(
+            session = session,
+            containingFunction = containingFunction,
+            containingClassTypeParameters = containingClassTypeParameters,
+            sharedState = sharedState,
+        )
     return when {
         resolved == null -> inferred
         resolved.containsTypeParameterReference() && inferred != null -> inferred
@@ -65,6 +72,7 @@ internal fun inferFunctionTypeArgumentsFromCallSite(
     functionCall: FirFunctionCall,
     resolvedFunction: FirNamedFunctionSymbol,
     containingFunction: FirNamedFunctionSymbol?,
+    containingClassTypeParameters: Iterable<FirTypeParameterSymbol> = emptyList(),
     sharedState: TypeclassPluginSharedState,
 ): Map<FirTypeParameterSymbol, ConeKotlinType> {
     val function = resolvedFunction.fir
@@ -74,6 +82,7 @@ internal fun inferFunctionTypeArgumentsFromCallSite(
         buildInferenceTypeParameterModels(
             bindableTypeParameters = functionTypeParameters,
             containingFunction = containingFunction,
+            containingClassTypeParameters = containingClassTypeParameters,
         )
     function.typeParameters.zip(functionCall.typeArguments).forEach { (typeParameter, typeArgument) ->
         val explicitType = (typeArgument as? FirTypeProjectionWithVariance)?.typeRef?.coneType ?: return@forEach
@@ -83,7 +92,7 @@ internal fun inferFunctionTypeArgumentsFromCallSite(
     val directConstraints = linkedMapOf<FirTypeParameterSymbol, MutableTypeBindingConstraints<ConeKotlinType>>()
     function.receiverParameter?.typeRef?.coneType?.let { receiverType ->
         functionCall.explicitReceiver
-            ?.safeResolvedOrInferredTypeOrNull(session, containingFunction, sharedState)
+            ?.safeResolvedOrInferredTypeOrNull(session, containingFunction, containingClassTypeParameters, sharedState)
             ?.let { explicitReceiverType ->
                 collectFunctionTypeArgumentConstraintsForInference(
                     session = session,
@@ -102,8 +111,18 @@ internal fun inferFunctionTypeArgumentsFromCallSite(
     if (parameterByArgument != null) {
         parameterByArgument.forEach { (argument, parameter) ->
             val argumentType =
-                (argument as? FirFunctionCall)?.inferReturnTypeOrNull(session, containingFunction, sharedState)
-                    ?: argument.safeResolvedOrInferredTypeOrNull(session, containingFunction, sharedState)
+                (argument as? FirFunctionCall)?.inferReturnTypeOrNull(
+                    session,
+                    containingFunction,
+                    containingClassTypeParameters,
+                    sharedState,
+                )
+                    ?: argument.safeResolvedOrInferredTypeOrNull(
+                        session,
+                        containingFunction,
+                        containingClassTypeParameters,
+                        sharedState,
+                    )
                     ?: return@forEach
             collectFunctionTypeArgumentConstraintsForInference(
                 session = session,
@@ -120,8 +139,18 @@ internal fun inferFunctionTypeArgumentsFromCallSite(
         function.valueParameters.zip(functionCall.arguments).forEach { (parameter, argument) ->
             val nestedCall = argument as? FirFunctionCall
             val argumentType =
-                nestedCall?.inferReturnTypeOrNull(session, containingFunction, sharedState)
-                    ?: argument.safeResolvedOrInferredTypeOrNull(session, containingFunction, sharedState)
+                nestedCall?.inferReturnTypeOrNull(
+                    session,
+                    containingFunction,
+                    containingClassTypeParameters,
+                    sharedState,
+                )
+                    ?: argument.safeResolvedOrInferredTypeOrNull(
+                        session,
+                        containingFunction,
+                        containingClassTypeParameters,
+                        sharedState,
+                    )
                     ?: return@forEach
             collectFunctionTypeArgumentConstraintsForInference(
                 session = session,
@@ -181,10 +210,11 @@ internal fun inferFunctionTypeArgumentsFromCallSite(
 internal fun FirFunctionCall.inferReturnTypeOrNull(
     session: FirSession,
     containingFunction: FirNamedFunctionSymbol? = null,
+    containingClassTypeParameters: Iterable<FirTypeParameterSymbol> = emptyList(),
     sharedState: TypeclassPluginSharedState? = null,
 ): ConeKotlinType? {
     val symbol = (calleeReference as? FirResolvedNamedReference)?.resolvedSymbol as? FirFunctionSymbol<*>
-        ?: return inferConstructedClassTypeOrNull(session, containingFunction, sharedState)
+        ?: return inferConstructedClassTypeOrNull(session, containingFunction, containingClassTypeParameters, sharedState)
     val function = symbol.fir
     val functionTypeParameters =
         buildSet {
@@ -210,7 +240,7 @@ internal fun FirFunctionCall.inferReturnTypeOrNull(
         function.receiverParameter?.typeRef?.coneType
             ?.let { receiverType ->
                 explicitReceiver
-                    ?.safeResolvedOrInferredTypeOrNull(session, containingFunction, sharedState)
+                    ?.safeResolvedOrInferredTypeOrNull(session, containingFunction, containingClassTypeParameters, sharedState)
                     ?.let { explicitReceiverType -> receiverType to explicitReceiverType }
             }
     val argumentConstraints =
@@ -219,14 +249,14 @@ internal fun FirFunctionCall.inferReturnTypeOrNull(
             if (parameterByArgument != null) {
                 parameterByArgument.forEach { (argument, parameter) ->
                     val argumentType =
-                        argument.safeResolvedOrInferredTypeOrNull(session, containingFunction, sharedState)
+                        argument.safeResolvedOrInferredTypeOrNull(session, containingFunction, containingClassTypeParameters, sharedState)
                             ?: return@forEach
                     add(parameter.inferenceParameterType() to argumentType)
                 }
             } else {
                 function.valueParameters.zip(arguments).forEach { (parameter, argument) ->
                     val argumentType =
-                        argument.safeResolvedOrInferredTypeOrNull(session, containingFunction, sharedState)
+                        argument.safeResolvedOrInferredTypeOrNull(session, containingFunction, containingClassTypeParameters, sharedState)
                             ?: return@forEach
                     add(parameter.inferenceParameterType() to argumentType)
                 }
@@ -250,6 +280,7 @@ internal fun FirFunctionCall.inferReturnTypeOrNull(
                 ),
             sharedState = sharedState,
             containingFunction = containingFunction,
+            containingClassTypeParameters = containingClassTypeParameters,
         )
     return result
 }
@@ -264,6 +295,7 @@ internal fun inferReturnTypeFromCallSiteTypes(
     localContextConstraints: Iterable<Pair<ConeKotlinType, ConeKotlinType>> = emptyList(),
     sharedState: TypeclassPluginSharedState? = null,
     containingFunction: FirNamedFunctionSymbol? = null,
+    containingClassTypeParameters: Iterable<FirTypeParameterSymbol> = emptyList(),
 ): ConeKotlinType {
     val inferred =
         inferTypeArgumentsFromCallSiteTypes(
@@ -275,6 +307,7 @@ internal fun inferReturnTypeFromCallSiteTypes(
             localContextConstraints = localContextConstraints,
             sharedState = sharedState,
             containingFunction = containingFunction,
+            containingClassTypeParameters = containingClassTypeParameters,
         )
     return substituteInferredTypes(
         type = returnType,
@@ -292,6 +325,7 @@ internal fun inferTypeArgumentsFromCallSiteTypes(
     localContextConstraints: Iterable<Pair<ConeKotlinType, ConeKotlinType>> = emptyList(),
     sharedState: TypeclassPluginSharedState? = null,
     containingFunction: FirNamedFunctionSymbol? = null,
+    containingClassTypeParameters: Iterable<FirTypeParameterSymbol> = emptyList(),
 ): Map<FirTypeParameterSymbol, ConeKotlinType> {
     if (functionTypeParameters.isEmpty()) {
         return emptyMap()
@@ -303,6 +337,7 @@ internal fun inferTypeArgumentsFromCallSiteTypes(
         buildInferenceTypeParameterModels(
             bindableTypeParameters = functionTypeParameters,
             containingFunction = containingFunction,
+            containingClassTypeParameters = containingClassTypeParameters,
         )
     val directConstraints = linkedMapOf<FirTypeParameterSymbol, MutableTypeBindingConstraints<ConeKotlinType>>()
 
@@ -373,6 +408,7 @@ internal fun inferTypeArgumentsFromCallSiteTypes(
 private fun FirFunctionCall.inferConstructedClassTypeOrNull(
     session: FirSession,
     containingFunction: FirNamedFunctionSymbol? = null,
+    containingClassTypeParameters: Iterable<FirTypeParameterSymbol> = emptyList(),
     sharedState: TypeclassPluginSharedState? = null,
 ): ConeKotlinType? {
     val resolved = safeResolvedTypeOrNull() ?: return null
@@ -394,13 +430,14 @@ private fun FirFunctionCall.inferConstructedClassTypeOrNull(
         buildInferenceTypeParameterModels(
             bindableTypeParameters = classTypeParameters,
             containingFunction = null,
+            containingClassTypeParameters = containingClassTypeParameters,
         )
     val directConstraints = linkedMapOf<FirTypeParameterSymbol, MutableTypeBindingConstraints<ConeKotlinType>>()
     val parameterByArgument = parameterByArgumentMappingOrNull(primaryConstructor.valueParameters)
     if (parameterByArgument != null) {
         parameterByArgument.forEach { (argument, parameter) ->
             val argumentType =
-                argument.safeResolvedOrInferredTypeOrNull(session, containingFunction, sharedState)
+                argument.safeResolvedOrInferredTypeOrNull(session, containingFunction, containingClassTypeParameters, sharedState)
                     ?: return@forEach
             collectFunctionTypeArgumentConstraintsForInference(
                 session = session,
@@ -416,7 +453,7 @@ private fun FirFunctionCall.inferConstructedClassTypeOrNull(
     } else {
         primaryConstructor.valueParameters.zip(arguments).forEach { (parameter, argument) ->
             val argumentType =
-                argument.safeResolvedOrInferredTypeOrNull(session, containingFunction, sharedState)
+                argument.safeResolvedOrInferredTypeOrNull(session, containingFunction, containingClassTypeParameters, sharedState)
                     ?: return@forEach
             collectFunctionTypeArgumentConstraintsForInference(
                 session = session,
@@ -805,8 +842,10 @@ private class InferredTypeSubstitutor(
 internal fun buildInferenceTypeParameterModels(
     bindableTypeParameters: Set<FirTypeParameterSymbol>,
     containingFunction: FirNamedFunctionSymbol?,
+    containingClassTypeParameters: Iterable<FirTypeParameterSymbol> = emptyList(),
 ): MutableMap<FirTypeParameterSymbol, TcTypeParameter> {
     val referencedSymbols = linkedSetOf<FirTypeParameterSymbol>()
+    referencedSymbols += containingClassTypeParameters
     containingFunction?.fir?.typeParameters?.forEach { typeParameter -> referencedSymbols += typeParameter.symbol }
     referencedSymbols += bindableTypeParameters
     val result = linkedMapOf<FirTypeParameterSymbol, TcTypeParameter>()

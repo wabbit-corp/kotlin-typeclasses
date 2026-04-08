@@ -236,6 +236,10 @@ internal class TypeclassFirCheckersExtension(
                 session = session,
                 sharedState = sharedState,
                 containingFunctions = containingFunctions,
+                containingClassTypeParameters =
+                    context.containingDeclarations
+                        .mapNotNull { symbol -> symbol.firRegularClassOrNull() }
+                        .flatMap { declaration -> declaration.typeParameters.map { typeParameter -> typeParameter.symbol } },
                 calleeTypeParameters = emptyList(),
             )
         declaration.body?.acceptChildren(
@@ -795,6 +799,8 @@ internal class TypeclassFirCheckersExtension(
         }
 
     private fun FirBasedSymbol<*>.firFunctionOrNull(): FirFunction? = fir as? FirFunction
+
+    private fun FirBasedSymbol<*>.firRegularClassOrNull(): FirRegularClass? = fir as? FirRegularClass
 
     private fun invalidInstancePrerequisiteMessage(type: ConeKotlinType): String? =
         when {

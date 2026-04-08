@@ -43,28 +43,16 @@ internal fun buildFirTypeclassResolutionContext(
     session: FirSession,
     sharedState: TypeclassPluginSharedState,
     containingFunctions: List<FirFunction>,
+    containingClassTypeParameters: List<FirTypeParameterSymbol>,
     calleeTypeParameters: List<FirTypeParameterSymbol>,
 ): FirTypeclassResolutionContext {
-    val typeParameterModels = linkedMapOf<FirTypeParameterSymbol, TcTypeParameter>()
-    containingFunctions.forEachIndexed { declarationIndex, declaration ->
-        declaration.typeParameters.forEachIndexed { typeParameterIndex, typeParameter ->
-            typeParameterModels.getOrPut(typeParameter.symbol) {
-                TcTypeParameter(
-                    id = "containing:$declarationIndex:$typeParameterIndex:${typeParameter.symbol.name.asString()}",
-                    displayName = typeParameter.symbol.name.asString(),
-                )
-            }
-        }
-    }
-    val bindableVariableIds =
-        calleeTypeParameters.mapIndexedTo(linkedSetOf()) { typeParameterIndex, symbol ->
-            typeParameterModels.getOrPut(symbol) {
-                TcTypeParameter(
-                    id = "callee:$typeParameterIndex:${symbol.name.asString()}",
-                    displayName = symbol.name.asString(),
-                )
-            }.id
-        }
+    val typeParameterModels =
+        buildFirResolutionTypeParameterModels(
+            containingClassTypeParameters = containingClassTypeParameters,
+            containingFunctions = containingFunctions,
+            calleeTypeParameters = calleeTypeParameters,
+        )
+    val bindableVariableIds = calleeTypeParameters.mapNotNullTo(linkedSetOf()) { symbol -> typeParameterModels[symbol]?.id }
 
     val directlyAvailableContexts =
         buildList<Triple<ConeKotlinType, TcType, String>> {
@@ -119,6 +107,41 @@ internal fun buildFirTypeclassResolutionContext(
             },
         runtimeMaterializableVariableIds = runtimeMaterializableVariableIds,
     )
+}
+
+internal fun buildFirResolutionTypeParameterModels(
+    containingClassTypeParameters: List<FirTypeParameterSymbol>,
+    containingFunctions: List<FirFunction>,
+    calleeTypeParameters: List<FirTypeParameterSymbol>,
+): LinkedHashMap<FirTypeParameterSymbol, TcTypeParameter> {
+    val typeParameterModels = linkedMapOf<FirTypeParameterSymbol, TcTypeParameter>()
+    containingClassTypeParameters.forEachIndexed { typeParameterIndex, symbol ->
+        typeParameterModels.getOrPut(symbol) {
+            TcTypeParameter(
+                id = "containing-class:$typeParameterIndex:${symbol.name.asString()}",
+                displayName = symbol.name.asString(),
+            )
+        }
+    }
+    containingFunctions.forEachIndexed { declarationIndex, declaration ->
+        declaration.typeParameters.forEachIndexed { typeParameterIndex, typeParameter ->
+            typeParameterModels.getOrPut(typeParameter.symbol) {
+                TcTypeParameter(
+                    id = "containing:$declarationIndex:$typeParameterIndex:${typeParameter.symbol.name.asString()}",
+                    displayName = typeParameter.symbol.name.asString(),
+                )
+            }
+        }
+    }
+    calleeTypeParameters.forEachIndexed { typeParameterIndex, symbol ->
+        typeParameterModels.getOrPut(symbol) {
+            TcTypeParameter(
+                id = "callee:$typeParameterIndex:${symbol.name.asString()}",
+                displayName = symbol.name.asString(),
+            )
+        }
+    }
+    return typeParameterModels
 }
 
 internal fun CheckerContext.resolveTypeclassTraceActivation(

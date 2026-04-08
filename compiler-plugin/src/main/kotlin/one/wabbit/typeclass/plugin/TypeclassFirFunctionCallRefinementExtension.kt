@@ -294,6 +294,10 @@ internal class TypeclassFirFunctionCallRefinementExtension(
             session = session,
             sharedState = sharedState,
             containingFunctions = callInfo.containingDeclarations.filterIsInstance<FirFunction>(),
+            containingClassTypeParameters =
+                callInfo.containingDeclarations
+                    .filterIsInstance<org.jetbrains.kotlin.fir.declarations.FirRegularClass>()
+                    .flatMap { declaration -> declaration.typeParameters.map { typeParameter -> typeParameter.symbol } },
             calleeTypeParameters = symbol.fir.typeParameters.map { typeParameter -> typeParameter.symbol },
         )
 
@@ -304,6 +308,10 @@ internal class TypeclassFirFunctionCallRefinementExtension(
     ): Map<FirTypeParameterSymbol, org.jetbrains.kotlin.fir.types.ConeKotlinType> {
         val containingFunction =
             callInfo.containingDeclarations.filterIsInstance<FirTypeclassFunctionDeclaration>().lastOrNull()?.symbol
+        val containingClassTypeParameters =
+            callInfo.containingDeclarations
+                .filterIsInstance<org.jetbrains.kotlin.fir.declarations.FirRegularClass>()
+                .flatMap { declaration -> declaration.typeParameters.map { typeParameter -> typeParameter.symbol } }
         val functionCall = callInfo.callSite as? FirFunctionCall
         if (functionCall != null) {
             return inferFunctionTypeArgumentsFromCallSite(
@@ -311,6 +319,7 @@ internal class TypeclassFirFunctionCallRefinementExtension(
                 functionCall = functionCall,
                 resolvedFunction = symbol,
                 containingFunction = containingFunction,
+                containingClassTypeParameters = containingClassTypeParameters,
                 sharedState = sharedState,
             )
         }
@@ -327,7 +336,10 @@ internal class TypeclassFirFunctionCallRefinementExtension(
         }
 
         function.receiverParameter?.typeRef?.coneType?.let { receiverType ->
-            callInfo.explicitReceiver?.safeResolvedOrInferredTypeOrNull(session)?.let { explicitReceiverType ->
+            callInfo.explicitReceiver?.safeResolvedOrInferredTypeOrNull(
+                session = session,
+                containingClassTypeParameters = containingClassTypeParameters,
+            )?.let { explicitReceiverType ->
                 collectFunctionTypeArgumentConstraintsForInference(
                     session = session,
                     sharedState = sharedState,
@@ -342,7 +354,11 @@ internal class TypeclassFirFunctionCallRefinementExtension(
         }
 
         function.valueParameters.zip(callInfo.arguments).forEach { (parameter, argument) ->
-            val argumentType = argument.safeResolvedOrInferredTypeOrNull(session) ?: return@forEach
+            val argumentType =
+                argument.safeResolvedOrInferredTypeOrNull(
+                    session = session,
+                    containingClassTypeParameters = containingClassTypeParameters,
+                ) ?: return@forEach
             collectFunctionTypeArgumentConstraintsForInference(
                 session = session,
                 sharedState = sharedState,
@@ -419,10 +435,20 @@ internal class TypeclassFirFunctionCallRefinementExtension(
                     inferred[typeParameter.symbol] = inferredType
                 }
             }
+        val containingClassTypeParameters =
+            generateSequence(originalSymbol.callableId.classId) { classId -> classId.outerClassId }
+                .toList()
+                .asReversed()
+                .flatMap { classId ->
+                    session.regularClassSymbolOrNull(classId)?.fir?.typeParameters.orEmpty().map { typeParameter ->
+                        typeParameter.symbol
+                    }
+                }
         val inferenceTypeParameterModels =
             buildInferenceTypeParameterModels(
                 bindableTypeParameters = functionTypeParameters,
                 containingFunction = null,
+                containingClassTypeParameters = containingClassTypeParameters,
             )
         val directConstraints = linkedMapOf<FirTypeParameterSymbol, MutableTypeBindingConstraints<org.jetbrains.kotlin.fir.types.ConeKotlinType>>()
         val originalParametersByName = originalFunction.valueParameters.associateBy { it.name }
