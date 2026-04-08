@@ -265,4 +265,146 @@ class FirIrParityTest : IntegrationTestSupport() {
             unexpectedMessages = listOf("invalid builtin evidence"),
         )
     }
+
+    @Test
+    fun structuralProductTransportRemainsAlignedAcrossFirAndIr() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveEquiv
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            data class A(val a: Int, val b: String)
+
+            @Instance
+            object AShow : Show<A> {
+                override fun show(value: A): String = "${'$'}{value.a}|${'$'}{value.b}"
+            }
+
+            @DeriveEquiv(A::class)
+            @DeriveVia(Show::class, A::class)
+            data class B(val x: String, val y: Int)
+
+            context(show: Show<T>)
+            fun <T> render(value: T): String = show.show(value)
+
+            fun main() {
+                println(render(B("x", 1)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "1|x",
+        )
+    }
+
+    @Test
+    fun structuralSumTransportRemainsAlignedAcrossFirAndIr() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveEquiv
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            sealed interface A {
+                data object Empty : A
+                data class NonEmpty(val a: Int, val b: String) : A
+            }
+
+            @Instance
+            object AShow : Show<A> {
+                override fun show(value: A): String =
+                    when (value) {
+                        A.Empty -> "empty"
+                        is A.NonEmpty -> "${'$'}{value.a}|${'$'}{value.b}"
+                    }
+            }
+
+            @DeriveEquiv(A::class)
+            @DeriveVia(Show::class, A::class)
+            sealed interface B {
+                data object Wuzzle : B
+                data class Wozzle(val a: Int, val b: String) : B
+            }
+
+            context(show: Show<T>)
+            fun <T> render(value: T): String = show.show(value)
+
+            fun main() {
+                val empty: B = B.Wuzzle
+                val nonEmpty: B = B.Wozzle(1, "x")
+                println(render(empty))
+                println(render(nonEmpty))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                empty
+                1|x
+                """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun ambiguousStructuralProductTransportIsRejectedConsistently() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveEquiv
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            data class RightShape(val left: String, val count: Int, val right: String)
+
+            @Instance
+            object RightShapeShow : Show<RightShape> {
+                override fun show(value: RightShape): String = "${'$'}{value.left}|${'$'}{value.count}|${'$'}{value.right}"
+            }
+
+            @DeriveEquiv(RightShape::class) // E:TC_CANNOT_DERIVE repeated field types keep the product transport ambiguous
+            @DeriveVia(Show::class, RightShape::class) // E:TC_CANNOT_DERIVE repeated field types keep the transport path ambiguous
+            data class LeftShape(val first: String, val amount: Int, val second: String)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("equiv", "leftshape", "rightshape"),
+                ),
+            unexpectedMessages =
+                listOf(
+                    "no context argument",
+                    "required instance",
+                    "overload resolution ambiguity",
+                ),
+        )
+    }
 }

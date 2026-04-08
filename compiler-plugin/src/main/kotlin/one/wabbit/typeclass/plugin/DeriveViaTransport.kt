@@ -441,26 +441,16 @@ internal class DirectTransportPlanner(
         }
 
         val normalizedAssignments =
-            if (sourceClass.classIdOrFail == targetClass.classIdOrFail) {
-                val sourceBySymbol = sourceNonUnit.associateBy { it.property.symbol }
-                targetNonUnit.mapIndexedNotNull { targetIndex, targetField ->
-                    val sourceField = sourceBySymbol[targetField.property.symbol] ?: return null
-                    val plan = synthesize(sourceField.type, targetField.type, visiting) ?: return null
-                    UniquePerfectAssignment(
-                        sourceIndex = sourceNonUnit.indexOf(sourceField),
-                        targetIndex = targetIndex,
-                        value = ProductAssignment(targetField, sourceField, plan),
-                    )
-                }
-            } else {
-                uniquePerfectAssignmentPreservingMultiplicity(
-                    sources = sourceNonUnit,
-                    targets = targetNonUnit,
-                ) { sourceField, targetField ->
-                    val plan = synthesize(sourceField.type, targetField.type, visiting) ?: return@uniquePerfectAssignmentPreservingMultiplicity null
-                    ProductAssignment(targetField, sourceField, plan)
-                } ?: return null
-            }
+            canonicalTransportAssignments(
+                sources = sourceNonUnit,
+                targets = targetNonUnit,
+                sameNominalShape = sourceClass.classIdOrFail == targetClass.classIdOrFail,
+                sourceIdentity = { field -> field.property.name },
+                targetIdentity = { field -> field.property.name },
+            ) { sourceField, targetField ->
+                val plan = synthesize(sourceField.type, targetField.type, visiting) ?: return@canonicalTransportAssignments null
+                ProductAssignment(targetField, sourceField, plan)
+            } ?: return null
 
         val assignmentsByTarget =
             normalizedAssignments.associate { assignment ->
@@ -499,22 +489,16 @@ internal class DirectTransportPlanner(
             return null
         }
         val mappings =
-            if (sourceClass.classIdOrFail == targetClass.classIdOrFail) {
-                val sourceCasesById = sourceCases.associateBy { it.classIdOrFail }
-                targetCases.map { targetCase ->
-                    val sourceCase = sourceCasesById[targetCase.classIdOrFail] ?: return null
-                    val plan = synthesize(sourceCase.symbol.defaultType, targetCase.symbol.defaultType, visiting) ?: return null
-                    SumCaseMapping(sourceCase = sourceCase, targetCase = targetCase, plan = plan)
-                }
-            } else {
-                uniquePerfectAssignmentPreservingMultiplicity(
-                    sources = sourceCases,
-                    targets = targetCases,
-                ) { sourceCase, targetCase ->
-                    val plan = synthesize(sourceCase.symbol.defaultType, targetCase.symbol.defaultType, visiting) ?: return@uniquePerfectAssignmentPreservingMultiplicity null
-                    SumCaseMapping(sourceCase = sourceCase, targetCase = targetCase, plan = plan)
-                }?.sortedBy { it.sourceIndex }?.map { it.value } ?: return null
-            }
+            canonicalTransportAssignments(
+                sources = sourceCases,
+                targets = targetCases,
+                sameNominalShape = sourceClass.classIdOrFail == targetClass.classIdOrFail,
+                sourceIdentity = IrClass::classIdOrFail,
+                targetIdentity = IrClass::classIdOrFail,
+            ) { sourceCase, targetCase ->
+                val plan = synthesize(sourceCase.symbol.defaultType, targetCase.symbol.defaultType, visiting) ?: return@canonicalTransportAssignments null
+                SumCaseMapping(sourceCase = sourceCase, targetCase = targetCase, plan = plan)
+            }?.map { it.value } ?: return null
         return TransportPlan.Sum(sourceType, targetType, mappings)
     }
 

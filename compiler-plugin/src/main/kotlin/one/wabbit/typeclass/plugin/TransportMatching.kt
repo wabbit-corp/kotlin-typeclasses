@@ -8,6 +8,54 @@ internal data class UniquePerfectAssignment<out Assignment>(
     val value: Assignment,
 )
 
+internal fun <Source, Target, Identity, Assignment> canonicalTransportAssignments(
+    sources: List<Source>,
+    targets: List<Target>,
+    sameNominalShape: Boolean,
+    sourceIdentity: (Source) -> Identity,
+    targetIdentity: (Target) -> Identity,
+    buildAssignment: (source: Source, target: Target) -> Assignment?,
+): List<UniquePerfectAssignment<Assignment>>? {
+    if (!sameNominalShape) {
+        return uniquePerfectAssignmentPreservingMultiplicity(
+            sources = sources,
+            targets = targets,
+            buildAssignment = buildAssignment,
+        )
+    }
+    if (sources.size != targets.size) {
+        return null
+    }
+    if (targets.isEmpty()) {
+        return emptyList()
+    }
+
+    val sourceIndexByIdentity = mutableMapOf<Identity, Int>()
+    sources.forEachIndexed { sourceIndex, source ->
+        if (sourceIndexByIdentity.put(sourceIdentity(source), sourceIndex) != null) {
+            return null
+        }
+    }
+
+    val seenTargetIdentities = mutableSetOf<Identity>()
+    val assignments = ArrayList<UniquePerfectAssignment<Assignment>>(targets.size)
+    targets.forEachIndexed { targetIndex, target ->
+        val identity = targetIdentity(target)
+        if (!seenTargetIdentities.add(identity)) {
+            return null
+        }
+        val sourceIndex = sourceIndexByIdentity[identity] ?: return null
+        val assignment = buildAssignment(sources[sourceIndex], target) ?: return null
+        assignments +=
+            UniquePerfectAssignment(
+                sourceIndex = sourceIndex,
+                targetIndex = targetIndex,
+                value = assignment,
+            )
+    }
+    return assignments
+}
+
 internal fun <Source, Target, Assignment> uniquePerfectAssignmentPreservingMultiplicity(
     sources: List<Source>,
     targets: List<Target>,

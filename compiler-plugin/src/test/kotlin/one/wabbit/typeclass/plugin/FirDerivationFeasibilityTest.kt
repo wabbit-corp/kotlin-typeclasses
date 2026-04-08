@@ -24,6 +24,49 @@ import kotlin.test.assertTrue
 
 class FirDerivationFeasibilityTest {
     @Test
+    fun `canonical transport assignments match same nominal shapes by identity`() {
+        val assignments =
+            canonicalTransportAssignments(
+                sources =
+                    listOf(
+                        NamedField(identity = "left", kind = "string"),
+                        NamedField(identity = "right", kind = "int"),
+                    ),
+                targets = listOf("right", "left"),
+                sameNominalShape = true,
+                sourceIdentity = NamedField::identity,
+                targetIdentity = { it },
+            ) { source, target ->
+                source.takeIf { it.identity == target }
+            }
+
+        assertEquals(
+            listOf("right", "left"),
+            assignments?.sortedBy { it.targetIndex }?.map { it.value.identity },
+        )
+    }
+
+    @Test
+    fun `canonical transport assignments reject duplicate identities for same nominal shapes`() {
+        val assignments =
+            canonicalTransportAssignments(
+                sources =
+                    listOf(
+                        NamedField(identity = "dup", kind = "left"),
+                        NamedField(identity = "dup", kind = "right"),
+                    ),
+                targets = listOf("dup", "dup"),
+                sameNominalShape = true,
+                sourceIdentity = NamedField::identity,
+                targetIdentity = { it },
+            ) { source, target ->
+                source.takeIf { it.identity == target }
+            }
+
+        assertEquals(null, assignments)
+    }
+
+    @Test
     fun `unique assignment preserves multiplicity for equal sources`() {
         val sources =
             listOf(
@@ -143,6 +186,11 @@ private class CollapsingField(
 
     override fun hashCode(): Int = kind.hashCode()
 }
+
+private data class NamedField(
+    val identity: String,
+    val kind: String,
+)
 
 private fun boundTypeParameterSymbol(name: String): FirTypeParameterSymbol {
     val symbol = FirTypeParameterSymbol()

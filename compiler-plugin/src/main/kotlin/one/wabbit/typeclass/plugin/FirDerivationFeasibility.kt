@@ -295,15 +295,12 @@ internal class FirDirectTransportPlanner(
             return false
         }
 
-        if (sourceClass.symbol.classId == targetClass.symbol.classId) {
-            return targetNonUnit.zip(sourceNonUnit).all { (targetField, sourceField) ->
-                canTransport(sourceField.type, targetField.type, visiting)
-            }
-        }
-
-        return uniquePerfectAssignmentPreservingMultiplicity(
+        return canonicalTransportAssignments(
             sources = sourceNonUnit,
             targets = targetNonUnit,
+            sameNominalShape = sourceClass.symbol.classId == targetClass.symbol.classId,
+            sourceIdentity = FirTransparentFieldInfo::identity,
+            targetIdentity = FirTransparentFieldInfo::identity,
         ) { sourceField, targetField ->
             sourceField.takeIf { canTransport(sourceField.type, targetField.type, visiting) }
         } != null
@@ -325,19 +322,12 @@ internal class FirDirectTransportPlanner(
             return false
         }
 
-        if (sourceClass.symbol.classId == targetClass.symbol.classId) {
-            val sourceCasesById = sourceCases.associateBy { it.classId }
-            return targetCases.all { targetCase ->
-                val sourceCase = sourceCasesById[targetCase.classId] ?: return false
-                val sourceCaseType = TcType.Constructor(sourceCase.classId.asString(), emptyList())
-                val targetCaseType = TcType.Constructor(targetCase.classId.asString(), emptyList())
-                canTransport(sourceCaseType, targetCaseType, visiting)
-            }
-        }
-
-        return uniquePerfectAssignmentPreservingMultiplicity(
+        return canonicalTransportAssignments(
             sources = sourceCases,
             targets = targetCases,
+            sameNominalShape = sourceClass.symbol.classId == targetClass.symbol.classId,
+            sourceIdentity = FirRegularClassSymbol::classId,
+            targetIdentity = FirRegularClassSymbol::classId,
         ) { sourceCase, targetCase ->
             val sourceCaseType = TcType.Constructor(sourceCase.classId.asString(), emptyList())
             val targetCaseType = TcType.Constructor(targetCase.classId.asString(), emptyList())
@@ -1217,6 +1207,7 @@ private fun FirRegularClass.transparentProductInfo(
             val property = properties.singleOrNull { candidate -> candidate.name == parameter.name } ?: return null
             val fieldType = property.getter?.returnTypeRef?.coneType?.toConcreteType(this, concreteType) ?: return null
             FirTransparentFieldInfo(
+                identity = parameter.name.asString(),
                 type = fieldType,
                 isUnitLike = fieldType.isUnitLike(),
             )
@@ -1310,6 +1301,7 @@ private data class FirTransparentProductInfo(
 )
 
 private data class FirTransparentFieldInfo(
+    val identity: String,
     val type: TcType,
     val isUnitLike: Boolean,
 )
