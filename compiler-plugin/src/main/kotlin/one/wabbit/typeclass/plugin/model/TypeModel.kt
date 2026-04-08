@@ -177,7 +177,7 @@ internal fun TcType.isProvablyNullable(): Boolean =
         TcType.StarProjection -> false
         is TcType.Projected -> false
         is TcType.Constructor -> isNullable
-        is TcType.Variable -> false
+        is TcType.Variable -> isNullable
     }
 
 internal fun TcType.isProvablyNotNullable(): Boolean =
