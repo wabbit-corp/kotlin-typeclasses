@@ -176,6 +176,28 @@ class EqualityProofTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun materializesNotSameProofForGenericDeclaredSupertypes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.NotSame
+            import one.wabbit.typeclass.summon
+
+            open class Base<A>
+            class Sub<A> : Base<A>()
+
+            fun main() {
+                println(summon<NotSame<Sub<String>, Base<String>>>() != null)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "true",
+        )
+    }
+
     @Test fun sameTypeConstructorRecognizesMatchingOuterConstructors() {
         val source =
             """

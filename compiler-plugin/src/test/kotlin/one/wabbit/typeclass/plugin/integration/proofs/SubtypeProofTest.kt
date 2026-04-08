@@ -210,6 +210,34 @@ class SubtypeProofTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun materializesSubtypeAndStrictSubtypeProofsForGenericDeclaredSupertypes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.StrictSubtype
+            import one.wabbit.typeclass.Subtype
+            import one.wabbit.typeclass.summon
+
+            open class Base<A>
+            class Sub<A> : Base<A>()
+
+            fun main() {
+                println(summon<Subtype<Sub<String>, Base<String>>>() != null)
+                println(summon<StrictSubtype<Sub<String>, Base<String>>>() != null)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                """.trimIndent(),
+        )
+    }
+
     @Test fun materializesStrictSubtypeProofForProperSubtypes() {
         val source =
             """

@@ -5,12 +5,15 @@
 package one.wabbit.typeclass.plugin
 
 import one.wabbit.typeclass.plugin.model.TcType
+import one.wabbit.typeclass.plugin.model.TcTypeParameter
 import one.wabbit.typeclass.plugin.model.containsStarProjection
 import one.wabbit.typeclass.plugin.model.isProvablyNullable
 import one.wabbit.typeclass.plugin.model.isProvablyNotNullable
 import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.referencedVariableIds
+import one.wabbit.typeclass.plugin.model.substituteType
 import org.jetbrains.kotlin.fir.FirSession
+import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.types.Variance
@@ -576,7 +579,7 @@ private fun FirBuiltinGoalExactContext.exactDeclaredSupertypeSubtypeFeasibility(
         var sawSpeculative = false
         classSymbol.fir.declaredOrResolvedSuperTypes().forEach { superType ->
             val superModel =
-                coneTypeToModel(superType, typeParameterModels)
+                exactDeclaredSupertypeModel(classSymbol, sub, superType)
                     ?: run {
                         sawSpeculative = true
                         return@forEach
@@ -591,6 +594,36 @@ private fun FirBuiltinGoalExactContext.exactDeclaredSupertypeSubtypeFeasibility(
     } finally {
         visiting.remove(visitKey)
     }
+}
+
+private fun FirBuiltinGoalExactContext.exactDeclaredSupertypeModel(
+    classSymbol: FirRegularClassSymbol,
+    sub: TcType.Constructor,
+    superType: org.jetbrains.kotlin.fir.types.ConeKotlinType,
+): TcType? {
+    val classTypeParameters =
+        classSymbol.fir.typeParameters.mapIndexed { index, typeParameter ->
+            typeParameter.symbol to
+                (
+                    typeParameterModels[typeParameter.symbol]
+                        ?: TcTypeParameter(
+                            id = "${classSymbol.classId.asString()}#$index",
+                            displayName = typeParameter.symbol.name.asString(),
+                        )
+                )
+        }
+    if (classTypeParameters.size != sub.arguments.size) {
+        return null
+    }
+    val superModel = coneTypeToModel(superType, typeParameterModels + classTypeParameters) ?: return null
+    if (classTypeParameters.isEmpty()) {
+        return superModel
+    }
+    val bindings =
+        classTypeParameters.mapIndexed { index, (_, parameter) ->
+            parameter.id to sub.arguments[index]
+        }.toMap()
+    return superModel.substituteType(bindings)
 }
 
 private fun FirBuiltinGoalExactContext.exactNotSameFeasibility(
