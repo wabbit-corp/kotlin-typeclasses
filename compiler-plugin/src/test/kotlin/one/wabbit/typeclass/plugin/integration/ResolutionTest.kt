@@ -2189,6 +2189,40 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun explicitVisibleTypeArgumentsStillElideHiddenTypeclassParametersInFir() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Eq<A> {
+                fun eq(left: A, right: A): Boolean
+            }
+
+            @Instance
+            object StringEq : Eq<String> {
+                override fun eq(left: String, right: String): Boolean = left == right
+            }
+
+            context(_: Eq<B>)
+            fun <A, B> keep(value: A): A = value
+
+            fun main() {
+                context(StringEq) {
+                    println(keep<Int>(1))
+                }
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "1",
+        )
+    }
+
     @Test fun wrapperLocalEvidenceSupportsSummonInFir() {
         val source =
             """

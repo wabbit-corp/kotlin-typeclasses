@@ -82,17 +82,18 @@ internal class TypeclassFirFunctionCallRefinementExtension(
                     }
             }
 
-        val visibleTypeParameterNames = symbol.wrapperVisibleTypeParameterNames(session, sharedState).toSet()
-        val shouldDropInvisibleTypeParameters = callInfo.typeArguments.isEmpty()
+        val visibleTypeParameterNames = symbol.wrapperVisibleTypeParameterNames(session, sharedState)
+        val shouldDropInvisibleTypeParameters = callInfo.typeArguments.size <= visibleTypeParameterNames.size
         return CallReturnType(symbol.resolvedReturnTypeRef) { refinedSymbol ->
             val refinedFunction = refinedSymbol.fir
             refinedFunction.replaceContextParameters(
                 refinedFunction.contextParameters.filterIndexed { index, _ -> !typeclassContextResolution.mask.getOrElse(index) { false } },
             )
             if (shouldDropInvisibleTypeParameters) {
+                val visibleTypeParameterNameSet = visibleTypeParameterNames.toSet()
                 @Suppress("UNCHECKED_CAST")
                 (refinedFunction.typeParameters as MutableList<org.jetbrains.kotlin.fir.declarations.FirTypeParameter>).retainAll { typeParameter ->
-                    typeParameter.symbol.name.asString() in visibleTypeParameterNames
+                    typeParameter.symbol.name.asString() in visibleTypeParameterNameSet
                 }
             }
         }
