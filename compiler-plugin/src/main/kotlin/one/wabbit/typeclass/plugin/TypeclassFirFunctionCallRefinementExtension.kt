@@ -58,7 +58,7 @@ internal class TypeclassFirFunctionCallRefinementExtension(
     session: FirSession,
     private val sharedState: TypeclassPluginSharedState,
 ) : FirFunctionCallRefinementExtension(session) {
-    private val inferredTypeArgumentsByCallKey = linkedMapOf<String, Map<String, ConeKotlinType>>()
+    private val inferredTypeArgumentsByCallKey = linkedMapOf<RefinementCallKey, Map<String, ConeKotlinType>>()
 
     override fun intercept(
         callInfo: CallInfo,
@@ -527,12 +527,19 @@ private data class TypeclassContextResolution(
     val inferredTypeArguments: Map<FirTypeParameterSymbol, ConeKotlinType> = emptyMap(),
 )
 
+internal data class RefinementCallKey(
+    val sourceElement: Any,
+    val candidateSymbol: FirNamedFunctionSymbol,
+)
+
+internal fun refinementCallKey(
+    sourceElement: Any?,
+    symbol: FirNamedFunctionSymbol,
+): RefinementCallKey? = sourceElement?.let { source -> RefinementCallKey(source, symbol) }
+
 private fun FirFunctionCall.refinementCallKey(
     symbol: FirNamedFunctionSymbol,
-): String? =
-    source?.let { sourceElement ->
-        "${symbol.callableId}:${sourceElement.hashCode()}"
-    }
+): RefinementCallKey? = refinementCallKey(source, symbol)
 
 private fun MutableMap<FirTypeParameterSymbol, ConeKotlinType>.mergeResolutionInferredTypeArguments(
     trace: ResolutionTrace,
