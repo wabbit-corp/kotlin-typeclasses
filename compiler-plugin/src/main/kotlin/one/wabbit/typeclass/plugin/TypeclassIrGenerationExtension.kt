@@ -88,8 +88,10 @@ import org.jetbrains.kotlin.ir.expressions.IrGetObjectValue
 import org.jetbrains.kotlin.ir.expressions.IrReturn
 import org.jetbrains.kotlin.ir.expressions.IrStatementOrigin
 import org.jetbrains.kotlin.ir.expressions.IrSpreadElement
+import org.jetbrains.kotlin.ir.expressions.IrTry
 import org.jetbrains.kotlin.ir.expressions.IrTypeOperatorCall
 import org.jetbrains.kotlin.ir.expressions.IrVararg
+import org.jetbrains.kotlin.ir.expressions.IrWhen
 import org.jetbrains.kotlin.ir.expressions.impl.IrFunctionExpressionImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrGetEnumValueImpl
 import org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol
@@ -2364,18 +2366,32 @@ private fun IrExpression.knownReturnedTypeclassConstructorsOrEmpty(
         .forEach { owner ->
             owner.superTypes.forEach(::visitSuperType)
         }
+    fun addNested(nested: IrExpression) {
+        nested.knownReturnedTypeclassConstructors(
+            configuration = configuration,
+            visitedFunctions = visitedFunctions,
+            visitedVariables = visitedVariables,
+        ).forEach(result::add)
+    }
     when (expression) {
+        is IrWhen ->
+            expression.branches.forEach { branch ->
+                addNested(branch.result)
+            }
+
+        is IrTry -> {
+            addNested(expression.tryResult)
+            expression.catches.forEach { catch ->
+                addNested(catch.result)
+            }
+        }
+
         is IrGetValue -> {
             val variable = expression.symbol.owner as? IrVariable
             if (variable != null && visitedVariables.add(variable)) {
                 try {
                     variable.initializer
-                        ?.knownReturnedTypeclassConstructors(
-                            configuration = configuration,
-                            visitedFunctions = visitedFunctions,
-                            visitedVariables = visitedVariables,
-                        )
-                        ?.forEach(result::add)
+                        ?.let(::addNested)
                 } finally {
                     visitedVariables.remove(variable)
                 }
@@ -2386,13 +2402,7 @@ private fun IrExpression.knownReturnedTypeclassConstructorsOrEmpty(
             val function = expression.symbol.owner
             if (visitedFunctions.add(function)) {
                 try {
-                    function.knownDeriverReturnExpressions().forEach { nested ->
-                        nested.knownReturnedTypeclassConstructors(
-                            configuration = configuration,
-                            visitedFunctions = visitedFunctions,
-                            visitedVariables = visitedVariables,
-                        ).forEach(result::add)
-                    }
+                    function.knownDeriverReturnExpressions().forEach(::addNested)
                 } finally {
                     visitedFunctions.remove(function)
                 }

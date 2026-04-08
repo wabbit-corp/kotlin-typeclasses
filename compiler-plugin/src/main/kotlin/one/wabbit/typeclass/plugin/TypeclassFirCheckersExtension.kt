@@ -44,7 +44,9 @@ import org.jetbrains.kotlin.fir.expressions.FirPropertyAccessExpression
 import org.jetbrains.kotlin.fir.expressions.FirReturnExpression
 import org.jetbrains.kotlin.fir.expressions.FirResolvedQualifier
 import org.jetbrains.kotlin.fir.expressions.FirSmartCastExpression
+import org.jetbrains.kotlin.fir.expressions.FirTryExpression
 import org.jetbrains.kotlin.fir.expressions.FirTypeOperatorCall
+import org.jetbrains.kotlin.fir.expressions.FirWhenExpression
 import org.jetbrains.kotlin.fir.references.FirErrorNamedReference
 import org.jetbrains.kotlin.fir.references.FirResolvedErrorReference
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
@@ -924,7 +926,23 @@ private fun FirExpression.knownReturnedTypeclassConstructors(
                     .forEach(knownConstructors::add)
             }
     }
+    fun addNested(nested: FirExpression) {
+        nested.knownReturnedTypeclassConstructors(session, configuration, visitedCallables)
+            .forEach(knownConstructors::add)
+    }
     when (expression) {
+        is FirWhenExpression ->
+            expression.branches.forEach { branch ->
+                addNested(branch.result)
+            }
+
+        is FirTryExpression -> {
+            addNested(expression.tryBlock)
+            expression.catches.forEach { catch ->
+                addNested(catch.block)
+            }
+        }
+
         is FirPropertyAccessExpression -> {
             val symbol = (expression.calleeReference as? FirResolvedNamedReference)?.resolvedSymbol as? FirCallableSymbol<*> ?: return knownConstructors.toList()
             if (!visitedCallables.add(symbol)) {
@@ -938,17 +956,11 @@ private fun FirExpression.knownReturnedTypeclassConstructors(
                             declaration.getter
                                 ?.knownGetterReturnExpressions()
                                 ?.let(::addAll)
-                        }.forEach { nested ->
-                            nested.knownReturnedTypeclassConstructors(session, configuration, visitedCallables)
-                                .forEach(knownConstructors::add)
-                        }
+                        }.forEach(::addNested)
 
                     is FirTypeclassFunctionDeclaration ->
                         declaration.knownDeriverReturnExpressions()
-                            .forEach { nested ->
-                                nested.knownReturnedTypeclassConstructors(session, configuration, visitedCallables)
-                                    .forEach(knownConstructors::add)
-                            }
+                            .forEach(::addNested)
 
                     else -> Unit
                 }
@@ -965,10 +977,7 @@ private fun FirExpression.knownReturnedTypeclassConstructors(
             try {
                 (symbol.fir as? FirTypeclassFunctionDeclaration)
                     ?.knownDeriverReturnExpressions()
-                    ?.forEach { nested ->
-                        nested.knownReturnedTypeclassConstructors(session, configuration, visitedCallables)
-                            .forEach(knownConstructors::add)
-                    }
+                    ?.forEach(::addNested)
             } finally {
                 visitedCallables.remove(symbol)
             }
