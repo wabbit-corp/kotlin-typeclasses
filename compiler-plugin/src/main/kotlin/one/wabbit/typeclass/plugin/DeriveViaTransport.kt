@@ -1527,7 +1527,7 @@ private fun IrClass.transparentValueField(
         property = property,
         getter = getter,
         type = getter.returnType,
-        isUnitLike = getter.returnType.classOrNull?.owner?.classId == ClassId.topLevel(FqName("kotlin.Unit")),
+        isUnitLike = getter.returnType.isTransportUnitLike(),
     )
 }
 
@@ -1618,12 +1618,7 @@ private fun IrClass.transparentProductInfo(
                 property = property,
                 getter = getter,
                 type = getter.returnType.substitute(typeArgumentSubstitution),
-                isUnitLike =
-                    getter.returnType
-                        .substitute(typeArgumentSubstitution)
-                        .classOrNull
-                        ?.owner
-                        ?.classId == ClassId.topLevel(FqName("kotlin.Unit")),
+                isUnitLike = getter.returnType.substitute(typeArgumentSubstitution).isTransportUnitLike(),
             )
         }
     return TransparentProductInfo(
@@ -1657,6 +1652,9 @@ private fun IrClass.transparentSealedCases(
         }
     }
 }
+
+internal fun IrType.isTransportUnitLike(): Boolean =
+    classOrNull?.owner?.classId == ClassId.topLevel(FqName("kotlin.Unit")) && !isMarkedNullable()
 
 private fun IrClass.primaryConstructorOrNullLocal(): IrConstructor? =
     declarations.filterIsInstance<IrConstructor>().singleOrNull { constructor -> constructor.isPrimary }

@@ -55,12 +55,23 @@ class DeriveViaTransportTypeIdentityTest {
 
         assertTrue(first.sameTypeShape(second))
     }
+
+    @Test
+    fun nullableUnitIsNotTransportUnitLike() {
+        val kotlinPackage = testPackageFragment(FqName("kotlin"))
+        val unit = irClass("Unit", kotlinPackage)
+
+        assertTrue(simpleType(unit).isTransportUnitLike())
+        assertFalse(simpleType(unit, nullable = true).isTransportUnitLike())
+    }
 }
 
-private fun testPackageFragment(): IrExternalPackageFragmentImpl =
+private fun testPackageFragment(
+    fqName: FqName = FqName("test.derivevia.transport"),
+): IrExternalPackageFragmentImpl =
     IrExternalPackageFragmentImpl(
         DescriptorlessExternalPackageFragmentSymbol(),
-        FqName("test.derivevia.transport"),
+        fqName,
     )
 
 private fun irClass(
@@ -105,10 +116,11 @@ private fun irClass(
 private fun simpleType(
     irClass: IrClass,
     arguments: List<IrType> = emptyList(),
+    nullable: Boolean = false,
 ): IrType =
     IrSimpleTypeImpl(
         classifier = irClass.symbol,
-        hasQuestionMark = false,
+        hasQuestionMark = nullable,
         arguments = arguments.map { argument ->
             org.jetbrains.kotlin.ir.types.impl.makeTypeProjection(argument, Variance.INVARIANT)
         },
