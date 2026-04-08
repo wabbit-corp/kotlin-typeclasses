@@ -2589,25 +2589,27 @@ private class IrRuleIndex private constructor(
     }
 
     private fun discoverAssociatedRules(owner: ClassId): List<ResolvedRule> =
-        if (associatedRulesByOwner.containsKey(owner)) {
-            emptyList()
-        } else lazilyDiscoveredAssociatedRulesByOwner.getOrPut(owner) {
+        lazilyDiscoveredAssociatedRulesByOwner.getOrPut(owner) {
             val ownerClass = discoverReferencedClass(owner) ?: return@getOrPut emptyList()
             val companionRules =
-                directOrNestedCompanion(
-                    owner = owner,
-                    directCompanion = ownerClass.declarations.filterIsInstance<IrClass>().firstOrNull(IrClass::isCompanion),
-                    nestedLookup = { null },
-                )
-                    ?.let { companion ->
-                        buildList {
-                            collectAssociatedRules(
-                                declaration = companion,
-                                associatedOwner = owner,
-                                sink = this,
-                            )
-                        }
-                    }.orEmpty()
+                if (associatedRulesByOwner.containsKey(owner)) {
+                    emptyList()
+                } else {
+                    directOrNestedCompanion(
+                        owner = owner,
+                        directCompanion = ownerClass.declarations.filterIsInstance<IrClass>().firstOrNull(IrClass::isCompanion),
+                        nestedLookup = { null },
+                    )
+                        ?.let { companion ->
+                            buildList {
+                                collectAssociatedRules(
+                                    declaration = companion,
+                                    associatedOwner = owner,
+                                    sink = this,
+                                )
+                            }
+                        }.orEmpty()
+                }
             val derivedRules = discoverDerivedRules(owner, ownerClass)
             buildList {
                 addAll(companionRules)
@@ -2809,6 +2811,7 @@ private class IrRuleIndex private constructor(
         ): IrRuleIndex {
             val scanner = IrModuleScanner(pluginContext, sharedState.configuration, sharedState)
             moduleFragment.files.forEach(scanner::scanFile)
+            scanner.publishDirectDerivedMetadata()
 
             val directCompanionRules = scanner.buildCompanionRules()
             val directTopLevelRules = scanner.buildTopLevelRules()
@@ -2828,10 +2831,9 @@ private class IrRuleIndex private constructor(
                         )
                     }
             val builtinRules = scanner.buildBuiltinRules()
-            val derivedRules = scanner.buildDerivedRules()
             val topLevelRules = directTopLevelRules + importedDependencyTopLevelRules + builtinRules
-            val associatedSourceRules = directCompanionRules + derivedRules
-            val allRules = topLevelRules + directCompanionRules + derivedRules
+            val associatedSourceRules = directCompanionRules
+            val allRules = topLevelRules + directCompanionRules
             val associatedRules =
                 associatedSourceRules
                     .groupBy { it.associatedOwner ?: error("Associated rule must have owner") }
@@ -2995,42 +2997,27 @@ private class IrModuleScanner(
             }
         }
 
-    fun buildDerivedRules(): List<ResolvedRule> {
+    fun publishDirectDerivedMetadata() {
         val subclassesBySuper = subclassesBySuper()
-        val expandedPairs = linkedSetOf<Pair<String, ClassId>>()
-        val queue = ArrayDeque<Pair<String, ClassId>>()
-        declaredDerivationsByClassId.forEach { (classId, typeclassIds) ->
-            typeclassIds.forEach { typeclassId ->
-                queue += classId to typeclassId
-            }
-        }
-        while (queue.isNotEmpty()) {
-            val next = queue.removeFirst()
-            if (!expandedPairs.add(next)) {
-                continue
-            }
-            val (classId, typeclassId) = next
-            if (classInfoById[classId]?.isSealed == true) {
-                val directSubclasses =
-                    classesById[classId]?.stableDirectSealedSubclassIds(subclassesBySuper)
-                        ?: subclassesBySuper[classId].orEmpty().toList()
-                directSubclasses.forEach { subclassId ->
-                    queue += subclassId to typeclassId
+        val metadataEntries =
+            buildList {
+                declaredDerivationsByClassId.forEach { (classId, typeclassIds) ->
+                    val klass = classesById[classId] ?: return@forEach
+                    typeclassIds.forEach { typeclassId ->
+                        klass.directDerivedMetadata(
+                            typeclassId = typeclassId,
+                            subclassesBySuper = subclassesBySuper,
+                        )?.let { metadata ->
+                            add(OwnedGeneratedDerivedMetadata(owner = klass, metadata = metadata))
+                        }
+                    }
+                }
+                classesById.values.forEach { klass ->
+                    addAll(klass.directDerivedEquivMetadata())
+                    addAll(klass.directDerivedViaMetadata())
                 }
             }
-        }
-        return buildList {
-            addAll(
-                expandedPairs.flatMap { (classId, typeclassId) ->
-                    classesById[classId]?.toDerivedRules(typeclassId, subclassesBySuper).orEmpty()
-                },
-            )
-            addAll(
-                classesById.values.flatMap { klass ->
-                    klass.toDerivedEquivRules() + klass.toDeriveViaRules()
-                },
-            )
-        }.also(::recordSuccessfulDerivedMetadata)
+        recordGeneratedDerivedMetadata(metadataEntries)
     }
 
     fun registerDiscoveredClass(declaration: IrClass) {
@@ -3074,76 +3061,26 @@ private class IrModuleScanner(
         }
     }
 
-    private fun recordSuccessfulDerivedMetadata(
-        resolvedRules: List<ResolvedRule>,
+    private fun recordGeneratedDerivedMetadata(
+        entries: List<OwnedGeneratedDerivedMetadata>,
     ) {
         val metadataByOwner = linkedMapOf<IrClass, MutableSet<GeneratedDerivedMetadata>>()
-
-        fun record(owner: IrClass, metadata: GeneratedDerivedMetadata) {
-            if (owner.origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB) {
-                return
+        entries.forEach { entry ->
+            if (entry.owner.origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB) {
+                return@forEach
             }
-            metadataByOwner.getOrPut(owner, ::linkedSetOf) += metadata
-        }
-
-        resolvedRules.forEach { resolvedRule ->
-            val providedType = resolvedRule.rule.providedType as? TcType.Constructor ?: return@forEach
-            val providedTypeclassId = runCatching { ClassId.fromString(providedType.classifierId) }.getOrNull() ?: return@forEach
-            when (val reference = resolvedRule.reference) {
-                is RuleReference.Derived ->
-                    record(
-                        owner = reference.targetClass,
-                        metadata =
-                            GeneratedDerivedMetadata.Derive(
-                                typeclassId = providedTypeclassId,
-                                targetId = reference.targetClass.classIdOrFail,
-                            ),
-                    )
-
-                is RuleReference.DerivedEquiv ->
-                    record(
-                        owner = reference.targetClass,
-                        metadata =
-                            GeneratedDerivedMetadata.DeriveEquiv(
-                                targetId = reference.targetClass.classIdOrFail,
-                                otherClassId = reference.otherClassId,
-                            ),
-                    )
-
-                is RuleReference.DerivedVia ->
-                    record(
-                        owner = reference.targetClass,
-                        metadata =
-                            GeneratedDerivedMetadata.DeriveVia(
-                                typeclassId = providedTypeclassId,
-                                targetId = reference.targetClass.classIdOrFail,
-                                path =
-                                    reference.authoredPath.map { segment ->
-                                        when (segment) {
-                                            is DeriveViaPathSegment.Waypoint ->
-                                                GeneratedDeriveViaPathSegment(
-                                                    kind = GeneratedDeriveViaPathSegment.Kind.WAYPOINT,
-                                                    classId = segment.classId,
-                                                )
-
-                                            is DeriveViaPathSegment.PinnedIso ->
-                                                GeneratedDeriveViaPathSegment(
-                                                    kind = GeneratedDeriveViaPathSegment.Kind.PINNED_ISO,
-                                                    classId = segment.classId,
-                                                )
-                                        }
-                                    },
-                            ),
-                    )
-
-                else -> Unit
-            }
+            metadataByOwner.getOrPut(entry.owner, ::linkedSetOf) += entry.metadata
         }
 
         metadataByOwner.forEach { (owner, entries) ->
             owner.recordGeneratedDerivedTypeclassMetadata(entries.toList())
         }
     }
+
+    private data class OwnedGeneratedDerivedMetadata(
+        val owner: IrClass,
+        val metadata: GeneratedDerivedMetadata,
+    )
 
     private fun applicableDerivedTypeclassIdsForOwner(classifierId: String): Set<ClassId> =
         sealedOwnerChain(classifierId).flatMapTo(linkedSetOf()) { ownerId ->
@@ -3382,6 +3319,212 @@ private class IrModuleScanner(
         }
     }
 
+    private fun IrClass.directDerivedMetadata(
+        typeclassId: ClassId,
+        subclassesBySuper: Map<String, Set<String>>,
+    ): GeneratedDerivedMetadata.Derive? {
+        val targetClassId = classId ?: return null
+        if (toDerivedRules(typeclassId, subclassesBySuper).isEmpty()) {
+            return null
+        }
+        return GeneratedDerivedMetadata.Derive(
+            typeclassId = typeclassId,
+            targetId = targetClassId,
+        )
+    }
+
+    private fun IrClass.directDerivedEquivMetadata(): List<OwnedGeneratedDerivedMetadata> {
+        val targetClassId = classId ?: return emptyList()
+        val fallbackGoal = "${EQUIV_CLASS_ID.asString()}<${targetClassId.asString()},?>"
+        val requestSpecs =
+            deriveEquivRequests()
+                .map { request -> request.otherClassId to compilerMessageLocation(request.annotation) }
+                .distinctBy { (otherClassId, _) -> otherClassId.asString() }
+        if (requestSpecs.isEmpty()) {
+            return emptyList()
+        }
+        if (typeParameters.isNotEmpty()) {
+            requestSpecs.forEach { (_, location) ->
+                pluginContext.reportCannotDeriveWithTrace(
+                    owner = this,
+                    configuration = configuration,
+                    goal = fallbackGoal,
+                    message = "@DeriveEquiv only supports monomorphic classes for now",
+                    location = location,
+                )
+            }
+            return emptyList()
+        }
+        val planner = DirectTransportPlanner(pluginContext)
+        return requestSpecs.mapNotNull { (otherClassId, location) ->
+            val otherClass =
+                pluginContext.referenceClass(otherClassId)?.owner
+                    ?: return@mapNotNull null
+            if (otherClass.typeParameters.isNotEmpty()) {
+                pluginContext.reportCannotDeriveWithTrace(
+                    owner = this,
+                    configuration = configuration,
+                    goal = "${EQUIV_CLASS_ID.asString()}<${targetClassId.asString()},${otherClassId.asString()}>",
+                    message = "@DeriveEquiv only supports monomorphic classes for now",
+                    location = location,
+                )
+                return@mapNotNull null
+            }
+            val plans = planner.planEquiv(symbol.defaultType, otherClass.symbol.defaultType)
+            if (plans == null) {
+                pluginContext.reportCannotDeriveWithTrace(
+                    owner = this,
+                    configuration = configuration,
+                    goal = "${EQUIV_CLASS_ID.asString()}<${targetClassId.asString()},${otherClassId.asString()}>",
+                    message = "Cannot derive Equiv between ${targetClassId.asString()} and ${otherClassId.asString()}",
+                    location = location,
+                )
+                return@mapNotNull null
+            }
+            OwnedGeneratedDerivedMetadata(
+                owner = this,
+                metadata =
+                    GeneratedDerivedMetadata.DeriveEquiv(
+                        targetId = targetClassId,
+                        otherClassId = otherClassId,
+                    ),
+            )
+        }
+    }
+
+    private fun IrClass.directDerivedViaMetadata(): List<OwnedGeneratedDerivedMetadata> {
+        val targetClassId = classId ?: return emptyList()
+        val requestSpecs =
+            deriveViaRequests(pluginContext)
+                .map { request ->
+                    Triple(
+                        request.typeclassId,
+                        request.path,
+                        compilerMessageLocation(request.annotation),
+                    )
+                }.distinctBy { (typeclassId, path, _) ->
+                    buildString {
+                        append(typeclassId.asString())
+                        append(':')
+                        append(path.joinToString("|") { segment ->
+                            val prefix =
+                                when (segment) {
+                                    is DeriveViaPathSegment.Waypoint -> "W"
+                                    is DeriveViaPathSegment.PinnedIso -> "I"
+                                }
+                            "$prefix:${segment.classId.asString()}"
+                        })
+                    }
+                }
+        if (requestSpecs.isEmpty()) {
+            return emptyList()
+        }
+        if (typeParameters.isNotEmpty()) {
+            requestSpecs.forEach { (_, _, location) ->
+                pluginContext.reportCannotDeriveWithTrace(
+                    owner = this,
+                    configuration = configuration,
+                    goal = "derive-via:${targetClassId.asString()}",
+                    message = "@DeriveVia only supports monomorphic classes for now",
+                    location = location,
+                )
+            }
+            return emptyList()
+        }
+        val planner = DirectTransportPlanner(pluginContext)
+        return requestSpecs.mapNotNull { (typeclassId, path, location) ->
+            val rootGoal = "${typeclassId.asString()}<${targetClassId.asString()}>"
+            if (path.isEmpty()) {
+                pluginContext.reportCannotDeriveWithTrace(
+                    owner = this,
+                    configuration = configuration,
+                    goal = rootGoal,
+                    message = "Cannot derive via an empty path",
+                    location = location,
+                )
+                return@mapNotNull null
+            }
+            val typeclassInterface = pluginContext.referenceClass(typeclassId)?.owner ?: return@mapNotNull null
+            if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID)) {
+                return@mapNotNull null
+            }
+            if (typeclassInterface.typeParameters.isEmpty()) {
+                pluginContext.reportCannotDeriveWithTrace(
+                    owner = this,
+                    configuration = configuration,
+                    goal = rootGoal,
+                    message = "DeriveVia requires a typeclass with at least one type parameter",
+                    location = location,
+                )
+                return@mapNotNull null
+            }
+            typeclassInterface.validateDeriveViaTransportability()?.let { message ->
+                pluginContext.reportCannotDeriveWithTrace(
+                    owner = this,
+                    configuration = configuration,
+                    goal = rootGoal,
+                    message = message,
+                    location = location,
+                )
+                return@mapNotNull null
+            }
+            val resolvedPath =
+                planner.resolveViaPath(symbol.defaultType, path)
+                    .getOrElse { error ->
+                        pluginContext.reportCannotDeriveWithTrace(
+                            owner = this,
+                            configuration = configuration,
+                            goal = rootGoal,
+                            message = error.message ?: "Failed to resolve DeriveVia path",
+                            location = location,
+                        )
+                        return@mapNotNull null
+                    }
+            val targetType = TcType.Constructor(targetClassId.asString(), emptyList())
+            val viaTypeModel =
+                irTypeToModel(resolvedPath.viaType, emptyMap()) ?: run {
+                    pluginContext.reportCannotDeriveWithTrace(
+                        owner = this,
+                        configuration = configuration,
+                        goal = rootGoal,
+                        message = "DeriveVia terminal type must be representable as a typeclass goal",
+                        location = location,
+                    )
+                    return@mapNotNull null
+                }
+            if (viaTypeModel.normalizedKey() == targetType.normalizedKey()) {
+                pluginContext.reportCannotDeriveWithTrace(
+                    owner = this,
+                    configuration = configuration,
+                    goal = rootGoal,
+                    message = "DeriveVia path must not resolve back to the annotated class",
+                    location = location,
+                )
+                return@mapNotNull null
+            }
+            pluginContext.reportDerivationSuccessTrace(
+                owner = this,
+                configuration = configuration,
+                goal = rootGoal,
+                location = location,
+                extraLines =
+                    listOf(
+                        "authored path: ${path.joinToString(" -> ") { segment -> segment.traceRender() }}",
+                        "normalized plan: ${resolvedPath.forwardPlan.traceRender()}",
+                    ),
+            )
+            OwnedGeneratedDerivedMetadata(
+                owner = this,
+                metadata =
+                    GeneratedDerivedMetadata.DeriveVia(
+                        typeclassId = typeclassId,
+                        targetId = targetClassId,
+                        path = path.map { segment -> segment.toGeneratedMetadataPathSegment() },
+                    ),
+            )
+        }
+    }
+
     private fun IrClass.toDerivedRules(
         typeclassId: ClassId,
         subclassesBySuper: Map<String, Set<String>>,
@@ -3550,6 +3693,21 @@ private class IrModuleScanner(
             }
         }
     }
+
+    private fun DeriveViaPathSegment.toGeneratedMetadataPathSegment(): GeneratedDeriveViaPathSegment =
+        when (this) {
+            is DeriveViaPathSegment.Waypoint ->
+                GeneratedDeriveViaPathSegment(
+                    kind = GeneratedDeriveViaPathSegment.Kind.WAYPOINT,
+                    classId = classId,
+                )
+
+            is DeriveViaPathSegment.PinnedIso ->
+                GeneratedDeriveViaPathSegment(
+                    kind = GeneratedDeriveViaPathSegment.Kind.PINNED_ISO,
+                    classId = classId,
+                )
+        }
 
     private fun IrClass.toDerivedEquivRules(): List<ResolvedRule> {
         val targetClassId = classId ?: return emptyList()

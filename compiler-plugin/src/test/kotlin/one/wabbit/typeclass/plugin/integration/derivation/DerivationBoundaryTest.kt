@@ -2,11 +2,14 @@
 
 package one.wabbit.typeclass.plugin.integration.derivation
 
+import one.wabbit.typeclass.plugin.BinaryGeneratedDerivedMetadataLoader
+import one.wabbit.typeclass.plugin.GeneratedDerivedMetadata
 import one.wabbit.typeclass.plugin.cannotDeriveOnlyUnaryTypeclasses
 import one.wabbit.typeclass.plugin.integration.HarnessDependency
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import one.wabbit.typeclass.plugin.integration.DiagnosticPhase
 import org.jetbrains.kotlin.cli.common.ExitCode
+import org.jetbrains.kotlin.name.ClassId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -625,6 +628,110 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 End()
                 """.trimIndent(),
             dependencies = listOf(dependency),
+        )
+    }
+
+    @Test
+    fun sourceCompilationPublishesDerivedMetadataOnlyForDirectSealedOwners() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.SumTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+            import one.wabbit.typeclass.TypeclassDeriver
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+
+                companion object : TypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Show<Any?> =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName.substringAfterLast('.')
+                        }
+
+                    override fun deriveSum(metadata: SumTypeclassMetadata): Show<Any?> =
+                        object : Show<Any?> {
+                            override fun show(value: Any?): String = metadata.typeName.substringAfterLast('.')
+                        }
+                }
+            }
+
+            @Derive(Show::class)
+            sealed interface Token
+
+            data class Word(val value: Int) : Token
+
+            object End : Token
+            """.trimIndent()
+
+        val result = compileSourceResult(source = source)
+        val loader = BinaryGeneratedDerivedMetadataLoader(listOf(result.artifacts.outputDir.toFile()))
+        val tokenId = ClassId.fromString("demo/Token")
+        val wordId = ClassId.fromString("demo/Word")
+        val endId = ClassId.fromString("demo/End")
+        val expectedRootMetadata =
+            listOf(
+                GeneratedDerivedMetadata.Derive(
+                    typeclassId = ClassId.fromString("demo/Show"),
+                    targetId = tokenId,
+                ),
+            )
+
+        assertEquals(expectedRootMetadata, loader.generatedMetadataFor(tokenId))
+        assertEquals(emptyList(), loader.generatedMetadataFor(wordId))
+        assertEquals(emptyList(), loader.generatedMetadataFor(endId))
+    }
+
+    @Test
+    fun sourceCompilationPublishesOnlyAuthoredDerivedHeads() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Parent<A> {
+                fun parent(value: A): String
+            }
+
+            @Typeclass
+            interface Child<A> : Parent<A> {
+                fun child(value: A): String
+
+                companion object : ProductTypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Child<Any?> =
+                        object : Child<Any?> {
+                            override fun child(value: Any?): String = metadata.typeName.substringAfterLast('.')
+
+                            override fun parent(value: Any?): String = child(value)
+                        }
+                }
+            }
+
+            @Derive(Child::class)
+            data class Box(val value: Int)
+            """.trimIndent()
+
+        val result = compileSourceResult(source = source)
+        val loader = BinaryGeneratedDerivedMetadataLoader(listOf(result.artifacts.outputDir.toFile()))
+        val boxId = ClassId.fromString("demo/Box")
+
+        assertEquals(
+            listOf(
+                GeneratedDerivedMetadata.Derive(
+                    typeclassId = ClassId.fromString("demo/Child"),
+                    targetId = boxId,
+                ),
+            ),
+            loader.generatedMetadataFor(boxId),
         )
     }
 
