@@ -146,7 +146,9 @@ internal class TypeclassResolutionPlanner(
             }
 
             val successfulCandidates = mutableListOf<SuccessfulCandidate>()
+            var sawApplicableCandidate = false
             var sawRecursiveCandidate = false
+            var allApplicableCandidatesWereRecursive = true
             var nextFreshCounter = freshCounter
             val tracedRuleCandidates = mutableListOf<ResolutionTraceCandidate>()
             val tracedLocalCandidates =
@@ -190,6 +192,7 @@ internal class TypeclassResolutionPlanner(
                     return@forEach
                 }
 
+                sawApplicableCandidate = true
                 val appliedRule = instantiatedRule.rule.apply(substitution)
                 val appliedLocals = localContextTypes.map { it.substitute(substitution) }
 
@@ -223,11 +226,13 @@ internal class TypeclassResolutionPlanner(
                             }
 
                             is ResolutionSearchResult.Missing -> {
+                                allApplicableCandidatesWereRecursive = false
                                 rejectionReason = "missing prerequisite ${nestedResult.desiredType.render()}"
                                 return@forEach
                             }
 
                             is ResolutionSearchResult.Ambiguous -> {
+                                allApplicableCandidatesWereRecursive = false
                                 rejectionReason = "ambiguous prerequisite ${nestedResult.desiredType.render()}"
                                 return@forEach
                             }
@@ -285,7 +290,8 @@ internal class TypeclassResolutionPlanner(
             val result =
                 when {
                     successfulCandidates.isNotEmpty() -> successfulCandidates.toCandidateSearchResult(desiredType)
-                    sawRecursiveCandidate -> ResolutionSearchResult.Recursive(desiredType)
+                    sawApplicableCandidate && sawRecursiveCandidate && allApplicableCandidatesWereRecursive ->
+                        ResolutionSearchResult.Recursive(desiredType)
                     else -> ResolutionSearchResult.Missing(desiredType)
                 }
             val selectedLocalIndex =

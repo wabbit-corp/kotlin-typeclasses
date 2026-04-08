@@ -233,6 +233,41 @@ class WrapperPlannerTest {
     }
 
     @Test
+    fun `missing candidates outrank unrelated recursive candidates`() {
+        val a = TcTypeParameter("outer:A", "A")
+        val x = TcTypeParameter("rule:X", "X")
+        val fooFromBar =
+            InstanceRule(
+                id = "fooFromBar",
+                typeParameters = listOf(x),
+                providedType = foo(typeVariable(x)),
+                prerequisiteTypes = listOf(bar(typeVariable(x))),
+            )
+        val barFromFoo =
+            InstanceRule(
+                id = "barFromFoo",
+                typeParameters = listOf(x),
+                providedType = bar(typeVariable(x)),
+                prerequisiteTypes = listOf(foo(typeVariable(x))),
+            )
+        val fooFromBaz =
+            InstanceRule(
+                id = "fooFromBaz",
+                typeParameters = listOf(x),
+                providedType = foo(typeVariable(x)),
+                prerequisiteTypes = listOf(baz(typeVariable(x))),
+            )
+
+        val result =
+            TypeclassResolutionPlanner(listOf(fooFromBar, barFromFoo, fooFromBaz)).resolve(
+                desiredType = foo(typeVariable(a)),
+                localContextTypes = emptyList(),
+            )
+
+        assertIs<ResolutionSearchResult.Missing>(result)
+    }
+
+    @Test
     fun `rule ordering does not change the surviving successful plan`() {
         val a = TcTypeParameter("outer:A", "A")
         val x = TcTypeParameter("rule:X", "X")
