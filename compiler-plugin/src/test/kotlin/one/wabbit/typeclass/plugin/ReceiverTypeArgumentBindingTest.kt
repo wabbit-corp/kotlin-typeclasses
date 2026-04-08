@@ -21,6 +21,7 @@ import org.jetbrains.kotlin.ir.declarations.impl.IrTypeParameterImpl
 import org.jetbrains.kotlin.ir.symbols.impl.DescriptorlessExternalPackageFragmentSymbol
 import org.jetbrains.kotlin.ir.symbols.impl.IrClassSymbolImpl
 import org.jetbrains.kotlin.ir.symbols.impl.IrTypeParameterSymbolImpl
+import org.jetbrains.kotlin.ir.types.IrTypeArgument
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.defaultType
 import org.jetbrains.kotlin.ir.types.impl.IrSimpleTypeImpl
@@ -75,6 +76,72 @@ class ReceiverTypeArgumentBindingTest {
             simpleType(second),
             bindings[box.typeParameters.single().symbol],
             "Receiver remapping should bind Box<T> from Weird<A, B> : Box<B> as T = B.",
+        )
+    }
+
+    @Test
+    fun argumentInferenceProjectionPreservesProjectedArgumentsAcrossGenericSupertypes() {
+        val packageFragment = testPackageFragment()
+        val iterable = irClass("Iterable", packageFragment, listOf("T"))
+        val list = irClass("List", packageFragment, listOf("E"))
+        val string = irClass("String", packageFragment)
+
+        list.superTypes = listOf(simpleType(iterable, listOf(list.typeParameters.single().defaultType)))
+
+        val projected =
+            projectTypeToMatchingInferenceSupertype(
+                expectedType = simpleType(iterable, listOf(iterable.typeParameters.single().defaultType)),
+                actualType = simpleTypeWithArguments(list, listOf(outProjection(simpleType(string)))),
+            )
+
+        assertEquals(
+            simpleTypeWithArguments(iterable, listOf(outProjection(simpleType(string)))),
+            projected,
+            "Inference projection should keep use-site out projections when climbing generic supertypes.",
+        )
+    }
+
+    @Test
+    fun argumentInferenceProjectionPreservesReceiverNullabilityAcrossGenericSupertypes() {
+        val packageFragment = testPackageFragment()
+        val iterable = irClass("Iterable", packageFragment, listOf("T"))
+        val list = irClass("List", packageFragment, listOf("E"))
+        val string = irClass("String", packageFragment)
+
+        list.superTypes = listOf(simpleType(iterable, listOf(list.typeParameters.single().defaultType)))
+
+        val projected =
+            projectTypeToMatchingInferenceSupertype(
+                expectedType = simpleType(iterable, listOf(iterable.typeParameters.single().defaultType)),
+                actualType = simpleType(list, listOf(simpleType(string)), nullable = true),
+            )
+
+        assertEquals(
+            simpleType(iterable, listOf(simpleType(string)), nullable = true),
+            projected,
+            "Inference projection should preserve receiver nullability when climbing supertypes.",
+        )
+    }
+
+    @Test
+    fun projectedReceiverSupertypesDoNotBindExactClassifierArguments() {
+        val packageFragment = testPackageFragment()
+        val box = irClass("Box", packageFragment, listOf("T"))
+        val weird = irClass("Weird", packageFragment, listOf("A", "B"))
+        val first = irClass("First", packageFragment)
+        val second = irClass("Second", packageFragment)
+
+        weird.superTypes = listOf(simpleType(box, listOf(weird.typeParameters[1].defaultType)))
+
+        val bindings =
+            receiverTypeArgumentBindings(
+                expectedType = simpleType(box, listOf(box.typeParameters.single().defaultType)),
+                actualType = simpleTypeWithArguments(weird, listOf(makeTypeProjection(simpleType(first), Variance.INVARIANT), outProjection(simpleType(second)))),
+            )
+
+        assertTrue(
+            bindings.isEmpty(),
+            "Projected receiver arguments must not be flattened into exact bindings for hidden context inference.",
         )
     }
 
@@ -143,10 +210,25 @@ private fun irClass(
 private fun simpleType(
     irClass: IrClass,
     arguments: List<IrType> = emptyList(),
+    nullable: Boolean = false,
+): IrType =
+    simpleTypeWithArguments(
+        irClass = irClass,
+        arguments = arguments.map { argument -> makeTypeProjection(argument, Variance.INVARIANT) },
+        nullable = nullable,
+    )
+
+private fun simpleTypeWithArguments(
+    irClass: IrClass,
+    arguments: List<IrTypeArgument>,
+    nullable: Boolean = false,
 ): IrType =
     IrSimpleTypeImpl(
         classifier = irClass.symbol,
-        hasQuestionMark = false,
-        arguments = arguments.map { argument -> makeTypeProjection(argument, Variance.INVARIANT) },
+        hasQuestionMark = nullable,
+        arguments = arguments,
         annotations = emptyList(),
     )
+
+private fun outProjection(type: IrType): IrTypeArgument =
+    makeTypeProjection(type, Variance.OUT_VARIANCE)

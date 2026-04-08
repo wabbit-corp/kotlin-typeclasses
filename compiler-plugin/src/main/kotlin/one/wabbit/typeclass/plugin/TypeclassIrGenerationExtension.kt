@@ -97,6 +97,7 @@ import org.jetbrains.kotlin.ir.expressions.impl.IrGetEnumValueImpl
 import org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.types.IrSimpleType
+import org.jetbrains.kotlin.ir.types.IrTypeSubstitutor
 import org.jetbrains.kotlin.ir.types.IrStarProjection
 import org.jetbrains.kotlin.ir.types.IrTypeArgument
 import org.jetbrains.kotlin.ir.types.IrType
@@ -7217,7 +7218,7 @@ internal fun receiverTypeArgumentBindings(
     }
     val projectedActualType = actualType.projectToMatchingSupertype(expectedClass) ?: return emptyMap()
     return expectedClass.typeParameters.mapIndexedNotNull { index, parameter ->
-        projectedActualType.arguments.getOrNull(index)?.argumentTypeOrNull()?.let { argumentType ->
+        projectedActualType.arguments.getOrNull(index)?.exactArgumentTypeOrNull()?.let { argumentType ->
             parameter.symbol to argumentType
         }
     }.toMap()
@@ -7243,14 +7244,20 @@ private fun IrType.projectToMatchingSupertype(
         directSupertypes = { currentType ->
             val actualSimpleType = currentType as? IrSimpleType ?: return@projectToMatchingSupertype emptyList()
             val actualClass = actualSimpleType.classOrNull?.owner ?: return@projectToMatchingSupertype emptyList()
-            val substitutions =
-                actualClass.typeParameters.mapIndexedNotNull { index, parameter ->
-                    actualSimpleType.arguments.getOrNull(index)?.argumentTypeOrNull()?.let { argumentType ->
-                        parameter.symbol to argumentType
-                    }
-                }.toMap()
+            val substitutor =
+                IrTypeSubstitutor(
+                    actualClass.typeParameters.map(IrTypeParameter::symbol),
+                    actualSimpleType.arguments,
+                    allowEmptySubstitution = true,
+                )
             actualClass.superTypes.map { superType ->
-                if (substitutions.isEmpty()) superType else superType.substitute(substitutions)
+                substitutor.substitute(superType).let { substitutedSuperType ->
+                    if (actualSimpleType.isNullable() && !substitutedSuperType.isNullable()) {
+                        substitutedSuperType.makeNullable()
+                    } else {
+                        substitutedSuperType
+                    }
+                }
             }
         },
     ) as? IrSimpleType
@@ -7312,6 +7319,18 @@ private fun IrTypeArgument.inferenceProjectionArgumentKey(): IrInferenceProjecti
         variance = (this as? org.jetbrains.kotlin.ir.types.IrTypeProjection)?.variance,
         type = argumentTypeOrNull()?.inferenceProjectionVisitKey(),
     )
+
+private fun IrTypeArgument.exactArgumentTypeOrNull(): IrType? =
+    when (this) {
+        is IrStarProjection -> null
+        is org.jetbrains.kotlin.ir.types.IrTypeProjection ->
+            if (variance == Variance.INVARIANT) {
+                type
+            } else {
+                null
+            }
+        is IrType -> this
+    }
 
 private class TypeArgumentInferenceFailure(
     message: String,

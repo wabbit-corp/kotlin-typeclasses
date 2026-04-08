@@ -28,7 +28,10 @@ import org.jetbrains.kotlin.fir.symbols.impl.FirFunctionSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
 import org.jetbrains.kotlin.fir.types.ConeClassLikeType
+import org.jetbrains.kotlin.fir.types.ConeKotlinTypeProjectionIn
+import org.jetbrains.kotlin.fir.types.ConeKotlinTypeProjectionOut
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
+import org.jetbrains.kotlin.fir.types.ConeStarProjection
 import org.jetbrains.kotlin.fir.types.ConeStubType
 import org.jetbrains.kotlin.fir.types.ConeTypeParameterType
 import org.jetbrains.kotlin.fir.types.ConeTypeVariableType
@@ -41,8 +44,10 @@ import org.jetbrains.kotlin.fir.types.resolvedType
 import org.jetbrains.kotlin.fir.types.isMarkedNullable
 import org.jetbrains.kotlin.fir.types.type
 import org.jetbrains.kotlin.fir.types.typeContext
+import org.jetbrains.kotlin.fir.types.variance
 import org.jetbrains.kotlin.fir.types.withNullabilityOf
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.types.TypeSubstitutor
 import org.jetbrains.kotlin.types.Variance
 
 internal fun FirExpression.safeResolvedOrInferredTypeOrNull(
@@ -678,14 +683,14 @@ private fun ConeKotlinType.projectToMatchingInferenceSupertype(
                     session.symbolProvider.getClassLikeSymbolByClassId(actualClassId) as? FirRegularClassSymbol
                 }.getOrNull() ?: return@projectToMatchingSupertype emptyList()
             val substitutions =
-                classSymbol.fir.typeParameters.zip(actualSimpleType.typeArguments).mapNotNull { (parameter, argument) ->
-                    argument.type?.let { type -> parameter.symbol to type }
-                }.toMap()
+                classSymbol.fir.typeParameters.zip(actualSimpleType.typeArguments).associate { (parameter, argument) ->
+                    parameter.symbol to argument
+                }
             classSymbol.fir.declaredOrResolvedSuperTypes().map { superType ->
                 if (substitutions.isEmpty()) {
                     superType
                 } else {
-                    substituteInferredTypes(superType, substitutions, session)
+                    substituteInferredTypeProjections(superType, substitutions, session)
                 }.withNullabilityOf(actualSimpleType, session.typeContext)
             }
         },
@@ -878,6 +883,17 @@ internal fun substituteInferredTypes(
     return InferredTypeSubstitutor(substitutions, session).substituteOrSelf(type)
 }
 
+private fun substituteInferredTypeProjections(
+    type: ConeKotlinType,
+    substitutions: Map<FirTypeParameterSymbol, ConeTypeProjection>,
+    session: FirSession,
+): ConeKotlinType {
+    if (substitutions.isEmpty()) {
+        return type
+    }
+    return InferredTypeProjectionSubstitutor(substitutions, session).substituteOrSelf(type)
+}
+
 private class InferredTypeSubstitutor(
     private val substitutions: Map<FirTypeParameterSymbol, ConeKotlinType>,
     session: FirSession,
@@ -901,6 +917,76 @@ private class InferredTypeSubstitutor(
             .withCombinedAttributesFrom(type)
     }
 }
+
+private class InferredTypeProjectionSubstitutor(
+    private val substitutions: Map<FirTypeParameterSymbol, ConeTypeProjection>,
+    session: FirSession,
+) : AbstractConeSubstitutor(session.typeContext) {
+    override fun substituteType(type: ConeKotlinType): ConeKotlinType? {
+        val replacement = replacementFor(type) ?: return null
+        val replacementType = replacement.type ?: return null
+        return replacementType
+            .withNullabilityOf(type, typeContext)
+            .withCombinedAttributesFrom(type)
+    }
+
+    override fun substituteArgument(
+        projection: ConeTypeProjection,
+        index: Int,
+    ): ConeTypeProjection? {
+        val originalType = projection.type ?: return null
+        val replacement = replacementFor(originalType) ?: return super.substituteArgument(projection, index)
+        val replacementType =
+            replacement.type
+                ?.withNullabilityOf(originalType, typeContext)
+                ?.withCombinedAttributesFrom(originalType)
+        return combineProjections(
+            original = projection,
+            replacement = replacement,
+            replacementType = replacementType,
+        )
+    }
+
+    private fun replacementFor(type: ConeKotlinType): ConeTypeProjection? =
+        when (type) {
+            is ConeTypeParameterType -> substitutions[type.lookupTag.typeParameterSymbol]
+            is ConeTypeVariableType ->
+                (type.typeConstructor.originalTypeParameter as? ConeTypeParameterLookupTag)
+                    ?.typeParameterSymbol
+                    ?.let(substitutions::get)
+            is ConeStubType ->
+                (type.constructor.variable.typeConstructor.originalTypeParameter as? ConeTypeParameterLookupTag)
+                    ?.typeParameterSymbol
+                    ?.let(substitutions::get)
+            else -> null
+        }
+}
+
+private fun combineProjections(
+    original: ConeTypeProjection,
+    replacement: ConeTypeProjection,
+    replacementType: ConeKotlinType?,
+): ConeTypeProjection {
+    if (original.kind == ProjectionKind.STAR || replacement.kind == ProjectionKind.STAR || replacementType == null) {
+        return ConeStarProjection
+    }
+    val combinedVariance =
+        TypeSubstitutor.combine(
+            original.variance,
+            replacement.variance,
+        )
+    return coneProjectionOfVariance(combinedVariance, replacementType)
+}
+
+private fun coneProjectionOfVariance(
+    variance: Variance,
+    type: ConeKotlinType,
+): ConeTypeProjection =
+    when (variance) {
+        Variance.INVARIANT -> type
+        Variance.IN_VARIANCE -> ConeKotlinTypeProjectionIn(type)
+        Variance.OUT_VARIANCE -> ConeKotlinTypeProjectionOut(type)
+    }
 
 internal fun buildInferenceTypeParameterModels(
     bindableTypeParameters: Set<FirTypeParameterSymbol>,
