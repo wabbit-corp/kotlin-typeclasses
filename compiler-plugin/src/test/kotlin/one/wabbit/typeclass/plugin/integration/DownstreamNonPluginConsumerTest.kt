@@ -494,4 +494,60 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
             dependencies = listOf(dependency),
         )
     }
+
+    @Test
+    fun downstreamPluginRevalidatesGeneratedDependencyDeriveEquivMetadataBeforeFirMasking() {
+        val dependency =
+            HarnessDependency(
+                name = "dep-generated-derive-equiv",
+                useTypeclassPlugin = false,
+                enableContextParameters = false,
+                sources =
+                    mapOf(
+                        "dep/Api.kt" to
+                            """
+                            package dep
+
+                            import one.wabbit.typeclass.GeneratedTypeclassInstance
+
+                            data class Wire(val value: Int)
+
+                            @GeneratedTypeclassInstance(
+                                typeclassId = "ignored",
+                                targetId = "dep/Token",
+                                kind = "derive-equiv",
+                                payload = "dep/Wire",
+                            )
+                            sealed interface Token {
+                                data class One(val value: Int) : Token
+                            }
+                            """.trimIndent(),
+                    ),
+            )
+        val source =
+            """
+            package demo
+
+            import dep.Token
+            import dep.Wire
+            import one.wabbit.typeclass.Equiv
+            import one.wabbit.typeclass.InternalTypeclassApi
+
+            @OptIn(InternalTypeclassApi::class)
+            context(_: Equiv<Token, Wire>)
+            fun render(value: Token): String = "equiv"
+
+            fun main() {
+                val token: Token = Token.One(4)
+                println(render(token)) // E:TC_NO_CONTEXT_ARGUMENT forged binary DeriveEquiv metadata must not make FIR hide a missing Equiv<Token, Wire>
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedNoContextArgument()),
+            dependencies = listOf(dependency),
+            unexpectedMessages = listOf("Cannot derive Equiv between dep/Token and dep/Wire"),
+        )
+    }
 }

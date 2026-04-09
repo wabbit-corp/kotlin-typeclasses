@@ -1088,7 +1088,7 @@ private data class ResolutionIndex(
         if (targetType.classifierId !in preciseTargets) {
             return emptyList()
         }
-        if (sourceDeclaration.source != null && !FirDirectTransportPlanner(session).planEquiv(sourceType, targetType)) {
+        if (!FirDirectTransportPlanner(session).planEquiv(sourceType, targetType)) {
             return emptyList()
         }
         return listOf(
@@ -1186,10 +1186,7 @@ private data class ResolutionIndex(
                         return@any false
                     }
                     val ownerClassId = runCatching { ClassId.fromString(owner) }.getOrNull() ?: return@any false
-                    val ownerSymbol = session.regularClassSymbolOrNull(ownerClassId) ?: return@any true
-                    if (ownerSymbol.fir.source == null) {
-                        return@any true
-                    }
+                    session.regularClassSymbolOrNull(ownerClassId) ?: return@any false
                     FirDirectTransportPlanner(session).planEquiv(sourceType, targetType)
                 }
             }
