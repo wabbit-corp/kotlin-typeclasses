@@ -63,6 +63,7 @@ import org.jetbrains.kotlin.name.*
 import org.jetbrains.kotlin.types.Variance
 import java.io.File
 import java.util.Collections
+import java.util.IdentityHashMap
 import java.util.WeakHashMap
 
 internal class TypeclassPluginSharedState(
@@ -221,6 +222,7 @@ internal class TypeclassPluginSharedState(
     private fun buildDiscoveryIndexes(session: FirSession): ResolutionIndex {
         BinaryGeneratedDerivedMetadataRegistry.install(session, binaryGeneratedMetadataLoader)
         val scanner = FirResolutionScanner(session, configuration)
+        session.eagerlyScanTopLevelDeclarations(scanner)
         return scanner.build(
             recordImportedTopLevelRulesForIr = ::recordImportedTopLevelRulesForIr,
             recordImportedGeneratedDerivedMetadataForIr = ::recordImportedGeneratedDerivedMetadataForIr,
@@ -233,6 +235,40 @@ private fun FirSession.topLevelDeclarationProviders(): List<org.jetbrains.kotlin
         add(firProvider.symbolProvider)
         add(dependenciesSymbolProvider)
     }.distinct()
+
+private fun FirSession.eagerlyScanTopLevelDeclarations(
+    scanner: FirResolutionScanner,
+) {
+    val symbolProviders = topLevelDeclarationProviders()
+    if (symbolProviders.isEmpty()) {
+        return
+    }
+    val visited = IdentityHashMap<FirDeclaration, Unit>()
+    eagerTopLevelDeclarationPackages(symbolProviders).forEach { packageName ->
+        scanTopLevelDeclarationsInPackage(packageName, symbolProviders) { declaration ->
+            if (visited.put(declaration, Unit) == null) {
+                scanner.scanDeclaration(declaration, associatedOwner = null)
+            }
+        }
+    }
+}
+
+private fun eagerTopLevelDeclarationPackages(
+    symbolProviders: List<org.jetbrains.kotlin.fir.resolve.providers.FirSymbolProvider>,
+): List<FqName> =
+    buildSet {
+        symbolProviders.forEach { provider ->
+            provider.symbolNamesProvider.getPackageNames()?.forEach { packageName ->
+                add(FqName(packageName))
+            }
+            provider.symbolNamesProvider.getPackageNamesWithTopLevelClassifiers()?.forEach { packageName ->
+                add(FqName(packageName))
+            }
+            provider.symbolNamesProvider.getPackageNamesWithTopLevelCallables()?.forEach { packageName ->
+                add(FqName(packageName))
+            }
+        }
+    }.sortedBy(FqName::asString)
 
 internal interface TopLevelDeclarationsInPackageSource<D> {
     fun declarationsInPackage(packageName: FqName): Sequence<D>
