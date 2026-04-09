@@ -792,6 +792,8 @@ private data class ResolutionIndex(
         val appliedBindings =
             ruleTypeParameters.zip(targetType.arguments)
                 .associate { (parameter, appliedType) -> parameter.id to appliedType }
+        val accessContext = declaration.deriveShapeAccessContext(session)
+        val requiredVisibilityDescription = accessContext.requiredDerivedShapeVisibilityDescription()
         if (declaration.classKind == ClassKind.OBJECT) {
             return emptyList()
         }
@@ -802,9 +804,12 @@ private data class ResolutionIndex(
         val visibleStoredProperties =
             storedProperties.map { property ->
                 val getter = property.getter ?: return fail("Cannot derive ${declaration.symbol.classId.asFqNameString()} because constructive product derivation requires constructor parameters to exactly match stored properties")
-                if (property.status.visibility != Visibilities.Public || getter.status.visibility != Visibilities.Public) {
+                if (
+                    !accessContext.allowsTransportVisibility(property.status.visibility.toTransportSyntheticVisibility()) ||
+                    !accessContext.allowsTransportVisibility(getter.status.visibility.toTransportSyntheticVisibility())
+                ) {
                     return fail(
-                        "constructive product derivation requires public stored properties; ${declaration.symbol.classId.asFqNameString()}.${property.name.asString()} is not public.",
+                        "constructive product derivation requires $requiredVisibilityDescription stored properties; ${declaration.symbol.classId.asFqNameString()}.${property.name.asString()} is not $requiredVisibilityDescription.",
                     )
                 }
                 property
@@ -814,8 +819,8 @@ private data class ResolutionIndex(
                 .filterIsInstance<org.jetbrains.kotlin.fir.declarations.FirConstructor>()
                 .singleOrNull { candidate -> candidate.isPrimary }
                 ?: return fail("Cannot derive ${declaration.symbol.classId.asFqNameString()} because constructive product derivation requires a primary constructor")
-        if (constructor.status.visibility != Visibilities.Public) {
-            return fail("constructive product derivation requires a public primary constructor for ${declaration.symbol.classId.asFqNameString()}.")
+        if (!accessContext.allowsTransportVisibility(constructor.status.visibility.toTransportSyntheticVisibility())) {
+            return fail("constructive product derivation requires a $requiredVisibilityDescription primary constructor for ${declaration.symbol.classId.asFqNameString()}.")
         }
         val constructorParameterNames = constructor.valueParameters.map { parameter -> parameter.name.asString() }
         val fieldNames = visibleStoredProperties.map { property -> property.name.asString() }
@@ -2704,6 +2709,22 @@ internal fun FirRegularClass.declaredOrResolvedSuperTypes(): List<ConeKotlinType
     }
     return symbol.resolvedSuperTypes
 }
+
+private fun FirRegularClass.deriveShapeAccessContext(session: FirSession): TransportSyntheticAccessContext =
+    if (
+        runCatching { session.firProvider.symbolProvider.getClassLikeSymbolByClassId(symbol.classId) }.getOrNull() != null ||
+        runCatching { session.firProvider.getFirClassifierContainerFileIfAny(symbol.classId) }.getOrNull() != null
+    ) {
+        TransportSyntheticAccessContext.SAME_MODULE_SOURCE
+    } else {
+        TransportSyntheticAccessContext.DEPENDENCY_BINARY
+    }
+
+private fun TransportSyntheticAccessContext.requiredDerivedShapeVisibilityDescription(): String =
+    when (this) {
+        TransportSyntheticAccessContext.SAME_MODULE_SOURCE -> "public or internal"
+        TransportSyntheticAccessContext.DEPENDENCY_BINARY -> "public"
+    }
 
 private fun FirRegularClass.visibleClassHierarchyInfo(): VisibleClassHierarchyInfo =
     VisibleClassHierarchyInfo(

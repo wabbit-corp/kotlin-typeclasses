@@ -1721,7 +1721,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             expectedDiagnostics =
                 listOf(
                     expectedExactCannotDerive(
-                        "constructive product derivation requires public stored properties; demo.Secret.value is not public.",
+                        "constructive product derivation requires public or internal stored properties; demo.Secret.value is not public or internal.",
                         phase = null,
                     ),
                 ),
@@ -1760,7 +1760,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             expectedDiagnostics =
                 listOf(
                     expectedExactCannotDerive(
-                        "constructive product derivation requires a public primary constructor for demo.Secret.",
+                        "constructive product derivation requires a public or internal primary constructor for demo.Secret.",
                         phase = null,
                     ),
                 ),
@@ -1809,7 +1809,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             expectedDiagnostics =
                 listOf(
                     expectedExactCannotDerive(
-                        "Cannot derive demo.Token because sealed subclass demo.Secret is not itself derivable: constructive product derivation requires a public primary constructor for demo.Secret.",
+                        "Cannot derive demo.Token because sealed subclass demo.Secret is not itself derivable: constructive product derivation requires a public or internal primary constructor for demo.Secret.",
                         phase = null,
                     ),
                 ),

@@ -2497,6 +2497,19 @@ private fun IrExpression.knownReturnedTypeclassConstructorsOrEmpty(
 private fun String.shortClassNameOrSelf(): String =
     runCatching { ClassId.fromString(this).shortClassName.asString() }.getOrDefault(this)
 
+private fun IrClass.deriveShapeAccessContext(): TransportSyntheticAccessContext =
+    if (origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB) {
+        TransportSyntheticAccessContext.DEPENDENCY_BINARY
+    } else {
+        TransportSyntheticAccessContext.SAME_MODULE_SOURCE
+    }
+
+private fun TransportSyntheticAccessContext.requiredDerivedShapeVisibilityDescription(): String =
+    when (this) {
+        TransportSyntheticAccessContext.SAME_MODULE_SOURCE -> "public or internal"
+        TransportSyntheticAccessContext.DEPENDENCY_BINARY -> "public"
+    }
+
 private fun IrDeclaration.isVisibleTypeclassRuleCandidate(): Boolean {
     val visibleDeclaration = this as? IrDeclarationWithVisibility ?: return false
     if (visibleDeclaration.visibility == DescriptorVisibilities.PRIVATE) {
@@ -4195,20 +4208,24 @@ private class IrModuleScanner(
         typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
         rootGoal: String,
     ): DerivedShape.Product? {
+        val accessContext = deriveShapeAccessContext()
+        val requiredVisibilityDescription = accessContext.requiredDerivedShapeVisibilityDescription()
         if (isObject) {
             return DerivedShape.Product(fields = emptyList(), constructor = null)
         }
         val storedProperties = structuralProperties()
         storedProperties.firstOrNull { property ->
-            property.visibility != DescriptorVisibilities.PUBLIC ||
-                property.getter?.visibility != DescriptorVisibilities.PUBLIC
+            !accessContext.allowsTransportVisibility(property.visibility.toTransportSyntheticVisibility()) ||
+                !accessContext.allowsTransportVisibility(
+                    (property.getter?.visibility ?: return@firstOrNull true).toTransportSyntheticVisibility(),
+                )
         }?.let { nonPublicProperty ->
             pluginContext.reportCannotDeriveWithTrace(
                 owner = this,
                 configuration = configuration,
                 goal = rootGoal,
                 message =
-                    "constructive product derivation requires public stored properties; ${renderClassName()}.${nonPublicProperty.name.asString()} is not public.",
+                    "constructive product derivation requires $requiredVisibilityDescription stored properties; ${renderClassName()}.${nonPublicProperty.name.asString()} is not $requiredVisibilityDescription.",
                 location = compilerMessageLocation(),
             )
             return null
@@ -4257,13 +4274,13 @@ private class IrModuleScanner(
             )
             return null
         }
-        if (constructor.visibility != DescriptorVisibilities.PUBLIC) {
+        if (!accessContext.allowsTransportVisibility(constructor.visibility.toTransportSyntheticVisibility())) {
             pluginContext.reportCannotDeriveWithTrace(
                 owner = this,
                 configuration = configuration,
                 goal = rootGoal,
                 message =
-                    "constructive product derivation requires a public primary constructor for ${renderClassName()}.",
+                    "constructive product derivation requires a $requiredVisibilityDescription primary constructor for ${renderClassName()}.",
                 location = compilerMessageLocation(),
             )
             return null
@@ -4354,12 +4371,16 @@ private class IrModuleScanner(
                 )
             }
         val typeParameterBySymbol = typeParameters.zip(ruleTypeParameters).associate { (symbol, parameter) -> symbol.symbol to parameter }
+        val accessContext = deriveShapeAccessContext()
+        val requiredVisibilityDescription = accessContext.requiredDerivedShapeVisibilityDescription()
         val storedProperties = structuralProperties()
         storedProperties.firstOrNull { property ->
-            property.visibility != DescriptorVisibilities.PUBLIC ||
-                property.getter?.visibility != DescriptorVisibilities.PUBLIC
+            !accessContext.allowsTransportVisibility(property.visibility.toTransportSyntheticVisibility()) ||
+                !accessContext.allowsTransportVisibility(
+                    (property.getter?.visibility ?: return@firstOrNull true).toTransportSyntheticVisibility(),
+                )
         }?.let { nonPublicProperty ->
-            return "constructive product derivation requires public stored properties; ${renderClassName()}.${nonPublicProperty.name.asString()} is not public."
+            return "constructive product derivation requires $requiredVisibilityDescription stored properties; ${renderClassName()}.${nonPublicProperty.name.asString()} is not $requiredVisibilityDescription."
         }
         storedProperties.forEach { property ->
             val getter = property.getter ?: return "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires constructor parameters to exactly match stored properties"
@@ -4369,8 +4390,8 @@ private class IrModuleScanner(
         }
         val constructor = primaryConstructorOrNull()
             ?: return "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires a primary constructor"
-        if (constructor.visibility != DescriptorVisibilities.PUBLIC) {
-            return "constructive product derivation requires a public primary constructor for ${renderClassName()}."
+        if (!accessContext.allowsTransportVisibility(constructor.visibility.toTransportSyntheticVisibility())) {
+            return "constructive product derivation requires a $requiredVisibilityDescription primary constructor for ${renderClassName()}."
         }
         val constructorParameterNames = constructor.valueParameters.map { parameter -> parameter.name.asString() }
         val fieldNames = storedProperties.map { property -> property.name.asString() }

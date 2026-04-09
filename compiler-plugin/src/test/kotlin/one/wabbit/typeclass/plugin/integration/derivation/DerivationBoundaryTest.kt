@@ -159,6 +159,99 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun sameModuleDerivationAllowsInternalProductMembers() {
+        val sources =
+            mapOf(
+                "shared/Show.kt" to showTypeclassSource(packageName = "shared"),
+                "shared/ShownString.kt" to shownStringSource("shared"),
+                "shared/Secret.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Derive
+
+                    @Derive(Show::class)
+                    data class Secret internal constructor(internal val value: ShownString)
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import shared.Secret
+                    import shared.ShownString
+                    import shared.render
+
+                    fun main() {
+                        println(render(Secret(ShownString("ok"))))
+                    }
+                    """.trimIndent(),
+            )
+
+        assertCompilesAndRuns(
+            sources = sources,
+            expectedStdout = "Secret(value=ok)",
+            mainClass = "demo.MainKt",
+        )
+    }
+
+    @Test
+    fun sameModuleDerivationAllowsInternalSealedCaseMembers() {
+        val sources =
+            mapOf(
+                "shared/Show.kt" to showTypeclassSource(packageName = "shared"),
+                "shared/ShownString.kt" to shownStringSource("shared"),
+                "shared/Token.kt" to
+                    """
+                    package shared
+
+                    import one.wabbit.typeclass.Derive
+
+                    @Derive(Show::class)
+                    sealed interface Token
+                    """.trimIndent(),
+                "shared/Word.kt" to
+                    """
+                    package shared
+
+                    internal data class Word internal constructor(internal val value: ShownString) : Token
+                    """.trimIndent(),
+                "shared/End.kt" to
+                    """
+                    package shared
+
+                    internal object End : Token
+                    """.trimIndent(),
+                "demo/Main.kt" to
+                    """
+                    package demo
+
+                    import shared.End
+                    import shared.ShownString
+                    import shared.Token
+                    import shared.Word
+                    import shared.render
+
+                    fun main() {
+                        val word: Token = Word(ShownString("ok"))
+                        val end: Token = End
+                        println(render(word))
+                        println(render(end))
+                    }
+                    """.trimIndent(),
+            )
+
+        assertCompilesAndRuns(
+            sources = sources,
+            expectedStdout =
+                """
+                Word(value=ok)
+                End()
+                """.trimIndent(),
+            mainClass = "demo.MainKt",
+        )
+    }
+
+    @Test
     fun invalidLocalDeriveRequestsDoNotHidePlainOverloads() {
         val sources =
             mapOf(
