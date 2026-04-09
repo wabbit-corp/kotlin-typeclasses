@@ -2,7 +2,9 @@
 
 package one.wabbit.typeclass.plugin.integration
 
+import org.jetbrains.kotlin.cli.common.ExitCode
 import kotlin.test.Test
+import kotlin.test.assertEquals
 
 class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
     @Test
@@ -242,10 +244,11 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
     }
 
     @Test
-    fun downstreamPluginCanDeriveAgainstBinaryAnyReturningProductDerivers() {
+    fun downstreamPluginRejectsBinaryAnyReturningProductDeriversWithoutBodies() {
         val dependency =
             HarnessDependency(
                 name = "dep-binary-any-deriver",
+                useTypeclassPlugin = false,
                 sources =
                     mapOf(
                         "dep/Api.kt" to
@@ -302,10 +305,17 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
             }
             """.trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "binary-any",
-            dependencies = listOf(dependency),
+        val result =
+            compileSourceResult(
+                source = source,
+                dependencies = listOf(dependency),
+            )
+
+        assertEquals(ExitCode.COMPILATION_ERROR, result.exitCode, result.stdout)
+        assertOutputContains(
+            result.stdout,
+            "[TC_CANNOT_DERIVE]",
+            "deriveProduct must return Show<...>",
         )
     }
 

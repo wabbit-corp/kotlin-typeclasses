@@ -1492,8 +1492,8 @@ private class TypeclassIrCallTransformer(
         if (
             !validateKnownDeriverReturnTypeclass(
                 typeclassInterface = reference.deriverCompanion.parentAsClass,
+                deriverCompanion = reference.deriverCompanion,
                 deriveMethod = deriveMethod,
-                trustBodylessExternalStub = reference.trustBodylessExternalStub,
             )
         ) {
             return irAs(irNull(), resultType)
@@ -1544,16 +1544,17 @@ private class TypeclassIrCallTransformer(
 
     private fun validateKnownDeriverReturnTypeclass(
         typeclassInterface: IrClass,
+        deriverCompanion: IrClass,
         deriveMethod: IrSimpleFunction,
-        trustBodylessExternalStub: Boolean,
     ): Boolean =
         validateKnownIrDeriverReturnTypeclass(
             typeclassInterface = typeclassInterface,
+            deriverCompanion = deriverCompanion,
             deriveMethod = deriveMethod,
+            publishedGeneratedMetadata = ruleIndex.publishedGeneratedDerivedMetadata(deriverCompanion),
             configuration = configuration,
             pluginContext = pluginContext,
             cache = deriverReturnValidationCache,
-            trustBodylessExternalStub = trustBodylessExternalStub,
         )
 
     private fun IrStatementsBuilder<*>.buildProductMetadata(
@@ -2229,26 +2230,29 @@ private fun IrFile.compilerMessageLocation(offset: Int): CompilerMessageSourceLo
 }
 
 internal class DeriverReturnValidationCache<M : Any> {
-    private val values: MutableMap<Pair<M, String>, Boolean> = linkedMapOf()
+    private val values: MutableMap<Triple<M, String, String>, Boolean> = linkedMapOf()
 
     fun getOrPut(
         method: M,
         expectedTypeclassId: String,
+        deriverCompanionId: String,
         compute: () -> Boolean,
-    ): Boolean = values.getOrPut(method to expectedTypeclassId, compute)
+    ): Boolean = values.getOrPut(Triple(method, expectedTypeclassId, deriverCompanionId), compute)
 }
 
 private fun validateKnownIrDeriverReturnTypeclass(
     typeclassInterface: IrClass,
+    deriverCompanion: IrClass,
     deriveMethod: IrSimpleFunction,
+    publishedGeneratedMetadata: List<GeneratedDerivedMetadata>,
     configuration: TypeclassConfiguration,
     pluginContext: IrPluginContext,
     cache: DeriverReturnValidationCache<IrSimpleFunction>,
-    trustBodylessExternalStub: Boolean,
 ): Boolean =
     cache.getOrPut(
         method = deriveMethod,
         expectedTypeclassId = typeclassInterface.classIdOrFail.asString(),
+        deriverCompanionId = deriverCompanion.classIdOrFail.asString(),
     ) {
         val expectedTypeclassId = typeclassInterface.classIdOrFail.asString()
         val declaredReturnTypeclassConstructors =
@@ -2270,7 +2274,14 @@ private fun validateKnownIrDeriverReturnTypeclass(
             return@getOrPut false
         }
         if (deriveMethod.origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB && deriveMethod.body == null) {
-            if (trustBodylessExternalStub) {
+            if (
+                publishedGeneratedMetadata
+                    .filterIsInstance<GeneratedDerivedMetadata.ValidatedDeriver>()
+                    .any { metadata ->
+                        metadata.typeclassId == typeclassInterface.classIdOrFail &&
+                            metadata.methodName == deriveMethod.name.asString()
+                    }
+            ) {
                 return@getOrPut true
             }
             pluginContext.reportTypeclassError(
@@ -2547,6 +2558,9 @@ private class IrRuleIndex private constructor(
     }
 
     fun ruleById(ruleId: String): ResolvedRule? = rulesById[ruleId] ?: lazilyDiscoveredRulesById[ruleId]
+
+    fun publishedGeneratedDerivedMetadata(owner: IrClass): List<GeneratedDerivedMetadata> =
+        scanner.publishedGeneratedDerivedMetadataFor(owner)
 
     fun resolveLookupFunction(
         reference: RuleReference.LookupFunction,
@@ -3096,6 +3110,7 @@ private class IrModuleScanner(
                     }
                 }
                 classesById.values.forEach { klass ->
+                    addAll(klass.directValidatedDeriverMetadata())
                     addAll(klass.directDerivedEquivMetadata())
                     addAll(klass.directDerivedViaMetadata())
                 }
@@ -3417,11 +3432,12 @@ private class IrModuleScanner(
         if (
             !validateKnownIrDeriverReturnTypeclass(
                 typeclassInterface = derivedReference.deriverCompanion.parentAsClass,
+                deriverCompanion = derivedReference.deriverCompanion,
                 deriveMethod = derivedReference.deriveMethod,
+                publishedGeneratedMetadata = derivedReference.deriverCompanion.publishedGeneratedDerivedMetadata(),
                 configuration = configuration,
                 pluginContext = pluginContext,
                 cache = deriverReturnValidationCache,
-                trustBodylessExternalStub = true,
             )
         ) {
             return null
@@ -3431,6 +3447,40 @@ private class IrModuleScanner(
             targetId = targetClassId,
             validatedReturnTypeclass = true,
         )
+    }
+
+    private fun IrClass.directValidatedDeriverMetadata(): List<OwnedGeneratedDerivedMetadata> {
+        if (!hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID)) {
+            return emptyList()
+        }
+        val typeclassId = classId ?: return emptyList()
+        val deriverCompanion = declarations.filterIsInstance<IrClass>().singleOrNull(IrClass::isCompanion) ?: return emptyList()
+        val companionId = deriverCompanion.classId ?: return emptyList()
+        return deriverCompanion.implementedDeriveMethodContracts().mapNotNull { contract ->
+            val deriveMethod = deriverCompanion.resolveDeriveMethod(contract) ?: return@mapNotNull null
+            if (
+                !validateKnownIrDeriverReturnTypeclass(
+                    typeclassInterface = this,
+                    deriverCompanion = deriverCompanion,
+                    deriveMethod = deriveMethod,
+                    publishedGeneratedMetadata = deriverCompanion.generatedDerivedMetadata(),
+                    configuration = configuration,
+                    pluginContext = pluginContext,
+                    cache = deriverReturnValidationCache,
+                )
+            ) {
+                return@mapNotNull null
+            }
+            OwnedGeneratedDerivedMetadata(
+                owner = deriverCompanion,
+                metadata =
+                    GeneratedDerivedMetadata.ValidatedDeriver(
+                        typeclassId = typeclassId,
+                        targetId = companionId,
+                        methodName = contract.methodName,
+                    ),
+            )
+        }
     }
 
     private fun IrClass.directDerivedEquivMetadata(): List<OwnedGeneratedDerivedMetadata> {
@@ -3787,7 +3837,6 @@ private class IrModuleScanner(
                             deriveMethod = deriveMethod,
                             shape = spec.shape,
                             ruleTypeParameters = spec.ruleTypeParameters,
-                            trustBodylessExternalStub = true,
                         ),
                     associatedOwner = targetClassId,
                 )
@@ -4662,6 +4711,9 @@ private class IrModuleScanner(
                 addAll(derivedTypeclassIds())
             }
         }
+
+    fun publishedGeneratedDerivedMetadataFor(owner: IrClass): List<GeneratedDerivedMetadata> =
+        owner.publishedGeneratedDerivedMetadata()
 
     private fun IrClass.publishedGeneratedDerivedMetadata(): List<GeneratedDerivedMetadata> {
         val directMetadata = generatedDerivedMetadata()
@@ -5539,7 +5591,6 @@ private sealed interface RuleReference {
         val deriveMethod: IrSimpleFunction,
         val shape: DerivedShape,
         val ruleTypeParameters: List<TcTypeParameter>,
-        val trustBodylessExternalStub: Boolean,
     ) : RuleReference
 
     data class DerivedEquiv(

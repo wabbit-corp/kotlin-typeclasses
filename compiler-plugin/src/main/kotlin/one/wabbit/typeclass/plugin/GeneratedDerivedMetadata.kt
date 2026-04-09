@@ -48,6 +48,16 @@ internal sealed interface GeneratedDerivedMetadata {
 
         override fun payload(): String = otherClassId.asString()
     }
+
+    data class ValidatedDeriver(
+        override val typeclassId: ClassId,
+        override val targetId: ClassId,
+        val methodName: String,
+    ) : GeneratedDerivedMetadata {
+        override val kind: String = "validated-deriver"
+
+        override fun payload(): String = methodName
+    }
 }
 
 internal data class GeneratedDeriveViaPathSegment(
@@ -119,6 +129,16 @@ internal fun decodeGeneratedDerivedMetadata(
             GeneratedDerivedMetadata.DeriveEquiv(
                 targetId = decodedTargetId,
                 otherClassId = otherClassId,
+            )
+        }
+
+        "validated-deriver" -> {
+            val decodedTypeclassId = typeclassId?.let(::decodeClassId) ?: return null
+            val methodName = payload?.takeIf(String::isNotBlank) ?: return null
+            GeneratedDerivedMetadata.ValidatedDeriver(
+                typeclassId = decodedTypeclassId,
+                targetId = decodedTargetId,
+                methodName = methodName,
             )
         }
 

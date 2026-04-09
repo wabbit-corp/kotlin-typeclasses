@@ -724,7 +724,8 @@ private data class ResolutionIndex(
         val typeclassClassId = runCatching { ClassId.fromString(directTypeclassId) }.getOrNull()
             ?: return fail("@Derive currently only supports typeclasses with exactly one type parameter")
         declaration.requiredDeriveMethodContractForDeriveShape()?.let { contract ->
-            if (typeclassCompanionResolveDeriveMethod(typeclassClassId, contract, session) == null) {
+            val deriveMethod = typeclassCompanionResolveDeriveMethod(typeclassClassId, contract, session)
+            if (deriveMethod == null) {
                 val typeclassName = typeclassClassId.shortClassName.asString()
                 return fail(
                     if (contract == DeriveMethodContract.ENUM) {
@@ -736,6 +737,33 @@ private data class ResolutionIndex(
                         "Typeclass deriver $companionId is missing ${contract.methodName}"
                     },
                 )
+            }
+            if (deriveMethod.source == null) {
+                val expectedTypeclassId = typeclassClassId.asString()
+                val declaredReturnTypeclassConstructors =
+                    listOf(deriveMethod.returnTypeRef.coneType)
+                        .expandProvidedTypes(session, emptyMap(), configuration)
+                        .validTypes
+                        .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
+                        .distinct()
+                if (declaredReturnTypeclassConstructors.isNotEmpty()) {
+                    if (expectedTypeclassId !in declaredReturnTypeclassConstructors) {
+                        return fail("${contract.methodName} must return ${typeclassClassId.shortClassName.asString()}<...>")
+                    }
+                } else {
+                    val binaryValidatedDeriver =
+                        typeclassCompanionSymbol(typeclassClassId, session)
+                            ?.fir
+                            ?.generatedDerivedMetadata(session)
+                            ?.filterIsInstance<GeneratedDerivedMetadata.ValidatedDeriver>()
+                            ?.any { metadata ->
+                                metadata.typeclassId == typeclassClassId &&
+                                    metadata.methodName == contract.methodName
+                            } == true
+                    if (!binaryValidatedDeriver) {
+                        return fail("${contract.methodName} must return ${typeclassClassId.shortClassName.asString()}<...>")
+                    }
+                }
             }
         }
         if (declaration.classKind == ClassKind.ENUM_CLASS) {
