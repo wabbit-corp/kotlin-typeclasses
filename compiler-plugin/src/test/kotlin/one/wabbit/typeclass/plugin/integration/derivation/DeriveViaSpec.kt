@@ -1780,6 +1780,55 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
+    @Test fun deriveViaSupportsAbstractMutableProperties() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Slot<A> {
+                var current: A
+            }
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooSlot : Slot<Foo> {
+                override var current: Foo = Foo(1)
+            }
+
+            @JvmInline
+            @DeriveVia(Slot::class, Foo::class)
+            value class UserId(val value: Int)
+
+            context(slot: Slot<A>)
+            fun <A> rewrite(next: A): String {
+                val before = slot.current
+                slot.current = next
+                return "${'$'}before -> ${'$'}{slot.current}"
+            }
+
+            fun main() {
+                println(rewrite(UserId(7)))
+                println(FooSlot.current)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                UserId(value=1) -> UserId(value=7)
+                Foo(value=7)
+                """.trimIndent(),
+        )
+    }
+
     @Test fun deriveViaExpandsInheritedTypeclassHeadsForResolution() {
         val source =
             """

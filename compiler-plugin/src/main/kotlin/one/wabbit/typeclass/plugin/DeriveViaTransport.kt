@@ -15,6 +15,7 @@ import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.ir.builders.IrBuilderWithScope
 import org.jetbrains.kotlin.ir.builders.IrStatementsBuilder
 import org.jetbrains.kotlin.ir.builders.declarations.addGetter
+import org.jetbrains.kotlin.ir.builders.declarations.addSetter
 import org.jetbrains.kotlin.ir.builders.declarations.addDefaultGetter
 import org.jetbrains.kotlin.ir.builders.declarations.addField
 import org.jetbrains.kotlin.ir.builders.declarations.addFunction
@@ -844,6 +845,7 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
     forwardedSurface.properties.forEach { member ->
         val property = member.property
         val getter = property.getter ?: return@forEach
+        val setter = property.setter
         val getterReturnViaType =
             member
                 .substituteInOwnerContext(getter.returnType)
@@ -866,6 +868,36 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
             } else {
                 return@forEach
             }
+        val setterTargetType =
+            setter?.valueParameters?.singleOrNull()?.let { parameter ->
+                member
+                    .substituteInOwnerContext(parameter.type)
+                    .substitute(targetSubstitutionBase)
+            }
+        val setterViaType =
+            setter?.valueParameters?.singleOrNull()?.let { parameter ->
+                member
+                    .substituteInOwnerContext(parameter.type)
+                    .substitute(viaSubstitutionBase)
+            }
+        val setterPlan =
+            if (setter == null) {
+                null
+            } else {
+                memberTransportPlanOrIdentity(
+                    sourceType = setterTargetType ?: getterReturnTargetType,
+                    targetType = setterViaType ?: getterReturnViaType,
+                    viaType = viaType,
+                    targetValueType = targetType,
+                    forwardPlan = forwardPlan,
+                    backwardPlan = backwardPlan,
+                    pluginContext = pluginContext,
+                ) ?: if (setter.modality == Modality.ABSTRACT) {
+                    error("Could not transport abstract typeclass property setter ${property.name.asString()} for DeriveVia")
+                } else {
+                    return@forEach
+                }
+            }
         val targetProperty =
             adapterClass.addProperty {
                 startOffset = property.startOffset
@@ -874,7 +906,7 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
                 name = property.name
                 visibility = property.visibility
                 modality = Modality.OPEN
-                isVar = false
+                isVar = setter != null
             }
         val targetGetter =
             targetProperty.addGetter {
@@ -912,6 +944,50 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
                     ),
                 )
             }
+        if (setter != null) {
+            val targetSetter =
+                targetProperty.addSetter {
+                    startOffset = setter.startOffset
+                    endOffset = setter.endOffset
+                    origin = IrDeclarationOrigin.DEFINED
+                    name = setter.name
+                    visibility = setter.visibility
+                    modality = Modality.OPEN
+                    returnType =
+                        member
+                            .substituteInOwnerContext(setter.returnType)
+                            .substitute(targetSubstitutionBase)
+                }
+            targetSetter.dispatchReceiverParameter =
+                adapterClass.thisReceiver?.copyTo(
+                    targetSetter,
+                    type = adapterClass.symbol.defaultType,
+                    kind = org.jetbrains.kotlin.ir.declarations.IrParameterKind.DispatchReceiver,
+                )
+            val sourceSetterValueParameter = setter.valueParameters.singleOrNull()
+            val targetSetterValueParameter =
+                targetSetter.addValueParameter(
+                    sourceSetterValueParameter?.name?.asString() ?: "value",
+                    setterTargetType ?: getterReturnTargetType,
+                )
+            targetSetter.overriddenSymbols = listOf(setter.symbol)
+            targetSetter.body =
+                DeclarationIrBuilder(pluginContext, targetSetter.symbol, startOffset, endOffset).irBlockBody {
+                    +irCall(setter.symbol).apply {
+                        dispatchReceiver =
+                            irGetField(irGet(targetSetter.dispatchReceiverParameter!!), viaField)
+                        putValueArgument(
+                            0,
+                            buildTransportExpression(
+                                plan = setterPlan ?: error("Missing property setter transport plan"),
+                                value = irGet(targetSetterValueParameter),
+                                pluginContext = pluginContext,
+                                lambdaParent = lambdaParent,
+                            ),
+                        )
+                    }
+                }
+        }
     }
 
     forwardedSurface.functions.forEach { member ->
@@ -1253,6 +1329,17 @@ internal fun IrClass.validateDeriveViaTransportability(): String? {
                 .transportabilityViolation(transported, classOpaqueParameters)
         if (message != null) {
             return message
+        }
+        val setter = property.property.setter
+        if (setter != null && setter.modality == Modality.ABSTRACT) {
+            val setterValueType = setter.valueParameters.singleOrNull()?.type ?: getter.returnType
+            val setterMessage =
+                property
+                    .substituteInOwnerContext(setterValueType)
+                    .transportabilityViolation(transported, classOpaqueParameters)
+            if (setterMessage != null) {
+                return setterMessage
+            }
         }
     }
     for (member in abstractSurface.functions) {

@@ -494,6 +494,22 @@ private fun FirRegularClass.validateInheritedAbstractTypeclassSurface(
         if (message != null) {
             return message
         }
+        val setter = property.setter
+        if (setter != null && setter.status.modality == Modality.ABSTRACT) {
+            val setterValueType =
+                setter.valueParameters.singleOrNull()?.returnTypeRef?.coneType
+                    ?: getter.returnTypeRef.coneType
+            val setterMessage =
+                setterValueType.transportabilityViolationInOwnerContext(
+                    owner = this,
+                    concreteType = concreteType,
+                    transportedId = transportedId,
+                    session = session,
+                )
+            if (setterMessage != null) {
+                return setterMessage
+            }
+        }
     }
 
     for (function in declarations.filterIsInstance<FirTypeclassFunctionDeclaration>()) {
