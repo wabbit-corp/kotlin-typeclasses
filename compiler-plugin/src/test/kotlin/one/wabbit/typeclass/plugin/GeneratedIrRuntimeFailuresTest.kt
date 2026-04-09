@@ -8,6 +8,20 @@ import kotlin.test.assertTrue
 
 class GeneratedIrRuntimeFailuresTest {
     @Test
+    fun `product constructor arity message points at stale metadata or invalid callers`() {
+        val message =
+            productConstructorArityRuntimeMessage(
+                className = "demo.Box",
+                expectedArguments = 2,
+            )
+
+        assertEquals(
+            "Internal typeclass derivation error: generated product constructor for demo.Box expected 2 arguments. This usually means stale generated metadata or an invalid runtime caller.",
+            message,
+        )
+    }
+
+    @Test
     fun `sum transport fallback message points at stale metadata or abi drift`() {
         val message = impossibleSumTransportRuntimeMessage("demo.Source", "demo.Target")
 

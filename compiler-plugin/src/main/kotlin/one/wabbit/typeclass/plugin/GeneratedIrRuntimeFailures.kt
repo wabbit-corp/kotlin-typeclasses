@@ -28,6 +28,12 @@ internal fun impossibleEnumValueResolverRuntimeMessage(enumClassName: String): S
 internal fun objectProductConstructorArityRuntimeMessage(className: String): String =
     "Internal typeclass derivation error: generated product constructor for object $className expected zero arguments. This usually means stale generated metadata or an invalid runtime caller."
 
+internal fun productConstructorArityRuntimeMessage(
+    className: String,
+    expectedArguments: Int,
+): String =
+    "Internal typeclass derivation error: generated product constructor for $className expected $expectedArguments arguments. This usually means stale generated metadata or an invalid runtime caller."
+
 internal fun IrBuilderWithScope.irTypeclassInternalError(
     pluginContext: IrPluginContext,
     message: String,

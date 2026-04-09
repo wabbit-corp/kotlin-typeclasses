@@ -17,6 +17,7 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
             package demo
 
             import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.Instance
             import one.wabbit.typeclass.ProductTypeclassDeriver
             import one.wabbit.typeclass.ProductTypeclassMetadata
             import one.wabbit.typeclass.Typeclass
@@ -55,6 +56,64 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "0|true|true",
+        )
+    }
+
+    @Test
+    fun generatedProductConstructorsReportInternalArityErrors() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Derive
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.ProductTypeclassDeriver
+            import one.wabbit.typeclass.ProductTypeclassMetadata
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Probe<A> {
+                fun describe(value: A): String
+
+                companion object : ProductTypeclassDeriver {
+                    override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+                        object : Probe<Any?> {
+                            override fun describe(value: Any?): String {
+                                val constructMatches = metadata.construct(1, "ok") == value
+                                val missingMatches =
+                                    runCatching { metadata.construct(1) }.exceptionOrNull() is IllegalStateException
+                                val extraMatches =
+                                    runCatching { metadata.construct(1, "ok", "extra") }.exceptionOrNull() is IllegalStateException
+                                return "${'$'}constructMatches|${'$'}missingMatches|${'$'}extraMatches"
+                            }
+                        }
+                }
+            }
+
+            @Instance
+            object IntProbe : Probe<Int> {
+                override fun describe(value: Int): String = value.toString()
+            }
+
+            @Instance
+            object StringProbe : Probe<String> {
+                override fun describe(value: String): String = value
+            }
+
+            @Derive(Probe::class)
+            data class Box(val count: Int, val label: String)
+
+            context(probe: Probe<A>)
+            fun <A> describe(value: A): String = probe.describe(value)
+
+            fun main() {
+                println(describe(Box(1, "ok")))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "true|true|true",
         )
     }
 

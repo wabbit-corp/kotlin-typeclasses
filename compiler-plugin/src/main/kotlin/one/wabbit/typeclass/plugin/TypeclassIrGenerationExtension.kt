@@ -1638,6 +1638,12 @@ private class TypeclassIrCallTransformer(
                 .singleOrNull { function ->
                     function.name.asString() == "isEmpty" && function.valueParameters.isEmpty()
                 } ?: error("Could not resolve kotlin.collections.Collection.isEmpty()")
+        val sizeGetter =
+            collectionClass.declarations
+                .filterIsInstance<IrProperty>()
+                .singleOrNull { property ->
+                    property.name.asString() == "size"
+                }?.getter ?: error("Could not resolve kotlin.collections.Collection.size")
         val lambdaType =
             pluginContext.irBuiltIns.functionN(1).typeWith(
                 listType,
@@ -1692,17 +1698,40 @@ private class TypeclassIrCallTransformer(
                 }
                 val constructor = shape.constructor
                     ?: error("Constructive product derivation requires a constructor for ${reference.targetClass.classIdOrFail}")
+                val actualArgumentCount =
+                    irCall(sizeGetter.symbol).apply {
+                        dispatchReceiver = irGet(argumentsParameter)
+                    }
+                val expectedArgumentCount = constructor.valueParameters.size
                 +irReturn(
-                    irCallConstructor(constructor.symbol, constructorTypeArguments).apply {
-                        constructor.valueParameters.forEachIndexed { index, parameter ->
-                            val argument =
-                                irCall(getFunction.symbol).apply {
-                                    dispatchReceiver = irGet(argumentsParameter)
-                                    putValueArgument(0, irInt(index))
+                    irIfThenElse(
+                        type = anyType,
+                        condition =
+                            irCall(pluginContext.irBuiltIns.eqeqSymbol).apply {
+                                putValueArgument(0, actualArgumentCount)
+                                putValueArgument(1, irInt(expectedArgumentCount))
+                            },
+                        thenPart =
+                            irCallConstructor(constructor.symbol, constructorTypeArguments).apply {
+                                constructor.valueParameters.forEachIndexed { index, parameter ->
+                                    val argument =
+                                        irCall(getFunction.symbol).apply {
+                                            dispatchReceiver = irGet(argumentsParameter)
+                                            putValueArgument(0, irInt(index))
+                                        }
+                                    putValueArgument(index, irAs(argument, parameter.type.substitute(typeArgumentMap)))
                                 }
-                            putValueArgument(index, irAs(argument, parameter.type.substitute(typeArgumentMap)))
-                        }
-                    },
+                            },
+                        elsePart =
+                            irTypeclassInternalError(
+                                pluginContext = pluginContext,
+                                message =
+                                    productConstructorArityRuntimeMessage(
+                                        className = reference.targetClass.classIdOrFail.asString(),
+                                        expectedArguments = expectedArgumentCount,
+                                    ),
+                            ),
+                    ),
                 )
             }
         return IrFunctionExpressionImpl(
