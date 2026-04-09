@@ -10,6 +10,7 @@ import org.jetbrains.org.objectweb.asm.ClassVisitor
 import org.jetbrains.org.objectweb.asm.Opcodes
 import java.io.File
 import java.io.IOException
+import java.lang.ref.Cleaner
 import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
@@ -35,10 +36,15 @@ internal object BinaryGeneratedDerivedMetadataRegistry {
 
 internal class BinaryGeneratedDerivedMetadataLoader(
     private val classpathRoots: List<File>,
-) {
+) : AutoCloseable {
+    private companion object {
+        val cleaner: Cleaner = Cleaner.create()
+    }
+
     private val metadataByOwnerId = ConcurrentHashMap<String, List<GeneratedDerivedMetadata>>()
     private val metadataRoots: List<BinaryGeneratedDerivedMetadataRoot> =
         classpathRoots.mapNotNull(::binaryGeneratedDerivedMetadataRoot)
+    private val cleanable = cleaner.register(this, BinaryGeneratedDerivedMetadataRootsCleanup(metadataRoots))
 
     fun generatedMetadataFor(classId: ClassId): List<GeneratedDerivedMetadata> =
         metadataByOwnerId.computeIfAbsent(classId.asString()) { ownerId ->
@@ -49,6 +55,20 @@ internal class BinaryGeneratedDerivedMetadataLoader(
                 }
             }.orEmpty()
         }
+
+    override fun close() {
+        cleanable.clean()
+    }
+}
+
+private class BinaryGeneratedDerivedMetadataRootsCleanup(
+    private val roots: List<BinaryGeneratedDerivedMetadataRoot>,
+) : Runnable {
+    override fun run() {
+        roots.forEach { root ->
+            runCatching { root.close() }
+        }
+    }
 }
 
 internal sealed interface BinaryGeneratedDerivedMetadataLookupResult {
@@ -61,6 +81,8 @@ internal sealed interface BinaryGeneratedDerivedMetadataLookupResult {
 
 internal interface BinaryGeneratedDerivedMetadataRoot {
     fun generatedMetadataFor(classId: ClassId): BinaryGeneratedDerivedMetadataLookupResult
+
+    fun close() {}
 }
 
 internal class DirectoryBinaryGeneratedDerivedMetadataRoot(
@@ -88,6 +110,13 @@ internal class JarBinaryGeneratedDerivedMetadataRoot(
     private val jarFileOpener: (File) -> JarFile = ::JarFile,
 ) : BinaryGeneratedDerivedMetadataRoot {
     private val lookupByEntryPath = ConcurrentHashMap<String, BinaryGeneratedDerivedMetadataLookupResult>()
+    private val jarFileRef = lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        try {
+            jarFileOpener(root)
+        } catch (_: IOException) {
+            null
+        }
+    }
 
     override fun generatedMetadataFor(classId: ClassId): BinaryGeneratedDerivedMetadataLookupResult {
         val entryPath = classId.classFilePath()
@@ -103,24 +132,25 @@ internal class JarBinaryGeneratedDerivedMetadataRoot(
         entryPath: String,
         ownerId: String,
     ): BinaryGeneratedDerivedMetadataLookupResult {
-        try {
-            jarFileOpener(root).use { jarFile ->
-                val entry = jarFile.getEntry(entryPath) ?: return BinaryGeneratedDerivedMetadataLookupResult.NotFound
-                val metadata =
-                    try {
-                        jarFile.getInputStream(entry).use { stream ->
-                            parseGeneratedDerivedMetadataOrEmpty(
-                                classBytes = stream.readBytes(),
-                                ownerId = ownerId,
-                            )
-                        }
-                    } catch (_: IOException) {
-                        emptyList()
-                    }
-                return BinaryGeneratedDerivedMetadataLookupResult.Found(metadata)
+        val openedJarFile = jarFileRef.value ?: return BinaryGeneratedDerivedMetadataLookupResult.NotFound
+        val entry = openedJarFile.getEntry(entryPath) ?: return BinaryGeneratedDerivedMetadataLookupResult.NotFound
+        val metadata =
+            try {
+                openedJarFile.getInputStream(entry).use { stream ->
+                    parseGeneratedDerivedMetadataOrEmpty(
+                        classBytes = stream.readBytes(),
+                        ownerId = ownerId,
+                    )
+                }
+            } catch (_: IOException) {
+                emptyList()
             }
-        } catch (_: IOException) {
-            return BinaryGeneratedDerivedMetadataLookupResult.NotFound
+        return BinaryGeneratedDerivedMetadataLookupResult.Found(metadata)
+    }
+
+    override fun close() {
+        if (jarFileRef.isInitialized()) {
+            jarFileRef.value?.close()
         }
     }
 }
