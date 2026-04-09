@@ -16,8 +16,12 @@ internal enum class TransportSyntheticAccessContext {
 internal enum class TransportSyntheticVisibility {
     PUBLIC,
     INTERNAL,
+    PROTECTED,
     INACCESSIBLE,
 }
+
+internal const val DERIVE_VIA_SUBCLASSABLE_TYPECLASS_HEAD_MESSAGE: String =
+    "DeriveVia requires an interface typeclass head or a subclassable class head with an accessible zero-arg constructor"
 
 internal fun TransportSyntheticAccessContext.allowsTransportVisibility(
     visibility: TransportSyntheticVisibility,
@@ -31,13 +35,27 @@ internal fun TransportSyntheticAccessContext.allowsTransportVisibility(
             visibility == TransportSyntheticVisibility.PUBLIC
     }
 
+internal fun TransportSyntheticAccessContext.allowsDeriveViaSuperclassConstructorVisibility(
+    visibility: TransportSyntheticVisibility,
+): Boolean =
+    when (this) {
+        TransportSyntheticAccessContext.SAME_MODULE_SOURCE ->
+            visibility == TransportSyntheticVisibility.PUBLIC ||
+                visibility == TransportSyntheticVisibility.INTERNAL ||
+                visibility == TransportSyntheticVisibility.PROTECTED
+
+        TransportSyntheticAccessContext.DEPENDENCY_BINARY ->
+            visibility == TransportSyntheticVisibility.PUBLIC ||
+                visibility == TransportSyntheticVisibility.PROTECTED
+    }
+
 internal fun Visibility.toTransportSyntheticVisibility(): TransportSyntheticVisibility =
     when (this) {
         Visibilities.Public -> TransportSyntheticVisibility.PUBLIC
         Visibilities.Internal -> TransportSyntheticVisibility.INTERNAL
+        Visibilities.Protected -> TransportSyntheticVisibility.PROTECTED
         Visibilities.Private,
         Visibilities.PrivateToThis,
-        Visibilities.Protected,
         Visibilities.Local,
         Visibilities.Inherited,
         Visibilities.InvisibleFake,
@@ -51,9 +69,9 @@ internal fun DescriptorVisibility.toTransportSyntheticVisibility(): TransportSyn
     when (this) {
         DescriptorVisibilities.PUBLIC -> TransportSyntheticVisibility.PUBLIC
         DescriptorVisibilities.INTERNAL -> TransportSyntheticVisibility.INTERNAL
+        DescriptorVisibilities.PROTECTED -> TransportSyntheticVisibility.PROTECTED
         DescriptorVisibilities.PRIVATE,
         DescriptorVisibilities.PRIVATE_TO_THIS,
-        DescriptorVisibilities.PROTECTED,
         DescriptorVisibilities.LOCAL,
         DescriptorVisibilities.INHERITED,
         DescriptorVisibilities.INVISIBLE_FAKE,

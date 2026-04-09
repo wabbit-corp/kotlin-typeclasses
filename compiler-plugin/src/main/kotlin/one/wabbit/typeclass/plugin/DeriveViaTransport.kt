@@ -802,17 +802,25 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
             isFinal = true
         }
 
+    val expectedSimple = expectedType as? IrSimpleType ?: error("Expected a simple typeclass head")
+    val expectedClass = expectedSimple.classOrNull?.owner ?: error("Expected a named typeclass head")
     val anyConstructor = pluginContext.irBuiltIns.anyClass.owner.primaryConstructorOrNullLocal()
         ?: error("Could not resolve Any.<init>")
-    val constructor = adapterClass.addSimpleDelegatingConstructor(anyConstructor, pluginContext.irBuiltIns, isPrimary = true)
+    val superConstructor =
+        expectedClass.zeroArgumentConstructorOrNullDeriveViaAccessible(expectedClass.transportAccessContext())
+    val delegatingConstructor = superConstructor ?: anyConstructor
+    val constructor =
+        adapterClass.addSimpleDelegatingConstructor(
+            delegatingConstructor,
+            pluginContext.irBuiltIns,
+            isPrimary = true,
+        )
     val viaParameter = constructor.addValueParameter("via", viaInstance.type)
     constructor.body =
         DeclarationIrBuilder(pluginContext, constructor.symbol, startOffset, endOffset).irBlockBody {
-            +irDelegatingConstructorCall(anyConstructor)
+            +irDelegatingConstructorCall(delegatingConstructor)
             +irSetField(irGet(adapterClass.thisReceiver!!), viaField, irGet(viaParameter))
         }
-
-    val expectedSimple = expectedType as? IrSimpleType ?: error("Expected a simple typeclass interface type")
     val expectedArguments =
         expectedSimple.arguments.map { argument ->
             when (argument) {
@@ -1111,6 +1119,7 @@ internal fun IrStatementsBuilder<*>.buildTransportLambda(
 }
 
 internal fun IrClass.validateDeriveViaTransportability(): String? {
+    deriveViaSubclassabilityViolation(transportAccessContext())?.let { return it }
     val transported = typeParameters.lastOrNull()?.symbol ?: return "DeriveVia requires a typeclass with a final transported type parameter"
     val classOpaqueParameters = typeParameters.map { it.symbol }.filterNot { it == transported }.toSet()
     val abstractSurface = effectiveAbstractTypeclassSurface()
@@ -1165,6 +1174,21 @@ internal fun IrClass.validateDeriveViaTransportability(): String? {
         }
     }
     return null
+}
+
+private fun IrClass.deriveViaSubclassabilityViolation(
+    accessContext: TransportSyntheticAccessContext,
+): String? {
+    if (kind == ClassKind.INTERFACE) {
+        return null
+    }
+    if (modality == Modality.FINAL) {
+        return DERIVE_VIA_SUBCLASSABLE_TYPECLASS_HEAD_MESSAGE
+    }
+    if (zeroArgumentConstructorOrNullDeriveViaAccessible(accessContext) != null) {
+        return null
+    }
+    return DERIVE_VIA_SUBCLASSABLE_TYPECLASS_HEAD_MESSAGE
 }
 
 private fun IrClass.effectiveAbstractTypeclassSurface(): EffectiveAbstractTypeclassSurface {
@@ -1665,6 +1689,16 @@ private fun IrClass.primaryConstructorOrNullTransportAccessible(
 ): IrConstructor? =
     primaryConstructorOrNullLocal()?.takeIf { constructor ->
         accessContext.allowsTransportVisibility(constructor.visibility.toTransportSyntheticVisibility())
+    }
+
+private fun IrClass.zeroArgumentConstructorOrNullDeriveViaAccessible(
+    accessContext: TransportSyntheticAccessContext,
+): IrConstructor? =
+    declarations.filterIsInstance<IrConstructor>().firstOrNull { constructor ->
+        constructor.valueParameters.isEmpty() &&
+            accessContext.allowsDeriveViaSuperclassConstructorVisibility(
+                constructor.visibility.toTransportSyntheticVisibility(),
+            )
     }
 
 private fun IrClass.transportAccessContext(): TransportSyntheticAccessContext =

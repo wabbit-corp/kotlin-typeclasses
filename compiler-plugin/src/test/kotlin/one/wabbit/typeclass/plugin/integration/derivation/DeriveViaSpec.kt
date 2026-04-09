@@ -1738,6 +1738,48 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
+    @Test fun deriveViaSupportsAbstractClassTypeclasses() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            abstract class Pretty<A> protected constructor() {
+                abstract fun pretty(value: A): String
+
+                fun decorated(value: A): String = "[${'$'}{pretty(value)}]"
+            }
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooPretty : Pretty<Foo>() {
+                override fun pretty(value: Foo): String = "pretty:${'$'}{value.value}"
+            }
+
+            @JvmInline
+            @DeriveVia(Pretty::class, Foo::class)
+            value class UserId(val value: Int)
+
+            context(pretty: Pretty<A>)
+            fun <A> describe(value: A): String = pretty.pretty(value) + "|" + pretty.decorated(value)
+
+            fun main() {
+                println(describe(UserId(9)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "pretty:9|[pretty:9]",
+        )
+    }
+
     @Test fun deriveViaExpandsInheritedTypeclassHeadsForResolution() {
         val source =
             """

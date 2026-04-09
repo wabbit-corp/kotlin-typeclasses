@@ -397,6 +397,7 @@ internal fun FirRegularClass.deriveEquivAnnotationParseResults(session: FirSessi
     }
 
 internal fun FirRegularClass.validateDeriveViaTransportability(session: FirSession): String? {
+    deriveViaSubclassabilityViolation(session)?.let { return it }
     val transported = typeParameters.lastOrNull()?.symbol ?: return "DeriveVia requires a typeclass with a final transported type parameter"
     val classParameters =
         typeParameters.mapIndexed { index, typeParameter ->
@@ -419,6 +420,34 @@ internal fun FirRegularClass.validateDeriveViaTransportability(session: FirSessi
         seenFunctionKeys = linkedSetOf(),
         visited = linkedSetOf(),
     )
+}
+
+private fun FirRegularClass.deriveViaSubclassabilityViolation(session: FirSession): String? {
+    if (classKind == ClassKind.INTERFACE) {
+        return null
+    }
+    if (status.modality == Modality.FINAL) {
+        return DERIVE_VIA_SUBCLASSABLE_TYPECLASS_HEAD_MESSAGE
+    }
+    val accessContext = transportAccessContext(session)
+    val constructors = declarations.filterIsInstance<FirConstructor>()
+    if (constructors.isEmpty()) {
+        return if (accessContext.allowsDeriveViaSuperclassConstructorVisibility(status.visibility.toTransportSyntheticVisibility())) {
+            null
+        } else {
+            DERIVE_VIA_SUBCLASSABLE_TYPECLASS_HEAD_MESSAGE
+        }
+    }
+    if (constructors.any { constructor ->
+            constructor.valueParameters.isEmpty() &&
+                accessContext.allowsDeriveViaSuperclassConstructorVisibility(
+                    constructor.status.visibility.toTransportSyntheticVisibility(),
+                )
+        }
+    ) {
+        return null
+    }
+    return DERIVE_VIA_SUBCLASSABLE_TYPECLASS_HEAD_MESSAGE
 }
 
 private fun FirRegularClass.defaultConcreteType(): TcType.Constructor =
