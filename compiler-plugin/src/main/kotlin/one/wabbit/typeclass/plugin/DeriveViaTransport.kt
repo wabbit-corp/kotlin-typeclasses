@@ -839,10 +839,33 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
             parameter.symbol to argument
         }
     val abstractSurface = typeclassInterface.effectiveAbstractTypeclassSurface()
+    val forwardedSurface = typeclassInterface.effectiveForwardedTypeclassSurface()
 
-    abstractSurface.properties.forEach { member ->
+    forwardedSurface.properties.forEach { member ->
         val property = member.property
         val getter = property.getter ?: return@forEach
+        val getterReturnViaType =
+            member
+                .substituteInOwnerContext(getter.returnType)
+                .substitute(viaSubstitutionBase)
+        val getterReturnTargetType =
+            member
+                .substituteInOwnerContext(getter.returnType)
+                .substitute(targetSubstitutionBase)
+        val getterPlan =
+            memberTransportPlanOrIdentity(
+                sourceType = getterReturnViaType,
+                targetType = getterReturnTargetType,
+                viaType = viaType,
+                targetValueType = targetType,
+                forwardPlan = forwardPlan,
+                backwardPlan = backwardPlan,
+                pluginContext = pluginContext,
+            ) ?: if (getter.modality == Modality.ABSTRACT) {
+                error("Could not transport abstract typeclass property ${property.name.asString()} for DeriveVia")
+            } else {
+                return@forEach
+            }
         val targetProperty =
             adapterClass.addProperty {
                 startOffset = property.startOffset
@@ -882,22 +905,7 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
                     }
                 +irReturn(
                     buildTransportExpression(
-                        plan =
-                            planMemberTransport(
-                                sourceType =
-                                    member
-                                        .substituteInOwnerContext(getter.returnType)
-                                        .substitute(viaSubstitutionBase),
-                                targetType =
-                                    member
-                                        .substituteInOwnerContext(getter.returnType)
-                                        .substitute(targetSubstitutionBase),
-                                viaType = viaType,
-                                targetValueType = targetType,
-                                forwardPlan = forwardPlan,
-                                backwardPlan = backwardPlan,
-                                pluginContext = pluginContext,
-                            ) ?: TransportPlan.Identity(viaCall.type, viaCall.type),
+                        plan = getterPlan,
                         value = viaCall,
                         pluginContext = pluginContext,
                         lambdaParent = lambdaParent,
@@ -906,8 +914,83 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
             }
     }
 
-    abstractSurface.functions.forEach { member ->
+    forwardedSurface.functions.forEach { member ->
         val function = member.function
+        val preflightExtensionReceiverPlan =
+            function.extensionReceiverParameter?.let { originalReceiver ->
+                memberTransportPlanOrIdentity(
+                    sourceType =
+                        member
+                            .substituteInOwnerContext(originalReceiver.type)
+                            .substitute(targetSubstitutionBase),
+                    targetType =
+                        member
+                            .substituteInOwnerContext(originalReceiver.type)
+                            .substitute(viaSubstitutionBase),
+                    viaType = viaType,
+                    targetValueType = targetType,
+                    forwardPlan = forwardPlan,
+                    backwardPlan = backwardPlan,
+                    pluginContext = pluginContext,
+                )
+            }
+        if (function.extensionReceiverParameter != null && preflightExtensionReceiverPlan == null) {
+            if (function.modality == Modality.ABSTRACT) {
+                error("Could not transport abstract typeclass extension receiver ${function.name.asString()} for DeriveVia")
+            } else {
+                return@forEach
+            }
+        }
+        val originalValueParameters =
+            function.parameters.filter { candidate ->
+                candidate.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context ||
+                    candidate.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular
+            }
+        val preflightValueParameterPlans =
+            originalValueParameters.map { originalParameter ->
+                memberTransportPlanOrIdentity(
+                    sourceType =
+                        member
+                            .substituteInOwnerContext(originalParameter.type)
+                            .substitute(targetSubstitutionBase),
+                    targetType =
+                        member
+                            .substituteInOwnerContext(originalParameter.type)
+                            .substitute(viaSubstitutionBase),
+                    viaType = viaType,
+                    targetValueType = targetType,
+                    forwardPlan = forwardPlan,
+                    backwardPlan = backwardPlan,
+                    pluginContext = pluginContext,
+                )
+            }
+        if (preflightValueParameterPlans.any { it == null }) {
+            if (function.modality == Modality.ABSTRACT) {
+                error("Could not transport abstract typeclass parameters ${function.name.asString()} for DeriveVia")
+            } else {
+                return@forEach
+            }
+        }
+        val preflightReturnPlan =
+            memberTransportPlanOrIdentity(
+                sourceType =
+                    member
+                        .substituteInOwnerContext(function.returnType)
+                        .substitute(viaSubstitutionBase),
+                targetType =
+                    member
+                        .substituteInOwnerContext(function.returnType)
+                        .substitute(targetSubstitutionBase),
+                viaType = viaType,
+                targetValueType = targetType,
+                forwardPlan = forwardPlan,
+                backwardPlan = backwardPlan,
+                pluginContext = pluginContext,
+            ) ?: if (function.modality == Modality.ABSTRACT) {
+                error("Could not transport abstract typeclass return ${function.name.asString()} for DeriveVia")
+            } else {
+                return@forEach
+            }
         val overrideFunction =
             adapterClass.addFunction {
                 startOffset = function.startOffset
@@ -936,6 +1019,58 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
             }
         val targetSubstitution = targetSubstitutionBase + typeParameterSubstitutions
         val viaSubstitution = viaSubstitutionBase + typeParameterSubstitutions
+        val extensionReceiverPlan =
+            function.extensionReceiverParameter?.let { originalReceiver ->
+                memberTransportPlanOrIdentity(
+                    sourceType =
+                        member
+                            .substituteInOwnerContext(originalReceiver.type)
+                            .substitute(targetSubstitution),
+                    targetType =
+                        member
+                            .substituteInOwnerContext(originalReceiver.type)
+                            .substitute(viaSubstitution),
+                    viaType = viaType,
+                    targetValueType = targetType,
+                    forwardPlan = forwardPlan,
+                    backwardPlan = backwardPlan,
+                    pluginContext = pluginContext,
+                )
+            } ?: preflightExtensionReceiverPlan
+        val valueParameterPlans =
+            originalValueParameters.mapIndexed { index, originalParameter ->
+                memberTransportPlanOrIdentity(
+                    sourceType =
+                        member
+                            .substituteInOwnerContext(originalParameter.type)
+                            .substitute(targetSubstitution),
+                    targetType =
+                        member
+                            .substituteInOwnerContext(originalParameter.type)
+                            .substitute(viaSubstitution),
+                    viaType = viaType,
+                    targetValueType = targetType,
+                    forwardPlan = forwardPlan,
+                    backwardPlan = backwardPlan,
+                    pluginContext = pluginContext,
+                ) ?: preflightValueParameterPlans[index]
+            }
+        val returnPlan =
+            memberTransportPlanOrIdentity(
+                sourceType =
+                    member
+                        .substituteInOwnerContext(function.returnType)
+                        .substitute(viaSubstitution),
+                targetType =
+                    member
+                        .substituteInOwnerContext(function.returnType)
+                        .substitute(targetSubstitution),
+                viaType = viaType,
+                targetValueType = targetType,
+                forwardPlan = forwardPlan,
+                backwardPlan = backwardPlan,
+                pluginContext = pluginContext,
+            ) ?: preflightReturnPlan
         function.extensionReceiverParameter?.let { receiver ->
             overrideFunction.extensionReceiverParameter =
                 receiver.copyTo(
@@ -988,21 +1123,13 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
                 }
                 function.extensionReceiverParameter?.let { originalReceiver ->
                     val receiver = overrideFunction.extensionReceiverParameter ?: error("Missing copied extension receiver")
-                    val plan =
-                        planMemberTransport(
-                            sourceType = receiver.type,
-                            targetType =
-                                member
-                                    .substituteInOwnerContext(originalReceiver.type)
-                                    .substitute(viaSubstitution),
-                            viaType = viaType,
-                            targetValueType = targetType,
-                            forwardPlan = forwardPlan,
-                            backwardPlan = backwardPlan,
-                            pluginContext = pluginContext,
-                        ) ?: TransportPlan.Identity(receiver.type, receiver.type)
                     viaCall.extensionReceiver =
-                        buildTransportExpression(plan, irGet(receiver), pluginContext, lambdaParent)
+                        buildTransportExpression(
+                            extensionReceiverPlan ?: error("Missing extension receiver transport plan"),
+                            irGet(receiver),
+                            pluginContext,
+                            lambdaParent,
+                        )
                 }
                 val valueParameters =
                     copiedParameters.filter { parameter ->
@@ -1010,45 +1137,17 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
                             parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular
                     }
                 valueParameters.forEachIndexed { index, parameter ->
-                    val originalParameter =
-                        function.parameters.filter { candidate ->
-                            candidate.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context ||
-                                candidate.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular
-                        }[index]
-                    val plan =
-                        planMemberTransport(
-                            sourceType = parameter.type,
-                            targetType =
-                                member
-                                    .substituteInOwnerContext(originalParameter.type)
-                                    .substitute(viaSubstitution),
-                            viaType = viaType,
-                            targetValueType = targetType,
-                            forwardPlan = forwardPlan,
-                            backwardPlan = backwardPlan,
-                            pluginContext = pluginContext,
-                        ) ?: TransportPlan.Identity(parameter.type, parameter.type)
+                    val originalParameter = originalValueParameters[index]
                     viaCall.putValueArgument(
                         function.valueArgumentIndexOrFallback(originalParameter, index),
-                        buildTransportExpression(plan, irGet(parameter), pluginContext, lambdaParent),
+                        buildTransportExpression(
+                            valueParameterPlans[index] ?: error("Missing value parameter transport plan"),
+                            irGet(parameter),
+                            pluginContext,
+                            lambdaParent,
+                        ),
                     )
                 }
-                val returnPlan =
-                    planMemberTransport(
-                        sourceType =
-                            member
-                                .substituteInOwnerContext(function.returnType)
-                                .substitute(viaSubstitution),
-                        targetType =
-                            member
-                                .substituteInOwnerContext(function.returnType)
-                                .substitute(targetSubstitution),
-                        viaType = viaType,
-                        targetValueType = targetType,
-                        forwardPlan = forwardPlan,
-                        backwardPlan = backwardPlan,
-                        pluginContext = pluginContext,
-                    ) ?: TransportPlan.Identity(viaCall.type, viaCall.type)
                 +irReturn(
                     buildTransportExpression(
                         plan = returnPlan,
@@ -1064,6 +1163,29 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
         putValueArgument(0, viaInstance)
     }
 }
+
+private fun memberTransportPlanOrIdentity(
+    sourceType: IrType,
+    targetType: IrType,
+    viaType: IrType,
+    targetValueType: IrType,
+    forwardPlan: TransportPlan,
+    backwardPlan: TransportPlan,
+    pluginContext: IrPluginContext,
+): TransportPlan? =
+    if (sourceType.sameTypeShape(targetType)) {
+        TransportPlan.Identity(sourceType, targetType)
+    } else {
+        planMemberTransport(
+            sourceType = sourceType,
+            targetType = targetType,
+            viaType = viaType,
+            targetValueType = targetValueType,
+            forwardPlan = forwardPlan,
+            backwardPlan = backwardPlan,
+            pluginContext = pluginContext,
+        )
+    }
 
 private fun planMemberTransport(
     sourceType: IrType,
@@ -1211,7 +1333,32 @@ private fun IrClass.effectiveAbstractTypeclassSurface(): EffectiveAbstractTypecl
     )
 }
 
+private fun IrClass.effectiveForwardedTypeclassSurface(): EffectiveForwardedTypeclassSurface {
+    val concreteType = symbol.defaultType
+    val properties = mutableListOf<EffectiveAbstractProperty>()
+    val functions = mutableListOf<EffectiveAbstractFunction>()
+    collectEffectiveForwardedTypeclassSurface(
+        concreteType = concreteType,
+        properties = properties,
+        functions = functions,
+        seenPropertyKeys = linkedSetOf(),
+        seenFunctionKeys = linkedSetOf(),
+        coveredPropertyGetters = linkedSetOf(),
+        coveredFunctions = linkedSetOf(),
+        visited = linkedSetOf(),
+    )
+    return EffectiveForwardedTypeclassSurface(
+        properties = properties,
+        functions = functions,
+    )
+}
+
 private data class EffectiveAbstractTypeclassSurface(
+    val properties: List<EffectiveAbstractProperty>,
+    val functions: List<EffectiveAbstractFunction>,
+)
+
+private data class EffectiveForwardedTypeclassSurface(
     val properties: List<EffectiveAbstractProperty>,
     val functions: List<EffectiveAbstractFunction>,
 )
@@ -1272,6 +1419,65 @@ private fun IrClass.collectEffectiveAbstractTypeclassSurface(
     }
 }
 
+private fun IrClass.collectEffectiveForwardedTypeclassSurface(
+    concreteType: IrSimpleType,
+    properties: MutableList<EffectiveAbstractProperty>,
+    functions: MutableList<EffectiveAbstractFunction>,
+    seenPropertyKeys: MutableSet<String>,
+    seenFunctionKeys: MutableSet<String>,
+    coveredPropertyGetters: MutableSet<IrSimpleFunctionSymbol>,
+    coveredFunctions: MutableSet<IrSimpleFunctionSymbol>,
+    visited: MutableSet<String>,
+) {
+    val visitKey = concreteType.render()
+    if (!visited.add(visitKey)) {
+        return
+    }
+
+    val ownerSubstitution = ownerSubstitution(concreteType)
+    declarations.filterIsInstance<IrProperty>().forEach { property ->
+        val getter = property.getter ?: return@forEach
+        if (getter.symbol in coveredPropertyGetters) {
+            return@forEach
+        }
+        val member = EffectiveAbstractProperty(property, getter, ownerSubstitution)
+        if (getter.isForwardedDeriveViaMember() && seenPropertyKeys.add(member.signatureKey())) {
+            properties += member
+        }
+        getter.markCovered(coveredPropertyGetters)
+    }
+
+    declarations.filterIsInstance<IrSimpleFunction>().forEach { function ->
+        if (function.name.asString() == "<init>" || function.symbol in coveredFunctions) {
+            return@forEach
+        }
+        val member = EffectiveAbstractFunction(function, ownerSubstitution)
+        if (function.isForwardedDeriveViaMember() && seenFunctionKeys.add(member.signatureKey())) {
+            functions += member
+        }
+        function.markCovered(coveredFunctions)
+    }
+
+    superTypes.forEach { superType ->
+        val substitutedSuper = if (ownerSubstitution.isEmpty()) superType else superType.substitute(ownerSubstitution)
+        val superSimpleType = substitutedSuper as? IrSimpleType ?: return@forEach
+        val superClass = superSimpleType.classOrNull?.owner ?: return@forEach
+        if (superClass.classId == ClassId.topLevel(FqName("kotlin.Any"))) {
+            return@forEach
+        }
+        superClass.collectEffectiveForwardedTypeclassSurface(
+            concreteType = superSimpleType,
+            properties = properties,
+            functions = functions,
+            seenPropertyKeys = seenPropertyKeys,
+            seenFunctionKeys = seenFunctionKeys,
+            coveredPropertyGetters = coveredPropertyGetters,
+            coveredFunctions = coveredFunctions,
+            visited = visited,
+        )
+    }
+}
+
 private fun IrClass.ownerSubstitution(concreteType: IrSimpleType): Map<IrTypeParameterSymbol, IrType> =
     typeParameters.mapIndexedNotNull { index, parameter ->
         concreteType.arguments.getOrNull(index)?.argumentTypeOrNull()?.let { argumentType ->
@@ -1287,6 +1493,11 @@ private fun IrSimpleFunction.markCovered(coveredFunctions: MutableSet<IrSimpleFu
         overridden.owner.markCovered(coveredFunctions)
     }
 }
+
+private fun IrSimpleFunction.isForwardedDeriveViaMember(): Boolean =
+    visibility != DescriptorVisibilities.PRIVATE &&
+        visibility != DescriptorVisibilities.PRIVATE_TO_THIS &&
+        modality != Modality.FINAL
 
 private fun EffectiveAbstractProperty.substituteInOwnerContext(type: IrType): IrType =
     if (ownerSubstitution.isEmpty()) {

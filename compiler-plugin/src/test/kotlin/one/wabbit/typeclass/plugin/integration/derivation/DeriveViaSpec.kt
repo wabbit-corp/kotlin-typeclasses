@@ -2967,6 +2967,50 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
+    @Test fun deriveViaForwardsConcreteOverridesOfDefaultMembers() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Pretty<A> {
+                fun pretty(value: A): String
+
+                fun bracketed(value: A): String = "[" + pretty(value) + "]"
+            }
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooPretty : Pretty<Foo> {
+                override fun pretty(value: Foo): String = "pretty:${'$'}{value.value}"
+
+                override fun bracketed(value: Foo): String = "<${'$'}{value.value}>"
+            }
+
+            @JvmInline
+            @DeriveVia(Pretty::class, Foo::class)
+            value class UserId(val value: Int)
+
+            context(pretty: Pretty<A>)
+            fun <A> describe(value: A): String = pretty.pretty(value) + "|" + pretty.bracketed(value)
+
+            fun main() {
+                println(describe(UserId(9)))
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout = "pretty:9|<9>",
+        )
+    }
+
     // Exact intended semantics:
     // - DeriveVia only needs to transport the effective abstract typeclass surface
     // - concrete helper members can mention A in unsupported ways because the adapter inherits them unchanged
