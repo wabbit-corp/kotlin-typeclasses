@@ -125,6 +125,10 @@ internal fun decodeGeneratedDerivedMetadata(
         }
 
         "derive-equiv" -> {
+            val decodedTypeclassId = typeclassId?.let(::decodeClassId) ?: return null
+            if (decodedTypeclassId != EQUIV_CLASS_ID) {
+                return null
+            }
             val otherClassId = payload?.let(::decodeClassId) ?: return null
             GeneratedDerivedMetadata.DeriveEquiv(
                 targetId = decodedTargetId,

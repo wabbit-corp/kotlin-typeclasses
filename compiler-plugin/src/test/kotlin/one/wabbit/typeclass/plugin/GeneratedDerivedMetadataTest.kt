@@ -98,6 +98,20 @@ class GeneratedDerivedMetadataTest {
     }
 
     @Test
+    fun deriveEquivMetadataWithWrongTypeclassIdDoesNotDecode() {
+        val decoded =
+            decodeGeneratedDerivedMetadata(
+                typeclassId = "demo/Show",
+                targetId = "demo/UserId",
+                kind = "derive-equiv",
+                payload = "demo/Token",
+                expectedOwnerId = "demo/UserId",
+            )
+
+        assertNull(decoded)
+    }
+
+    @Test
     fun deriveViaMetadataWithoutPathDoesNotDecode() {
         val decoded =
             decodeGeneratedDerivedMetadata(
