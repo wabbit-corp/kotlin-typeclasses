@@ -414,10 +414,16 @@ private fun constructorSubtypeFeasibility(
     if (sub.classifierId == sup.classifierId) {
         return sameClassifierSubtypeFeasibility(sub, sup, classInfoById[sub.classifierId], classInfoById, exactContext)
     }
+    val pathFeasibility = hasSupertypePathFeasibility(sub.classifierId, sup.classifierId, classInfoById)
     if (sub.arguments.isNotEmpty() || sup.arguments.isNotEmpty()) {
-        return BuiltinGoalFeasibility.IMPOSSIBLE
+        return when (pathFeasibility) {
+            BuiltinGoalFeasibility.PROVABLE,
+            BuiltinGoalFeasibility.SPECULATIVE,
+            -> BuiltinGoalFeasibility.SPECULATIVE
+            BuiltinGoalFeasibility.IMPOSSIBLE -> BuiltinGoalFeasibility.IMPOSSIBLE
+        }
     }
-    return hasSupertypePathFeasibility(sub.classifierId, sup.classifierId, classInfoById)
+    return pathFeasibility
 }
 
 private fun sameClassifierSubtypeFeasibility(

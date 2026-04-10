@@ -219,7 +219,7 @@ class BuiltinGoalSupportTest {
     }
 
     @Test
-    fun `cross-classifier generic subtype goals are not proven from raw classifier reachability`() {
+    fun `cross-classifier generic subtype goals are only speculative from raw classifier reachability`() {
         val unsoundGoal =
             typeConstructor(
                 SUBTYPE_CLASS_ID.asString(),
@@ -242,8 +242,64 @@ class BuiltinGoalSupportTest {
                     ),
             )
 
-        assertFalse(supportsBuiltinSubtypeGoal(unsoundGoal, classInfo))
+        assertTrue(supportsBuiltinSubtypeGoal(unsoundGoal, classInfo))
         assertFalse(provablySupportsBuiltinSubtypeGoal(unsoundGoal, classInfo))
+    }
+
+    @Test
+    fun `cross-classifier generic subtype goals follow hierarchy speculatively`() {
+        val listToCollection =
+            typeConstructor(
+                SUBTYPE_CLASS_ID.asString(),
+                typeConstructor("kotlin.collections.List", typeConstructor("kotlin.String")),
+                typeConstructor("kotlin.collections.Collection", typeConstructor("kotlin.String")),
+            )
+        val mutableListToList =
+            typeConstructor(
+                SUBTYPE_CLASS_ID.asString(),
+                typeConstructor("kotlin.collections.MutableList", typeConstructor("kotlin.Int")),
+                typeConstructor("kotlin.collections.List", typeConstructor("kotlin.Int")),
+            )
+        val unrelated =
+            typeConstructor(
+                SUBTYPE_CLASS_ID.asString(),
+                typeConstructor("kotlin.collections.List", typeConstructor("kotlin.String")),
+                typeConstructor("kotlin.collections.Set", typeConstructor("kotlin.String")),
+            )
+        val classInfo =
+            mapOf(
+                "kotlin.collections.MutableList" to
+                    VisibleClassHierarchyInfo(
+                        superClassifiers = setOf("kotlin.collections.List"),
+                        isSealed = false,
+                        typeParameterVariances = listOf(Variance.OUT_VARIANCE),
+                    ),
+                "kotlin.collections.List" to
+                    VisibleClassHierarchyInfo(
+                        superClassifiers = setOf("kotlin.collections.Collection"),
+                        isSealed = false,
+                        typeParameterVariances = listOf(Variance.OUT_VARIANCE),
+                    ),
+                "kotlin.collections.Collection" to
+                    VisibleClassHierarchyInfo(
+                        superClassifiers = emptySet(),
+                        isSealed = false,
+                        typeParameterVariances = listOf(Variance.OUT_VARIANCE),
+                    ),
+                "kotlin.collections.Set" to
+                    VisibleClassHierarchyInfo(
+                        superClassifiers = setOf("kotlin.collections.Collection"),
+                        isSealed = false,
+                        typeParameterVariances = listOf(Variance.OUT_VARIANCE),
+                    ),
+            )
+
+        assertTrue(supportsBuiltinSubtypeGoal(listToCollection, classInfo))
+        assertFalse(provablySupportsBuiltinSubtypeGoal(listToCollection, classInfo))
+        assertTrue(supportsBuiltinSubtypeGoal(mutableListToList, classInfo))
+        assertFalse(provablySupportsBuiltinSubtypeGoal(mutableListToList, classInfo))
+        assertFalse(supportsBuiltinSubtypeGoal(unrelated, classInfo))
+        assertFalse(provablySupportsBuiltinSubtypeGoal(unrelated, classInfo))
     }
 
     @Test
