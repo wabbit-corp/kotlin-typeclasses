@@ -20,6 +20,7 @@ import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.FirAnonymousInitializer
 import org.jetbrains.kotlin.fir.declarations.FirConstructor
+import org.jetbrains.kotlin.fir.declarations.FirDeclarationStatus
 import org.jetbrains.kotlin.fir.declarations.FirField
 import org.jetbrains.kotlin.fir.declarations.FirProperty
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
@@ -413,7 +414,7 @@ internal fun FirRegularClass.validateDeriveViaTransportability(session: FirSessi
 
     val concreteType = defaultConcreteType()
     val transportedId = typeParameterBySymbol[transported]?.id ?: return "DeriveVia requires a typeclass with a final transported type parameter"
-    return validateInheritedAbstractTypeclassSurface(
+    return validateInheritedForwardedTypeclassSurface(
         session = session,
         concreteType = concreteType,
         transportedId = transportedId,
@@ -463,7 +464,7 @@ private fun FirRegularClass.defaultConcreteType(): TcType.Constructor =
             },
     )
 
-private fun FirRegularClass.validateInheritedAbstractTypeclassSurface(
+private fun FirRegularClass.validateInheritedForwardedTypeclassSurface(
     session: FirSession,
     concreteType: TcType.Constructor,
     transportedId: String,
@@ -482,7 +483,7 @@ private fun FirRegularClass.validateInheritedAbstractTypeclassSurface(
         if (!seenPropertyKeys.add(signatureKey)) {
             continue
         }
-        if (getter.status.modality != Modality.ABSTRACT) {
+        if (!getter.status.isForwardedDeriveViaMember()) {
             continue
         }
         val message =
@@ -496,7 +497,7 @@ private fun FirRegularClass.validateInheritedAbstractTypeclassSurface(
             return message
         }
         val setter = property.setter
-        if (setter != null && setter.status.modality == Modality.ABSTRACT) {
+        if (setter != null && setter.status.isForwardedDeriveViaMember()) {
             val setterValueType =
                 setter.valueParameters.singleOrNull()?.returnTypeRef?.coneType
                     ?: getter.returnTypeRef.coneType
@@ -518,7 +519,7 @@ private fun FirRegularClass.validateInheritedAbstractTypeclassSurface(
         if (!seenFunctionKeys.add(signatureKey)) {
             continue
         }
-        if (function.status.modality != Modality.ABSTRACT) {
+        if (!function.status.isForwardedDeriveViaMember()) {
             continue
         }
         val methodTypeParameters = function.typeParameters.toMethodTypeParameterModels(function)
@@ -591,7 +592,7 @@ private fun FirRegularClass.validateInheritedAbstractTypeclassSurface(
         val superClassId = superConcreteType.classIdOrNull() ?: continue
         val superClass = session.regularClassSymbolOrNull(superClassId)?.fir ?: continue
         val message =
-            superClass.validateInheritedAbstractTypeclassSurface(
+            superClass.validateInheritedForwardedTypeclassSurface(
                 session = session,
                 concreteType = superConcreteType,
                 transportedId = transportedId,
@@ -605,6 +606,11 @@ private fun FirRegularClass.validateInheritedAbstractTypeclassSurface(
     }
     return null
 }
+
+private fun FirDeclarationStatus.isForwardedDeriveViaMember(): Boolean =
+    visibility != Visibilities.Private &&
+        visibility != Visibilities.PrivateToThis &&
+        modality != Modality.FINAL
 
 private fun FirProperty.signatureKey(
     owner: FirRegularClass,

@@ -839,7 +839,6 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
         typeclassInterface.typeParameters.zip(viaArguments).associate { (parameter, argument) ->
             parameter.symbol to argument
         }
-    val abstractSurface = typeclassInterface.effectiveAbstractTypeclassSurface()
     val forwardedSurface = typeclassInterface.effectiveForwardedTypeclassSurface()
 
     forwardedSurface.properties.forEach { member ->
@@ -866,7 +865,7 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
             ) ?: if (getter.modality == Modality.ABSTRACT) {
                 error("Could not transport abstract typeclass property ${property.name.asString()} for DeriveVia")
             } else {
-                return@forEach
+                error("Could not transport forwarded typeclass property ${property.name.asString()} for DeriveVia")
             }
         val setterTargetType =
             setter?.valueParameters?.singleOrNull()?.let { parameter ->
@@ -895,7 +894,7 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
                 ) ?: if (setter.modality == Modality.ABSTRACT) {
                     error("Could not transport abstract typeclass property setter ${property.name.asString()} for DeriveVia")
                 } else {
-                    return@forEach
+                    error("Could not transport forwarded typeclass property setter ${property.name.asString()} for DeriveVia")
                 }
             }
         val targetProperty =
@@ -1014,7 +1013,7 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
             if (function.modality == Modality.ABSTRACT) {
                 error("Could not transport abstract typeclass extension receiver ${function.name.asString()} for DeriveVia")
             } else {
-                return@forEach
+                error("Could not transport forwarded typeclass extension receiver ${function.name.asString()} for DeriveVia")
             }
         }
         val originalValueParameters =
@@ -1044,7 +1043,7 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
             if (function.modality == Modality.ABSTRACT) {
                 error("Could not transport abstract typeclass parameters ${function.name.asString()} for DeriveVia")
             } else {
-                return@forEach
+                error("Could not transport forwarded typeclass parameters ${function.name.asString()} for DeriveVia")
             }
         }
         val preflightReturnPlan =
@@ -1065,7 +1064,7 @@ internal fun IrStatementsBuilder<*>.buildDeriveViaAdapterExpression(
             ) ?: if (function.modality == Modality.ABSTRACT) {
                 error("Could not transport abstract typeclass return ${function.name.asString()} for DeriveVia")
             } else {
-                return@forEach
+                error("Could not transport forwarded typeclass return ${function.name.asString()} for DeriveVia")
             }
         val overrideFunction =
             adapterClass.addFunction {
@@ -1320,8 +1319,8 @@ internal fun IrClass.validateDeriveViaTransportability(): String? {
     deriveViaSubclassabilityViolation(transportAccessContext())?.let { return it }
     val transported = typeParameters.lastOrNull()?.symbol ?: return "DeriveVia requires a typeclass with a final transported type parameter"
     val classOpaqueParameters = typeParameters.map { it.symbol }.filterNot { it == transported }.toSet()
-    val abstractSurface = effectiveAbstractTypeclassSurface()
-    for (property in abstractSurface.properties) {
+    val forwardedSurface = effectiveForwardedTypeclassSurface()
+    for (property in forwardedSurface.properties) {
         val getter = property.getter
         val message =
             property
@@ -1331,7 +1330,7 @@ internal fun IrClass.validateDeriveViaTransportability(): String? {
             return message
         }
         val setter = property.property.setter
-        if (setter != null && setter.modality == Modality.ABSTRACT) {
+        if (setter != null && setter.isForwardedDeriveViaMember()) {
             val setterValueType = setter.valueParameters.singleOrNull()?.type ?: getter.returnType
             val setterMessage =
                 property
@@ -1342,7 +1341,7 @@ internal fun IrClass.validateDeriveViaTransportability(): String? {
             }
         }
     }
-    for (member in abstractSurface.functions) {
+    for (member in forwardedSurface.functions) {
         val function = member.function
         val methodOpaqueParameters = classOpaqueParameters.toMutableSet()
         methodOpaqueParameters += function.typeParameters.map { it.symbol }

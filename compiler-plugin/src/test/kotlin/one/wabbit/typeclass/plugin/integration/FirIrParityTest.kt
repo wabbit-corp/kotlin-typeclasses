@@ -111,7 +111,7 @@ class FirIrParityTest : IntegrationTestSupport() {
     }
 
     @Test
-    fun deriveViaValidationTracksTheEffectiveAdapterSurfaceAcrossFirAndIr() {
+    fun deriveViaValidationRejectsUntransportableForwardedSurfaceAcrossFirAndIr() {
         val source =
             """
             package demo
@@ -137,20 +137,26 @@ class FirIrParityTest : IntegrationTestSupport() {
             }
 
             @JvmInline
-            @DeriveVia(Fancy::class, Foo::class)
+            @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE concrete forwarded context members must be transportable
             value class UserId(val value: Int)
-
-            context(fancy: Fancy<A>)
-            fun <A> probe(value: A): String = fancy.render(value)
-
-            fun main() {
-                println(probe(UserId(7)))
-            }
             """.trimIndent()
 
-        assertCompilesAndRuns(
+        assertDoesNotCompile(
             source = source,
-            expectedStdout = "foo:7",
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive(
+                        "context parameters",
+                        "transported type parameter",
+                        phase = null,
+                    ),
+                ),
+            unexpectedMessages =
+                listOf(
+                    "no context argument",
+                    "required instance",
+                    "overload resolution ambiguity",
+                ),
         )
     }
 

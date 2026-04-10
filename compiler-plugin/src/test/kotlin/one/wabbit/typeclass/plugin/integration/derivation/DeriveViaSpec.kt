@@ -3089,9 +3089,49 @@ class DeriveViaSpec : IntegrationTestSupport() {
     }
 
     // Exact intended semantics:
-    // - DeriveVia only needs to transport the effective abstract typeclass surface
-    // - concrete helper members can mention A in unsupported ways because the adapter inherits them unchanged
-    @Test fun ignoresConcreteHelperMembersWhenValidatingFirTransportability() {
+    // - DeriveVia validation must cover every member generation may forward
+    // - otherwise generation can silently skip a concrete member override and fall back to inherited behavior
+    @Test fun rejectsConcreteForwardedMembersThatCannotBeTransported() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Fancy<A> {
+                fun render(value: A): String
+
+                fun values(): List<A> = emptyList()
+            }
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @Instance
+            object FooFancy : Fancy<Foo> {
+                override fun render(value: Foo): String = "foo:${'$'}{value.value}"
+
+                override fun values(): List<Foo> = listOf(Foo(1))
+            }
+
+            @JvmInline
+            @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE concrete forwarded members must be transportable
+            value class UserId(val value: Int)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("opaque or mutable nominal containers"),
+                ),
+        )
+    }
+
+    @Test fun rejectsConcreteForwardedContextMembersWhenValidatingFirTransportability() {
         val source =
             """
             package demo
@@ -3117,20 +3157,16 @@ class DeriveViaSpec : IntegrationTestSupport() {
             }
 
             @JvmInline
-            @DeriveVia(Fancy::class, Foo::class)
+            @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE concrete forwarded context members must be transportable
             value class UserId(val value: Int)
-
-            context(fancy: Fancy<A>)
-            fun <A> probe(value: A): String = fancy.render(value)
-
-            fun main() {
-                println(probe(UserId(7)))
-            }
             """.trimIndent()
 
-        assertCompilesAndRuns(
+        assertDoesNotCompile(
             source = source,
-            expectedStdout = "foo:7",
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("context parameters", "transported type parameter"),
+                ),
         )
     }
 
