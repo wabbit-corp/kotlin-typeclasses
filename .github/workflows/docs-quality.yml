@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   dokka:
     runs-on: ubuntu-latest
@@ -24,11 +27,23 @@ jobs:
           java-version: "21"
           cache: gradle
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Ensure Gradle wrapper is executable
         run: chmod +x ./gradlew
 
+      - name: Install markdown docs tooling
+        run: python3 -m pip install --disable-pip-version-check mkdocs==1.6.1
+
       - name: Build Dokka documentation
         run: ./gradlew --no-daemon :kotlin-typeclasses:dokkaGeneratePublicationHtml :kotlin-typeclasses-plugin:dokkaGeneratePublicationHtml :kotlin-typeclasses-gradle-plugin:dokkaGeneratePublicationHtml :kotlin-typeclasses-ij-plugin:dokkaGeneratePublicationHtml
+
+      - name: Build markdown documentation site
+        run: python3 scripts/build_pages_markdown_site.py --output-dir "$RUNNER_TEMP/pages-markdown"

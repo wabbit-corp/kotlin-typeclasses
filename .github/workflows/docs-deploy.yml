@@ -11,6 +11,9 @@ permissions:
   pages: write
   id-token: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 concurrency:
   group: pages
   cancel-in-progress: true
@@ -29,11 +32,20 @@ jobs:
           java-version: "21"
           cache: gradle
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Ensure Gradle wrapper is executable
         run: chmod +x ./gradlew
+
+      - name: Install markdown docs tooling
+        run: python3 -m pip install --disable-pip-version-check mkdocs==1.6.1
 
       - name: Build Dokka documentation
         run: ./gradlew --no-daemon :kotlin-typeclasses:dokkaGeneratePublicationHtml :kotlin-typeclasses-plugin:dokkaGeneratePublicationHtml :kotlin-typeclasses-gradle-plugin:dokkaGeneratePublicationHtml :kotlin-typeclasses-ij-plugin:dokkaGeneratePublicationHtml
@@ -97,6 +109,7 @@ jobs:
                 API docs and module reference for the <code>kotlin-typeclasses</code> project family.
               </p>
               <ul>
+                <li><a href="./docs/">Guides</a>: prose guides, migration notes, troubleshooting, and architecture docs</li>
                 <li><a href="./kotlin-typeclasses/">kotlin-typeclasses</a>: runtime annotations, helpers, derivation metadata, and proof APIs</li>
                 <li><a href="./kotlin-typeclasses-plugin/">kotlin-typeclasses-plugin</a>: compiler plugin</li>
                 <li><a href="./kotlin-typeclasses-gradle-plugin/">kotlin-typeclasses-gradle-plugin</a>: Gradle integration</li>
@@ -107,6 +120,8 @@ jobs:
           </body>
           </html>
           HTML
+
+          python3 scripts/build_pages_markdown_site.py --output-dir "$SITE_DIR/docs"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
