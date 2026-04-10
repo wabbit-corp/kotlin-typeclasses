@@ -6,7 +6,7 @@ The hand-written guides explain the programming model. The generated reference i
 
 Published API docs:
 
-- `https://wabbit-corp.github.io/kotlin-typeclasses/`
+- [wabbit-corp.github.io/kotlin-typeclasses](https://wabbit-corp.github.io/kotlin-typeclasses/)
 
 ## Generate Locally
 

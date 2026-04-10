@@ -249,9 +249,9 @@ For the current property-read limitation, see [`compiler-plugin/ISSUE_PROPERTIES
 
 ## Documentation Map
 
-- Published API docs: `https://wabbit-corp.github.io/kotlin-typeclasses/`
-- Published guides: `https://wabbit-corp.github.io/kotlin-typeclasses/docs/`
-- Published user guide: `https://wabbit-corp.github.io/kotlin-typeclasses/docs/user-guide/`
+- Published API docs: [wabbit-corp.github.io/kotlin-typeclasses](https://wabbit-corp.github.io/kotlin-typeclasses/)
+- Published guides: [wabbit-corp.github.io/kotlin-typeclasses/docs](https://wabbit-corp.github.io/kotlin-typeclasses/docs/)
+- Published user guide: [wabbit-corp.github.io/kotlin-typeclasses/docs/user-guide](https://wabbit-corp.github.io/kotlin-typeclasses/docs/user-guide/)
 - [User Guide](./docs/user-guide.md): setup, authoring typeclasses, derivation, builtin proofs, and tracing
 - [Typeclass Model](./docs/typeclass-model.md): what counts as a typeclass, where evidence lives, typeclass scope, and resolution precedence
 - [Instance Authoring](./docs/instance-authoring.md): placement strategy, top-level ownership rules, and ambiguity avoidance
