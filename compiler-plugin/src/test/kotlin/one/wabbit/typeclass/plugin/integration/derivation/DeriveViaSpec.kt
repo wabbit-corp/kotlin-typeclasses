@@ -2555,6 +2555,34 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
+    @Test fun rejectsStructuralDeriveEquivForLocalProductsWithCapturedState() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveEquiv
+
+            data class PlainBox(val value: Int)
+
+            fun make() {
+                val hidden = 1
+
+                @DeriveEquiv(PlainBox::class) // E:TC_CANNOT_DERIVE captured local state creates a hidden backing field
+                data class StatefulBox(val value: Int) {
+                    fun reveal(): Int = hidden
+                }
+            }
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("equiv", "statefulbox", "plainbox"),
+                ),
+        )
+    }
+
     // Exact intended semantics:
     // - delegated stored properties add hidden state and are outside the transparency whitelist
     // - a would-be transparent product using property delegation must therefore be rejected

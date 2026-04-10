@@ -1,18 +1,39 @@
 // SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
 
+@file:OptIn(
+    org.jetbrains.kotlin.fir.PrivateSessionConstructor::class,
+    org.jetbrains.kotlin.fir.SessionConfiguration::class,
+    org.jetbrains.kotlin.fir.scopes.DelicateScopeAPI::class,
+)
+
 package one.wabbit.typeclass.plugin
 
+import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.fir.FirBinaryDependenciesModuleData
+import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.FirDeclaration
 import org.jetbrains.kotlin.fir.declarations.FirDeclarationOrigin
+import org.jetbrains.kotlin.fir.declarations.builder.buildField
+import org.jetbrains.kotlin.fir.declarations.builder.buildRegularClass
 import org.jetbrains.kotlin.fir.declarations.builder.buildTypeParameter
+import org.jetbrains.kotlin.fir.declarations.impl.FirResolvedDeclarationStatusImpl
+import org.jetbrains.kotlin.fir.resolve.ScopeSession
+import org.jetbrains.kotlin.fir.scopes.FirContainingNamesAwareScope
+import org.jetbrains.kotlin.fir.scopes.FirScope
+import org.jetbrains.kotlin.fir.scopes.FirScopeProvider
+import org.jetbrains.kotlin.fir.scopes.FirTypeScope
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirFieldSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
 import org.jetbrains.kotlin.fir.types.ConeAttributes
 import org.jetbrains.kotlin.fir.types.ConeCapturedType
 import org.jetbrains.kotlin.fir.types.ConeCapturedTypeConstructor
 import org.jetbrains.kotlin.fir.types.ConeKotlinTypeProjectionOut
 import org.jetbrains.kotlin.fir.types.impl.ConeTypeParameterTypeImpl
+import org.jetbrains.kotlin.name.CallableId
+import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.types.Variance
 import org.jetbrains.kotlin.types.model.CaptureStatus
@@ -148,6 +169,57 @@ class FirDerivationFeasibilityTest {
     }
 
     @Test
+    fun `non-property FIR fields invalidate transparent product candidates`() {
+        val session = object : FirSession(FirSession.Kind.Library) {}
+        val classId = ClassId.topLevel(FqName("demo.Stateful"))
+        val moduleData =
+            FirBinaryDependenciesModuleData(Name.special("<fir-derivation-test>")).apply {
+                bindSession(session)
+            }
+        val statelessClass =
+            buildRegularClass {
+                this.moduleData = moduleData
+                origin = FirDeclarationOrigin.Library
+                name = classId.shortClassName
+                symbol = FirRegularClassSymbol(classId)
+                status = FirResolvedDeclarationStatusImpl.DEFAULT_STATUS_FOR_STATUSLESS_DECLARATIONS
+                scopeProvider = DerivationTestFirScopeProvider
+                classKind = ClassKind.CLASS
+                superTypeRefs += session.builtinTypes.anyType
+            }
+        val statefulClass =
+            buildRegularClass {
+                this.moduleData = moduleData
+                origin = FirDeclarationOrigin.Library
+                name = classId.shortClassName
+                symbol = FirRegularClassSymbol(classId)
+                status = FirResolvedDeclarationStatusImpl.DEFAULT_STATUS_FOR_STATUSLESS_DECLARATIONS
+                scopeProvider = DerivationTestFirScopeProvider
+                classKind = ClassKind.CLASS
+                superTypeRefs += session.builtinTypes.anyType
+                declarations +=
+                    buildField {
+                        this.moduleData = moduleData
+                        origin = FirDeclarationOrigin.Library
+                        name = Name.identifier("hidden")
+                        symbol = FirFieldSymbol(CallableId(classId, name))
+                        status = FirResolvedDeclarationStatusImpl.DEFAULT_STATUS_FOR_STATUSLESS_DECLARATIONS
+                        returnTypeRef = session.builtinTypes.intType
+                        isVar = false
+                        javaClass.methods
+                            .singleOrNull { method ->
+                                method.name == "setLocal" &&
+                                    method.parameterTypes.singleOrNull() == Boolean::class.javaPrimitiveType
+                            }
+                            ?.invoke(this, false)
+                    }
+            }
+
+        assertFalse(statelessClass.hasNonPropertyBackingFields())
+        assertTrue(statefulClass.hasNonPropertyBackingFields())
+    }
+
+    @Test
     fun `unsupported transported cone shape is rejected instead of ignored`() {
         val transported = boundTypeParameterSymbol("A")
         val transportedType = ConeTypeParameterTypeImpl(transported.toLookupTag(), false, ConeAttributes.Empty)
@@ -191,6 +263,41 @@ private data class NamedField(
     val identity: String,
     val kind: String,
 )
+
+private object DerivationTestFirScopeProvider : FirScopeProvider() {
+    override fun getUseSiteMemberScope(
+        klass: org.jetbrains.kotlin.fir.declarations.FirClass,
+        useSiteSession: FirSession,
+        scopeSession: ScopeSession,
+        memberRequiredPhase: org.jetbrains.kotlin.fir.declarations.FirResolvePhase?,
+    ): FirTypeScope = FirTypeScope.Empty
+
+    override fun getTypealiasConstructorScope(
+        typeAlias: org.jetbrains.kotlin.fir.declarations.FirTypeAlias,
+        useSiteSession: FirSession,
+        scopeSession: ScopeSession,
+    ): FirScope = object : FirScope() {
+        override fun withReplacedSessionOrNull(newSession: FirSession, newScopeSession: ScopeSession): FirScope? = null
+    }
+
+    override fun getStaticCallableMemberScope(
+        klass: org.jetbrains.kotlin.fir.declarations.FirClass,
+        useSiteSession: FirSession,
+        scopeSession: ScopeSession,
+    ): FirContainingNamesAwareScope? = null
+
+    override fun getStaticCallableMemberScopeForBackend(
+        klass: org.jetbrains.kotlin.fir.declarations.FirClass,
+        useSiteSession: FirSession,
+        scopeSession: ScopeSession,
+    ): FirContainingNamesAwareScope? = null
+
+    override fun getNestedClassifierScope(
+        klass: org.jetbrains.kotlin.fir.declarations.FirClass,
+        useSiteSession: FirSession,
+        scopeSession: ScopeSession,
+    ): FirContainingNamesAwareScope? = null
+}
 
 private fun boundTypeParameterSymbol(name: String): FirTypeParameterSymbol {
     val symbol = FirTypeParameterSymbol()

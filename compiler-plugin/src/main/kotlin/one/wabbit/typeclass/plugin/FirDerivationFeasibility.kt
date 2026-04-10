@@ -20,6 +20,7 @@ import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.FirAnonymousInitializer
 import org.jetbrains.kotlin.fir.declarations.FirConstructor
+import org.jetbrains.kotlin.fir.declarations.FirField
 import org.jetbrains.kotlin.fir.declarations.FirProperty
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 import org.jetbrains.kotlin.fir.declarations.FirTypeParameter
@@ -1227,6 +1228,9 @@ private fun FirRegularClass.transparentProductInfo(
         declarations.filterIsInstance<FirProperty>().filter { property ->
             property.backingField != null
         }
+    if (hasNonPropertyBackingFields()) {
+        return null
+    }
     if (storedProperties.any { property -> property.delegate != null }) {
         return null
     }
@@ -1263,6 +1267,9 @@ private fun FirRegularClass.transparentProductInfo(
         fields = fields,
     )
 }
+
+internal fun FirRegularClass.hasNonPropertyBackingFields(): Boolean =
+    declarations.any { declaration -> declaration is FirField }
 
 private fun FirRegularClass.transparentSealedCases(
     session: FirSession,
