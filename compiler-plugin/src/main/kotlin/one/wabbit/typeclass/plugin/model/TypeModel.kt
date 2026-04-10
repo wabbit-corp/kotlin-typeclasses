@@ -8,10 +8,7 @@ import org.jetbrains.kotlin.types.Variance
 internal sealed interface TcType {
     data object StarProjection : TcType
 
-    data class Projected(
-        val variance: Variance,
-        val type: TcType,
-    ) : TcType {
+    data class Projected(val variance: Variance, val type: TcType) : TcType {
         init {
             require(variance != Variance.INVARIANT) {
                 "Projected TcType must use IN or OUT variance."
@@ -19,11 +16,8 @@ internal sealed interface TcType {
         }
     }
 
-    data class Variable(
-        val id: String,
-        val displayName: String,
-        val isNullable: Boolean = false,
-    ) : TcType
+    data class Variable(val id: String, val displayName: String, val isNullable: Boolean = false) :
+        TcType
 
     data class Constructor(
         val classifierId: String,
@@ -32,10 +26,7 @@ internal sealed interface TcType {
     ) : TcType
 }
 
-internal data class TcTypeParameter(
-    val id: String,
-    val displayName: String,
-)
+internal data class TcTypeParameter(val id: String, val displayName: String)
 
 internal data class InstanceRule(
     val id: String,
@@ -49,10 +40,7 @@ internal data class InstanceRule(
 internal sealed interface ResolutionPlan {
     val providedType: TcType
 
-    data class LocalContext(
-        val index: Int,
-        override val providedType: TcType,
-    ) : ResolutionPlan
+    data class LocalContext(val index: Int, override val providedType: TcType) : ResolutionPlan
 
     data class ApplyRule(
         val ruleId: String,
@@ -61,9 +49,7 @@ internal sealed interface ResolutionPlan {
         val prerequisitePlans: List<ResolutionPlan>,
     ) : ResolutionPlan
 
-    data class RecursiveReference(
-        override val providedType: TcType,
-    ) : ResolutionPlan
+    data class RecursiveReference(override val providedType: TcType) : ResolutionPlan
 }
 
 internal class AlphaRenamer {
@@ -73,12 +59,13 @@ internal class AlphaRenamer {
         when (type) {
             TcType.StarProjection -> TcType.StarProjection
             is TcType.Projected -> TcType.Projected(type.variance, rename(type.type))
-            is TcType.Constructor -> TcType.Constructor(type.classifierId, type.arguments.map(::rename), type.isNullable)
-            is TcType.Variable -> TcType.Variable(nameFor(type.id), nameFor(type.id), type.isNullable)
+            is TcType.Constructor ->
+                TcType.Constructor(type.classifierId, type.arguments.map(::rename), type.isNullable)
+            is TcType.Variable ->
+                TcType.Variable(nameFor(type.id), nameFor(type.id), type.isNullable)
         }
 
-    fun nameFor(id: String): String =
-        namesById.getOrPut(id) { "T${namesById.size}" }
+    fun nameFor(id: String): String = namesById.getOrPut(id) { "T${namesById.size}" }
 }
 
 internal fun TcType.references(id: String): Boolean =
@@ -89,32 +76,25 @@ internal fun TcType.references(id: String): Boolean =
         is TcType.Variable -> this.id == id
     }
 
-internal fun TcType.referencedVariableIds(): Set<String> =
-    buildSet {
-        collectReferencedVariableIds(this@referencedVariableIds, this)
-    }
+internal fun TcType.referencedVariableIds(): Set<String> = buildSet {
+    collectReferencedVariableIds(this@referencedVariableIds, this)
+}
 
-internal fun TcType.referencedClassifierIds(): Set<String> =
-    buildSet {
-        collectReferencedClassifierIds(this@referencedClassifierIds, this)
-    }
+internal fun TcType.referencedClassifierIds(): Set<String> = buildSet {
+    collectReferencedClassifierIds(this@referencedClassifierIds, this)
+}
 
-private fun collectReferencedVariableIds(
-    type: TcType,
-    sink: MutableSet<String>,
-) {
+private fun collectReferencedVariableIds(type: TcType, sink: MutableSet<String>) {
     when (type) {
         TcType.StarProjection -> Unit
         is TcType.Projected -> collectReferencedVariableIds(type.type, sink)
-        is TcType.Constructor -> type.arguments.forEach { argument -> collectReferencedVariableIds(argument, sink) }
+        is TcType.Constructor ->
+            type.arguments.forEach { argument -> collectReferencedVariableIds(argument, sink) }
         is TcType.Variable -> sink += type.id
     }
 }
 
-private fun collectReferencedClassifierIds(
-    type: TcType,
-    sink: MutableSet<String>,
-) {
+private fun collectReferencedClassifierIds(type: TcType, sink: MutableSet<String>) {
     when (type) {
         TcType.StarProjection -> Unit
         is TcType.Projected -> collectReferencedClassifierIds(type.type, sink)
@@ -152,7 +132,7 @@ internal fun TcType.render(): String =
                         Variance.IN_VARIANCE -> "in "
                         Variance.OUT_VARIANCE -> "out "
                         Variance.INVARIANT -> ""
-                    },
+                    }
                 )
                 append(type.render())
             }
@@ -163,19 +143,27 @@ internal fun TcType.render(): String =
                     append(classifierId)
                 } else {
                     append(classifierId)
-                    append(arguments.joinToString(prefix = "<", postfix = ">", separator = ",", transform = TcType::render))
+                    append(
+                        arguments.joinToString(
+                            prefix = "<",
+                            postfix = ">",
+                            separator = ",",
+                            transform = TcType::render,
+                        )
+                    )
                 }
                 if (isNullable) {
                     append('?')
                 }
             }
 
-        is TcType.Variable -> buildString {
-            append(displayName)
-            if (isNullable) {
-                append('?')
+        is TcType.Variable ->
+            buildString {
+                append(displayName)
+                if (isNullable) {
+                    append('?')
+                }
             }
-        }
     }
 
 internal fun TcType.normalizedKey(): String = AlphaRenamer().rename(this).render()
@@ -215,7 +203,7 @@ internal fun TcType.toCanonicalTypeIdName(): String =
                         Variance.IN_VARIANCE -> "in "
                         Variance.OUT_VARIANCE -> "out "
                         Variance.INVARIANT -> ""
-                    },
+                    }
                 )
                 append(type.toCanonicalTypeIdName())
             }
@@ -224,7 +212,14 @@ internal fun TcType.toCanonicalTypeIdName(): String =
             buildString {
                 append(normalizeClassifierId(classifierId))
                 if (arguments.isNotEmpty()) {
-                    append(arguments.joinToString(prefix = "<", postfix = ">", separator = ",", transform = TcType::toCanonicalTypeIdName))
+                    append(
+                        arguments.joinToString(
+                            prefix = "<",
+                            postfix = ">",
+                            separator = ",",
+                            transform = TcType::toCanonicalTypeIdName,
+                        )
+                    )
                 }
                 if (isNullable) {
                     append('?')

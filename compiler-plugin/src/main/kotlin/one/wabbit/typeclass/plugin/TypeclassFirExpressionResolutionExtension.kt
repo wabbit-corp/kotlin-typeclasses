@@ -5,8 +5,8 @@
 package one.wabbit.typeclass.plugin
 
 import org.jetbrains.kotlin.fir.FirSession
-import org.jetbrains.kotlin.fir.extensions.FirExpressionResolutionExtension
 import org.jetbrains.kotlin.fir.expressions.FirFunctionCall
+import org.jetbrains.kotlin.fir.extensions.FirExpressionResolutionExtension
 import org.jetbrains.kotlin.fir.resolve.calls.ImplicitExtensionReceiverValue
 import org.jetbrains.kotlin.fir.symbols.SymbolInternals
 import org.jetbrains.kotlin.fir.symbols.impl.FirNamedFunctionSymbol
@@ -21,10 +21,12 @@ internal class TypeclassFirExpressionResolutionExtension(
         sessionHolder: org.jetbrains.kotlin.fir.SessionAndScopeSessionHolder,
         containingCallableSymbol: org.jetbrains.kotlin.fir.symbols.FirBasedSymbol<*>,
     ): List<ImplicitExtensionReceiverValue> {
-        val containingFunction = containingCallableSymbol as? FirNamedFunctionSymbol ?: return emptyList()
+        val containingFunction =
+            containingCallableSymbol as? FirNamedFunctionSymbol ?: return emptyList()
         val receiver = containingFunction.fir.receiverParameter ?: return emptyList()
         val receiverType = receiver.typeRef.coneType
-        return receiverType.localEvidenceTypes(session, sharedState.configuration).map { evidenceType ->
+        return receiverType.localEvidenceTypes(session, sharedState.configuration).map {
+            evidenceType ->
             ImplicitExtensionReceiverValue(
                 receiver.symbol,
                 evidenceType,

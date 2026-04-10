@@ -1,29 +1,23 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin
 
-import org.jetbrains.kotlin.descriptors.ClassKind
-import org.jetbrains.kotlin.descriptors.Modality
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import org.jetbrains.kotlin.descriptors.ClassKind
+import org.jetbrains.kotlin.descriptors.Modality
 
 class DeriveSupportTest {
     @Test
     fun `derive method contracts cover product sum and enum shapes`() {
         assertEquals(
             DeriveMethodContract.PRODUCT,
-            deriveMethodContractForShape(
-                classKind = ClassKind.CLASS,
-                modality = Modality.FINAL,
-            ),
+            deriveMethodContractForShape(classKind = ClassKind.CLASS, modality = Modality.FINAL),
         )
         assertEquals(
             DeriveMethodContract.PRODUCT,
-            deriveMethodContractForShape(
-                classKind = ClassKind.OBJECT,
-                modality = Modality.FINAL,
-            ),
+            deriveMethodContractForShape(classKind = ClassKind.OBJECT, modality = Modality.FINAL),
         )
         assertEquals(
             DeriveMethodContract.SUM,
@@ -47,13 +41,10 @@ class DeriveSupportTest {
             deriveMethodContractForShape(
                 classKind = ClassKind.INTERFACE,
                 modality = Modality.ABSTRACT,
-            ),
+            )
         )
         assertNull(
-            deriveMethodContractForShape(
-                classKind = ClassKind.CLASS,
-                modality = Modality.OPEN,
-            ),
+            deriveMethodContractForShape(classKind = ClassKind.CLASS, modality = Modality.OPEN)
         )
     }
 }

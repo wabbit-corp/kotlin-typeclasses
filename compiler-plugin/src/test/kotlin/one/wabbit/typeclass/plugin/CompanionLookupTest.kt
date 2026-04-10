@@ -1,11 +1,11 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin
 
-import org.jetbrains.kotlin.name.ClassId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import org.jetbrains.kotlin.name.ClassId
 
 class CompanionLookupTest {
     @Test
@@ -51,11 +51,7 @@ class CompanionLookupTest {
         val owner = ClassId.fromString("demo/Box")
 
         val resolved =
-            directOrNestedCompanion(
-                owner = owner,
-                directCompanion = null,
-                nestedLookup = { null },
-            )
+            directOrNestedCompanion(owner = owner, directCompanion = null, nestedLookup = { null })
 
         assertNull(resolved)
     }

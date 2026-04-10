@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
-import org.jetbrains.kotlin.cli.common.ExitCode
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import org.jetbrains.kotlin.cli.common.ExitCode
 
 /**
  * Supplemental edge-case spec for mode precedence in scoped typeclass-resolution tracing.
@@ -52,15 +52,19 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             fun main() {
                 println(Screen().rendered)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)
-        assertEquals(1, result.stdout.countOccurrences("[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"), result.stdout)
-        assertOutputContains(
+        assertEquals(
+            1,
+            result.stdout.countOccurrences(
+                "[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"
+            ),
             result.stdout,
-            "[TC_TRACE] traced scope: local variable retraced",
         )
+        assertOutputContains(result.stdout, "[TC_TRACE] traced scope: local variable retraced")
         assertOutputNotContains(result.stdout, "[TC_TRACE] traced scope: property rendered")
         assertEquals("int", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
@@ -101,15 +105,19 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             fun main() {
                 println(demo())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)
-        assertEquals(1, result.stdout.countOccurrences("[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"), result.stdout)
-        assertOutputContains(
+        assertEquals(
+            1,
+            result.stdout.countOccurrences(
+                "[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"
+            ),
             result.stdout,
-            "[TC_TRACE] traced scope: local variable retraced",
         )
+        assertOutputContains(result.stdout, "[TC_TRACE] traced scope: local variable retraced")
         assertEquals("intint", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
 
@@ -145,7 +153,8 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             fun main() {
                 println(inheritedTrace())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)
@@ -186,7 +195,8 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             fun main() {
                 println(maybeTraced())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)
@@ -228,15 +238,19 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             fun main() {
                 println(outer())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)
-        assertEquals(1, result.stdout.countOccurrences("[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"), result.stdout)
-        assertOutputContains(
+        assertEquals(
+            1,
+            result.stdout.countOccurrences(
+                "[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"
+            ),
             result.stdout,
-            "[TC_TRACE] traced scope: local variable retraced",
         )
+        assertOutputContains(result.stdout, "[TC_TRACE] traced scope: local variable retraced")
         assertEquals("intint", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
 
@@ -271,11 +285,15 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             fun main() {
                 println(inner())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)
-        assertOutputNotContains(result.stdout, "[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>")
+        assertOutputNotContains(
+            result.stdout,
+            "[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>",
+        )
         assertEquals("int", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
 
@@ -312,15 +330,19 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             fun main() {
                 println(useBoth())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)
-        assertEquals(1, result.stdout.countOccurrences("[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"), result.stdout)
-        assertOutputContains(
+        assertEquals(
+            1,
+            result.stdout.countOccurrences(
+                "[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"
+            ),
             result.stdout,
-            "[TC_TRACE] traced scope: function",
         )
+        assertOutputContains(result.stdout, "[TC_TRACE] traced scope: function")
         assertEquals("intint", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
 
@@ -357,15 +379,19 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             fun main() {
                 println(useBoth())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)
-        assertEquals(1, result.stdout.countOccurrences("[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"), result.stdout)
-        assertOutputContains(
+        assertEquals(
+            1,
+            result.stdout.countOccurrences(
+                "[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"
+            ),
             result.stdout,
-            "[TC_TRACE] traced scope: local variable retraced",
         )
+        assertOutputContains(result.stdout, "[TC_TRACE] traced scope: local variable retraced")
         assertEquals("intint", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
 
@@ -413,7 +439,8 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             sealed interface Expr
 
             data class Lit<T>(val value: T) : Expr
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.COMPILATION_ERROR, result.exitCode, result.stdout)
@@ -461,11 +488,19 @@ class DebugTypeclassResolutionPrecedenceSpec : IntegrationTestSupport() {
             fun main() {
                 println(locallyMuted() + "/" + locallyVerbose())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        val result = compileSourceResult(source, pluginOptions = listOf("typeclassTraceMode=failures"))
+        val result =
+            compileSourceResult(source, pluginOptions = listOf("typeclassTraceMode=failures"))
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)
-        assertEquals(1, result.stdout.countOccurrences("[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"), result.stdout)
+        assertEquals(
+            1,
+            result.stdout.countOccurrences(
+                "[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"
+            ),
+            result.stdout,
+        )
         assertOutputContains(result.stdout, "[TC_TRACE] effective mode: ALL_AND_ALTERNATIVES")
         assertEquals("int/int", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }

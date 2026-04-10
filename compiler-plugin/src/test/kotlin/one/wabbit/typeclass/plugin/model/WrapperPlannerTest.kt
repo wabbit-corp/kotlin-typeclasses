@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.model
 
@@ -21,10 +21,7 @@ class WrapperPlannerTest {
 
         val success = assertIs<ResolutionSearchResult.Success>(result)
         assertEquals(
-            ResolutionPlan.LocalContext(
-                index = 0,
-                providedType = eq(typeVariable(a)),
-            ),
+            ResolutionPlan.LocalContext(index = 0, providedType = eq(typeVariable(a))),
             success.plan,
         )
     }
@@ -44,18 +41,16 @@ class WrapperPlannerTest {
             )
 
         val result =
-            TypeclassResolutionPlanner(listOf(pairRule)).resolve(
-                desiredType = eq(pair(typeVariable(a), typeVariable(a))),
-                localContextTypes = listOf(eq(typeVariable(a))),
-            )
+            TypeclassResolutionPlanner(listOf(pairRule))
+                .resolve(
+                    desiredType = eq(pair(typeVariable(a), typeVariable(a))),
+                    localContextTypes = listOf(eq(typeVariable(a))),
+                )
 
         val success = assertIs<ResolutionSearchResult.Success>(result)
         val applied = assertIs<ResolutionPlan.ApplyRule>(success.plan)
         assertEquals("pairEq", applied.ruleId)
-        assertEquals(
-            listOf(typeVariable(a), typeVariable(a)),
-            applied.appliedTypeArguments,
-        )
+        assertEquals(listOf(typeVariable(a), typeVariable(a)), applied.appliedTypeArguments)
         assertEquals(
             listOf(
                 ResolutionPlan.LocalContext(0, eq(typeVariable(a))),
@@ -82,16 +77,14 @@ class WrapperPlannerTest {
 
         val desired = eq(pair(typeVariable(a), typeVariable(b)))
         val result =
-            TypeclassResolutionPlanner(listOf(pairRule)).resolve(
-                desiredType = desired,
-                localContextTypes = listOf(desired, eq(typeVariable(a)), eq(typeVariable(b))),
-            )
+            TypeclassResolutionPlanner(listOf(pairRule))
+                .resolve(
+                    desiredType = desired,
+                    localContextTypes = listOf(desired, eq(typeVariable(a)), eq(typeVariable(b))),
+                )
 
         val success = assertIs<ResolutionSearchResult.Success>(result)
-        assertEquals(
-            ResolutionPlan.LocalContext(index = 0, providedType = desired),
-            success.plan,
-        )
+        assertEquals(ResolutionPlan.LocalContext(index = 0, providedType = desired), success.plan)
     }
 
     @Test
@@ -111,10 +104,12 @@ class WrapperPlannerTest {
             )
 
         val result =
-            TypeclassResolutionPlanner(listOf(pairRule)).resolve(
-                desiredType = eq(pair(pair(typeVariable(a), typeVariable(b)), typeVariable(c))),
-                localContextTypes = listOf(eq(typeVariable(a)), eq(typeVariable(b)), eq(typeVariable(c))),
-            )
+            TypeclassResolutionPlanner(listOf(pairRule))
+                .resolve(
+                    desiredType = eq(pair(pair(typeVariable(a), typeVariable(b)), typeVariable(c))),
+                    localContextTypes =
+                        listOf(eq(typeVariable(a)), eq(typeVariable(b)), eq(typeVariable(c))),
+                )
 
         val success = assertIs<ResolutionSearchResult.Success>(result)
         val outer = assertIs<ResolutionPlan.ApplyRule>(success.plan)
@@ -124,10 +119,7 @@ class WrapperPlannerTest {
             listOf(pair(typeVariable(a), typeVariable(b)), typeVariable(c)),
             outer.appliedTypeArguments,
         )
-        assertEquals(
-            listOf(typeVariable(a), typeVariable(b)),
-            inner.appliedTypeArguments,
-        )
+        assertEquals(listOf(typeVariable(a), typeVariable(b)), inner.appliedTypeArguments)
     }
 
     @Test
@@ -150,10 +142,8 @@ class WrapperPlannerTest {
             )
 
         val result =
-            TypeclassResolutionPlanner(listOf(fooRule, barRule)).resolve(
-                desiredType = foo(typeVariable(a)),
-                localContextTypes = emptyList(),
-            )
+            TypeclassResolutionPlanner(listOf(fooRule, barRule))
+                .resolve(desiredType = foo(typeVariable(a)), localContextTypes = emptyList())
 
         assertIs<ResolutionSearchResult.Recursive>(result)
     }
@@ -185,10 +175,8 @@ class WrapperPlannerTest {
             )
 
         val result =
-            TypeclassResolutionPlanner(listOf(fooFromBar, barFromFoo, directFoo)).resolve(
-                desiredType = foo(typeVariable(a)),
-                localContextTypes = emptyList(),
-            )
+            TypeclassResolutionPlanner(listOf(fooFromBar, barFromFoo, directFoo))
+                .resolve(desiredType = foo(typeVariable(a)), localContextTypes = emptyList())
 
         val success = assertIs<ResolutionSearchResult.Success>(result)
         val applied = assertIs<ResolutionPlan.ApplyRule>(success.plan)
@@ -224,10 +212,8 @@ class WrapperPlannerTest {
             )
 
         val result =
-            TypeclassResolutionPlanner(listOf(poisonRecursiveRule, fooFromBar, barFromFoo)).resolve(
-                desiredType = foo(typeVariable(a)),
-                localContextTypes = emptyList(),
-            )
+            TypeclassResolutionPlanner(listOf(poisonRecursiveRule, fooFromBar, barFromFoo))
+                .resolve(desiredType = foo(typeVariable(a)), localContextTypes = emptyList())
 
         assertIs<ResolutionSearchResult.Recursive>(result)
     }
@@ -259,10 +245,8 @@ class WrapperPlannerTest {
             )
 
         val result =
-            TypeclassResolutionPlanner(listOf(fooFromBar, barFromFoo, fooFromBaz)).resolve(
-                desiredType = foo(typeVariable(a)),
-                localContextTypes = emptyList(),
-            )
+            TypeclassResolutionPlanner(listOf(fooFromBar, barFromFoo, fooFromBaz))
+                .resolve(desiredType = foo(typeVariable(a)), localContextTypes = emptyList())
 
         assertIs<ResolutionSearchResult.Missing>(result)
     }
@@ -294,15 +278,11 @@ class WrapperPlannerTest {
             )
 
         val leftToRight =
-            TypeclassResolutionPlanner(listOf(fooFromBar, barFromFoo, directFoo)).resolve(
-                desiredType = foo(typeVariable(a)),
-                localContextTypes = emptyList(),
-            )
+            TypeclassResolutionPlanner(listOf(fooFromBar, barFromFoo, directFoo))
+                .resolve(desiredType = foo(typeVariable(a)), localContextTypes = emptyList())
         val rightToLeft =
-            TypeclassResolutionPlanner(listOf(directFoo, barFromFoo, fooFromBar)).resolve(
-                desiredType = foo(typeVariable(a)),
-                localContextTypes = emptyList(),
-            )
+            TypeclassResolutionPlanner(listOf(directFoo, barFromFoo, fooFromBar))
+                .resolve(desiredType = foo(typeVariable(a)), localContextTypes = emptyList())
 
         assertEquals(leftToRight, rightToLeft)
     }
@@ -342,16 +322,17 @@ class WrapperPlannerTest {
             )
 
         val result =
-            TypeclassResolutionPlanner(listOf(fooFromBar, fooFromBaz)).resolve(
-                desiredType = foo(typeVariable(a)),
-                localContextTypes = listOf(bar(typeVariable(a)), baz(typeVariable(a))),
-            )
+            TypeclassResolutionPlanner(listOf(fooFromBar, fooFromBaz))
+                .resolve(
+                    desiredType = foo(typeVariable(a)),
+                    localContextTypes = listOf(bar(typeVariable(a)), baz(typeVariable(a))),
+                )
 
         val ambiguous = assertIs<ResolutionSearchResult.Ambiguous>(result)
         val matchingRuleIds =
-            ambiguous.matchingPlans.map { plan ->
-                assertIs<ResolutionPlan.ApplyRule>(plan).ruleId
-            }.toSet()
+            ambiguous.matchingPlans
+                .map { plan -> assertIs<ResolutionPlan.ApplyRule>(plan).ruleId }
+                .toSet()
         assertEquals(setOf("fooFromBar", "fooFromBaz"), matchingRuleIds)
     }
 
@@ -368,11 +349,12 @@ class WrapperPlannerTest {
             )
 
         val traced =
-            TypeclassResolutionPlanner(listOf(fooFromBar)).resolveWithTrace(
-                desiredType = foo(typeVariable(a)),
-                localContextTypes = listOf(foo(typeVariable(a))),
-                explainAlternatives = true,
-            )
+            TypeclassResolutionPlanner(listOf(fooFromBar))
+                .resolveWithTrace(
+                    desiredType = foo(typeVariable(a)),
+                    localContextTypes = listOf(foo(typeVariable(a))),
+                    explainAlternatives = true,
+                )
 
         val success = assertIs<ResolutionSearchResult.Success>(traced.result)
         assertEquals(
@@ -398,12 +380,10 @@ class WrapperPlannerTest {
 
         val result =
             TypeclassResolutionPlanner(
-                rules = listOf(concreteRule),
-                bindableDesiredVariableIds = setOf(a.id),
-            ).resolve(
-                desiredType = eq(typeVariable(a)),
-                localContextTypes = emptyList(),
-            )
+                    rules = listOf(concreteRule),
+                    bindableDesiredVariableIds = setOf(a.id),
+                )
+                .resolve(desiredType = eq(typeVariable(a)), localContextTypes = emptyList())
 
         val success = assertIs<ResolutionSearchResult.Success>(result)
         val applied = assertIs<ResolutionPlan.ApplyRule>(success.plan)
@@ -416,29 +396,26 @@ class WrapperPlannerTest {
 
         val result =
             TypeclassResolutionPlanner(
-                rules = emptyList(),
-                bindableDesiredVariableIds = setOf(a.id),
-            ).resolve(
-                desiredType = eq(typeVariable(a)),
-                localContextTypes = listOf(eq(box(intType()))),
-            )
+                    rules = emptyList(),
+                    bindableDesiredVariableIds = setOf(a.id),
+                )
+                .resolve(
+                    desiredType = eq(typeVariable(a)),
+                    localContextTypes = listOf(eq(box(intType()))),
+                )
 
         val success = assertIs<ResolutionSearchResult.Success>(result)
         assertEquals(
-            ResolutionPlan.LocalContext(
-                index = 0,
-                providedType = eq(box(intType())),
-            ),
+            ResolutionPlan.LocalContext(index = 0, providedType = eq(box(intType()))),
             success.plan,
         )
     }
 
-    private fun typeConstructor(
-        classifierId: String,
-        vararg arguments: TcType,
-    ): TcType = TcType.Constructor(classifierId, arguments.toList())
+    private fun typeConstructor(classifierId: String, vararg arguments: TcType): TcType =
+        TcType.Constructor(classifierId, arguments.toList())
 
-    private fun typeVariable(parameter: TcTypeParameter): TcType = TcType.Variable(parameter.id, parameter.displayName)
+    private fun typeVariable(parameter: TcTypeParameter): TcType =
+        TcType.Variable(parameter.id, parameter.displayName)
 
     private fun eq(argument: TcType): TcType = typeConstructor("demo.Eq", argument)
 
@@ -452,8 +429,6 @@ class WrapperPlannerTest {
 
     private fun intType(): TcType = typeConstructor("kotlin.Int")
 
-    private fun pair(
-        first: TcType,
-        second: TcType,
-    ): TcType = typeConstructor("kotlin.Pair", first, second)
+    private fun pair(first: TcType, second: TcType): TcType =
+        typeConstructor("kotlin.Pair", first, second)
 }

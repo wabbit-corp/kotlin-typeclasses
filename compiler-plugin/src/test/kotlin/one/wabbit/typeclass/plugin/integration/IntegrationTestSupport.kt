@@ -1,10 +1,23 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
+import java.net.URI
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.io.path.createDirectories
+import kotlin.io.path.createTempDirectory
+import kotlin.io.path.isRegularFile
+import kotlin.io.path.writeText
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import one.wabbit.typeclass.plugin.TYPECLASS_PLUGIN_ID
-import one.wabbit.typeclass.plugin.TypeclassDiagnosticIds
 import one.wabbit.typeclass.plugin.TypeclassDiagnostic
+import one.wabbit.typeclass.plugin.TypeclassDiagnosticIds
 import one.wabbit.typeclass.plugin.cannotDeriveDiagnostic
 import one.wabbit.typeclass.plugin.fix
 import one.wabbit.typeclass.plugin.headline
@@ -15,19 +28,6 @@ import one.wabbit.typeclass.plugin.reason
 import org.jetbrains.kotlin.cli.common.ExitCode
 import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
 import org.jetbrains.kotlin.config.KotlinCompilerVersion
-import kotlin.io.path.createDirectories
-import kotlin.io.path.createTempDirectory
-import kotlin.io.path.writeText
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
-import kotlin.test.assertFalse
-import java.io.ByteArrayOutputStream
-import java.io.PrintStream
-import java.net.URI
-import java.nio.file.Files
-import java.nio.file.Path
-import java.util.concurrent.ConcurrentHashMap
-import kotlin.io.path.isRegularFile
 import org.junit.Rule
 import org.junit.rules.TestWatcher
 import org.junit.runner.Description
@@ -37,7 +37,8 @@ abstract class IntegrationTestSupport {
         private const val DEFAULT_HARNESS_JVM_TARGET = "1.8"
         private const val KEEP_TEST_TEMP_ENV = "TYPECLASS_KEEP_TEST_TEMP"
         private val locatedSupportJars = ConcurrentHashMap<String, Path>()
-        private val locatedDiagnosticRegex = Regex("""^(.+):(\d+):(\d+):\s+(error|warning):\s+(.*)$""")
+        private val locatedDiagnosticRegex =
+            Regex("""^(.+):(\d+):(\d+):\s+(error|warning):\s+(.*)$""")
         private val globalDiagnosticRegex = Regex("""^(e|w|error|warning):\s+(.*)$""")
         private val prefixedDiagnosticIdRegex = Regex("""^\[(TC_[A-Z_]+)]\s*(.*)$""")
         private val sourceDiagnosticMarkerRegex =
@@ -51,8 +52,7 @@ abstract class IntegrationTestSupport {
                 right
             }
 
-        private fun normalizeJvmTarget(value: String): Int =
-            value.removePrefix("1.").toInt()
+        private fun normalizeJvmTarget(value: String): Int = value.removePrefix("1.").toInt()
     }
 
     private val tempRootsToCleanup = mutableListOf<Path>()
@@ -61,10 +61,7 @@ abstract class IntegrationTestSupport {
     @get:Rule
     val cleanupHarnessTempRoots =
         object : TestWatcher() {
-            override fun failed(
-                e: Throwable?,
-                description: Description,
-            ) {
+            override fun failed(e: Throwable?, description: Description) {
                 keepTempRootsForCurrentTest = true
             }
 
@@ -238,17 +235,15 @@ abstract class IntegrationTestSupport {
                 enableContextParameters = enableContextParameters,
                 compilerArguments = compilerArguments,
             )
-        assertEquals(
-            ExitCode.COMPILATION_ERROR,
-            result.exitCode,
-            result.stdout,
-        )
+        assertEquals(ExitCode.COMPILATION_ERROR, result.exitCode, result.stdout)
         val diagnostics = parseCompilerDiagnostics(result.stdout)
         val sourceMarkers = parseSourceDiagnosticMarkers(sources)
         assertTrue(
             sourceMarkers.any { it.severity == DiagnosticSeverity.ERROR },
             buildString {
-                appendLine("assertDoesNotCompile requires at least one inline error marker like // E:TC_... or // label@E:TC_...")
+                appendLine(
+                    "assertDoesNotCompile requires at least one inline error marker like // E:TC_... or // label@E:TC_..."
+                )
                 appendLine("Sources:")
                 sources.forEach { (file, source) ->
                     appendLine("== $file ==")
@@ -261,8 +256,7 @@ abstract class IntegrationTestSupport {
                 markers = sourceMarkers,
                 labeledDiagnostics = expectedLabeledDiagnostics,
             )
-        val inlineErrorDiagnostics =
-            commentDiagnostics.filterIsInstance<ExpectedDiagnostic.Error>()
+        val inlineErrorDiagnostics = commentDiagnostics.filterIsInstance<ExpectedDiagnostic.Error>()
         val allExpectedDiagnostics = expectedDiagnostics + commentDiagnostics
         allExpectedDiagnostics.forEach { expectedDiagnostic ->
             assertTrue(
@@ -302,9 +296,7 @@ abstract class IntegrationTestSupport {
             },
         )
         val unmatchedTypedDiagnostics =
-            expectedDiagnostics.filterNot { expected ->
-                diagnostics.any(expected::matches)
-            }
+            expectedDiagnostics.filterNot { expected -> diagnostics.any(expected::matches) }
         assertTrue(
             unmatchedTypedDiagnostics.isEmpty(),
             buildString {
@@ -330,15 +322,16 @@ abstract class IntegrationTestSupport {
         line: Int? = null,
     ): ExpectedDiagnostic.Error =
         inferDiagnosticIdsFromFragments(fragments.asList()).let { diagnosticIds ->
-            val effectiveFragments =
-                fragments.toList() + automaticNarrativeFragments(diagnosticIds)
+            val effectiveFragments = fragments.toList() + automaticNarrativeFragments(diagnosticIds)
             ExpectedDiagnostic.Error(
                 diagnosticIds = diagnosticIds,
                 file = file,
                 line = line,
                 description =
                     buildString {
-                        diagnosticIds?.joinToString(prefix = "ids ", separator = " or ")?.let(::append)
+                        diagnosticIds
+                            ?.joinToString(prefix = "ids ", separator = " or ")
+                            ?.let(::append)
                         if (isNotEmpty()) {
                             append(", ")
                         }
@@ -382,12 +375,14 @@ abstract class IntegrationTestSupport {
             diagnosticId = TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT,
             headlineFragments =
                 listOf("no context argument") +
-                    if (phase == DiagnosticPhase.IR) listOf("required instance") else emptyList<String>() +
-                    headlineFragments.toList(),
+                    if (phase == DiagnosticPhase.IR) listOf("required instance")
+                    else emptyList<String>() + headlineFragments.toList(),
             whyFragments =
                 if (phase == DiagnosticPhase.IR) {
                     if (whyFragments.isEmpty()) {
-                        listOf("no matching local context value or @instance rule could produce that goal")
+                        listOf(
+                            "no matching local context value or @instance rule could produce that goal"
+                        )
                     } else {
                         whyFragments
                     }
@@ -481,7 +476,8 @@ abstract class IntegrationTestSupport {
                     TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE,
                     TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT,
                 ),
-            description = "ambiguous or missing-context diagnostic containing ${fragments.joinToString()}",
+            description =
+                "ambiguous or missing-context diagnostic containing ${fragments.joinToString()}",
             messagePredicate = { message ->
                 val normalized = message.lowercase()
                 (normalized.contains("ambiguous") || normalized.contains("no context argument")) &&
@@ -630,15 +626,20 @@ abstract class IntegrationTestSupport {
                 enableContextParameters = enableContextParameters,
                 compilerArguments = compilerArguments,
             )
-        val javaExecutable = Path.of(System.getProperty("java.home"), "bin", "java").toAbsolutePath().toString()
+        val javaExecutable =
+            Path.of(System.getProperty("java.home"), "bin", "java").toAbsolutePath().toString()
         val process =
             ProcessBuilder(
-                javaExecutable,
-                "-cp",
-                (listOf(artifacts.outputDir) + artifacts.runtimeClasspathEntries)
-                    .joinToString(separator = java.io.File.pathSeparator) { path -> path.toAbsolutePath().toString() },
-                mainClass,
-            ).redirectErrorStream(true)
+                    javaExecutable,
+                    "-cp",
+                    (listOf(artifacts.outputDir) + artifacts.runtimeClasspathEntries).joinToString(
+                        separator = java.io.File.pathSeparator
+                    ) { path ->
+                        path.toAbsolutePath().toString()
+                    },
+                    mainClass,
+                )
+                .redirectErrorStream(true)
                 .start()
         val stdout = process.inputStream.readAllBytes().toString(Charsets.UTF_8)
         val exitCode = process.waitFor()
@@ -646,19 +647,21 @@ abstract class IntegrationTestSupport {
         assertEquals(expectedStdout.trim(), stdout.trim())
     }
 
-    protected fun runCompiledMain(
-        artifacts: CompilationArtifacts,
-        mainClass: String,
-    ): String {
-        val javaExecutable = Path.of(System.getProperty("java.home"), "bin", "java").toAbsolutePath().toString()
+    protected fun runCompiledMain(artifacts: CompilationArtifacts, mainClass: String): String {
+        val javaExecutable =
+            Path.of(System.getProperty("java.home"), "bin", "java").toAbsolutePath().toString()
         val process =
             ProcessBuilder(
-                javaExecutable,
-                "-cp",
-                (listOf(artifacts.outputDir) + artifacts.runtimeClasspathEntries)
-                    .joinToString(separator = java.io.File.pathSeparator) { path -> path.toAbsolutePath().toString() },
-                mainClass,
-            ).redirectErrorStream(true)
+                    javaExecutable,
+                    "-cp",
+                    (listOf(artifacts.outputDir) + artifacts.runtimeClasspathEntries).joinToString(
+                        separator = java.io.File.pathSeparator
+                    ) { path ->
+                        path.toAbsolutePath().toString()
+                    },
+                    mainClass,
+                )
+                .redirectErrorStream(true)
                 .start()
         val stdout = process.inputStream.readAllBytes().toString(Charsets.UTF_8)
         val exitCode = process.waitFor()
@@ -666,10 +669,7 @@ abstract class IntegrationTestSupport {
         return stdout.trim()
     }
 
-    protected fun assertOutputContains(
-        output: String,
-        vararg fragments: String,
-    ) {
+    protected fun assertOutputContains(output: String, vararg fragments: String) {
         fragments.forEach { fragment ->
             assertTrue(
                 output.contains(fragment),
@@ -683,10 +683,7 @@ abstract class IntegrationTestSupport {
         }
     }
 
-    protected fun assertOutputNotContains(
-        output: String,
-        vararg fragments: String,
-    ) {
+    protected fun assertOutputNotContains(output: String, vararg fragments: String) {
         fragments.forEach { fragment ->
             assertFalse(
                 output.contains(fragment),
@@ -719,11 +716,7 @@ abstract class IntegrationTestSupport {
                 enableContextParameters = enableContextParameters,
                 compilerArguments = compilerArguments,
             )
-        assertEquals(
-            ExitCode.OK,
-            result.exitCode,
-            result.stdout,
-        )
+        assertEquals(ExitCode.OK, result.exitCode, result.stdout)
         return result.artifacts
     }
 
@@ -831,10 +824,7 @@ abstract class IntegrationTestSupport {
                 stepSettings = settings,
                 stepDependencies = dependencies,
             )
-        return HarnessCompilationPlan(
-            root = root,
-            orderedSteps = buildCompilationOrder(root),
-        )
+        return HarnessCompilationPlan(root = root, orderedSteps = buildCompilationOrder(root))
     }
 
     private fun buildCompilationOrder(root: HarnessCompilationStep): List<HarnessCompilationStep> {
@@ -858,11 +848,7 @@ abstract class IntegrationTestSupport {
                         requireNotNull(resultsByStepId[dependency.id]) {
                             "Missing compilation result for dependency step ${dependency.name}"
                         }
-                    assertEquals(
-                        ExitCode.OK,
-                        dependencyResult.exitCode,
-                        dependencyResult.stdout,
-                    )
+                    assertEquals(ExitCode.OK, dependencyResult.exitCode, dependencyResult.stdout)
                     dependencyResult.artifacts
                 }
             resultsByStepId[step.id] = compileSingleStep(step, dependencyArtifacts)
@@ -879,14 +865,15 @@ abstract class IntegrationTestSupport {
         require(step.settings.useTypeclassPlugin || step.settings.pluginOptions.isEmpty()) {
             "Typeclass plugin options require the typeclass plugin for step ${step.name}"
         }
-        val workingDir = registerTempRootForCurrentTest(createTempDirectory(prefix = "typeclass-${step.id}-${sanitizeStepName(step.name)}-"))
+        val workingDir =
+            registerTempRootForCurrentTest(
+                createTempDirectory(prefix = "typeclass-${step.id}-${sanitizeStepName(step.name)}-")
+            )
         val outputDir = workingDir.resolve("out")
         outputDir.createDirectories()
         val supportSources =
             buildMap<String, String> {
-                step.settings.requiredPlugins.forEach { plugin ->
-                    putAll(plugin.supportSources)
-                }
+                step.settings.requiredPlugins.forEach { plugin -> putAll(plugin.supportSources) }
             }
         val effectiveSources = supportSources + step.sources
         val sourceFiles =
@@ -904,7 +891,8 @@ abstract class IntegrationTestSupport {
             if (step.settings.useTypeclassPlugin) {
                 locateBuiltJar(pluginProjectRoot.resolve("build/libs"), "kotlin-typeclasses-plugin")
                     .let { builtJar ->
-                        val isolatedPluginJar = workingDir.resolve("plugin").resolve(builtJar.fileName.toString())
+                        val isolatedPluginJar =
+                            workingDir.resolve("plugin").resolve(builtJar.fileName.toString())
                         isolatedPluginJar.parent.createDirectories()
                         Files.copy(builtJar, isolatedPluginJar)
                         isolatedPluginJar
@@ -917,73 +905,83 @@ abstract class IntegrationTestSupport {
         val resolvedSupport = resolveHarnessSupport(step.settings.requiredPlugins)
 
         pluginJar?.let { isolatedPluginJar ->
-            assertTrue(isolatedPluginJar.toFile().isFile, "Plugin jar is missing at $isolatedPluginJar")
+            assertTrue(
+                isolatedPluginJar.toFile().isFile,
+                "Plugin jar is missing at $isolatedPluginJar",
+            )
         }
-        assertTrue(runtimeClasspathEntry.toFile().exists(), "Runtime classpath entry is missing at $runtimeClasspathEntry")
+        assertTrue(
+            runtimeClasspathEntry.toFile().exists(),
+            "Runtime classpath entry is missing at $runtimeClasspathEntry",
+        )
         assertTrue(stdlibJar.toFile().isFile, "Kotlin stdlib jar is missing at $stdlibJar")
         resolvedSupport.runtimeClasspathEntries.forEach { runtimeJar ->
             assertTrue(runtimeJar.toFile().isFile, "Support runtime jar is missing at $runtimeJar")
         }
         resolvedSupport.compilerPluginJars.forEach { compilerPluginJar ->
-            assertTrue(compilerPluginJar.toFile().isFile, "Support compiler plugin jar is missing at $compilerPluginJar")
+            assertTrue(
+                compilerPluginJar.toFile().isFile,
+                "Support compiler plugin jar is missing at $compilerPluginJar",
+            )
         }
 
         val compilerPluginClasspathEntries =
-            linkedSetOf<Path>().apply {
-                pluginJar?.let(::add)
-                addAll(resolvedSupport.compilerPluginJars)
-                if (isNotEmpty() && activeKotlinVersion.startsWith("2.4")) {
-                    add(stdlibJar)
+            linkedSetOf<Path>()
+                .apply {
+                    pluginJar?.let(::add)
+                    addAll(resolvedSupport.compilerPluginJars)
+                    if (isNotEmpty() && activeKotlinVersion.startsWith("2.4")) {
+                        add(stdlibJar)
+                    }
                 }
-            }.toList()
+                .toList()
 
         val runtimeClasspathEntries =
-            linkedSetOf<Path>().apply {
-                dependencyArtifacts.forEach { artifacts ->
-                    add(artifacts.outputDir)
+            linkedSetOf<Path>()
+                .apply {
+                    dependencyArtifacts.forEach { artifacts -> add(artifacts.outputDir) }
+                    add(runtimeClasspathEntry)
+                    add(stdlibJar)
+                    addAll(resolvedSupport.runtimeClasspathEntries)
+                    dependencyArtifacts.forEach { artifacts ->
+                        addAll(artifacts.runtimeClasspathEntries)
+                    }
                 }
-                add(runtimeClasspathEntry)
-                add(stdlibJar)
-                addAll(resolvedSupport.runtimeClasspathEntries)
-                dependencyArtifacts.forEach { artifacts ->
-                    addAll(artifacts.runtimeClasspathEntries)
-                }
-            }.toList()
+                .toList()
 
         val stdout = ByteArrayOutputStream()
         val jvmTarget =
             step.settings.requiredPlugins.fold(DEFAULT_HARNESS_JVM_TARGET) { current, plugin ->
                 maxJvmTarget(current, plugin.minimumJvmTarget)
             }
-        val compilerArguments =
-            buildList {
-                if (step.settings.enableContextParameters) {
-                    add("-Xcontext-parameters")
-                }
-                add("-no-stdlib")
-                add("-no-reflect")
-                add("-jvm-target")
-                add(jvmTarget)
-                compilerPluginClasspathEntries.forEach { compilerPluginEntry ->
-                    add("-Xplugin=${compilerPluginEntry.toAbsolutePath()}")
-                }
-                addAll(resolvedSupport.compilerArguments)
-                addAll(step.settings.compilerArguments)
-                add("-classpath")
-                add(runtimeClasspathEntries.joinToString(separator = java.io.File.pathSeparator) { it.toAbsolutePath().toString() })
-                step.settings.pluginOptions.forEach { option ->
-                    add("-P")
-                    add("plugin:$TYPECLASS_PLUGIN_ID:$option")
-                }
-                add("-d")
-                add(outputDir.toAbsolutePath().toString())
-                addAll(sourceFiles.map { it.toAbsolutePath().toString() })
+        val compilerArguments = buildList {
+            if (step.settings.enableContextParameters) {
+                add("-Xcontext-parameters")
             }
-        val exitCode =
-            K2JVMCompiler().exec(
-                PrintStream(stdout),
-                *compilerArguments.toTypedArray(),
+            add("-no-stdlib")
+            add("-no-reflect")
+            add("-jvm-target")
+            add(jvmTarget)
+            compilerPluginClasspathEntries.forEach { compilerPluginEntry ->
+                add("-Xplugin=${compilerPluginEntry.toAbsolutePath()}")
+            }
+            addAll(resolvedSupport.compilerArguments)
+            addAll(step.settings.compilerArguments)
+            add("-classpath")
+            add(
+                runtimeClasspathEntries.joinToString(separator = java.io.File.pathSeparator) {
+                    it.toAbsolutePath().toString()
+                }
             )
+            step.settings.pluginOptions.forEach { option ->
+                add("-P")
+                add("plugin:$TYPECLASS_PLUGIN_ID:$option")
+            }
+            add("-d")
+            add(outputDir.toAbsolutePath().toString())
+            addAll(sourceFiles.map { it.toAbsolutePath().toString() })
+        }
+        val exitCode = K2JVMCompiler().exec(PrintStream(stdout), *compilerArguments.toTypedArray())
 
         return CompilationResult(
             exitCode = exitCode,
@@ -1001,9 +999,7 @@ abstract class IntegrationTestSupport {
 
     private fun registerTempRootForCurrentTest(path: Path): Path =
         path.also { candidate ->
-            synchronized(tempRootsToCleanup) {
-                tempRootsToCleanup.add(candidate)
-            }
+            synchronized(tempRootsToCleanup) { tempRootsToCleanup.add(candidate) }
         }
 
     private fun cleanupRegisteredTempRoots() {
@@ -1021,37 +1017,37 @@ abstract class IntegrationTestSupport {
     }
 
     private fun keepTestTempDirectories(): Boolean =
-        System.getenv(KEEP_TEST_TEMP_ENV)
-            ?.trim()
-            ?.lowercase()
-            ?.let { value -> value.isNotEmpty() && value != "0" && value != "false" && value != "no" }
-            ?: false
+        System.getenv(KEEP_TEST_TEMP_ENV)?.trim()?.lowercase()?.let { value ->
+            value.isNotEmpty() && value != "0" && value != "false" && value != "no"
+        } ?: false
 
     private fun locateRepositoryRoot(): Path {
-        val candidates =
-            buildList {
-                add(Path.of(System.getProperty("user.dir")).toAbsolutePath())
-                val classResourcePath = javaClass.name.replace('.', '/') + ".class"
-                val classResource = requireNotNull(javaClass.classLoader.getResource(classResourcePath)) {
+        val candidates = buildList {
+            add(Path.of(System.getProperty("user.dir")).toAbsolutePath())
+            val classResourcePath = javaClass.name.replace('.', '/') + ".class"
+            val classResource =
+                requireNotNull(javaClass.classLoader.getResource(classResourcePath)) {
                     "Could not locate $classResourcePath"
                 }
-                if (classResource.protocol == "file") {
-                    val classPath = Path.of(classResource.toURI()).toAbsolutePath()
-                    add(if (classPath.toFile().isFile) classPath.parent else classPath)
-                }
+            if (classResource.protocol == "file") {
+                val classPath = Path.of(classResource.toURI()).toAbsolutePath()
+                add(if (classPath.toFile().isFile) classPath.parent else classPath)
             }
+        }
 
         return candidates
             .asSequence()
             .flatMap { start -> generateSequence(start) { current -> current.parent } }
             .firstOrNull { candidate ->
                 candidate.resolve("settings.gradle.kts").toFile().isFile &&
-                    (
-                        candidate.resolve("compiler-plugin/build.gradle.kts").toFile().isFile ||
-                            candidate.resolve("src/main/kotlin/one/wabbit/typeclass/plugin/TypeclassCompilerPluginRegistrar.kt").toFile().isFile
-                    )
-            }
-            ?: error("Could not locate the kotlin-typeclasses repository root from $candidates")
+                    (candidate.resolve("compiler-plugin/build.gradle.kts").toFile().isFile ||
+                        candidate
+                            .resolve(
+                                "src/main/kotlin/one/wabbit/typeclass/plugin/TypeclassCompilerPluginRegistrar.kt"
+                            )
+                            .toFile()
+                            .isFile)
+            } ?: error("Could not locate the kotlin-typeclasses repository root from $candidates")
     }
 
     private fun locateCompilerPluginProjectRoot(repositoryRoot: Path): Path {
@@ -1077,20 +1073,14 @@ abstract class IntegrationTestSupport {
         error("Could not locate the kotlin-typeclasses runtime project from $repositoryRoot")
     }
 
-    private fun locateBuiltJar(
-        libsDirectory: Path,
-        artifactPrefix: String,
-    ): Path =
+    private fun locateBuiltJar(libsDirectory: Path, artifactPrefix: String): Path =
         selectSingleJar(
             candidates = directJarCandidates(libsDirectory, artifactPrefix),
             description = "built $artifactPrefix jar",
             searchRoot = libsDirectory,
         )
 
-    private fun locateBuiltJvmJar(
-        libsDirectory: Path,
-        artifactPrefix: String,
-    ): Path {
+    private fun locateBuiltJvmJar(libsDirectory: Path, artifactPrefix: String): Path {
         val jvmJars = directJarCandidates(libsDirectory, "${artifactPrefix}-jvm")
         return if (jvmJars.isNotEmpty()) {
             selectSingleJar(
@@ -1104,7 +1094,8 @@ abstract class IntegrationTestSupport {
     }
 
     private fun locateRuntimeClasspathEntry(runtimeProjectRoot: Path): Path {
-        val runtimeJar = locateBuiltJvmJar(runtimeProjectRoot.resolve("build/libs"), "kotlin-typeclasses")
+        val runtimeJar =
+            locateBuiltJvmJar(runtimeProjectRoot.resolve("build/libs"), "kotlin-typeclasses")
         if (runtimeJarContainsTypeclassApi(runtimeJar)) {
             return runtimeJar
         }
@@ -1118,30 +1109,38 @@ abstract class IntegrationTestSupport {
 
     private fun runtimeJarContainsTypeclassApi(runtimeJar: Path): Boolean =
         runCatching {
-            java.util.jar.JarFile(runtimeJar.toFile()).use { jar ->
-                jar.getEntry("one/wabbit/typeclass/Typeclass.class") != null
+                java.util.jar.JarFile(runtimeJar.toFile()).use { jar ->
+                    jar.getEntry("one/wabbit/typeclass/Typeclass.class") != null
+                }
             }
-        }.getOrDefault(false)
+            .getOrDefault(false)
 
     private fun locateStdlibJar(): Path {
-        val resource = requireNotNull(Thread.currentThread().contextClassLoader.getResource("kotlin/Unit.class")) {
-            "Could not locate kotlin/Unit.class on the test classpath"
-        }
+        val resource =
+            requireNotNull(
+                Thread.currentThread().contextClassLoader.getResource("kotlin/Unit.class")
+            ) {
+                "Could not locate kotlin/Unit.class on the test classpath"
+            }
         val externalForm = resource.toExternalForm()
         if (externalForm.startsWith("jar:file:")) {
             val jarUri = URI(externalForm.substringAfter("jar:").substringBefore("!"))
             return Path.of(jarUri)
         }
         val classpathEntry =
-            System.getProperty("java.class.path")
-                .split(java.io.File.pathSeparator)
-                .firstOrNull { entry -> "kotlin-stdlib" in entry }
+            System.getProperty("java.class.path").split(java.io.File.pathSeparator).firstOrNull {
+                entry ->
+                "kotlin-stdlib" in entry
+            }
         return requireNotNull(classpathEntry) {
-            "Could not locate kotlin-stdlib on the test classpath"
-        }.let(Path::of)
+                "Could not locate kotlin-stdlib on the test classpath"
+            }
+            .let(Path::of)
     }
 
-    private fun resolveHarnessSupport(requiredPlugins: List<CompilerHarnessPlugin>): ResolvedHarnessSupport {
+    private fun resolveHarnessSupport(
+        requiredPlugins: List<CompilerHarnessPlugin>
+    ): ResolvedHarnessSupport {
         val runtimeClasspathEntries = linkedMapOf<String, Path>()
         val compilerPluginJars = linkedMapOf<String, Path>()
         val compilerArguments = mutableListOf<String>()
@@ -1171,7 +1170,9 @@ abstract class IntegrationTestSupport {
         locatedSupportJars.computeIfAbsent(jarNamePrefix) { prefix ->
             locateClasspathJar(prefix)
                 ?: locateGradleCacheJar(prefix)
-                ?: error("Could not locate $prefix on the test classpath or in the Gradle artifact cache")
+                ?: error(
+                    "Could not locate $prefix on the test classpath or in the Gradle artifact cache"
+                )
         }
 
     private fun locateClasspathJar(jarNamePrefix: String): Path? =
@@ -1189,16 +1190,20 @@ abstract class IntegrationTestSupport {
         )
 
     private fun locateGradleCacheJar(jarNamePrefix: String): Path? {
-        val gradleCacheRoot = Path.of(System.getProperty("user.home"), ".gradle", "caches", "modules-2", "files-2.1")
+        val gradleCacheRoot =
+            Path.of(System.getProperty("user.home"), ".gradle", "caches", "modules-2", "files-2.1")
         if (!Files.isDirectory(gradleCacheRoot)) {
             return null
         }
         return selectSingleJarOrNull(
             candidates =
                 Files.walk(gradleCacheRoot).use { paths ->
-                    paths.iterator()
+                    paths
+                        .iterator()
                         .asSequence()
-                        .filter { candidate -> candidate.isRegularFile() && isMatchingJar(candidate, jarNamePrefix) }
+                        .filter { candidate ->
+                            candidate.isRegularFile() && isMatchingJar(candidate, jarNamePrefix)
+                        }
                         .sortedBy { candidate -> candidate.toAbsolutePath().toString() }
                         .toList()
                 },
@@ -1287,8 +1292,7 @@ abstract class IntegrationTestSupport {
                         TypeclassDiagnosticIds.INVALID_INSTANCE_DECL
                     normalized.startsWith("invalid equiv declaration:") ->
                         TypeclassDiagnosticIds.INVALID_EQUIV_DECL
-                    normalized.startsWith("cannot derive") ->
-                        TypeclassDiagnosticIds.CANNOT_DERIVE
+                    normalized.startsWith("cannot derive") -> TypeclassDiagnosticIds.CANNOT_DERIVE
                     else -> null
                 }
             }
@@ -1305,18 +1309,25 @@ abstract class IntegrationTestSupport {
             TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT ->
                 when {
                     parsedMessage.explicitDiagnosticId -> DiagnosticPhase.IR
-                    parsedMessage.message.lowercase().startsWith("missing typeclass instance for ") ||
-                        parsedMessage.message.lowercase().startsWith("recursive typeclass resolution for ") -> DiagnosticPhase.IR
+                    parsedMessage.message
+                        .lowercase()
+                        .startsWith("missing typeclass instance for ") ||
+                        parsedMessage.message
+                            .lowercase()
+                            .startsWith("recursive typeclass resolution for ") -> DiagnosticPhase.IR
                     else -> DiagnosticPhase.FIR
                 }
             TypeclassDiagnosticIds.INVALID_BUILTIN_EVIDENCE -> DiagnosticPhase.IR
             else ->
                 when {
                     !hasLocation &&
-                        (
-                            parsedMessage.message.lowercase().startsWith("missing typeclass instance for ") ||
-                                parsedMessage.message.lowercase().startsWith("recursive typeclass resolution for ")
-                        ) -> DiagnosticPhase.IR
+                        (parsedMessage.message
+                            .lowercase()
+                            .startsWith("missing typeclass instance for ") ||
+                            parsedMessage.message
+                                .lowercase()
+                                .startsWith("recursive typeclass resolution for ")) ->
+                        DiagnosticPhase.IR
                     hasLocation -> DiagnosticPhase.FIR
                     else -> DiagnosticPhase.UNKNOWN
                 }
@@ -1328,13 +1339,15 @@ abstract class IntegrationTestSupport {
     ): List<ExpectedDiagnostic> {
         val labeledMarkers =
             buildMap<String, SourceDiagnosticMarker> {
-                markers.filter { it.label != null }.forEach { marker ->
-                    val label = marker.label ?: error("unreachable")
-                    val previous = put(label, marker)
-                    check(previous == null) {
-                        "Duplicate source diagnostic marker label '$label' at ${marker.file}:${marker.line}"
+                markers
+                    .filter { it.label != null }
+                    .forEach { marker ->
+                        val label = marker.label ?: error("unreachable")
+                        val previous = put(label, marker)
+                        check(previous == null) {
+                            "Duplicate source diagnostic marker label '$label' at ${marker.file}:${marker.line}"
+                        }
                     }
-                }
             }
         val missingExpectedLabels = labeledMarkers.keys - labeledDiagnostics.keys
         check(missingExpectedLabels.isEmpty()) {
@@ -1383,34 +1396,42 @@ abstract class IntegrationTestSupport {
         }
     }
 
-    private fun parseSourceDiagnosticMarkers(sources: Map<String, String>): List<SourceDiagnosticMarker> =
+    private fun parseSourceDiagnosticMarkers(
+        sources: Map<String, String>
+    ): List<SourceDiagnosticMarker> =
         sources.entries.flatMap { (file, source) ->
-            source.lineSequence().mapIndexedNotNull { index, line ->
-                val commentStart = line.indexOf("//")
-                if (commentStart < 0) {
-                    return@mapIndexedNotNull null
+            source
+                .lineSequence()
+                .mapIndexedNotNull { index, line ->
+                    val commentStart = line.indexOf("//")
+                    if (commentStart < 0) {
+                        return@mapIndexedNotNull null
+                    }
+                    val comment = line.substring(commentStart + 2)
+                    val markers = sourceDiagnosticMarkerRegex.findAll(comment).toList()
+                    if (markers.isEmpty()) {
+                        return@mapIndexedNotNull null
+                    }
+                    markers.map { marker ->
+                        SourceDiagnosticMarker(
+                            label = marker.groupValues[1].ifEmpty { null },
+                            severity = parseDiagnosticSeverity(marker.groupValues[2]),
+                            diagnosticId = marker.groupValues[3].ifEmpty { null },
+                            file = file,
+                            line = index + 1,
+                        )
+                    }
                 }
-                val comment = line.substring(commentStart + 2)
-                val markers = sourceDiagnosticMarkerRegex.findAll(comment).toList()
-                if (markers.isEmpty()) {
-                    return@mapIndexedNotNull null
-                }
-                markers.map { marker ->
-                    SourceDiagnosticMarker(
-                        label = marker.groupValues[1].ifEmpty { null },
-                        severity = parseDiagnosticSeverity(marker.groupValues[2]),
-                        diagnosticId = marker.groupValues[3].ifEmpty { null },
-                        file = file,
-                        line = index + 1,
-                    )
-                }
-            }.flatten().toList()
+                .flatten()
+                .toList()
         }
 
     private fun parseDiagnosticSeverity(token: String): DiagnosticSeverity =
         when (token.lowercase()) {
-            "e", "error" -> DiagnosticSeverity.ERROR
-            "w", "warning" -> DiagnosticSeverity.WARNING
+            "e",
+            "error" -> DiagnosticSeverity.ERROR
+            "w",
+            "warning" -> DiagnosticSeverity.WARNING
             else -> error("Unsupported diagnostic severity token: $token")
         }
 
@@ -1424,37 +1445,40 @@ abstract class IntegrationTestSupport {
     private fun automaticNarrativeFragments(diagnosticIds: Set<String>?): List<String> =
         when {
             diagnosticIds == null -> emptyList()
-            TypeclassDiagnosticIds.INVALID_INSTANCE_DECL in diagnosticIds -> invalidInstanceNarrativeFragments()
-            TypeclassDiagnosticIds.INVALID_EQUIV_DECL in diagnosticIds -> invalidEquivNarrativeFragments()
-            TypeclassDiagnosticIds.CANNOT_DERIVE in diagnosticIds -> cannotDeriveNarrativeFragments()
-            TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE in diagnosticIds -> ambiguousNarrativeFragments()
+            TypeclassDiagnosticIds.INVALID_INSTANCE_DECL in diagnosticIds ->
+                invalidInstanceNarrativeFragments()
+            TypeclassDiagnosticIds.INVALID_EQUIV_DECL in diagnosticIds ->
+                invalidEquivNarrativeFragments()
+            TypeclassDiagnosticIds.CANNOT_DERIVE in diagnosticIds ->
+                cannotDeriveNarrativeFragments()
+            TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE in diagnosticIds ->
+                ambiguousNarrativeFragments()
             else -> emptyList()
         }
 
-    private fun invalidInstanceNarrativeFragments(): List<String> = listOf("why it failed", "how to fix")
+    private fun invalidInstanceNarrativeFragments(): List<String> =
+        listOf("why it failed", "how to fix")
 
-    private fun invalidEquivNarrativeFragments(): List<String> = listOf("why it failed", "how to fix")
+    private fun invalidEquivNarrativeFragments(): List<String> =
+        listOf("why it failed", "how to fix")
 
-    private fun cannotDeriveNarrativeFragments(): List<String> = listOf("why it failed", "how to fix")
+    private fun cannotDeriveNarrativeFragments(): List<String> =
+        listOf("why it failed", "how to fix")
 
-    private fun ambiguousNarrativeFragments(): List<String> = listOf("why it failed", "how to fix", "candidates")
+    private fun ambiguousNarrativeFragments(): List<String> =
+        listOf("why it failed", "how to fix", "candidates")
 
-    private fun directJarCandidates(
-        libsDirectory: Path,
-        jarNamePrefix: String,
-    ): List<Path> =
-        libsDirectory.toFile().listFiles()
+    private fun directJarCandidates(libsDirectory: Path, jarNamePrefix: String): List<Path> =
+        libsDirectory
+            .toFile()
+            .listFiles()
             ?.asSequence()
             ?.filter { file -> file.isFile && isMatchingJar(file.toPath(), jarNamePrefix) }
             ?.map { file -> file.toPath() }
             ?.sortedBy { candidate -> candidate.fileName.toString() }
-            ?.toList()
-            ?: emptyList()
+            ?.toList() ?: emptyList()
 
-    private fun isMatchingJar(
-        candidate: Path,
-        jarNamePrefix: String,
-    ): Boolean {
+    private fun isMatchingJar(candidate: Path, jarNamePrefix: String): Boolean {
         val fileName = candidate.fileName.toString()
         return fileName.endsWith(".jar") &&
             !fileName.endsWith("-sources.jar") &&
@@ -1470,10 +1494,7 @@ abstract class IntegrationTestSupport {
         selectSingleJarOrNull(candidates, description)
             ?: error("Could not locate $description in $searchRoot")
 
-    private fun selectSingleJarOrNull(
-        candidates: List<Path>,
-        description: String,
-    ): Path? =
+    private fun selectSingleJarOrNull(candidates: List<Path>, description: String): Path? =
         when (candidates.size) {
             0 -> null
             1 -> candidates.single()
@@ -1485,18 +1506,19 @@ abstract class IntegrationTestSupport {
                             candidates.forEach { candidate ->
                                 appendLine(candidate.toAbsolutePath().toString())
                             }
-                        },
+                        }
                     )
         }
 
-    private fun preferredJarCandidate(
-        candidates: List<Path>,
-        description: String,
-    ): Path? {
+    private fun preferredJarCandidate(candidates: List<Path>, description: String): Path? {
         if (description == "built kotlin-typeclasses-plugin jar") {
-            candidates.firstOrNull { candidate ->
-                candidate.fileName.toString().contains("-kotlin-$activeKotlinVersion")
-            }?.let { return it }
+            candidates
+                .firstOrNull { candidate ->
+                    candidate.fileName.toString().contains("-kotlin-$activeKotlinVersion")
+                }
+                ?.let {
+                    return it
+                }
             return candidates.firstOrNull { candidate ->
                 candidate.fileName.toString().contains("-kotlin-")
             }
@@ -1543,17 +1565,16 @@ abstract class IntegrationTestSupport {
                     val why = narrative?.reason?.lowercase()
                     val fix = narrative?.fix?.lowercase()
                     headlineFragments.all { headline.contains(it.lowercase()) } &&
-                        whyFragments.all { fragment -> why?.contains(fragment.lowercase()) == true } &&
+                        whyFragments.all { fragment ->
+                            why?.contains(fragment.lowercase()) == true
+                        } &&
                         fixFragments.all { fragment -> fix?.contains(fragment.lowercase()) == true }
                 }
             },
         )
 }
 
-data class CompilationArtifacts(
-    val outputDir: Path,
-    val runtimeClasspathEntries: List<Path>,
-)
+data class CompilationArtifacts(val outputDir: Path, val runtimeClasspathEntries: List<Path>)
 
 data class HarnessDependency(
     val name: String? = null,
@@ -1607,9 +1628,7 @@ private fun deleteRecursivelyOrThrow(path: Path) {
     if (!file.exists()) {
         return
     }
-    check(file.deleteRecursively()) {
-        "Failed to delete temporary test directory $path"
-    }
+    check(file.deleteRecursively()) { "Failed to delete temporary test directory $path" }
 }
 
 enum class DiagnosticSeverity {
@@ -1634,22 +1653,21 @@ data class ReportedDiagnostic(
     val rawLine: String,
 ) {
     override fun toString(): String {
-        val location =
-            buildString {
-                if (file != null) {
-                    append(file)
-                }
-                if (line != null) {
-                    if (isNotEmpty()) {
-                        append(':')
-                    }
-                    append(line)
-                }
-                if (column != null) {
-                    append(':')
-                    append(column)
-                }
+        val location = buildString {
+            if (file != null) {
+                append(file)
             }
+            if (line != null) {
+                if (isNotEmpty()) {
+                    append(':')
+                }
+                append(line)
+            }
+            if (column != null) {
+                append(':')
+                append(column)
+            }
+        }
         return buildString {
             if (location.isNotEmpty()) {
                 append(location)
@@ -1684,26 +1702,26 @@ private data class SourceDiagnosticMarker(
     val file: String,
     val line: Int,
 ) {
-    fun render(): String =
-        buildString {
-            label?.let {
-                append(it)
-                append('@')
-            }
-            append(
-                when (severity) {
-                    DiagnosticSeverity.ERROR -> 'E'
-                    DiagnosticSeverity.WARNING -> 'W'
-                },
-            )
-            diagnosticId?.let {
-                append(':')
-                append(it)
-            }
+    fun render(): String = buildString {
+        label?.let {
+            append(it)
+            append('@')
         }
+        append(
+            when (severity) {
+                DiagnosticSeverity.ERROR -> 'E'
+                DiagnosticSeverity.WARNING -> 'W'
+            }
+        )
+        diagnosticId?.let {
+            append(':')
+            append(it)
+        }
+    }
 }
 
-sealed class ExpectedDiagnostic private constructor(
+sealed class ExpectedDiagnostic
+private constructor(
     private val severity: DiagnosticSeverity,
     private val diagnosticIds: Set<String>?,
     private val phase: DiagnosticPhase?,
@@ -1734,7 +1752,8 @@ sealed class ExpectedDiagnostic private constructor(
         }
         val normalizedExpected = file.replace('\\', '/')
         val normalizedActual = actualFile.replace('\\', '/')
-        return normalizedActual == normalizedExpected || normalizedActual.endsWith("/$normalizedExpected")
+        return normalizedActual == normalizedExpected ||
+            normalizedActual.endsWith("/$normalizedExpected")
     }
 
     private fun matchesLocation(actual: ReportedDiagnostic): Boolean {
@@ -1749,23 +1768,22 @@ sealed class ExpectedDiagnostic private constructor(
         return matchesFile(actual.file) && (line == null || actual.line == line)
     }
 
-    override fun toString(): String =
-        buildString {
-            append(severity.name.lowercase())
+    override fun toString(): String = buildString {
+        append(severity.name.lowercase())
+        append('(')
+        append(file ?: "*")
+        append(':')
+        append(line ?: "*")
+        append(", ")
+        diagnosticIds?.joinToString(prefix = "[", postfix = "] ")?.let(::append)
+        phase?.let { expectedPhase ->
             append('(')
-            append(file ?: "*")
-            append(':')
-            append(line ?: "*")
-            append(", ")
-            diagnosticIds?.joinToString(prefix = "[", postfix = "] ")?.let(::append)
-            phase?.let { expectedPhase ->
-                append('(')
-                append(expectedPhase.name)
-                append(") ")
-            }
-            append(description)
-            append(')')
+            append(expectedPhase.name)
+            append(") ")
         }
+        append(description)
+        append(')')
+    }
 
     class Error(
         file: String? = null,
@@ -1775,7 +1793,8 @@ sealed class ExpectedDiagnostic private constructor(
         messageRegex: String? = null,
         description: String? = null,
         messagePredicate: ((String) -> Boolean)? = null,
-    ) : ExpectedDiagnostic(
+    ) :
+        ExpectedDiagnostic(
             severity = DiagnosticSeverity.ERROR,
             diagnosticIds = diagnosticIds,
             phase = phase,
@@ -1793,7 +1812,8 @@ sealed class ExpectedDiagnostic private constructor(
         messageRegex: String? = null,
         description: String? = null,
         messagePredicate: ((String) -> Boolean)? = null,
-    ) : ExpectedDiagnostic(
+    ) :
+        ExpectedDiagnostic(
             severity = DiagnosticSeverity.WARNING,
             diagnosticIds = diagnosticIds,
             phase = phase,
@@ -1833,34 +1853,33 @@ sealed class ExpectedDiagnostic private constructor(
 sealed interface CompilerHarnessPlugin {
     val supportSources: Map<String, String>
         get() = emptyMap()
+
     val runtimeClasspathJarMarkers: List<String>
     val compilerPluginJarMarkers: List<String>
         get() = emptyList()
+
     val compilerPluginId: String?
         get() = null
+
     val compilerPluginOptions: List<String>
         get() = emptyList()
+
     val compilerArguments: List<String>
         get() = emptyList()
+
     val minimumJvmTarget: String
         get() = "1.8"
 
     data object Serialization : CompilerHarnessPlugin {
         override val runtimeClasspathJarMarkers: List<String> =
-            listOf(
-                "kotlinx-serialization-core-jvm",
-                "kotlinx-serialization-json-jvm",
-            )
+            listOf("kotlinx-serialization-core-jvm", "kotlinx-serialization-json-jvm")
         override val compilerPluginJarMarkers: List<String> =
             listOf("kotlin-serialization-compiler-plugin-embeddable")
     }
 
     data object SerializationRuntime : CompilerHarnessPlugin {
         override val runtimeClasspathJarMarkers: List<String> =
-            listOf(
-                "kotlinx-serialization-core-jvm",
-                "kotlinx-serialization-json-jvm",
-            )
+            listOf("kotlinx-serialization-core-jvm", "kotlinx-serialization-json-jvm")
     }
 
     data object CoroutinesRuntime : CompilerHarnessPlugin {
@@ -1882,9 +1901,8 @@ sealed interface CompilerHarnessPlugin {
         override val minimumJvmTarget: String = "11"
     }
 
-    data class PowerAssert(
-        val functions: List<String> = listOf("kotlin.assert"),
-    ) : CompilerHarnessPlugin {
+    data class PowerAssert(val functions: List<String> = listOf("kotlin.assert")) :
+        CompilerHarnessPlugin {
         override val runtimeClasspathJarMarkers: List<String> = emptyList()
         override val compilerPluginJarMarkers: List<String> =
             listOf("kotlin-power-assert-compiler-plugin-embeddable")
@@ -1905,7 +1923,8 @@ sealed interface CompilerHarnessPlugin {
 
                         public fun readInt(): Int = 0
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "android/os/Parcelable.kt" to
                     """
                     package android.os
@@ -1921,39 +1940,30 @@ sealed interface CompilerHarnessPlugin {
                             public fun newArray(size: Int): Array<T?>
                         }
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
-        override val runtimeClasspathJarMarkers: List<String> =
-            listOf("kotlin-parcelize-runtime")
-        override val compilerPluginJarMarkers: List<String> =
-            listOf("kotlin-parcelize-compiler")
+        override val runtimeClasspathJarMarkers: List<String> = listOf("kotlin-parcelize-runtime")
+        override val compilerPluginJarMarkers: List<String> = listOf("kotlin-parcelize-compiler")
         override val compilerPluginId: String = "org.jetbrains.kotlin.parcelize"
     }
 
     data object AtomicFu : CompilerHarnessPlugin {
-        override val runtimeClasspathJarMarkers: List<String> =
-            listOf("atomicfu-jvm")
+        override val runtimeClasspathJarMarkers: List<String> = listOf("atomicfu-jvm")
         override val compilerPluginJarMarkers: List<String> =
             listOf("kotlin-atomicfu-compiler-plugin-embeddable")
     }
 
-    data class AllOpen(
-        val annotations: List<String>,
-        val presets: List<String> = emptyList(),
-    ) : CompilerHarnessPlugin {
+    data class AllOpen(val annotations: List<String>, val presets: List<String> = emptyList()) :
+        CompilerHarnessPlugin {
         override val runtimeClasspathJarMarkers: List<String> = emptyList()
         override val compilerPluginJarMarkers: List<String> =
             listOf("kotlin-allopen-compiler-plugin-embeddable")
         override val compilerPluginId: String = "org.jetbrains.kotlin.allopen"
-        override val compilerPluginOptions: List<String> =
-            buildList {
-                annotations.forEach { annotationFqName ->
-                    add("annotation=$annotationFqName")
-                }
-                presets.forEach { presetName ->
-                    add("preset=$presetName")
-                }
-            }
+        override val compilerPluginOptions: List<String> = buildList {
+            annotations.forEach { annotationFqName -> add("annotation=$annotationFqName") }
+            presets.forEach { presetName -> add("preset=$presetName") }
+        }
     }
 
     data class NoArg(
@@ -1965,18 +1975,13 @@ sealed interface CompilerHarnessPlugin {
         override val compilerPluginJarMarkers: List<String> =
             listOf("kotlin-noarg-compiler-plugin-embeddable")
         override val compilerPluginId: String = "org.jetbrains.kotlin.noarg"
-        override val compilerPluginOptions: List<String> =
-            buildList {
-                annotations.forEach { annotationFqName ->
-                    add("annotation=$annotationFqName")
-                }
-                presets.forEach { presetName ->
-                    add("preset=$presetName")
-                }
-                if (invokeInitializers) {
-                    add("invokeInitializers=true")
-                }
+        override val compilerPluginOptions: List<String> = buildList {
+            annotations.forEach { annotationFqName -> add("annotation=$annotationFqName") }
+            presets.forEach { presetName -> add("preset=$presetName") }
+            if (invokeInitializers) {
+                add("invokeInitializers=true")
             }
+        }
     }
 
     data class External(

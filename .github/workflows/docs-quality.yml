@@ -1,0 +1,34 @@
+name: Docs Quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dokka:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: corretto
+          java-version: "21"
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Ensure Gradle wrapper is executable
+        run: chmod +x ./gradlew
+
+      - name: Build Dokka documentation
+        run: ./gradlew --no-daemon :kotlin-typeclasses:dokkaGeneratePublicationHtml :kotlin-typeclasses-plugin:dokkaGeneratePublicationHtml :kotlin-typeclasses-gradle-plugin:dokkaGeneratePublicationHtml :kotlin-typeclasses-ij-plugin:dokkaGeneratePublicationHtml

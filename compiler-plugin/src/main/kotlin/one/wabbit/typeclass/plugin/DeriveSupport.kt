@@ -10,16 +10,15 @@ package one.wabbit.typeclass.plugin
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.fir.FirSession
+import org.jetbrains.kotlin.fir.declarations.FirRegularClass
+import org.jetbrains.kotlin.fir.declarations.findArgumentByName
 import org.jetbrains.kotlin.fir.declarations.getAnnotationsByClassId
+import org.jetbrains.kotlin.fir.declarations.unwrapVarargValue
 import org.jetbrains.kotlin.fir.expressions.FirAnnotation
 import org.jetbrains.kotlin.fir.expressions.FirAnnotationCall
 import org.jetbrains.kotlin.fir.expressions.FirExpression
 import org.jetbrains.kotlin.fir.expressions.FirVarargArgumentsExpression
-import org.jetbrains.kotlin.fir.declarations.FirRegularClass
-import org.jetbrains.kotlin.fir.declarations.findArgumentByName
-import org.jetbrains.kotlin.fir.declarations.hasAnnotation
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
-import org.jetbrains.kotlin.fir.declarations.unwrapVarargValue
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.types.classId
 import org.jetbrains.kotlin.fir.types.coneType
@@ -28,17 +27,17 @@ import org.jetbrains.kotlin.fir.types.resolvedType
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.Name
 
-internal enum class DeriveMethodContract(
-    val methodName: String,
-    val metadataClassId: ClassId,
-) {
+internal enum class DeriveMethodContract(val methodName: String, val metadataClassId: ClassId) {
     PRODUCT("deriveProduct", PRODUCT_TYPECLASS_METADATA_CLASS_ID),
     SUM("deriveSum", SUM_TYPECLASS_METADATA_CLASS_ID),
     ENUM("deriveEnum", ENUM_TYPECLASS_METADATA_CLASS_ID),
 }
 
 internal fun FirRegularClass.supportedDerivedTypeclassIds(session: FirSession): Set<String> {
-    val generatedIds = generatedDerivedMetadata(session).mapTo(linkedSetOf()) { metadata -> metadata.typeclassId.asString() }
+    val generatedIds =
+        generatedDerivedMetadata(session).mapTo(linkedSetOf()) { metadata ->
+            metadata.typeclassId.asString()
+        }
     val explicitIds =
         if (source == null) {
             emptySet()
@@ -52,21 +51,29 @@ internal fun FirRegularClass.supportedDerivedTypeclassIds(session: FirSession): 
     val deriveViaIds =
         if (typeParameters.isEmpty()) {
             deriveViaTypeclassIds(session).filterTo(linkedSetOf()) { typeclassId ->
-                (
-                    runCatching { ClassId.fromString(typeclassId) }.getOrNull()
-                        ?.let { classId -> typeclassTypeParameterCount(classId, session)?.let { it >= 1 } == true }
-                    ) == true
+                (runCatching { ClassId.fromString(typeclassId) }
+                    .getOrNull()
+                    ?.let { classId ->
+                        typeclassTypeParameterCount(classId, session)?.let { it >= 1 } == true
+                    }) == true
             }
         } else {
             emptySet()
         }
     val deriveEquivIds =
-        if (typeParameters.isEmpty() && deriveEquivRequests(session).any { otherClassId ->
-                (
-                    runCatching { ClassId.fromString(otherClassId) }.getOrNull()
-                        ?.let { classId -> session.regularClassSymbolOrNull(classId)?.fir?.typeParameters?.isEmpty() == true }
-                    ) == true
-            }
+        if (
+            typeParameters.isEmpty() &&
+                deriveEquivRequests(session).any { otherClassId ->
+                    (runCatching { ClassId.fromString(otherClassId) }
+                        .getOrNull()
+                        ?.let { classId ->
+                            session
+                                .regularClassSymbolOrNull(classId)
+                                ?.fir
+                                ?.typeParameters
+                                ?.isEmpty() == true
+                        }) == true
+                }
         ) {
             setOf(EQUIV_CLASS_ID.asString())
         } else {
@@ -103,7 +110,8 @@ internal fun deriveMethodContractForShape(
         classKind == ClassKind.ENUM_CLASS -> DeriveMethodContract.ENUM
         modality == Modality.SEALED -> DeriveMethodContract.SUM
         classKind == ClassKind.OBJECT -> DeriveMethodContract.PRODUCT
-        modality == Modality.FINAL && classKind != ClassKind.INTERFACE -> DeriveMethodContract.PRODUCT
+        modality == Modality.FINAL && classKind != ClassKind.INTERFACE ->
+            DeriveMethodContract.PRODUCT
         else -> null
     }
 
@@ -127,54 +135,62 @@ internal fun FirRegularClass.requiredDeriveMethodContractForDeriveShape(): Deriv
 
 internal fun FirRegularClass.generatedDerivedTypeclassIds(session: FirSession): Set<String> {
     val ownerId = symbol.classId.asString()
-    return generatedDerivedMetadata(session).mapTo(linkedSetOf()) { metadata -> metadata.typeclassId.asString() }
+    return generatedDerivedMetadata(session).mapTo(linkedSetOf()) { metadata ->
+        metadata.typeclassId.asString()
+    }
 }
 
-internal fun FirRegularClass.generatedDerivedMetadata(session: FirSession): List<GeneratedDerivedMetadata> {
+internal fun FirRegularClass.generatedDerivedMetadata(
+    session: FirSession
+): List<GeneratedDerivedMetadata> {
     val ownerId = symbol.classId.asString()
     val generatedAnnotations =
         buildList {
-            addAll(
-                resolvedAnnotationsByClassId(
-                    annotationClassId = GENERATED_INSTANCE_ANNOTATION_CLASS_ID,
-                    session = session,
-                ),
-            )
-            addAll(
-                buildList {
-                    for (annotation in
-                        resolvedAnnotationsByClassId(
-                            annotationClassId = GENERATED_INSTANCE_ANNOTATION_CONTAINER_CLASS_ID,
-                            session = session,
-                        )
-                    ) {
-                        addAll(annotation.containedAnnotationArguments())
-                    }
-                },
-            )
-        }.ifEmpty {
-            buildList {
                 addAll(
-                    annotations
-                        .filterIsInstance<FirAnnotationCall>()
-                        .filter { annotation ->
-                            annotation.annotationTypeRef.coneType.classId == GENERATED_INSTANCE_ANNOTATION_CLASS_ID
-                        },
+                    resolvedAnnotationsByClassId(
+                        annotationClassId = GENERATED_INSTANCE_ANNOTATION_CLASS_ID,
+                        session = session,
+                    )
                 )
                 addAll(
                     buildList {
-                        for (annotation in annotations) {
-                            val annotationCall = annotation as? FirAnnotationCall ?: continue
-                            if (annotationCall.annotationTypeRef.coneType.classId == GENERATED_INSTANCE_ANNOTATION_CONTAINER_CLASS_ID) {
-                                addAll(annotationCall.containedAnnotationArguments())
-                            }
+                        for (annotation in
+                            resolvedAnnotationsByClassId(
+                                annotationClassId =
+                                    GENERATED_INSTANCE_ANNOTATION_CONTAINER_CLASS_ID,
+                                session = session,
+                            )) {
+                            addAll(annotation.containedAnnotationArguments())
                         }
-                    },
+                    }
                 )
             }
-        }
+            .ifEmpty {
+                buildList {
+                    addAll(
+                        annotations.filterIsInstance<FirAnnotationCall>().filter { annotation ->
+                            annotation.annotationTypeRef.coneType.classId ==
+                                GENERATED_INSTANCE_ANNOTATION_CLASS_ID
+                        }
+                    )
+                    addAll(
+                        buildList {
+                            for (annotation in annotations) {
+                                val annotationCall = annotation as? FirAnnotationCall ?: continue
+                                if (
+                                    annotationCall.annotationTypeRef.coneType.classId ==
+                                        GENERATED_INSTANCE_ANNOTATION_CONTAINER_CLASS_ID
+                                ) {
+                                    addAll(annotationCall.containedAnnotationArguments())
+                                }
+                            }
+                        }
+                    )
+                }
+            }
     if (generatedAnnotations.isEmpty() && source == null) {
-        val binaryMetadata = BinaryGeneratedDerivedMetadataRegistry.generatedMetadataFor(session, symbol.classId)
+        val binaryMetadata =
+            BinaryGeneratedDerivedMetadataRegistry.generatedMetadataFor(session, symbol.classId)
         if (binaryMetadata.isNotEmpty()) {
             return binaryMetadata
         }
@@ -190,50 +206,42 @@ internal fun FirRegularClass.generatedDerivedMetadata(session: FirSession): List
     }
 }
 
-private fun FirAnnotation.getStringArgumentCompat(
-    name: String,
-    session: FirSession,
-): String? =
+private fun FirAnnotation.getStringArgumentCompat(name: String, session: FirSession): String? =
     typeclassGetStringArgument(Name.identifier(name), session)
-        ?: ((this as? FirAnnotationCall)
-            ?.argumentMapping
-            ?.mapping
-            ?.get(Name.identifier(name)) as? org.jetbrains.kotlin.fir.expressions.FirLiteralExpression)
+        ?: ((this as? FirAnnotationCall)?.argumentMapping?.mapping?.get(Name.identifier(name))
+                as? org.jetbrains.kotlin.fir.expressions.FirLiteralExpression)
             ?.value as? String
-        ?: (findArgumentByName(Name.identifier(name)) as? org.jetbrains.kotlin.fir.expressions.FirLiteralExpression)
+        ?: (findArgumentByName(Name.identifier(name))
+                as? org.jetbrains.kotlin.fir.expressions.FirLiteralExpression)
             ?.value as? String
 
 internal fun FirRegularClass.resolvedAnnotationsByClassId(
     annotationClassId: ClassId,
     session: FirSession,
-) : List<FirAnnotation> {
+): List<FirAnnotation> {
     val resolvedWithArguments =
-        symbol.resolvedAnnotationsWithArguments
-            .getAnnotationsByClassId(annotationClassId, session)
+        symbol.resolvedAnnotationsWithArguments.getAnnotationsByClassId(annotationClassId, session)
     if (resolvedWithArguments.isNotEmpty()) {
         return resolvedWithArguments
     }
     val resolvedWithClassIds =
-        symbol.resolvedAnnotationsWithClassIds
-            .getAnnotationsByClassId(annotationClassId, session)
+        symbol.resolvedAnnotationsWithClassIds.getAnnotationsByClassId(annotationClassId, session)
     if (resolvedWithClassIds.isNotEmpty()) {
         return resolvedWithClassIds
     }
-    return annotations
-        .getAnnotationsByClassId(annotationClassId, session)
+    return annotations.getAnnotationsByClassId(annotationClassId, session)
 }
 
 internal fun FirRegularClass.resolvedRepeatableAnnotationsByClassId(
     annotationClassId: ClassId,
     containerClassId: ClassId,
     session: FirSession,
-): List<FirAnnotation> =
-    buildList {
-        addAll(resolvedAnnotationsByClassId(annotationClassId, session))
-        for (annotation in resolvedAnnotationsByClassId(containerClassId, session)) {
-            addAll(annotation.containedAnnotationArguments())
-        }
+): List<FirAnnotation> = buildList {
+    addAll(resolvedAnnotationsByClassId(annotationClassId, session))
+    for (annotation in resolvedAnnotationsByClassId(containerClassId, session)) {
+        addAll(annotation.containedAnnotationArguments())
     }
+}
 
 private fun FirAnnotation.containedAnnotationArguments(): List<FirAnnotation> {
     val valueName = Name.identifier("value")
@@ -286,17 +294,21 @@ private fun FirAnnotation.containedAnnotationArguments(): List<FirAnnotation> {
     return annotations
 }
 
-private fun flattenContainedAnnotationArgumentExpressions(expression: FirExpression): Sequence<FirExpression> =
-    expression.typeclassCollectionLiteralArgumentsOrNull()?.flatMap(::flattenContainedAnnotationArgumentExpressions)
+private fun flattenContainedAnnotationArgumentExpressions(
+    expression: FirExpression
+): Sequence<FirExpression> =
+    expression
+        .typeclassCollectionLiteralArgumentsOrNull()
+        ?.flatMap(::flattenContainedAnnotationArgumentExpressions)
         ?: when (expression) {
-            is FirVarargArgumentsExpression -> expression.arguments.asSequence().flatMap(::flattenContainedAnnotationArgumentExpressions)
+            is FirVarargArgumentsExpression ->
+                expression.arguments
+                    .asSequence()
+                    .flatMap(::flattenContainedAnnotationArgumentExpressions)
             else -> sequenceOf(expression)
         }
 
-internal fun FirAnnotation.getClassIdArgument(
-    name: String,
-    session: FirSession,
-): ClassId? =
+internal fun FirAnnotation.getClassIdArgument(name: String, session: FirSession): ClassId? =
     typeclassGetKClassArgument(Name.identifier(name), session)?.lowerBoundIfFlexible()?.classId
         ?: findArgumentByName(Name.identifier(name))
             ?.unwrapVarargValue()
@@ -311,7 +323,8 @@ internal fun FirAnnotation.getClassIdArgument(
 
                     else -> expression.resolvedType.lowerBoundIfFlexible().classId
                 }
-            }.firstOrNull()
+            }
+            .firstOrNull()
 
 internal fun FirRegularClass.deriveViaTypeclassIds(session: FirSession): Set<String> =
     if (source == null) {
@@ -320,13 +333,11 @@ internal fun FirRegularClass.deriveViaTypeclassIds(session: FirSession): Set<Str
             .mapTo(linkedSetOf()) { metadata -> metadata.typeclassId.asString() }
     } else {
         buildSet {
-            addAll(
-                deriveViaRequests(session).map { request -> request.typeclassId.asString() },
-            )
+            addAll(deriveViaRequests(session).map { request -> request.typeclassId.asString() })
             addAll(
                 generatedDerivedMetadata(session)
                     .filterIsInstance<GeneratedDerivedMetadata.DeriveVia>()
-                    .map { metadata -> metadata.typeclassId.asString() },
+                    .map { metadata -> metadata.typeclassId.asString() }
             )
         }
     }
@@ -339,13 +350,14 @@ internal fun FirRegularClass.deriveEquivRequests(session: FirSession): Set<Strin
     } else {
         buildSet {
             addAll(
-                deriveEquivRequestsValidated(session)
-                    .map { request -> request.otherClassId.asString() },
+                deriveEquivRequestsValidated(session).map { request ->
+                    request.otherClassId.asString()
+                }
             )
             addAll(
                 generatedDerivedMetadata(session)
                     .filterIsInstance<GeneratedDerivedMetadata.DeriveEquiv>()
-                    .map { metadata -> metadata.otherClassId.asString() },
+                    .map { metadata -> metadata.otherClassId.asString() }
             )
         }
     }
@@ -364,7 +376,10 @@ internal fun typeclassCompanionDeclaresDeriveMethod(
     deriveMethodName: String,
     session: FirSession,
 ): Boolean {
-    val contract = DeriveMethodContract.entries.firstOrNull { candidate -> candidate.methodName == deriveMethodName } ?: return false
+    val contract =
+        DeriveMethodContract.entries.firstOrNull { candidate ->
+            candidate.methodName == deriveMethodName
+        } ?: return false
     return typeclassCompanionResolveDeriveMethod(typeclassId, contract, session) != null
 }
 
@@ -387,10 +402,8 @@ internal fun typeclassCompanionSymbol(
     return session.companionSymbolOrNull(typeclassId)
 }
 
-internal fun typeclassTypeParameterCount(
-    typeclassId: ClassId,
-    session: FirSession,
-): Int? = session.regularClassSymbolOrNull(typeclassId)?.fir?.typeParameters?.size
+internal fun typeclassTypeParameterCount(typeclassId: ClassId, session: FirSession): Int? =
+    session.regularClassSymbolOrNull(typeclassId)?.fir?.typeParameters?.size
 
 internal fun FirSession.regularClassSymbolOrNull(classId: ClassId): FirRegularClassSymbol? =
     try {
@@ -418,7 +431,8 @@ internal fun FirRegularClassSymbol.implementsInterface(
         } else {
             val superSymbol =
                 try {
-                    session.symbolProvider.getClassLikeSymbolByClassId(superClassId) as? FirRegularClassSymbol
+                    session.symbolProvider.getClassLikeSymbolByClassId(superClassId)
+                        as? FirRegularClassSymbol
                 } catch (_: IllegalArgumentException) {
                     null
                 }
@@ -428,15 +442,14 @@ internal fun FirRegularClassSymbol.implementsInterface(
 }
 
 internal fun FirRegularClassSymbol.implementedDeriveMethodContracts(
-    session: FirSession,
-): Set<DeriveMethodContract> =
-    buildSet {
-        if (implementsInterface(TYPECLASS_DERIVER_CLASS_ID, session, linkedSetOf())) {
-            addAll(DeriveMethodContract.entries)
-        } else if (implementsInterface(PRODUCT_TYPECLASS_DERIVER_CLASS_ID, session, linkedSetOf())) {
-            add(DeriveMethodContract.PRODUCT)
-        }
+    session: FirSession
+): Set<DeriveMethodContract> = buildSet {
+    if (implementsInterface(TYPECLASS_DERIVER_CLASS_ID, session, linkedSetOf())) {
+        addAll(DeriveMethodContract.entries)
+    } else if (implementsInterface(PRODUCT_TYPECLASS_DERIVER_CLASS_ID, session, linkedSetOf())) {
+        add(DeriveMethodContract.PRODUCT)
     }
+}
 
 internal fun FirRegularClassSymbol.resolveDeriveMethod(
     contract: DeriveMethodContract,
@@ -464,23 +477,25 @@ private fun FirRegularClassSymbol.resolveInheritedDeriveMethod(
             .mapNotNull { superSymbol ->
                 superSymbol.declaredDeriveMethod(contract)
                     ?: superSymbol.resolveInheritedDeriveMethod(contract, session, visited)
-            }.distinctBy { function ->
-                function.symbol.callableId.toString()
             }
+            .distinctBy { function -> function.symbol.callableId.toString() }
     return matches.singleOrNull()
 }
 
 private fun FirRegularClassSymbol.declaredDeriveMethod(
-    contract: DeriveMethodContract,
+    contract: DeriveMethodContract
 ): FirTypeclassFunctionDeclaration? =
-    fir.declarations
-        .filterIsInstance<FirTypeclassFunctionDeclaration>()
-        .singleOrNull { function ->
-            function.isConcreteDeriveImplementation(owner = fir, contract = contract) &&
-                function.name.asString() == contract.methodName &&
-                function.valueParameters.size == 1 &&
-                function.valueParameters.single().returnTypeRef.coneType.lowerBoundIfFlexible().classId == contract.metadataClassId
-        }
+    fir.declarations.filterIsInstance<FirTypeclassFunctionDeclaration>().singleOrNull { function ->
+        function.isConcreteDeriveImplementation(owner = fir, contract = contract) &&
+            function.name.asString() == contract.methodName &&
+            function.valueParameters.size == 1 &&
+            function.valueParameters
+                .single()
+                .returnTypeRef
+                .coneType
+                .lowerBoundIfFlexible()
+                .classId == contract.metadataClassId
+    }
 
 private fun FirTypeclassFunctionDeclaration.isConcreteDeriveImplementation(
     owner: FirRegularClass,
@@ -492,4 +507,5 @@ private fun FirTypeclassFunctionDeclaration.isConcreteDeriveImplementation(
 private fun isTypeclassDeriverEnumSentinel(
     owner: FirRegularClass,
     contract: DeriveMethodContract,
-): Boolean = contract == DeriveMethodContract.ENUM && owner.symbol.classId == TYPECLASS_DERIVER_CLASS_ID
+): Boolean =
+    contract == DeriveMethodContract.ENUM && owner.symbol.classId == TYPECLASS_DERIVER_CLASS_ID

@@ -30,11 +30,12 @@ internal fun FirDeclaration.isLegalTopLevelInstanceLocation(
     session: FirSession,
     providedTypes: ProvidedTypeExpansion,
 ): Boolean {
-    val declarationPath = sourceFilePath(session)
-        // Deserialized dependency declarations are revalidated in downstream FIR sessions,
-        // but their original source file path is no longer available here.
-        // Trust the producing compilation to have enforced the top-level placement rule.
-        ?: return source == null
+    val declarationPath =
+        sourceFilePath(session)
+            // Deserialized dependency declarations are revalidated in downstream FIR sessions,
+            // but their original source file path is no longer available here.
+            // Trust the producing compilation to have enforced the top-level placement rule.
+            ?: return source == null
     return providedTypes.declaredTypes.isNotEmpty() &&
         providedTypes.declaredTypes.all { declaredType ->
             declarationPath in declaredType.topLevelInstanceHostPaths(session)
@@ -64,15 +65,30 @@ private fun TcType.topLevelInstanceHostPaths(sourceClassesById: Map<String, IrCl
 
 private fun FirSession.classifierSourceFilePath(classifierId: String): String? {
     val classId = runCatching { ClassId.fromString(classifierId) }.getOrNull() ?: return null
-    return runCatching { firProvider.getFirClassifierContainerFileIfAny(classId)?.sourceFile?.path }.getOrNull()
+    return runCatching { firProvider.getFirClassifierContainerFileIfAny(classId)?.sourceFile?.path }
+        .getOrNull()
 }
 
 private fun FirDeclaration.sourceFilePath(session: FirSession): String? =
     when (this) {
-        is FirRegularClass -> runCatching { session.firProvider.getFirClassifierContainerFileIfAny(symbol.classId)?.sourceFile?.path }.getOrNull()
+        is FirRegularClass ->
+            runCatching {
+                    session.firProvider
+                        .getFirClassifierContainerFileIfAny(symbol.classId)
+                        ?.sourceFile
+                        ?.path
+                }
+                .getOrNull()
         is FirTypeclassFunctionDeclaration ->
-            runCatching { session.firProvider.getFirCallableContainerFile(symbol)?.sourceFile?.path }.getOrNull()
-        is FirProperty -> runCatching { session.firProvider.getFirCallableContainerFile(symbol)?.sourceFile?.path }.getOrNull()
+            runCatching {
+                    session.firProvider.getFirCallableContainerFile(symbol)?.sourceFile?.path
+                }
+                .getOrNull()
+        is FirProperty ->
+            runCatching {
+                    session.firProvider.getFirCallableContainerFile(symbol)?.sourceFile?.path
+                }
+                .getOrNull()
         else -> sourcePsiFilePath()
     }
 
@@ -84,7 +100,9 @@ private fun FirDeclaration.sourcePsiFilePath(): String? {
             is KtLightSourceElement -> sourceElement.unwrapToKtPsiSourceElement()
         } ?: return null
     val file = psiSource.psi.getContainingFile()
-    return file.getVirtualFile()?.path ?: file.getOriginalFile().getVirtualFile()?.path ?: file.getName()
+    return file.getVirtualFile()?.path
+        ?: file.getOriginalFile().getVirtualFile()?.path
+        ?: file.getName()
 }
 
 private fun IrDeclarationBase.containingIrFile(): IrFile? {

@@ -53,19 +53,102 @@ Typeclasses that want enum derivation must override `deriveEnum(...)`.
 
 ## Deriver Contracts
 
-Conceptually:
+Here is a complete `Show` deriver for products, sealed sums, and enums. This example is compiled and run by the documentation consistency tests.
 
+<!-- derive-example:start -->
 ```kotlin
+package demo
+
+import one.wabbit.typeclass.Derive
+import one.wabbit.typeclass.EnumTypeclassMetadata
+import one.wabbit.typeclass.Instance
+import one.wabbit.typeclass.ProductTypeclassMetadata
+import one.wabbit.typeclass.SumTypeclassMetadata
+import one.wabbit.typeclass.Typeclass
+import one.wabbit.typeclass.TypeclassDeriver
+import one.wabbit.typeclass.get
+import one.wabbit.typeclass.matches
+
 @Typeclass
 interface Show<A> {
     fun show(value: A): String
 
     companion object : TypeclassDeriver {
-        override fun deriveProduct(metadata: ProductTypeclassMetadata): Any = TODO()
-        override fun deriveSum(metadata: SumTypeclassMetadata): Any = TODO()
-        override fun deriveEnum(metadata: EnumTypeclassMetadata): Any = TODO()
+        override fun deriveProduct(metadata: ProductTypeclassMetadata): Any =
+            object : Show<Any?> {
+                override fun show(value: Any?): String {
+                    require(value != null)
+                    val renderedFields =
+                        metadata.fields.joinToString(", ") { field ->
+                            val fieldValue = field.get(value)
+                            val fieldShow = field.instance as Show<Any?>
+                            "${field.name}=${fieldShow.show(fieldValue)}"
+                        }
+                    val typeName = metadata.typeName.substringAfterLast('.')
+                    return "$typeName($renderedFields)"
+                }
+            }
+
+        override fun deriveSum(metadata: SumTypeclassMetadata): Any =
+            object : Show<Any?> {
+                override fun show(value: Any?): String {
+                    require(value != null)
+                    val matchingCase = metadata.cases.single { candidate -> candidate.matches(value) }
+                    val caseShow = matchingCase.instance as Show<Any?>
+                    return caseShow.show(value)
+                }
+            }
+
+        override fun deriveEnum(metadata: EnumTypeclassMetadata): Any =
+            object : Show<Any?> {
+                override fun show(value: Any?): String =
+                    metadata.entryOf(value).name
+            }
     }
 }
+
+@Instance
+object IntShow : Show<Int> {
+    override fun show(value: Int): String = value.toString()
+}
+
+@Derive(Show::class)
+data class Box<A>(val value: A)
+
+@Derive(Show::class)
+sealed class Option<out A>
+
+data class Some<A>(val value: A) : Option<A>()
+
+object None : Option<Nothing>()
+
+@Derive(Show::class)
+enum class Tone {
+    Warm,
+    Cool,
+}
+
+context(show: Show<A>)
+fun <A> render(value: A): String = show.show(value)
+
+fun main() {
+    val some: Option<Int> = Some(1)
+    val none: Option<Int> = None
+    println(render(Box(1)))
+    println(render(some))
+    println(render(none))
+    println(render(Tone.Warm))
+}
+```
+<!-- derive-example:end -->
+
+Expected output:
+
+```text
+Box(value=1)
+Some(value=1)
+None()
+Warm
 ```
 
 The compiler plugin is responsible for:
@@ -167,7 +250,7 @@ This requests:
 
 ## `@DeriveEquiv`
 
-`@DeriveEquiv(Other::class)` requests exported compiler-synthesized `Equiv<Annotated, Other>` evidence.
+`@DeriveEquiv(Other::class)` requests exported compiler-synthesized equivalence evidence between the annotated class and `Other`.
 
 Example:
 
@@ -179,11 +262,12 @@ data class DomainUserId(val value: Int)
 This differs from `@DeriveVia` in an important way:
 
 - `@DeriveEquiv` exports regular resolution-visible equivalence evidence
+- the exported evidence is bidirectional: both `Equiv<Annotated, Other>` and `Equiv<Other, Annotated>` are summonable
 - local equivalence links synthesized only while satisfying one `@DeriveVia` request do not automatically become globally summonable
 
 Across module boundaries, that export is still metadata-driven. Downstream compilations reconstruct the `Equiv` rule from dependency metadata rather than relying on an ordinary handwritten-looking declaration being present in the dependency API surface.
 
-So if you want downstream code to be able to summon `Equiv<A, B>` directly, `@DeriveEquiv` is the explicit mechanism for that.
+So if you want downstream code to be able to summon `Equiv<A, B>` or `Equiv<B, A>` directly, `@DeriveEquiv` is the explicit mechanism for that pair.
 
 Direct user code that names or summons `Equiv<..., ...>` must also opt into `InternalTypeclassApi`, because `Equiv` is a compiler-owned low-level surface even when it is legitimately exported.
 

@@ -13,17 +13,20 @@ internal fun directRuleId(
     providedType: TcType,
     prerequisiteTypes: List<TcType> = emptyList(),
     typeParameters: List<TcTypeParameter> = emptyList(),
-): String =
-    buildString {
-        append(prefix)
-        append(':')
-        append(declarationKey)
-        append(":provided=")
-        append(providedType.normalizedKey())
-        append(":prereqs=")
-        append(prerequisiteTypes.joinToString(separator = ",") { prerequisite -> prerequisite.normalizedKey() })
-        append(":tparams=")
-        append(typeParameters.size)
-    }
+): String = buildString {
+    append(prefix)
+    append(':')
+    append(declarationKey)
+    append(":provided=")
+    append(providedType.normalizedKey())
+    append(":prereqs=")
+    append(
+        prerequisiteTypes.joinToString(separator = ",") { prerequisite ->
+            prerequisite.normalizedKey()
+        }
+    )
+    append(":tparams=")
+    append(typeParameters.size)
+}
 
 internal fun InstanceRule.directIdentityKey(): String = id

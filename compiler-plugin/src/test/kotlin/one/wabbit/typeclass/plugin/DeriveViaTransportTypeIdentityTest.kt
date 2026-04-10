@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 @file:OptIn(
     org.jetbrains.kotlin.ir.IrImplementationDetail::class,
@@ -7,6 +7,9 @@
 
 package one.wabbit.typeclass.plugin
 
+import kotlin.test.Test
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.descriptors.Modality
@@ -27,9 +30,6 @@ import org.jetbrains.kotlin.ir.types.impl.IrSimpleTypeImpl
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.types.Variance
-import kotlin.test.Test
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class DeriveViaTransportTypeIdentityTest {
     @Test
@@ -39,7 +39,10 @@ class DeriveViaTransportTypeIdentityTest {
         val rightOwner = irClass("RightOwner", packageFragment, listOf("T"))
 
         assertFalse(
-            leftOwner.typeParameters.single().defaultType.sameTypeShape(rightOwner.typeParameters.single().defaultType),
+            leftOwner.typeParameters
+                .single()
+                .defaultType
+                .sameTypeShape(rightOwner.typeParameters.single().defaultType),
             "Transport planning must not identify distinct type-parameter symbols just because they both render as T.",
         )
     }
@@ -67,12 +70,9 @@ class DeriveViaTransportTypeIdentityTest {
 }
 
 private fun testPackageFragment(
-    fqName: FqName = FqName("test.derivevia.transport"),
+    fqName: FqName = FqName("test.derivevia.transport")
 ): IrExternalPackageFragmentImpl =
-    IrExternalPackageFragmentImpl(
-        DescriptorlessExternalPackageFragmentSymbol(),
-        fqName,
-    )
+    IrExternalPackageFragmentImpl(DescriptorlessExternalPackageFragmentSymbol(), fqName)
 
 private fun irClass(
     name: String,
@@ -97,18 +97,17 @@ private fun irClass(
     irClass.typeParameters =
         typeParameterNames.mapIndexed { index, typeParameterName ->
             IrTypeParameterImpl(
-                startOffset = UNDEFINED_OFFSET,
-                endOffset = UNDEFINED_OFFSET,
-                origin = IrDeclarationOrigin.DEFINED,
-                factory = IrFactoryImpl,
-                name = Name.identifier(typeParameterName),
-                symbol = IrTypeParameterSymbolImpl(),
-                variance = Variance.INVARIANT,
-                index = index,
-                isReified = false,
-            ).also { typeParameter ->
-                typeParameter.parent = irClass
-            }
+                    startOffset = UNDEFINED_OFFSET,
+                    endOffset = UNDEFINED_OFFSET,
+                    origin = IrDeclarationOrigin.DEFINED,
+                    factory = IrFactoryImpl,
+                    name = Name.identifier(typeParameterName),
+                    symbol = IrTypeParameterSymbolImpl(),
+                    variance = Variance.INVARIANT,
+                    index = index,
+                    isReified = false,
+                )
+                .also { typeParameter -> typeParameter.parent = irClass }
         }
     return irClass
 }
@@ -121,8 +120,9 @@ private fun simpleType(
     IrSimpleTypeImpl(
         classifier = irClass.symbol,
         hasQuestionMark = nullable,
-        arguments = arguments.map { argument ->
-            org.jetbrains.kotlin.ir.types.impl.makeTypeProjection(argument, Variance.INVARIANT)
-        },
+        arguments =
+            arguments.map { argument ->
+                org.jetbrains.kotlin.ir.types.impl.makeTypeProjection(argument, Variance.INVARIANT)
+            },
         annotations = emptyList(),
     )

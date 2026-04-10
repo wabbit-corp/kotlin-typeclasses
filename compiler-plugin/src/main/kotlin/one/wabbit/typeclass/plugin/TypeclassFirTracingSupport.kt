@@ -52,45 +52,55 @@ internal fun buildFirTypeclassResolutionContext(
             containingFunctions = containingFunctions,
             calleeTypeParameters = calleeTypeParameters,
         )
-    val bindableVariableIds = calleeTypeParameters.mapNotNullTo(linkedSetOf()) { symbol -> typeParameterModels[symbol]?.id }
+    val bindableVariableIds =
+        calleeTypeParameters.mapNotNullTo(linkedSetOf()) { symbol ->
+            typeParameterModels[symbol]?.id
+        }
 
     val directlyAvailableContexts =
         buildList<Triple<ConeKotlinType, TcType, String>> {
             containingFunctions.forEach { declaration ->
-                declaration.receiverParameter?.typeRef?.coneType
+                declaration.receiverParameter
+                    ?.typeRef
+                    ?.coneType
                     ?.localEvidenceTypes(session, sharedState.configuration)
                     ?.forEach { evidenceType ->
-                        val model = coneTypeToModel(evidenceType, typeParameterModels) ?: return@forEach
+                        val model =
+                            coneTypeToModel(evidenceType, typeParameterModels) ?: return@forEach
                         add(Triple(evidenceType, model, "receiver"))
                     }
                 declaration.contextParameters.forEach { parameter ->
                     parameter.returnTypeRef.coneType
                         .localEvidenceTypes(session, sharedState.configuration)
                         .forEach { evidenceType ->
-                            val model = coneTypeToModel(evidenceType, typeParameterModels) ?: return@forEach
+                            val model =
+                                coneTypeToModel(evidenceType, typeParameterModels) ?: return@forEach
                             add(Triple(evidenceType, model, parameter.name.asString()))
                         }
                 }
             }
         }
-    val directlyAvailableContextTypes = directlyAvailableContexts.map(Triple<ConeKotlinType, TcType, String>::first)
-    val directlyAvailableContextModels = directlyAvailableContexts.map(Triple<ConeKotlinType, TcType, String>::second)
-    val nativelyAvailableContextModels =
-        buildList {
-            containingFunctions.forEach { declaration ->
-                declaration.receiverParameter?.typeRef?.coneType
-                    ?.localEvidenceTypes(session, sharedState.configuration)
-                    ?.forEach { evidenceType ->
-                        coneTypeToModel(evidenceType, typeParameterModels)?.let(::add)
-                    }
-                declaration.contextParameters.forEach { parameter ->
-                    parameter.returnTypeRef.coneType
-                        .takeIf { declaredType -> sharedState.isTypeclassType(session, declaredType) }
-                        ?.let { declaredType -> coneTypeToModel(declaredType, typeParameterModels) }
-                        ?.let(::add)
+    val directlyAvailableContextTypes =
+        directlyAvailableContexts.map(Triple<ConeKotlinType, TcType, String>::first)
+    val directlyAvailableContextModels =
+        directlyAvailableContexts.map(Triple<ConeKotlinType, TcType, String>::second)
+    val nativelyAvailableContextModels = buildList {
+        containingFunctions.forEach { declaration ->
+            declaration.receiverParameter
+                ?.typeRef
+                ?.coneType
+                ?.localEvidenceTypes(session, sharedState.configuration)
+                ?.forEach { evidenceType ->
+                    coneTypeToModel(evidenceType, typeParameterModels)?.let(::add)
                 }
+            declaration.contextParameters.forEach { parameter ->
+                parameter.returnTypeRef.coneType
+                    .takeIf { declaredType -> sharedState.isTypeclassType(session, declaredType) }
+                    ?.let { declaredType -> coneTypeToModel(declaredType, typeParameterModels) }
+                    ?.let(::add)
             }
         }
+    }
     val runtimeMaterializableVariableIds =
         typeParameterModels.mapNotNullTo(linkedSetOf()) { (symbol, parameter) ->
             parameter.id.takeIf { symbol.fir.isReified }
@@ -127,7 +137,8 @@ internal fun buildFirResolutionTypeParameterModels(
         declaration.typeParameters.forEachIndexed { typeParameterIndex, typeParameter ->
             typeParameterModels.getOrPut(typeParameter.symbol) {
                 TcTypeParameter(
-                    id = "containing:$declarationIndex:$typeParameterIndex:${typeParameter.symbol.name.asString()}",
+                    id =
+                        "containing:$declarationIndex:$typeParameterIndex:${typeParameter.symbol.name.asString()}",
                     displayName = typeParameter.symbol.name.asString(),
                 )
             }
@@ -145,9 +156,8 @@ internal fun buildFirResolutionTypeParameterModels(
 }
 
 internal fun CheckerContext.resolveTypeclassTraceActivation(
-    globalMode: TypeclassTraceMode,
-): TypeclassTraceActivation? =
-    resolveTraceActivation(typeclassTraceScopes(), globalMode)
+    globalMode: TypeclassTraceMode
+): TypeclassTraceActivation? = resolveTraceActivation(typeclassTraceScopes(), globalMode)
 
 internal fun CheckerContext.resolveTypeclassTraceActivation(
     currentContainer: FirAnnotationContainer?,
@@ -156,16 +166,15 @@ internal fun CheckerContext.resolveTypeclassTraceActivation(
     resolveTraceActivation(typeclassTraceScopes(currentContainer), globalMode)
 
 internal fun CallInfo.resolveTypeclassTraceActivation(
-    globalMode: TypeclassTraceMode,
-): TypeclassTraceActivation? =
-    resolveTraceActivation(typeclassTraceScopes(), globalMode)
+    globalMode: TypeclassTraceMode
+): TypeclassTraceActivation? = resolveTraceActivation(typeclassTraceScopes(), globalMode)
 
 internal fun CheckerContext.typeclassTraceScopes(): List<TypeclassTraceScope> {
     return typeclassTraceScopes(currentContainer = null)
 }
 
 internal fun CheckerContext.typeclassTraceScopes(
-    currentContainer: FirAnnotationContainer?,
+    currentContainer: FirAnnotationContainer?
 ): List<TypeclassTraceScope> {
     val orderedContainers = linkedSetOf<FirAnnotationContainer>()
     containingFileSymbol?.fir?.let(orderedContainers::add)
@@ -193,8 +202,12 @@ private fun FirBasedSymbol<*>.annotationContainerOrNull(): FirAnnotationContaine
         else -> fir as? FirAnnotationContainer
     }
 
-private fun FirAnnotationContainer.debugTypeclassTraceScope(session: FirSession): TypeclassTraceScope? {
-    val annotation = getAnnotationByClassId(DEBUG_TYPECLASS_RESOLUTION_ANNOTATION_CLASS_ID, session) ?: return null
+private fun FirAnnotationContainer.debugTypeclassTraceScope(
+    session: FirSession
+): TypeclassTraceScope? {
+    val annotation =
+        getAnnotationByClassId(DEBUG_TYPECLASS_RESOLUTION_ANNOTATION_CLASS_ID, session)
+            ?: return null
     val mode = annotation.debugTypeclassTraceMode()
     return when (this) {
         is FirFile ->
@@ -227,7 +240,8 @@ private fun FirAnnotationContainer.debugTypeclassTraceScope(session: FirSession)
             TypeclassTraceScope(
                 mode = mode,
                 kind = "function",
-                label = if (this is FirTypeclassFunctionDeclaration) name.asString() else "anonymous",
+                label =
+                    if (this is FirTypeclassFunctionDeclaration) name.asString() else "anonymous",
             )
 
         else -> null
@@ -239,8 +253,7 @@ private fun FirAnnotation.debugTypeclassTraceMode(): TypeclassTraceMode {
         findArgumentByName(Name.identifier("mode"))
             ?.extractEnumValueArgumentInfo()
             ?.enumEntryName
-            ?.asString()
-            ?: return TypeclassTraceMode.FAILURES
+            ?.asString() ?: return TypeclassTraceMode.FAILURES
     return TypeclassTraceMode.entries.firstOrNull { mode -> mode.name == modeName }
         ?: TypeclassTraceMode.FAILURES
 }

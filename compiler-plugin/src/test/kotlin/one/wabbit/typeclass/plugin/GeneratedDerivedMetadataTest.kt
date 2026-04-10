@@ -1,12 +1,12 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin
 
-import org.jetbrains.kotlin.name.ClassId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import org.jetbrains.kotlin.name.ClassId
 
 class GeneratedDerivedMetadataTest {
     @Test
@@ -129,20 +129,21 @@ class GeneratedDerivedMetadataTest {
     fun deriveViaPayloadPreservesSegmentKinds() {
         val encoded =
             GeneratedDerivedMetadata.DeriveVia(
-                typeclassId = ClassId.fromString("demo/Show"),
-                targetId = ClassId.fromString("demo/UserId"),
-                path =
-                    listOf(
-                        GeneratedDeriveViaPathSegment(
-                            kind = GeneratedDeriveViaPathSegment.Kind.WAYPOINT,
-                            classId = ClassId.fromString("demo/Token"),
+                    typeclassId = ClassId.fromString("demo/Show"),
+                    targetId = ClassId.fromString("demo/UserId"),
+                    path =
+                        listOf(
+                            GeneratedDeriveViaPathSegment(
+                                kind = GeneratedDeriveViaPathSegment.Kind.WAYPOINT,
+                                classId = ClassId.fromString("demo/Token"),
+                            ),
+                            GeneratedDeriveViaPathSegment(
+                                kind = GeneratedDeriveViaPathSegment.Kind.PINNED_ISO,
+                                classId = ClassId.fromString("demo/TokenWireIso"),
+                            ),
                         ),
-                        GeneratedDeriveViaPathSegment(
-                            kind = GeneratedDeriveViaPathSegment.Kind.PINNED_ISO,
-                            classId = ClassId.fromString("demo/TokenWireIso"),
-                        ),
-                    ),
-            ).encode()
+                )
+                .encode()
 
         val decoded =
             decodeGeneratedDerivedMetadata(

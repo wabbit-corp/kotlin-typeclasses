@@ -1,13 +1,13 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
-import one.wabbit.typeclass.plugin.TypeclassDiagnosticIds
-import org.junit.Ignore
 import kotlin.test.Test
+import one.wabbit.typeclass.plugin.TypeclassDiagnosticIds
 
 class ResolutionTest : IntegrationTestSupport() {
-    @Test fun compilesLocalInferenceThroughTopLevelInstanceFunction() {
+    @Test
+    fun compilesLocalInferenceThroughTopLevelInstanceFunction() {
         val source =
             """
             package demo
@@ -44,15 +44,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(bar(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun instantiatesAllTypeParametersFromOrdinaryArgumentsBeforeResolvingContextualEvidenceOnMemberCalls() {
+    @Test
+    fun instantiatesAllTypeParametersFromOrdinaryArgumentsBeforeResolvingContextualEvidenceOnMemberCalls() {
         val source =
             """
             package demo
@@ -83,15 +82,14 @@ class ResolutionTest : IntegrationTestSupport() {
                 val ops = Ops()
                 println(ops.combine(Foo(1), Bar("x")))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "foo-bar:true:true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "foo-bar:true:true")
     }
 
-    @Test fun infersTypeArgumentsThroughCollectionSupertypesWhenOnlyVisibleArgumentsBindThem() {
+    @Test
+    fun infersTypeArgumentsThroughCollectionSupertypesWhenOnlyVisibleArgumentsBindThem() {
         val source =
             """
             package demo
@@ -115,15 +113,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(first(listOf("a", "b")))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "a",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "a")
     }
 
-    @Test fun compilesAssociatedCompanionInstanceFunction() {
+    @Test
+    fun compilesAssociatedCompanionInstanceFunction() {
         val source =
             """
             package demo
@@ -161,12 +158,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(nested(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompiles(source)
     }
 
-    @Test fun infersConstructedClassTypesFromNamedAndDefaultConstructorArguments() {
+    @Test
+    fun infersConstructedClassTypesFromNamedAndDefaultConstructorArguments() {
         val source =
             """
             package demo
@@ -202,7 +201,8 @@ class ResolutionTest : IntegrationTestSupport() {
                 println(useBox(Box(value = 1)))
                 println(useBox(Box(value = 1, label = "named")))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -210,11 +210,13 @@ class ResolutionTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun resolvesCompanionInstancesForMultiParameterTypeclasses() {
+    @Test
+    fun resolvesCompanionInstancesForMultiParameterTypeclasses() {
         val source =
             """
             package demo
@@ -252,7 +254,8 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(summon<Host.TestTypeclass<Int, Int>>() is Host.TestTypeclass<*, *>)
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -263,11 +266,13 @@ class ResolutionTest : IntegrationTestSupport() {
                 true
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun resolvesMemberContextAccessorsWithDispatchReceiver() {
+    @Test
+    fun resolvesMemberContextAccessorsWithDispatchReceiver() {
         val source =
             """
             package demo
@@ -309,7 +314,8 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 Host.runChecks()
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -320,11 +326,13 @@ class ResolutionTest : IntegrationTestSupport() {
                 true
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun compilesAndRunsContextualExtensionThroughTopLevelObjectInstance() {
+    @Test
+    fun compilesAndRunsContextualExtensionThroughTopLevelObjectInstance() {
         val source =
             """
             package demo
@@ -356,15 +364,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(Duo(1, 1).combineWith(Duo(1, 1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "Duo(left=2, right=2)",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "Duo(left=2, right=2)")
     }
 
-    @Test fun compilesAndRunsContextualExtensionThroughAssociatedCompanionInstance() {
+    @Test
+    fun compilesAndRunsContextualExtensionThroughAssociatedCompanionInstance() {
         val source =
             """
             package demo
@@ -401,15 +408,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println((Box(1) + Box(2)).value)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "3",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "3")
     }
 
-    @Test fun compilesGenericContextualCompanionFactory() {
+    @Test
+    fun compilesGenericContextualCompanionFactory() {
         val source =
             """
             package demo
@@ -444,15 +450,14 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(SomeItemComponent.create(Curse(true)).value.soulbound)
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun compilesAssociatedCompanionInvokeWithoutExplicitContext() {
+    @Test
+    fun compilesAssociatedCompanionInvokeWithoutExplicitContext() {
         val source =
             """
             package demo
@@ -485,15 +490,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(SomeItemComponent(Curse(true)).type.label())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "curse",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "curse")
     }
 
-    @Test fun supportsExplicitTypeArgumentsOnContextualCalls() {
+    @Test
+    fun supportsExplicitTypeArgumentsOnContextualCalls() {
         val source =
             """
             package demo
@@ -526,15 +530,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(Items().hasComponent<Curse>(ItemStack()))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun infersTypeArgumentsFromOuterContextInsideNestedLambda() {
+    @Test
+    fun infersTypeArgumentsFromOuterContextInsideNestedLambda() {
         val source =
             """
             package demo
@@ -584,15 +587,14 @@ class ResolutionTest : IntegrationTestSupport() {
                     Items().removeFromItem(ItemStack())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "curse",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "curse")
     }
 
-    @Test fun supportsCrossFileExplicitTypeArgumentsOnNestedOverloadedSelfCall() {
+    @Test
+    fun supportsCrossFileExplicitTypeArgumentsOnNestedOverloadedSelfCall() {
         val sources =
             mapOf(
                 "demo/Helpers.kt" to
@@ -607,7 +609,8 @@ class ResolutionTest : IntegrationTestSupport() {
                             return this
                         }
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Items.kt" to
                     """
                     package demo
@@ -629,7 +632,8 @@ class ResolutionTest : IntegrationTestSupport() {
                             println(type.label())
                         }
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -649,7 +653,8 @@ class ResolutionTest : IntegrationTestSupport() {
                     fun main() {
                         println(Items().removeComponent<Curse>(ItemStack()) is ItemStack)
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertCompilesAndRuns(
@@ -658,12 +663,14 @@ class ResolutionTest : IntegrationTestSupport() {
                 """
                 curse
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             mainClass = "demo.MainKt",
         )
     }
 
-    @Test fun supportsExplicitTypeArgumentsOnNestedOverloadedSelfCall() {
+    @Test
+    fun supportsExplicitTypeArgumentsOnNestedOverloadedSelfCall() {
         val source =
             """
             package demo
@@ -709,7 +716,8 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(Items().removeComponent<Curse>(ItemStack()) is ItemStack)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -717,11 +725,13 @@ class ResolutionTest : IntegrationTestSupport() {
                 """
                 curse
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun usesUserDefinedContextAccessorWithoutSpecialCasingSummon() {
+    @Test
+    fun usesUserDefinedContextAccessorWithoutSpecialCasingSummon() {
         val source =
             """
             package demo
@@ -748,15 +758,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(same(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun resolvesAnonymousLocalTypeclassContexts() {
+    @Test
+    fun resolvesAnonymousLocalTypeclassContexts() {
         val source =
             """
             package demo
@@ -772,15 +781,14 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(summon<Marker>() is Marker)
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun infersTypeArgumentsFromLocalTypeclassContext() {
+    @Test
+    fun infersTypeArgumentsFromLocalTypeclassContext() {
         val source =
             """
             package demo
@@ -820,15 +828,14 @@ class ResolutionTest : IntegrationTestSupport() {
                     removeFromMeta(ItemMeta())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "curse",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "curse")
     }
 
-    @Test fun infersTypeArgumentsFromReceiverBackedTypeclassContext() {
+    @Test
+    fun infersTypeArgumentsFromReceiverBackedTypeclassContext() {
         val source =
             """
             package demo
@@ -867,15 +874,14 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(renderFromReceiver())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "derived:curse",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "derived:curse")
     }
 
-    @Test fun preservesNullabilityWhenResolvingGenericInstances() {
+    @Test
+    fun preservesNullabilityWhenResolvingGenericInstances() {
         val source =
             """
             package demo
@@ -913,7 +919,8 @@ class ResolutionTest : IntegrationTestSupport() {
                 println(which<List<Int>>())
                 println(which<List<Int?>>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -921,11 +928,13 @@ class ResolutionTest : IntegrationTestSupport() {
                 """
                 list-int
                 list-nullable
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun resolvesTopLevelInstanceProperty() {
+    @Test
+    fun resolvesTopLevelInstanceProperty() {
         val source =
             """
             package demo
@@ -951,15 +960,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(render<Int>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "property",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "property")
     }
 
-    @Test fun compilesAndRunsDerivedInstances() {
+    @Test
+    fun compilesAndRunsDerivedInstances() {
         val source =
             """
             package demo
@@ -1028,7 +1036,8 @@ class ResolutionTest : IntegrationTestSupport() {
                 println(render(some))
                 println(render(none))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1037,11 +1046,13 @@ class ResolutionTest : IntegrationTestSupport() {
                 Box(value=1)
                 Some(value=1)
                 None()
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun genericCallsCanInferDerivedContextThroughLocalPrerequisites() {
+    @Test
+    fun genericCallsCanInferDerivedContextThroughLocalPrerequisites() {
         val source =
             """
             package demo
@@ -1081,15 +1092,14 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(choose())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "Box-derived",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "Box-derived")
     }
 
-    @Test fun reportsAmbiguityBetweenSpecificAndGenericInstances() {
+    @Test
+    fun reportsAmbiguityBetweenSpecificAndGenericInstances() {
         val source =
             """
             package demo
@@ -1131,7 +1141,8 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(render<Box<Int>>()) // E:TC_AMBIGUOUS_INSTANCE generic and specific instances both match
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1139,7 +1150,8 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun reportsAmbiguousPrerequisiteInsteadOfMissingResult() {
+    @Test
+    fun reportsAmbiguousPrerequisiteInsteadOfMissingResult() {
         val source =
             """
             package demo
@@ -1177,7 +1189,8 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1))) // E:TC_NO_CONTEXT_ARGUMENT prerequisite Show<Int> is ambiguous
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1185,7 +1198,8 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun resolvesInlineReifiedHelpersAroundSummon() {
+    @Test
+    fun resolvesInlineReifiedHelpersAroundSummon() {
         val source =
             """
             package demo
@@ -1210,15 +1224,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(render<Int>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int")
     }
 
-    @Test fun memberClassTypeParametersStayVisibleToFirResolutionAndInference() {
+    @Test
+    fun memberClassTypeParametersStayVisibleToFirResolutionAndInference() {
         val source =
             """
             package demo
@@ -1251,15 +1264,14 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(Box("ok").render())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "show:ok|show:ok",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "show:ok|show:ok")
     }
 
-    @Test fun memberClassTypeParametersStayVisibleToFirContextualRefinement() {
+    @Test
+    fun memberClassTypeParametersStayVisibleToFirContextualRefinement() {
         val source =
             """
             package demo
@@ -1290,15 +1302,14 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(Box("ok").renderInside())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "refined:ok",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "refined:ok")
     }
 
-    @Test fun memberClassTypeParametersStayVisibleToFirWrapperLocalEvidence() {
+    @Test
+    fun memberClassTypeParametersStayVisibleToFirWrapperLocalEvidence() {
         val source =
             """
             package demo
@@ -1328,15 +1339,14 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(Box<String>().render())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "wrapped|wrapped",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "wrapped|wrapped")
     }
 
-    @Test fun resolvesOverloadsThatDifferOnlyByTypeclassContexts() {
+    @Test
+    fun resolvesOverloadsThatDifferOnlyByTypeclassContexts() {
         val source =
             """
             package demo
@@ -1375,7 +1385,8 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(parse("y"))
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1383,11 +1394,13 @@ class ResolutionTest : IntegrationTestSupport() {
                 """
                 eq:x
                 show:y
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun resolvesDefinitelyNonNullTypeclassGoals() {
+    @Test
+    fun resolvesDefinitelyNonNullTypeclassGoals() {
         val source =
             """
             package demo
@@ -1411,15 +1424,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(render<String>("x"))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "string:x",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "string:x")
     }
 
-    @Test fun keepsIntegerLiteralInferenceStableAcrossFirAndIr() {
+    @Test
+    fun keepsIntegerLiteralInferenceStableAcrossFirAndIr() {
         val source =
             """
             package demo
@@ -1449,7 +1461,8 @@ class ResolutionTest : IntegrationTestSupport() {
                 println(render(1))
                 println(render(1L))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1457,11 +1470,13 @@ class ResolutionTest : IntegrationTestSupport() {
                 """
                 int:1
                 long:1
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun resolvesApparentlyAmbiguousApisFromExpectedTypeReceiverTypeAndOuterContext() {
+    @Test
+    fun resolvesApparentlyAmbiguousApisFromExpectedTypeReceiverTypeAndOuterContext() {
         val source =
             """
             package demo
@@ -1507,7 +1522,8 @@ class ResolutionTest : IntegrationTestSupport() {
                 println(fromReceiver)
                 println(fromOuter)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1516,11 +1532,13 @@ class ResolutionTest : IntegrationTestSupport() {
                 1
                 string
                 1
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun purelyLocalEvidenceSelectsOverloads() {
+    @Test
+    fun purelyLocalEvidenceSelectsOverloads() {
         val source =
             """
             package demo
@@ -1560,7 +1578,8 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(choose(1))
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1568,11 +1587,13 @@ class ResolutionTest : IntegrationTestSupport() {
                 """
                 eq:local-eq
                 show:local-show
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun missingDerivedPrerequisitesDoNotBiasFirOverloadSelection() {
+    @Test
+    fun missingDerivedPrerequisitesDoNotBiasFirOverloadSelection() {
         val source =
             """
             package demo
@@ -1607,15 +1628,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(choose(User(Missing("x"))))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "plain",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "plain")
     }
 
-    @Test fun reportsNestedAmbiguityFromPrerequisiteResolution() {
+    @Test
+    fun reportsNestedAmbiguityFromPrerequisiteResolution() {
         val source =
             """
             package demo
@@ -1656,15 +1676,18 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(send(1)) // E:TC_NO_CONTEXT_ARGUMENT should report ambiguous JsonWriter<Int>, not missing BodySerializer<Int>
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "bodyserializer")),
+            expectedDiagnostics =
+                listOf(expectedErrorContaining("no context argument", "bodyserializer")),
         )
     }
 
-    @Test fun preservesValueClassSpecificityWhenSolvingPrerequisites() {
+    @Test
+    fun preservesValueClassSpecificityWhenSolvingPrerequisites() {
         val source =
             """
             package demo
@@ -1706,15 +1729,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(which<Box<UserId>>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "box-user-id",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "box-user-id")
     }
 
-    @Test fun preservesProjectionSpecificityWhenSolvingPrerequisites() {
+    @Test
+    fun preservesProjectionSpecificityWhenSolvingPrerequisites() {
         val source =
             """
             package demo
@@ -1753,15 +1775,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(which<Box<Array<out String>>>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "box-out-string-array",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "box-out-string-array")
     }
 
-    @Test fun reportsMissingLeafInstanceForLargeDerivedProduct() {
+    @Test
+    fun reportsMissingLeafInstanceForLargeDerivedProduct() {
         val source =
             """
             package demo
@@ -1827,7 +1848,8 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Big(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, Payload("x")))) // E:TC_NO_CONTEXT_ARGUMENT missing Show<Payload>
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1837,12 +1859,13 @@ class ResolutionTest : IntegrationTestSupport() {
                         TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT,
                         "show",
                         phase = DiagnosticPhase.FIR,
-                    ),
+                    )
                 ),
         )
     }
 
-    @Test fun missingDerivedPrerequisitesForSealedSumsDoNotBiasFirOverloadSelection() {
+    @Test
+    fun missingDerivedPrerequisitesForSealedSumsDoNotBiasFirOverloadSelection() {
         val source =
             """
             package demo
@@ -1903,15 +1926,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(choose(Word(Payload("x"))))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "plain",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "plain")
     }
 
-    @Test fun missingDerivedPrerequisitesForGenericSealedSumsDoNotBiasFirOverloadSelection() {
+    @Test
+    fun missingDerivedPrerequisitesForGenericSealedSumsDoNotBiasFirOverloadSelection() {
         val source =
             """
             package demo
@@ -1968,15 +1990,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(choose(Some(Payload("x"))))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "plain",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "plain")
     }
 
-    @Test fun unhandledGenericSealedSubclassesDoNotMakeConcreteRootsLookDerivable() {
+    @Test
+    fun unhandledGenericSealedSubclassesDoNotMakeConcreteRootsLookDerivable() {
         val source =
             """
             package demo
@@ -2035,15 +2056,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(choose(Lit(Payload("x"))))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "plain",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "plain")
     }
 
-    @Test fun resolutionIsStableAcrossDeclarationOrder() {
+    @Test
+    fun resolutionIsStableAcrossDeclarationOrder() {
         val sourceWithWorkingRuleFirst =
             """
             package demo
@@ -2085,7 +2105,8 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(render<List<Int>>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val sourceWithBrokenRuleFirst =
             """
@@ -2128,19 +2149,15 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(render<List<Int>>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = sourceWithWorkingRuleFirst,
-            expectedStdout = "ok",
-        )
-        assertCompilesAndRuns(
-            source = sourceWithBrokenRuleFirst,
-            expectedStdout = "ok",
-        )
+        assertCompilesAndRuns(source = sourceWithWorkingRuleFirst, expectedStdout = "ok")
+        assertCompilesAndRuns(source = sourceWithBrokenRuleFirst, expectedStdout = "ok")
     }
 
-    @Test fun detectsMutualRecursionAcrossTypeclasses() {
+    @Test
+    fun detectsMutualRecursionAcrossTypeclasses() {
         val source =
             """
             package demo
@@ -2178,7 +2195,8 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(use<Int>()) // E:TC_NO_CONTEXT_ARGUMENT Foo<Int> depends on Bar<Int> which depends on Foo<Int>
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -2186,7 +2204,8 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun localEvidenceShadowsTopLevelInstance() {
+    @Test
+    fun localEvidenceShadowsTopLevelInstance() {
         val source =
             """
             package demo
@@ -2218,7 +2237,8 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(render<Int>())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -2226,11 +2246,13 @@ class ResolutionTest : IntegrationTestSupport() {
                 """
                 global
                 local
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun wrapperLocalEvidenceMakesContextualOverloadVisibleInFir() {
+    @Test
+    fun wrapperLocalEvidenceMakesContextualOverloadVisibleInFir() {
         val source =
             """
             package demo
@@ -2259,20 +2281,22 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(run())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
-                        messageRegex = "(?i)(ambiguity|overload resolution ambiguity)",
-                    ),
+                        messageRegex = "(?i)(ambiguity|overload resolution ambiguity)"
+                    )
                 ),
         )
     }
 
-    @Test fun wrapperLocalEvidenceCanInferGenericContextualCallsInFir() {
+    @Test
+    fun wrapperLocalEvidenceCanInferGenericContextualCallsInFir() {
         val source =
             """
             package demo
@@ -2299,15 +2323,14 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(run())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "wrapped-string",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "wrapped-string")
     }
 
-    @Test fun nestedReturnInferenceCanUseLocalContextToRecoverGenericReturnTypesInFir() {
+    @Test
+    fun nestedReturnInferenceCanUseLocalContextToRecoverGenericReturnTypesInFir() {
         val source =
             """
             package demo
@@ -2337,15 +2360,14 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(run())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "6",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "6")
     }
 
-    @Test fun nestedReturnInferenceCanUseOuterContextualScopesToRecoverGenericReturnTypesInFir() {
+    @Test
+    fun nestedReturnInferenceCanUseOuterContextualScopesToRecoverGenericReturnTypesInFir() {
         val source =
             """
             package demo
@@ -2375,15 +2397,14 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(run())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "6",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "6")
     }
 
-    @Test fun explicitVisibleTypeArgumentsStillElideHiddenTypeclassParametersInFir() {
+    @Test
+    fun explicitVisibleTypeArgumentsStillElideHiddenTypeclassParametersInFir() {
         val source =
             """
             package demo
@@ -2409,15 +2430,14 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(keep<Int>(1))
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "1")
     }
 
-    @Test fun wrapperLocalEvidenceSupportsSummonInFir() {
+    @Test
+    fun wrapperLocalEvidenceSupportsSummonInFir() {
         val source =
             """
             package demo
@@ -2442,15 +2462,14 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(run())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "wrapped-summon",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "wrapped-summon")
     }
 
-    @Test fun nullableWrapperLocalEvidenceDoesNotSatisfyNonNullTypeclassGoalsInFir() {
+    @Test
+    fun nullableWrapperLocalEvidenceDoesNotSatisfyNonNullTypeclassGoalsInFir() {
         val source =
             """
             package demo
@@ -2475,20 +2494,22 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(run()) // E outer nullable context must also stay unsatisfied
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
-                        messageRegex = "(?i)(no context argument|context parameter|type mismatch)",
-                    ),
+                        messageRegex = "(?i)(no context argument|context parameter|type mismatch)"
+                    )
                 ),
         )
     }
 
-    @Test fun projectedWrapperLocalEvidenceDoesNotSatisfyExactTypeclassGoalsInFir() {
+    @Test
+    fun projectedWrapperLocalEvidenceDoesNotSatisfyExactTypeclassGoalsInFir() {
         val source =
             """
             package demo
@@ -2519,20 +2540,22 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(run())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
-                        messageRegex = "(?i)(no context argument|context parameter|type mismatch)",
-                    ),
+                        messageRegex = "(?i)(no context argument|context parameter|type mismatch)"
+                    )
                 ),
         )
     }
 
-    @Test fun nullableCarrierInstancesDoNotExportNonNullTypeclassEvidence() {
+    @Test
+    fun nullableCarrierInstancesDoNotExportNonNullTypeclassEvidence() {
         val source =
             """
             package demo
@@ -2560,20 +2583,23 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(summon<Show<String>>().show()) // E nullable carrier must not export Show<String>
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
-                        messageRegex = "(?i)(no context argument|context parameter|cannot infer|type mismatch)",
-                    ),
+                        messageRegex =
+                            "(?i)(no context argument|context parameter|cannot infer|type mismatch)"
+                    )
                 ),
         )
     }
 
-    @Test fun projectedCarrierInstancesDoNotExportExactTypeclassEvidence() {
+    @Test
+    fun projectedCarrierInstancesDoNotExportExactTypeclassEvidence() {
         val source =
             """
             package demo
@@ -2601,20 +2627,23 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(summon<Show<String>>().show()) // E projected carrier must not export exact Show<String>
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
-                        messageRegex = "(?i)(no context argument|context parameter|cannot infer|type mismatch)",
-                    ),
+                        messageRegex =
+                            "(?i)(no context argument|context parameter|cannot infer|type mismatch)"
+                    )
                 ),
         )
     }
 
-    @Test fun wrapperLocalEvidenceCanInferSummonDrivenGenericCallsInFir() {
+    @Test
+    fun wrapperLocalEvidenceCanInferSummonDrivenGenericCallsInFir() {
         val source =
             """
             package demo
@@ -2642,15 +2671,14 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(run())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "wrapped-generic-summon",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "wrapped-generic-summon")
     }
 
-    @Test fun wrapperReceiverEvidenceSupportsSummonInFir() {
+    @Test
+    fun wrapperReceiverEvidenceSupportsSummonInFir() {
         val source =
             """
             package demo
@@ -2672,15 +2700,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(WrappedIntShow().run())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "receiver-summon",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "receiver-summon")
     }
 
-    @Test fun wrapperReceiverEvidenceCanInferGenericContextualCallsInFir() {
+    @Test
+    fun wrapperReceiverEvidenceCanInferGenericContextualCallsInFir() {
         val source =
             """
             package demo
@@ -2704,15 +2731,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(WrappedStringShow().run())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "receiver-generic",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "receiver-generic")
     }
 
-    @Test fun genericWrapperLocalEvidenceSupportsSummonInFir() {
+    @Test
+    fun genericWrapperLocalEvidenceSupportsSummonInFir() {
         val source =
             """
             package demo
@@ -2737,15 +2763,14 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(run())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "generic-wrapper",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "generic-wrapper")
     }
 
-    @Test fun resolvesContextualOverloadsBetweenSingleAndVarargAlternatives() {
+    @Test
+    fun resolvesContextualOverloadsBetweenSingleAndVarargAlternatives() {
         val source =
             """
             package demo
@@ -2777,7 +2802,8 @@ class ResolutionTest : IntegrationTestSupport() {
                 println(logger.log(1))
                 println(logger.log(1, 2))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -2785,11 +2811,13 @@ class ResolutionTest : IntegrationTestSupport() {
                 """
                 one:int:1
                 many:int:1|int:2
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun prefersExactContravariantNothingInstanceOverBroaderCandidates() {
+    @Test
+    fun prefersExactContravariantNothingInstanceOverBroaderCandidates() {
         val source =
             """
             package demo
@@ -2819,15 +2847,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(which())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "nothing",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "nothing")
     }
 
-    @Test fun broaderContravariantCandidatesForNothingWithoutExactMatchDoNotResolve() {
+    @Test
+    fun broaderContravariantCandidatesForNothingWithoutExactMatchDoNotResolve() {
         val source =
             """
             package demo
@@ -2857,7 +2884,8 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(which()) // E:TC_NO_CONTEXT_ARGUMENT multiple broader contravariant instances match Show<Nothing>
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -2865,7 +2893,8 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun resolvesAssociatedCompanionObjectInstances() {
+    @Test
+    fun resolvesAssociatedCompanionObjectInstances() {
         val source =
             """
             package demo
@@ -2893,15 +2922,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "companion-object:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "companion-object:1")
     }
 
-    @Test fun resolvesAssociatedNamedCompanionObjectInstances() {
+    @Test
+    fun resolvesAssociatedNamedCompanionObjectInstances() {
         val source =
             """
             package demo
@@ -2929,15 +2957,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "named-companion:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "named-companion:1")
     }
 
-    @Test fun distinguishesValueClassesFromUnderlyingTypes() {
+    @Test
+    fun distinguishesValueClassesFromUnderlyingTypes() {
         val source =
             """
             package demo
@@ -2979,7 +3006,8 @@ class ResolutionTest : IntegrationTestSupport() {
                 println(render(UserId(1)))
                 println(render(Box(UserId(2))))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -2987,11 +3015,13 @@ class ResolutionTest : IntegrationTestSupport() {
                 """
                 user:1
                 box-user:2
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun reportsUnsatisfiedGoalFromIncompatibleLocalContexts() {
+    @Test
+    fun reportsUnsatisfiedGoalFromIncompatibleLocalContexts() {
         val source =
             """
             package demo
@@ -3018,62 +3048,73 @@ class ResolutionTest : IntegrationTestSupport() {
                     }
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
-                        messageRegex = "(?i)(conflicting|cannot infer|inferred as|type mismatch|no context argument)",
-                    ),
-            ),
+                        messageRegex =
+                            "(?i)(conflicting|cannot infer|inferred as|type mismatch|no context argument)"
+                    )
+                ),
         )
     }
 
-    @Test fun ambiguousLocalContextsDoNotMakeContextualCallsLookSolvedInFir() {
+    @Test
+    fun ambiguousLocalContextsDoNotMakeContextualCallsLookSolvedInFir() {
         val source =
             """
-            package demo
+                    package demo
 
-            import one.wabbit.typeclass.Typeclass
+                    import one.wabbit.typeclass.Typeclass
 
-            @Typeclass
-            interface Show<A> {
-                fun show(): String
+                    @Typeclass
+                    interface Show<A> {
+                        fun show(): String
+                    }
+
+                    class WrappedShowOne : Show<String> {
+                        override fun show(): String = "one"
+                    }
+
+                    class WrappedShowTwo : Show<String> {
+                        override fun show(): String = "two"
+                    }
+
+                    context(show: Show<String>)
+                    fun choose(): String = show.show()
+
+                context(_: WrappedShowOne, _: WrappedShowTwo)
+                fun run(): String = choose() // E ambiguous local contexts must fail in FIR
+
+                    fun main() {
+                        context(WrappedShowOne()) {
+                            context(WrappedShowTwo()) {
+                        println(run())
+                    }
+                }
             }
-
-            class WrappedShowOne : Show<String> {
-                override fun show(): String = "one"
-            }
-
-            class WrappedShowTwo : Show<String> {
-                override fun show(): String = "two"
-            }
-
-            context(show: Show<String>)
-            fun choose(): String = show.show()
-
-        context(_: WrappedShowOne, _: WrappedShowTwo)
-        fun run(): String = choose() // E ambiguous local contexts must fail in FIR
-
-            fun main() {
-                context(WrappedShowOne()) {
-                    context(WrappedShowTwo()) {
-                println(run())
-            }
-        }
-    }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedErrorContaining("potential context arguments", "show")),
-            unexpectedMessages = listOf("multiple candidates matched", "ambiguous typeclass instance", "required instance"),
+            expectedDiagnostics =
+                listOf(expectedErrorContaining("potential context arguments", "show")),
+            unexpectedMessages =
+                listOf(
+                    "multiple candidates matched",
+                    "ambiguous typeclass instance",
+                    "required instance",
+                ),
         )
     }
 
-    @Test fun reportsAmbiguityBetweenNullableSpecificAndGenericRules() {
+    @Test
+    fun reportsAmbiguityBetweenNullableSpecificAndGenericRules() {
         val source =
             """
             package demo
@@ -3110,7 +3151,8 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(which<List<Int?>>()) // E:TC_AMBIGUOUS_INSTANCE decide whether specific or generic nullable rule should win
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -3118,7 +3160,8 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun treatsTypeAliasesAsTransparentForResolution() {
+    @Test
+    fun treatsTypeAliasesAsTransparentForResolution() {
         val source =
             """
             package demo
@@ -3145,15 +3188,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(render<UserId>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int")
     }
 
-    @Test fun treatsNestedTypeAliasesAsTransparentForResolution() {
+    @Test
+    fun treatsNestedTypeAliasesAsTransparentForResolution() {
         val source =
             """
             package demo
@@ -3182,15 +3224,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(render<Aliases.UserId>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int")
     }
 
-    @Test fun preservesUseSiteVarianceInTypeclassGoals() {
+    @Test
+    fun preservesUseSiteVarianceInTypeclassGoals() {
         val source =
             """
             package demo
@@ -3221,15 +3262,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(render())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "array-int",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "array-int")
     }
 
-    @Test fun combinesExplicitRegularContextWithImplicitTypeclassResolution() {
+    @Test
+    fun combinesExplicitRegularContextWithImplicitTypeclassResolution() {
         val source =
             """
             package demo
@@ -3257,15 +3297,14 @@ class ResolutionTest : IntegrationTestSupport() {
                     println(renderInt(1))
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "value=int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "value=int:1")
     }
 
-    @Test fun distinguishesShadowedTypeParametersAcrossNestedGenericScopes() {
+    @Test
+    fun distinguishesShadowedTypeParametersAcrossNestedGenericScopes() {
         val source =
             """
             package demo
@@ -3299,15 +3338,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(outer(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1/string:x",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1/string:x")
     }
 
-    @Test fun usesExtensionReceiverAsTheOnlyAvailableEvidence() {
+    @Test
+    fun usesExtensionReceiverAsTheOnlyAvailableEvidence() {
         val source =
             """
             package demo
@@ -3333,15 +3371,14 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(IntShow.callViaReceiver())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1")
     }
 
-    @Test fun capturesDefinitionSiteEvidenceForReturnedLambdasObjectsAndBoundReferences() {
+    @Test
+    fun capturesDefinitionSiteEvidenceForReturnedLambdasObjectsAndBoundReferences() {
         val source =
             """
             package demo
@@ -3395,7 +3432,8 @@ class ResolutionTest : IntegrationTestSupport() {
                 println(globalBound())
                 println(localBound())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -3408,7 +3446,8 @@ class ResolutionTest : IntegrationTestSupport() {
                 local:2
                 global:2
                 local:2
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -3458,12 +3497,10 @@ class ResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(useAlphaOnly())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "alpha",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "alpha")
     }
 
     @Test
@@ -3511,12 +3548,12 @@ class ResolutionTest : IntegrationTestSupport() {
 
             context(_: Alpha<Int>, _: Beta<Int>)
             fun useBoth(): String = render() // E:TC_NO_CONTEXT_ARGUMENT ambiguous Show<Int> resolution
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics = listOf(expectedAmbiguousOrNoContext("show")),
         )
     }
-
 }

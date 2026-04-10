@@ -5,9 +5,8 @@
 package one.wabbit.typeclass.plugin
 
 import org.jetbrains.kotlin.fir.FirSession
-import org.jetbrains.kotlin.descriptors.ClassKind
-import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
+import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrProperty
@@ -27,14 +26,17 @@ internal data class InstanceOwnerContext(
         get() = isTopLevel || isCompanionScope
 }
 
-internal fun firInstanceOwnerContext(
-    session: FirSession,
-    classId: ClassId,
-): InstanceOwnerContext {
+internal fun firInstanceOwnerContext(session: FirSession, classId: ClassId): InstanceOwnerContext {
     if (classId.isLocal) {
-        return InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = null)
+        return InstanceOwnerContext(
+            isTopLevel = false,
+            isCompanionScope = false,
+            associatedOwner = null,
+        )
     }
-    return if (session.regularClassSymbolOrNull(classId)?.isTypeclassCompanionDeclaration() == true) {
+    return if (
+        session.regularClassSymbolOrNull(classId)?.isTypeclassCompanionDeclaration() == true
+    ) {
         InstanceOwnerContext(
             isTopLevel = false,
             isCompanionScope = true,
@@ -51,7 +53,11 @@ internal fun firInstanceOwnerContext(
 ): InstanceOwnerContext =
     when {
         callableId == null || callableId.isLocal ->
-            InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = null)
+            InstanceOwnerContext(
+                isTopLevel = false,
+                isCompanionScope = false,
+                associatedOwner = null,
+            )
         else -> firNestedOwnerContext(session, callableId.classId)
     }
 
@@ -60,12 +66,21 @@ private fun firNestedOwnerContext(
     ownerClassId: ClassId?,
 ): InstanceOwnerContext {
     if (ownerClassId == null) {
-        return InstanceOwnerContext(isTopLevel = true, isCompanionScope = false, associatedOwner = null)
+        return InstanceOwnerContext(
+            isTopLevel = true,
+            isCompanionScope = false,
+            associatedOwner = null,
+        )
     }
     if (ownerClassId.isLocal) {
-        return InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = null)
+        return InstanceOwnerContext(
+            isTopLevel = false,
+            isCompanionScope = false,
+            associatedOwner = null,
+        )
     }
-    val ownerClass = session.symbolProvider.getClassLikeSymbolByClassId(ownerClassId) as? FirRegularClassSymbol
+    val ownerClass =
+        session.symbolProvider.getClassLikeSymbolByClassId(ownerClassId) as? FirRegularClassSymbol
     return if (ownerClass?.isTypeclassCompanionDeclaration() == true) {
         InstanceOwnerContext(
             isTopLevel = false,
@@ -73,12 +88,22 @@ private fun firNestedOwnerContext(
             associatedOwner = ownerClassId.outerClassId,
         )
     } else {
-        InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = ownerClassId)
+        InstanceOwnerContext(
+            isTopLevel = false,
+            isCompanionScope = false,
+            associatedOwner = ownerClassId,
+        )
     }
 }
 
 internal fun irInstanceOwnerContext(irClass: IrClass): InstanceOwnerContext {
-    val classId = irClass.classId ?: return InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = null)
+    val classId =
+        irClass.classId
+            ?: return InstanceOwnerContext(
+                isTopLevel = false,
+                isCompanionScope = false,
+                associatedOwner = null,
+            )
     return if (irClass.isCompanion) {
         InstanceOwnerContext(
             isTopLevel = false,
@@ -93,22 +118,52 @@ internal fun irInstanceOwnerContext(irClass: IrClass): InstanceOwnerContext {
 internal fun irInstanceOwnerContext(function: IrSimpleFunction): InstanceOwnerContext =
     when (val parent = function.parent) {
         is IrClass -> irNestedOwnerContext(parent)
-        is IrFile -> InstanceOwnerContext(isTopLevel = true, isCompanionScope = false, associatedOwner = null)
-        else -> InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = null)
+        is IrFile ->
+            InstanceOwnerContext(
+                isTopLevel = true,
+                isCompanionScope = false,
+                associatedOwner = null,
+            )
+        else ->
+            InstanceOwnerContext(
+                isTopLevel = false,
+                isCompanionScope = false,
+                associatedOwner = null,
+            )
     }
 
 internal fun irInstanceOwnerContext(property: IrProperty): InstanceOwnerContext =
     when (val parent = property.parent) {
         is IrClass -> irNestedOwnerContext(parent)
-        is IrFile -> InstanceOwnerContext(isTopLevel = true, isCompanionScope = false, associatedOwner = null)
-        else -> InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = null)
+        is IrFile ->
+            InstanceOwnerContext(
+                isTopLevel = true,
+                isCompanionScope = false,
+                associatedOwner = null,
+            )
+        else ->
+            InstanceOwnerContext(
+                isTopLevel = false,
+                isCompanionScope = false,
+                associatedOwner = null,
+            )
     }
 
 private fun irNestedOwnerContext(ownerClass: IrClass?): InstanceOwnerContext {
     if (ownerClass == null) {
-        return InstanceOwnerContext(isTopLevel = true, isCompanionScope = false, associatedOwner = null)
+        return InstanceOwnerContext(
+            isTopLevel = true,
+            isCompanionScope = false,
+            associatedOwner = null,
+        )
     }
-    val ownerClassId = ownerClass.classId ?: return InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = null)
+    val ownerClassId =
+        ownerClass.classId
+            ?: return InstanceOwnerContext(
+                isTopLevel = false,
+                isCompanionScope = false,
+                associatedOwner = null,
+            )
     return if (ownerClass.isCompanion) {
         InstanceOwnerContext(
             isTopLevel = false,
@@ -116,6 +171,10 @@ private fun irNestedOwnerContext(ownerClass: IrClass?): InstanceOwnerContext {
             associatedOwner = ownerClass.parentAsClass.classIdOrFail,
         )
     } else {
-        InstanceOwnerContext(isTopLevel = false, isCompanionScope = false, associatedOwner = ownerClassId)
+        InstanceOwnerContext(
+            isTopLevel = false,
+            isCompanionScope = false,
+            associatedOwner = ownerClassId,
+        )
     }
 }

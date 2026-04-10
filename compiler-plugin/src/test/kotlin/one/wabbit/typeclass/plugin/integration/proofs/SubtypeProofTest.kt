@@ -1,14 +1,15 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.proofs
 
+import kotlin.test.Test
 import one.wabbit.typeclass.plugin.integration.ExpectedDiagnostic
 import one.wabbit.typeclass.plugin.integration.HarnessDependency
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
-import kotlin.test.Test
 
 class SubtypeProofTest : IntegrationTestSupport() {
-    @Test fun materializesSubtypeProofForBoundedTypeParameters() {
+    @Test
+    fun materializesSubtypeProofForBoundedTypeParameters() {
         val source =
             """
             package demo
@@ -27,7 +28,8 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 println(proveBound<Animal, Dog>() != null)
                 println(proveTransitiveBound<Dog, Animal, Creature>() != null)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -35,11 +37,13 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun materializesSubtypeProofForVarianceNullabilityAndStarProjections() {
+    @Test
+    fun materializesSubtypeProofForVarianceNullabilityAndStarProjections() {
         val source =
             """
             package demo
@@ -55,7 +59,8 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 println(summon<Subtype<Any, Any?>>() != null)
                 println(summon<Subtype<Covariant<Int>, Covariant<*>>>() != null)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -64,15 +69,14 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 true
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun rejectsSubtypeProofForInvariantOrUnrelatedTypes() {
-        fun assertSubtypeFailure(
-            callSite: String,
-            expectedDiagnostic: ExpectedDiagnostic,
-        ) {
+    @Test
+    fun rejectsSubtypeProofForInvariantOrUnrelatedTypes() {
+        fun assertSubtypeFailure(callSite: String, expectedDiagnostic: ExpectedDiagnostic) {
             val source =
                 """
                 package demo
@@ -88,12 +92,10 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 fun fail() {
                     $callSite
                 }
-                """.trimIndent()
+                """
+                    .trimIndent()
 
-            assertDoesNotCompile(
-                source = source,
-                expectedDiagnostics = listOf(expectedDiagnostic),
-            )
+            assertDoesNotCompile(source = source, expectedDiagnostics = listOf(expectedDiagnostic))
         }
 
         assertSubtypeFailure(
@@ -110,7 +112,8 @@ class SubtypeProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun subtypeProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
+    @Test
+    fun subtypeProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
         val source =
             """
             package demo
@@ -140,15 +143,14 @@ class SubtypeProofTest : IntegrationTestSupport() {
             fun main() {
                 println(render<Dog, Animal>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "subtype-witness",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "subtype-witness")
     }
 
-    @Test fun subtypeProofSupportsCoercionAndComposition() {
+    @Test
+    fun subtypeProofSupportsCoercionAndComposition() {
         val source =
             """
             package demo
@@ -169,7 +171,8 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 println(chained.coerce(Puppy()) is Animal)
                 println(composed.coerce(Puppy()) is Animal)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -177,11 +180,13 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun materializesSubtypeProofForDependencyHierarchy() {
+    @Test
+    fun materializesSubtypeProofForDependencyHierarchy() {
         val dependency =
             HarnessDependency(
                 name = "dep-hierarchy",
@@ -193,7 +198,8 @@ class SubtypeProofTest : IntegrationTestSupport() {
 
                             open class Animal
                             class Dog : Animal()
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -208,7 +214,8 @@ class SubtypeProofTest : IntegrationTestSupport() {
             fun main() {
                 println(summon<Subtype<Dog, Animal>>() != null)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -217,7 +224,8 @@ class SubtypeProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun materializesSubtypeAndStrictSubtypeProofsForGenericDeclaredSupertypes() {
+    @Test
+    fun materializesSubtypeAndStrictSubtypeProofsForGenericDeclaredSupertypes() {
         val source =
             """
             package demo
@@ -233,7 +241,8 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 println(summon<Subtype<Sub<String>, Base<String>>>() != null)
                 println(summon<StrictSubtype<Sub<String>, Base<String>>>() != null)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -241,11 +250,13 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun materializesStrictSubtypeProofForProperSubtypes() {
+    @Test
+    fun materializesStrictSubtypeProofForProperSubtypes() {
         val source =
             """
             package demo
@@ -261,7 +272,8 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 println(summon<StrictSubtype<Dog, Animal>>() != null)
                 println(summon<StrictSubtype<Puppy, Dog>>() != null)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -269,11 +281,13 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun materializesStrictSubtypeProofForStarProjectedAndFunctionTypes() {
+    @Test
+    fun materializesStrictSubtypeProofForStarProjectedAndFunctionTypes() {
         val source =
             """
             package demo
@@ -291,7 +305,8 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 println(summon<StrictSubtype<(List<*>) -> Int, (List<String>) -> Int>>() != null)
                 println(proveProjectedStrictSubtype<String>() != null)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -302,11 +317,13 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 true
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun materializesStrictSubtypeProofForTypeParametersWithStrictUpperBounds() {
+    @Test
+    fun materializesStrictSubtypeProofForTypeParametersWithStrictUpperBounds() {
         val source =
             """
             package demo
@@ -322,15 +339,14 @@ class SubtypeProofTest : IntegrationTestSupport() {
             fun main() {
                 println(proveStrict<Dog>() != null)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun rejectsStrictSubtypeProofWhenUpperBoundStillAllowsEquality() {
+    @Test
+    fun rejectsStrictSubtypeProofWhenUpperBoundStillAllowsEquality() {
         val source =
             """
             package demo
@@ -339,7 +355,8 @@ class SubtypeProofTest : IntegrationTestSupport() {
             import one.wabbit.typeclass.summon
 
             fun <T : Any> proveStrict(): StrictSubtype<T, Any> = summon<StrictSubtype<T, Any>>() // E:TC_NO_CONTEXT_ARGUMENT T may still be exactly Any
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -347,11 +364,9 @@ class SubtypeProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun rejectsStrictSubtypeProofForEqualAliasAndUnrelatedTypes() {
-        fun assertStrictSubtypeFailure(
-            callSite: String,
-            expectedDiagnostic: ExpectedDiagnostic,
-        ) {
+    @Test
+    fun rejectsStrictSubtypeProofForEqualAliasAndUnrelatedTypes() {
+        fun assertStrictSubtypeFailure(callSite: String, expectedDiagnostic: ExpectedDiagnostic) {
             val source =
                 """
                 package demo
@@ -366,12 +381,10 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 fun fail() {
                     $callSite
                 }
-                """.trimIndent()
+                """
+                    .trimIndent()
 
-            assertDoesNotCompile(
-                source = source,
-                expectedDiagnostics = listOf(expectedDiagnostic),
-            )
+            assertDoesNotCompile(source = source, expectedDiagnostics = listOf(expectedDiagnostic))
         }
 
         assertStrictSubtypeFailure(
@@ -384,7 +397,8 @@ class SubtypeProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun strictSubtypeSupportsCoercionAndDecompositionToSubtypeAndNotSame() {
+    @Test
+    fun strictSubtypeSupportsCoercionAndDecompositionToSubtypeAndNotSame() {
         val source =
             """
             package demo
@@ -411,7 +425,8 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 println(weak.coerce(Dog()) is Animal)
                 println(apart != null)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -420,11 +435,13 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 true
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun strictSubtypeComposesWithStrictSubtypeSubtypeAndSame() {
+    @Test
+    fun strictSubtypeComposesWithStrictSubtypeSubtypeAndSame() {
         val source =
             """
             package demo
@@ -460,7 +477,8 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 println(houndMammal.coerce(Dog()) is Mammal)
                 println(dogCreature.coerce(Dog()) is Creature)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -470,11 +488,13 @@ class SubtypeProofTest : IntegrationTestSupport() {
                 true
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun strictSubtypeProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
+    @Test
+    fun strictSubtypeProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
         val source =
             """
             package demo
@@ -504,11 +524,9 @@ class SubtypeProofTest : IntegrationTestSupport() {
             fun main() {
                 println(render<Dog, Animal>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "strict-subtype-witness",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "strict-subtype-witness")
     }
 }

@@ -7,9 +7,6 @@ import com.intellij.openapi.startup.ProjectActivity
 
 class TypeclassIdeSupportActivity : ProjectActivity {
     override suspend fun execute(project: Project) {
-        TypeclassIdeSupportCoordinator.enableIfNeeded(
-            project = project,
-            userInitiated = false,
-        )
+        TypeclassIdeSupportCoordinator.enableIfNeeded(project = project, userInitiated = false)
     }
 }

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.idea
 
@@ -10,8 +10,9 @@ class TypeclassPluginXmlTest {
     fun declaresK2CompatibilityForKotlinPlugin() {
         val pluginXml =
             requireNotNull(javaClass.classLoader.getResource("META-INF/plugin.xml")) {
-                "Missing META-INF/plugin.xml on the test classpath"
-            }.readText()
+                    "Missing META-INF/plugin.xml on the test classpath"
+                }
+                .readText()
 
         assertTrue(pluginXml.contains("""<depends>org.jetbrains.kotlin</depends>"""))
         assertTrue(pluginXml.contains("""<extensions defaultExtensionNs="org.jetbrains.kotlin">"""))

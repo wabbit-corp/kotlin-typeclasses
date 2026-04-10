@@ -1,11 +1,11 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.interop
 
+import kotlin.test.Test
 import one.wabbit.typeclass.plugin.integration.CompilerHarnessPlugin
 import one.wabbit.typeclass.plugin.integration.ExpectedDiagnostic
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
-import kotlin.test.Test
 
 /**
  * Power-assert compatibility design tests.
@@ -40,12 +40,10 @@ class PowerAssertInteropTest : IntegrationTestSupport() {
             fun main() {
                 assert(renderInt(1) == "int:1")
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompiles(
-            source,
-            requiredPlugins = powerAssertPlugins,
-        )
+        assertCompiles(source, requiredPlugins = powerAssertPlugins)
     }
 
     @Test
@@ -73,12 +71,10 @@ class PowerAssertInteropTest : IntegrationTestSupport() {
             fun main() {
                 assert(listOf(1, 2).map { renderInt(it) } == listOf("int:1", "int:2"))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompiles(
-            source,
-            requiredPlugins = powerAssertPlugins,
-        )
+        assertCompiles(source, requiredPlugins = powerAssertPlugins)
     }
 
     @Test
@@ -100,19 +96,17 @@ class PowerAssertInteropTest : IntegrationTestSupport() {
             fun main() {
                 assert(renderInt(1) == "int:1") // E:TC_NO_CONTEXT_ARGUMENT missing Show<Int> should be reported normally inside assert
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
-                    ExpectedDiagnostic.Error(
-                        file = "Sample.kt",
-                        line = 14,
-                    ) { message ->
+                    ExpectedDiagnostic.Error(file = "Sample.kt", line = 14) { message ->
                         message.contains("no context argument", ignoreCase = true) &&
                             message.contains("Show<Int>")
-                    },
+                    }
                 ),
             requiredPlugins = powerAssertPlugins,
         )

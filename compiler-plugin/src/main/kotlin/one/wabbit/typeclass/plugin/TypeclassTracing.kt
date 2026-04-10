@@ -2,6 +2,8 @@
 
 package one.wabbit.typeclass.plugin
 
+import java.nio.file.Path
+import kotlin.io.path.name
 import one.wabbit.typeclass.plugin.model.ResolutionSearchResult
 import one.wabbit.typeclass.plugin.model.ResolutionTrace
 import one.wabbit.typeclass.plugin.model.ResolutionTraceCandidate
@@ -12,8 +14,6 @@ import one.wabbit.typeclass.plugin.model.render
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSourceLocation
 import org.jetbrains.kotlin.ir.util.classIdOrFail
 import org.jetbrains.kotlin.ir.util.render as renderIrType
-import java.nio.file.Path
-import kotlin.io.path.name
 
 internal enum class TypeclassTraceRootKind {
     RESOLUTION,
@@ -35,16 +35,15 @@ internal fun resolveTraceActivation(
     scopes: List<TypeclassTraceScope>,
     globalMode: TypeclassTraceMode,
 ): TypeclassTraceActivation? {
-    val nearestExplicit = scopes.asReversed().firstOrNull { scope -> scope.mode != TypeclassTraceMode.INHERIT }
+    val nearestExplicit =
+        scopes.asReversed().firstOrNull { scope -> scope.mode != TypeclassTraceMode.INHERIT }
     return when {
         nearestExplicit?.mode == TypeclassTraceMode.DISABLED -> null
         nearestExplicit != null ->
-            TypeclassTraceActivation(
-                mode = nearestExplicit.mode,
-                scope = nearestExplicit,
-            )
+            TypeclassTraceActivation(mode = nearestExplicit.mode, scope = nearestExplicit)
 
-        globalMode == TypeclassTraceMode.INHERIT || globalMode == TypeclassTraceMode.DISABLED -> null
+        globalMode == TypeclassTraceMode.INHERIT || globalMode == TypeclassTraceMode.DISABLED ->
+            null
         else ->
             TypeclassTraceActivation(
                 mode = globalMode,
@@ -94,17 +93,18 @@ private fun buildTraceBlock(
     body: List<String>,
 ): String =
     buildString {
-        appendLine("[TC_TRACE] $header")
-        appendLine("[TC_TRACE] root kind: ${rootKind.name.lowercase()}")
-        location?.let { traceLocation ->
-            appendLine("[TC_TRACE] root site: ${traceLocation.renderSite()}")
+            appendLine("[TC_TRACE] $header")
+            appendLine("[TC_TRACE] root kind: ${rootKind.name.lowercase()}")
+            location?.let { traceLocation ->
+                appendLine("[TC_TRACE] root site: ${traceLocation.renderSite()}")
+            }
+            appendLine("[TC_TRACE] effective mode: ${activation.mode.name}")
+            appendLine(
+                "[TC_TRACE] traced scope: ${activation.scope.kind} ${activation.scope.label}"
+            )
+            body.forEach { line -> appendLine("[TC_TRACE] $line") }
         }
-        appendLine("[TC_TRACE] effective mode: ${activation.mode.name}")
-        appendLine("[TC_TRACE] traced scope: ${activation.scope.kind} ${activation.scope.label}")
-        body.forEach { line ->
-            appendLine("[TC_TRACE] $line")
-        }
-    }.trimEnd()
+        .trimEnd()
 
 private fun renderResolutionTraceBody(
     trace: ResolutionTrace,
@@ -113,11 +113,12 @@ private fun renderResolutionTraceBody(
 ): List<String> {
     val lines = mutableListOf<String>()
     lines += "${indent}local contexts:"
-    lines += renderCandidateGroup(
-        candidates = trace.localContextCandidates,
-        localContextLabels = localContextLabels,
-        indent = indent,
-    )
+    lines +=
+        renderCandidateGroup(
+            candidates = trace.localContextCandidates,
+            localContextLabels = localContextLabels,
+            indent = indent,
+        )
     lines += "${indent}explicit @Instance rules:"
     lines += renderCandidateFamily(trace, ResolutionTraceCandidateFamily.INSTANCE_RULE, indent)
     lines += "${indent}builtin rules:"
@@ -155,18 +156,17 @@ private fun renderCandidateGroup(
     return candidates
         .sortedWith(compareBy(ResolutionTraceCandidate::family, ResolutionTraceCandidate::identity))
         .flatMap { candidate ->
-            val line =
-                buildString {
-                    append(indent)
-                    append("- ")
-                    append(candidateDisplayName(candidate, localContextLabels))
-                    append(": ")
-                    append(candidateStateLabel(candidate.state))
-                    candidate.reason?.let { reason ->
-                        append("; ")
-                        append(reason)
-                    }
+            val line = buildString {
+                append(indent)
+                append("- ")
+                append(candidateDisplayName(candidate, localContextLabels))
+                append(": ")
+                append(candidateStateLabel(candidate.state))
+                candidate.reason?.let { reason ->
+                    append("; ")
+                    append(reason)
                 }
+            }
             listOf(line) +
                 candidate.prerequisiteTraces.flatMap { nested ->
                     renderResolutionTraceBody(
@@ -185,7 +185,10 @@ private fun candidateDisplayName(
     when (candidate.family) {
         ResolutionTraceCandidateFamily.LOCAL_CONTEXT -> {
             val index =
-                candidate.identity.substringAfter("local-context[").substringBefore(']').toIntOrNull()
+                candidate.identity
+                    .substringAfter("local-context[")
+                    .substringBefore(']')
+                    .toIntOrNull()
             localContextLabels.getOrNull(index ?: -1) ?: candidate.identity
         }
 
@@ -213,8 +216,7 @@ private fun renderRuleIdentity(identity: String): String =
         identity.startsWith("direct:") ->
             identity.substringAfter("direct:").substringBefore(":provided=").replace('/', '.')
 
-        identity.startsWith("builtin:") ->
-            identity.substringBefore(":provided=").replace(':', ' ')
+        identity.startsWith("builtin:") -> identity.substringBefore(":provided=").replace(':', ' ')
 
         else -> identity.substringBefore(":provided=").replace('/', '.')
     }
@@ -222,9 +224,7 @@ private fun renderRuleIdentity(identity: String): String =
 private fun String.renderTraceType(): String = replace('/', '.')
 
 private fun CompilerMessageSourceLocation.renderSite(): String {
-    val fileName =
-        runCatching { Path.of(path).name }
-            .getOrElse { path.substringAfterLast('/') }
+    val fileName = runCatching { Path.of(path).name }.getOrElse { path.substringAfterLast('/') }
     return "$fileName:$line:$column"
 }
 
@@ -236,7 +236,8 @@ internal fun DeriveViaPathSegment.traceRender(): String =
 
 internal fun TransportPlan.traceRender(): String =
     when (this) {
-        is TransportPlan.Identity -> "identity ${sourceType.renderIrType()} -> ${targetType.renderIrType()}"
+        is TransportPlan.Identity ->
+            "identity ${sourceType.renderIrType()} -> ${targetType.renderIrType()}"
         is TransportPlan.Composite -> steps.joinToString(" -> ") { step -> step.traceRender() }
         is TransportPlan.Nullable -> "nullable(${inner.traceRender()})"
         is TransportPlan.ValueUnwrap ->
@@ -247,9 +248,11 @@ internal fun TransportPlan.traceRender(): String =
             "wrap ${sourceType.renderIrType()} -> ${targetType.renderIrType()}" +
                 if (nested is TransportPlan.Identity) "" else " -> ${nested.traceRender()}"
 
-        is TransportPlan.Product -> "product ${sourceType.renderIrType()} -> ${targetType.renderIrType()}"
+        is TransportPlan.Product ->
+            "product ${sourceType.renderIrType()} -> ${targetType.renderIrType()}"
         is TransportPlan.Sum -> "sum ${sourceType.renderIrType()} -> ${targetType.renderIrType()}"
-        is TransportPlan.Function -> "function ${sourceType.renderIrType()} -> ${targetType.renderIrType()}"
+        is TransportPlan.Function ->
+            "function ${sourceType.renderIrType()} -> ${targetType.renderIrType()}"
         is TransportPlan.PinnedIso ->
             "pinned-iso ${isoObject.classIdOrFail.asString().renderTraceType()} ${sourceType.renderIrType()} -> ${targetType.renderIrType()}"
     }

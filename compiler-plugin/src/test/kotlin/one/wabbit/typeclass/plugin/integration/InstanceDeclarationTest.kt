@@ -1,17 +1,17 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
+import kotlin.test.Test
 import one.wabbit.typeclass.plugin.invalidInstanceExtensionFunction
-import one.wabbit.typeclass.plugin.invalidInstanceMustProvideTypeclassType
 import one.wabbit.typeclass.plugin.invalidInstanceNonTypeclassPrerequisites
 import one.wabbit.typeclass.plugin.invalidInstanceNonTypeclassSupertypes
 import one.wabbit.typeclass.plugin.invalidInstanceRegularParameter
 import one.wabbit.typeclass.plugin.invalidInstanceStarProjectedPrerequisites
-import kotlin.test.Test
 
 class InstanceDeclarationTest : IntegrationTestSupport() {
-    @Test fun rejectsInstanceObjectsDeclaredInsideNamespaceObjectsAtDeclarationSite() {
+    @Test
+    fun rejectsInstanceObjectsDeclaredInsideNamespaceObjectsAtDeclarationSite() {
         val source =
             """
             package demo
@@ -30,18 +30,18 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                     override fun show(): String = "namespace-object"
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedInvalidInstanceDecl("top-level", "associated owners"),
-                ),
+                listOf(expectedInvalidInstanceDecl("top-level", "associated owners")),
         )
     }
 
-    @Test fun reportsDuplicateInstancesAcrossCompanionAndTopLevelScopes() {
+    @Test
+    fun reportsDuplicateInstancesAcrossCompanionAndTopLevelScopes() {
         val source =
             """
             package demo
@@ -74,7 +74,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1))) // E:TC_AMBIGUOUS_INSTANCE ambiguous Show<Box> resolution
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -82,7 +83,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun rejectsInstanceObjectsDeclaredOutsideAllowedScopesAtDeclarationSite() {
+    @Test
+    fun rejectsInstanceObjectsDeclaredOutsideAllowedScopesAtDeclarationSite() {
         val source =
             """
             package demo
@@ -101,18 +103,17 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                     override fun show(value: Int): String = "int:${'$'}value"
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedInvalidInstanceDecl("companion", "top-level"),
-                ),
+            expectedDiagnostics = listOf(expectedInvalidInstanceDecl("companion", "top-level")),
         )
     }
 
-    @Test fun rejectsExtensionInstanceFunctionsAtDeclarationSite() {
+    @Test
+    fun rejectsExtensionInstanceFunctionsAtDeclarationSite() {
         val source =
             """
             package demo
@@ -130,18 +131,18 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 object : Show<String> {
                     override fun show(value: String): String = value
                 }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedTypeclassDiagnostic(invalidInstanceExtensionFunction()),
-                ),
+                listOf(expectedTypeclassDiagnostic(invalidInstanceExtensionFunction())),
         )
     }
 
-    @Test fun rejectsInstanceFunctionsWithRegularParametersAtDeclarationSite() {
+    @Test
+    fun rejectsInstanceFunctionsWithRegularParametersAtDeclarationSite() {
         val source =
             """
             package demo
@@ -159,18 +160,18 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 object : Show<Int> {
                     override fun show(value: Int): String = value.toString()
                 }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedTypeclassDiagnostic(invalidInstanceRegularParameter()),
-                ),
+                listOf(expectedTypeclassDiagnostic(invalidInstanceRegularParameter())),
         )
     }
 
-    @Test fun reportsNonTypeclassIntermediateSupertypesBeforeMissingTypeclassHeadFallback() {
+    @Test
+    fun reportsNonTypeclassIntermediateSupertypesBeforeMissingTypeclassHeadFallback() {
         val source =
             """
             package demo
@@ -189,18 +190,18 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             object WrappedIntShow : WrappedShow<Int> { // E:TC_INVALID_INSTANCE_DECL no direct @Typeclass head is provided here
                 override fun show(value: Int): String = value.toString()
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-            assertDoesNotCompile(
+        assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedTypeclassDiagnostic(invalidInstanceNonTypeclassSupertypes()),
-                ),
+                listOf(expectedTypeclassDiagnostic(invalidInstanceNonTypeclassSupertypes())),
         )
     }
 
-    @Test fun stillReportsNonTypeclassIntermediateSupertypesWhenAValidHeadAlsoExists() {
+    @Test
+    fun stillReportsNonTypeclassIntermediateSupertypesWhenAValidHeadAlsoExists() {
         val source =
             """
             package demo
@@ -225,18 +226,18 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 override fun show(value: Int): String = value.toString()
                 override fun eq(left: Int, right: Int): Boolean = left == right
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedTypeclassDiagnostic(invalidInstanceNonTypeclassSupertypes()),
-                ),
+                listOf(expectedTypeclassDiagnostic(invalidInstanceNonTypeclassSupertypes())),
         )
     }
 
-    @Test fun allowsSiblingMarkerSupertypesAlongsideAValidTypeclassHead() {
+    @Test
+    fun allowsSiblingMarkerSupertypesAlongsideAValidTypeclassHead() {
         val source =
             """
             package demo
@@ -261,15 +262,14 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             fun main() {
                 println(render())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "show:7",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "show:7")
     }
 
-    @Test fun rejectsInstanceFunctionsWithNonTypeclassContextParametersAtDeclarationSite() {
+    @Test
+    fun rejectsInstanceFunctionsWithNonTypeclassContextParametersAtDeclarationSite() {
         val source =
             """
             package demo
@@ -296,18 +296,18 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 object : Show<Box> {
                     override fun show(value: Box): String = prefix.value + show.show(value.value)
                 }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedTypeclassDiagnostic(invalidInstanceNonTypeclassPrerequisites()),
-                ),
+                listOf(expectedTypeclassDiagnostic(invalidInstanceNonTypeclassPrerequisites())),
         )
     }
 
-    @Test fun rejectsInstanceFunctionsWithStarProjectedTypeclassPrerequisitesAtDeclarationSite() {
+    @Test
+    fun rejectsInstanceFunctionsWithStarProjectedTypeclassPrerequisitesAtDeclarationSite() {
         val source =
             """
             package demo
@@ -331,20 +331,21 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 object : Show<List<String>> {
                     override fun show(value: List<String>): String = value.joinToString(",")
                 }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedTypeclassDiagnostic(invalidInstanceStarProjectedPrerequisites()),
-                ),
+                listOf(expectedTypeclassDiagnostic(invalidInstanceStarProjectedPrerequisites())),
         )
     }
 
-    @Test fun rejectsInstanceFunctionsWithDefinitelyNonNullTypeclassPrerequisitesAtDeclarationSite() {
+    @Test
+    fun rejectsInstanceFunctionsWithDefinitelyNonNullTypeclassPrerequisitesAtDeclarationSite() {
         // FIXME: perhaps we will want to re-enable this behavior in the future.
-        // For now, a safe strategy is to disallow non-nullable typeclass prerequisites on @Instance functions.
+        // For now, a safe strategy is to disallow non-nullable typeclass prerequisites on @Instance
+        // functions.
 
         val source =
             """
@@ -371,20 +372,23 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 object : Show<Box<T>> {
                     override fun show(value: Box<T>): String = value.value.toString()
                 }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     expectedExactInvalidInstanceDecl(
-                        why = "instance function typeclass prerequisites must not use definitely-non-null type arguments.",
-                    ),
+                        why =
+                            "instance function typeclass prerequisites must not use definitely-non-null type arguments."
+                    )
                 ),
         )
     }
 
-    @Test fun rejectsInstancesDeclaredInUnrelatedCompanionObjectsAtDeclarationSite() {
+    @Test
+    fun rejectsInstancesDeclaredInUnrelatedCompanionObjectsAtDeclarationSite() {
         val source =
             """
             package demo
@@ -405,20 +409,23 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                     }
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     expectedExactInvalidInstanceDecl(
-                        why = "associated owner does not match the provided typeclass head or its type arguments.",
-                    ),
+                        why =
+                            "associated owner does not match the provided typeclass head or its type arguments."
+                    )
                 ),
         )
     }
 
-    @Test fun rejectsClassBasedInstancesAtDeclarationSite() {
+    @Test
+    fun rejectsClassBasedInstancesAtDeclarationSite() {
         val source =
             """
             package demo
@@ -435,20 +442,22 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             class IntShow : Show<Int> {
                 override fun show(value: Int): String = value.toString()
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     expectedExactInvalidInstanceDecl(
-                        why = "class-based instances are not allowed; use an object.",
-                    ),
+                        why = "class-based instances are not allowed; use an object."
+                    )
                 ),
         )
     }
 
-    @Test fun rejectsMutableInstancePropertiesAtDeclarationSite() {
+    @Test
+    fun rejectsMutableInstancePropertiesAtDeclarationSite() {
         val source =
             """
             package demo
@@ -466,20 +475,22 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 object : Show<Int> {
                     override fun show(value: Int): String = value.toString()
                 }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     expectedExactInvalidInstanceDecl(
-                        why = "mutable instance property declarations are not allowed.",
-                    ),
+                        why = "mutable instance property declarations are not allowed."
+                    )
                 ),
         )
     }
 
-    @Test fun rejectsLateinitInstancePropertiesAtDeclarationSite() {
+    @Test
+    fun rejectsLateinitInstancePropertiesAtDeclarationSite() {
         val source =
             """
             package demo
@@ -494,20 +505,22 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
             @Instance // E:TC_INVALID_INSTANCE_DECL lateinit instance properties are not allowed
             lateinit var intShow: Show<Int>
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     expectedExactInvalidInstanceDecl(
-                        why = "lateinit instance property declarations are not allowed.",
-                    ),
+                        why = "lateinit instance property declarations are not allowed."
+                    )
                 ),
         )
     }
 
-    @Test fun rejectsCustomGetterInstancePropertiesAtDeclarationSite() {
+    @Test
+    fun rejectsCustomGetterInstancePropertiesAtDeclarationSite() {
         val source =
             """
             package demo
@@ -526,20 +539,22 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                     object : Show<Int> {
                         override fun show(value: Int): String = value.toString()
                     }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     expectedExactInvalidInstanceDecl(
-                        why = "custom getter instance property declarations are not allowed.",
-                    ),
+                        why = "custom getter instance property declarations are not allowed."
+                    )
                 ),
         )
     }
 
-    @Test fun rejectsSuspendInstanceFunctionsAtDeclarationSite() {
+    @Test
+    fun rejectsSuspendInstanceFunctionsAtDeclarationSite() {
         val source =
             """
             package demo
@@ -557,20 +572,22 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 object : Show<Int> {
                     override fun show(value: Int): String = value.toString()
                 }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     expectedExactInvalidInstanceDecl(
-                        why = "suspend instance functions are not allowed.",
-                    ),
+                        why = "suspend instance functions are not allowed."
+                    )
                 ),
         )
     }
 
-    @Test fun illegalMutableInstancePropertiesDoNotCreateSpuriousCallSiteAmbiguity() {
+    @Test
+    fun illegalMutableInstancePropertiesDoNotCreateSpuriousCallSiteAmbiguity() {
         val source =
             """
             package demo
@@ -600,7 +617,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             fun main() {
                 println(render(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -608,13 +626,14 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             expectedDiagnostics =
                 listOf(
                     expectedExactInvalidInstanceDecl(
-                        why = "mutable instance property declarations are not allowed.",
-                    ),
+                        why = "mutable instance property declarations are not allowed."
+                    )
                 ),
         )
     }
 
-    @Test fun illegalLateinitInstancePropertiesDoNotCreateSpuriousCallSiteAmbiguity() {
+    @Test
+    fun illegalLateinitInstancePropertiesDoNotCreateSpuriousCallSiteAmbiguity() {
         val source =
             """
             package demo
@@ -641,7 +660,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             fun main() {
                 println(render(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -649,13 +669,14 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             expectedDiagnostics =
                 listOf(
                     expectedExactInvalidInstanceDecl(
-                        why = "lateinit instance property declarations are not allowed.",
-                    ),
+                        why = "lateinit instance property declarations are not allowed."
+                    )
                 ),
         )
     }
 
-    @Test fun illegalCustomGetterInstancePropertiesDoNotCreateSpuriousCallSiteAmbiguity() {
+    @Test
+    fun illegalCustomGetterInstancePropertiesDoNotCreateSpuriousCallSiteAmbiguity() {
         val source =
             """
             package demo
@@ -686,7 +707,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             fun main() {
                 println(render(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -694,13 +716,14 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             expectedDiagnostics =
                 listOf(
                     expectedExactInvalidInstanceDecl(
-                        why = "custom getter instance property declarations are not allowed.",
-                    ),
+                        why = "custom getter instance property declarations are not allowed."
+                    )
                 ),
         )
     }
 
-    @Test fun illegalSuspendInstanceFunctionsDoNotCreateSpuriousCallSiteAmbiguity() {
+    @Test
+    fun illegalSuspendInstanceFunctionsDoNotCreateSpuriousCallSiteAmbiguity() {
         val source =
             """
             package demo
@@ -730,7 +753,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             fun main() {
                 println(render(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -738,8 +762,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             expectedDiagnostics =
                 listOf(
                     expectedExactInvalidInstanceDecl(
-                        why = "suspend instance functions are not allowed.",
-                    ),
+                        why = "suspend instance functions are not allowed."
+                    )
                 ),
         )
     }
@@ -777,7 +801,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             fun main() {
                 println(render())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -818,7 +843,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             fun main() {
                 println(render())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -852,15 +878,16 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                 object : WrappedShow<Box<A>> {
                     override fun label(): String = "recursive"
                 }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     expectedExactInvalidInstanceDecl(
-                        why = "direct recursive instance rule for demo/Show is not allowed.",
-                    ),
+                        why = "direct recursive instance rule for demo/Show is not allowed."
+                    )
                 ),
         )
     }
@@ -902,12 +929,10 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
             fun main() {
                 println(label<Box<Int>>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "box",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "box")
     }
 
     @Test
@@ -932,7 +957,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
 
                         override fun eq(left: Int, right: Int): Boolean = left == right
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Eq.kt" to
                     """
                     package demo
@@ -943,7 +969,8 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                     interface Eq<A> {
                         fun eq(left: A, right: A): Boolean
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
@@ -955,7 +982,7 @@ class InstanceDeclarationTest : IntegrationTestSupport() {
                         "same file as one of",
                         "Show",
                         "Eq",
-                    ),
+                    )
                 ),
         )
     }

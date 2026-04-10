@@ -14,8 +14,10 @@ The most common diagnostic families are:
 
 - `TC_NO_CONTEXT_ARGUMENT`: no viable evidence was found for the requested goal
 - `TC_AMBIGUOUS_INSTANCE`: more than one viable candidate remained
+- `TC_INVALID_INSTANCE_DECL`: an `@Instance` declaration has an unsupported shape, owner, or provided type
 - `TC_CANNOT_DERIVE`: a requested derivation failed validation or could not be completed
 - `TC_INVALID_EQUIV_DECL`: user code tried to author compiler-owned `Equiv` evidence directly
+- `TC_INVALID_BUILTIN_EVIDENCE`: IR reached a builtin-evidence request that cannot be materialized safely
 
 ## `TC_NO_CONTEXT_ARGUMENT`
 
@@ -23,7 +25,7 @@ This means resolution did not end with a usable candidate.
 
 Check these first:
 
-- the requested interface is actually annotated with `@Typeclass`
+- the requested head is actually annotated with `@Typeclass`
 - the call site or lexical scope already has direct contextual evidence
 - a matching `@Instance` exists in associated scope or legal top-level scope
 - the candidate's prerequisites can themselves be solved
@@ -32,7 +34,7 @@ Check these first:
 
 ### Common causes
 
-- missing `@Typeclass` on the interface head
+- missing `@Typeclass` on the head
 - `@Instance` declared in the wrong place
 - top-level `@Instance` declared as an arbitrary orphan
 - dependency instance is `internal` or `private`
@@ -80,6 +82,26 @@ How to fix it:
 - keep only one canonical rule per reachable scope for a given head/target pair
 - pass the desired evidence explicitly through local context when you need a local override
 
+## `TC_INVALID_INSTANCE_DECL`
+
+This means an `@Instance` declaration was rejected at declaration site before normal call-site resolution.
+
+Common causes:
+
+- the declaration is local or a non-companion member
+- a top-level instance lives in a file that owns none of the typeclass head or provided concrete target classifiers
+- an instance function has ordinary value parameters
+- an instance property is mutable
+- the provided type is not a supported `@Typeclass` application
+- a generic instance rule has type parameters or bounds that cannot be represented safely by the rule model
+
+How to fix it:
+
+- move the declaration to the typeclass companion, target-type companion, or a legal owner file
+- use an `object`, immutable property, or parameterless function whose context parameters are prerequisites
+- make the provided result type explicit when inference hides the real typeclass head
+- replace local helper evidence with an explicit context parameter if it is meant to be local-only
+
 ## `TC_CANNOT_DERIVE`
 
 This means the compiler validated a derivation request and rejected it, or could not complete it soundly.
@@ -122,6 +144,24 @@ Use:
 - `Iso<A, B>` for explicit user-authored reversible conversions
 - `@DeriveEquiv` when you want compiler-exported equivalence evidence
 - `@DeriveVia` when you want one derivation request to transport through equivalence
+
+## `TC_INVALID_BUILTIN_EVIDENCE`
+
+This means a builtin proof or optional builtin evidence request reached IR but could not be materialized.
+
+Common causes:
+
+- `KClass<T>` was requested for nullable or non-runtime-materializable `T`
+- `KSerializer<T>` was requested for a type the plugin cannot prove serializable
+- `KnownType<T>` or `TypeId<T>` was requested for an unfixed non-reified type parameter
+- a builtin proof survived earlier filtering but exact backend materialization found a stricter mismatch
+
+How to fix it:
+
+- make the type concrete at the call site
+- use `inline reified` only for builtins that explicitly support reified materialization
+- pass explicit local evidence when the compiler cannot prove the builtin itself
+- enable the optional builtin if the failure is for `KClass<T>` or `KSerializer<T>`
 
 ## Resolution Tracing
 

@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.proofs
 
-import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import kotlin.test.Test
+import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 
 class BuiltinProofApiSurfaceTest : IntegrationTestSupport() {
     @Test
@@ -49,7 +49,8 @@ class BuiltinProofApiSurfaceTest : IntegrationTestSupport() {
                 println(notNullable != null)
                 println("List" in typeId.canonicalName && "String?" in typeId.canonicalName)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -64,7 +65,8 @@ class BuiltinProofApiSurfaceTest : IntegrationTestSupport() {
                 true
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 }

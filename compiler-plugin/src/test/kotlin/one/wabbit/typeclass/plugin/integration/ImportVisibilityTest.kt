@@ -1,11 +1,12 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
 import kotlin.test.Test
 
 class ImportVisibilityTest : IntegrationTestSupport() {
-    @Test fun privateTopLevelInstancesDoNotInfluenceIrContextualOverloadFallbackAcrossFiles() {
+    @Test
+    fun privateTopLevelInstancesDoNotInfluenceIrContextualOverloadFallbackAcrossFiles() {
         val sources =
             mapOf(
                 "demo/Api.kt" to
@@ -24,7 +25,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                     private object HiddenIntShow : Show<Int> {
                         override fun label(): String = "hidden"
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -37,7 +39,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                     fun main() {
                         println(render(1))
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertCompilesAndRuns(
@@ -47,7 +50,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun topLevelInstancesDeclaredBesideTypeclassHeadsRemainUsable() {
+    @Test
+    fun topLevelInstancesDeclaredBesideTypeclassHeadsRemainUsable() {
         val sources =
             mapOf(
                 "shared/Api.kt" to
@@ -69,7 +73,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
                     context(show: Show<A>)
                     fun <A> render(value: A): String = show.show(value)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -79,7 +84,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                     fun main() {
                         println(render(1))
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertCompilesAndRuns(
@@ -89,7 +95,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun topLevelInstancesDeclaredBesideConcreteProvidedClassifiersRemainUsable() {
+    @Test
+    fun topLevelInstancesDeclaredBesideConcreteProvidedClassifiersRemainUsable() {
         val sources =
             mapOf(
                 "shared/Api.kt" to
@@ -105,7 +112,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
                     context(show: Show<A>)
                     fun <A> render(value: A): String = show.show(value)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "alpha/AlphaId.kt" to
                     """
                     package alpha
@@ -119,7 +127,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                     object AlphaIdShow : Show<AlphaId> {
                         override fun show(value: AlphaId): String = "alpha-id:${'$'}{value.value}"
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -130,7 +139,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                     fun main() {
                         println(render(AlphaId(1)))
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertCompilesAndRuns(
@@ -140,7 +150,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun rejectsTopLevelOrphanInstancesDeclaredOutsideRelevantFiles() {
+    @Test
+    fun rejectsTopLevelOrphanInstancesDeclaredOutsideRelevantFiles() {
         val sources =
             mapOf(
                 "shared/Api.kt" to
@@ -153,13 +164,15 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                     interface Show<A> {
                         fun show(value: A): String
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "alpha/AlphaId.kt" to
                     """
                     package alpha
 
                     data class AlphaId(val value: Int)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "beta/Instances.kt" to
                     """
                     package beta
@@ -172,16 +185,19 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                     object AlphaIdShow : Show<AlphaId> { // E:TC_INVALID_INSTANCE_DECL orphan instances must live with Show or AlphaId
                         override fun show(value: AlphaId): String = "beta:${'$'}{value.value}"
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
             sources = sources,
-            expectedDiagnostics = listOf(expectedInvalidInstanceDecl("same file", "show", "alphaid")),
+            expectedDiagnostics =
+                listOf(expectedInvalidInstanceDecl("same file", "show", "alphaid")),
         )
     }
 
-    @Test fun rejectsConstructedTopLevelOrphanInstancesDeclaredOutsideRelevantFiles() {
+    @Test
+    fun rejectsConstructedTopLevelOrphanInstancesDeclaredOutsideRelevantFiles() {
         val sources =
             mapOf(
                 "shared/Api.kt" to
@@ -208,7 +224,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
                     context(_: Show<A>)
                     fun <A> which(): String = summon<Show<A>>().label()
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "alpha/AlphaId.kt" to
                     """
                     package alpha
@@ -225,7 +242,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                                 }
                         }
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "beta/Instances.kt" to
                     """
                     package beta
@@ -239,7 +257,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                     object BetaBoxAlphaIdShow : Show<Box<AlphaId>> { // E:TC_INVALID_INSTANCE_DECL orphan instances must live with Box or AlphaId
                         override fun label(): String = "beta-box"
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -251,16 +270,19 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                     fun main() {
                         println(which<Box<AlphaId>>())
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
             sources = sources,
-            expectedDiagnostics = listOf(expectedInvalidInstanceDecl("same file", "show", "box", "alphaid")),
+            expectedDiagnostics =
+                listOf(expectedInvalidInstanceDecl("same file", "show", "box", "alphaid")),
         )
     }
 
-    @Test fun topLevelInstancesMayBeDeclaredBesideNestedDeclaredHeadArguments() {
+    @Test
+    fun topLevelInstancesMayBeDeclaredBesideNestedDeclaredHeadArguments() {
         val sources =
             mapOf(
                 "shared/Api.kt" to
@@ -276,19 +298,22 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
                     context(rel: Rel<A, B>)
                     fun <A, B> which(): String = rel.label()
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "alpha/Foo.kt" to
                     """
                     package alpha
 
                     data class Foo(val value: Int = 0)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "beta/Boo.kt" to
                     """
                     package beta
 
                     data class Boo<A>(val value: A)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "gamma/Baz.kt" to
                     """
                     package gamma
@@ -304,7 +329,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                     object FooBooBazRel : Rel<Foo, Boo<Baz>> {
                         override fun label(): String = "baz-host"
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -317,7 +343,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                     fun main() {
                         println(which<Foo, Boo<Baz>>())
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertCompilesAndRuns(
@@ -327,7 +354,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun topLevelInstancesMayBeDeclaredBesideOuterDeclaredHeadArguments() {
+    @Test
+    fun topLevelInstancesMayBeDeclaredBesideOuterDeclaredHeadArguments() {
         val sources =
             mapOf(
                 "shared/Api.kt" to
@@ -343,13 +371,15 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
                     context(rel: Rel<A, B>)
                     fun <A, B> which(): String = rel.label()
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "alpha/Foo.kt" to
                     """
                     package alpha
 
                     data class Foo(val value: Int = 0)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "beta/Boo.kt" to
                     """
                     package beta
@@ -365,13 +395,15 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                     object FooBooBazRel : Rel<Foo, Boo<Baz>> {
                         override fun label(): String = "boo-host"
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "gamma/Baz.kt" to
                     """
                     package gamma
 
                     data class Baz(val value: Int)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -384,7 +416,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                     fun main() {
                         println(which<Foo, Boo<Baz>>())
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertCompilesAndRuns(
@@ -394,7 +427,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun rejectsTopLevelInstancesDeclaredOutsideDeclaredHeadOwnersEvenForNestedArguments() {
+    @Test
+    fun rejectsTopLevelInstancesDeclaredOutsideDeclaredHeadOwnersEvenForNestedArguments() {
         val sources =
             mapOf(
                 "shared/Api.kt" to
@@ -407,25 +441,29 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                     interface Rel<A, B> {
                         fun label(): String
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "alpha/Foo.kt" to
                     """
                     package alpha
 
                     data class Foo(val value: Int = 0)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "beta/Boo.kt" to
                     """
                     package beta
 
                     data class Boo<A>(val value: A)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "gamma/Baz.kt" to
                     """
                     package gamma
 
                     data class Baz(val value: Int)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "qux/Qux.kt" to
                     """
                     package qux
@@ -442,16 +480,19 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                     object FooBooBazRel : Rel<Foo, Boo<Baz>> { // E:TC_INVALID_INSTANCE_DECL nested declared heads should not make unrelated files legal hosts
                         override fun label(): String = "qux-host"
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
             sources = sources,
-            expectedDiagnostics = listOf(expectedInvalidInstanceDecl("same file", "rel", "foo", "boo", "baz")),
+            expectedDiagnostics =
+                listOf(expectedInvalidInstanceDecl("same file", "rel", "foo", "boo", "baz")),
         )
     }
 
-    @Test fun entailedSupertypesDoNotConferTopLevelOrphanOwnership() {
+    @Test
+    fun entailedSupertypesDoNotConferTopLevelOrphanOwnership() {
         val sources =
             mapOf(
                 "shared/Eq.kt" to
@@ -472,7 +513,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                         override fun eqv(left: Foo, right: Foo): Boolean = left == right
                         override fun compare(left: Foo, right: Foo): Int = left.value.compareTo(right.value)
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "shared/Ord.kt" to
                     """
                     package shared
@@ -483,13 +525,15 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                     interface Ord<A> : Eq<A> {
                         fun compare(left: A, right: A): Int
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "model/Foo.kt" to
                     """
                     package model
 
                     data class Foo(val value: Int)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
@@ -498,7 +542,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun internalDependencyInstancesDeclaredBesideTypeclassHeadsDoNotLeakAcrossModuleBoundaries() {
+    @Test
+    fun internalDependencyInstancesDeclaredBesideTypeclassHeadsDoNotLeakAcrossModuleBoundaries() {
         val dependency =
             HarnessDependency(
                 name = "dep-internal-instance",
@@ -523,7 +568,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
                             context(show: Show<A>)
                             fun <A> render(value: A): String = show.show(value)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -535,7 +581,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(1)) // E:TC_NO_CONTEXT_ARGUMENT internal instance from dependency should not be visible here
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -544,7 +591,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun publicAssociatedCompanionInstancesFromDependenciesParticipateInResolution() {
+    @Test
+    fun publicAssociatedCompanionInstancesFromDependenciesParticipateInResolution() {
         val dependency =
             HarnessDependency(
                 name = "dep-public-companion",
@@ -574,7 +622,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
                             context(show: Show<Box>)
                             fun render(value: Box): String = show.show(value)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -587,7 +636,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -596,7 +646,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun publicAssociatedNamedCompanionInstancesFromDependenciesParticipateInResolution() {
+    @Test
+    fun publicAssociatedNamedCompanionInstancesFromDependenciesParticipateInResolution() {
         val dependency =
             HarnessDependency(
                 name = "dep-public-named-companion",
@@ -626,7 +677,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
                             context(show: Show<Box>)
                             fun render(value: Box): String = show.show(value)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -639,7 +691,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -648,7 +701,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun publicTopLevelDependencyInstancesParticipateInIrResolution() {
+    @Test
+    fun publicTopLevelDependencyInstancesParticipateInIrResolution() {
         val dependency =
             HarnessDependency(
                 name = "dep-top-level-instance",
@@ -673,7 +727,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
                             context(show: Show<Int>)
                             fun render(value: Int): String = show.show(value)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -685,7 +740,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -694,7 +750,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun publicTopLevelDependencyPropertyInstancesParticipateInIrResolution() {
+    @Test
+    fun publicTopLevelDependencyPropertyInstancesParticipateInIrResolution() {
         val dependency =
             HarnessDependency(
                 name = "dep-top-level-property-instance",
@@ -720,7 +777,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
                             context(show: Show<Int>)
                             fun render(value: Int): String = show.show(value)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -732,7 +790,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(2))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -741,7 +800,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun publicTopLevelDependencyFunctionInstancesParticipateInIrResolution() {
+    @Test
+    fun publicTopLevelDependencyFunctionInstancesParticipateInIrResolution() {
         val dependency =
             HarnessDependency(
                 name = "dep-top-level-function-instance",
@@ -767,7 +827,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
                             context(show: Show<Int>)
                             fun render(value: Int): String = show.show(value)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -779,7 +840,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(3))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -788,7 +850,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun dependencyTopLevelFunctionsWithSharedCallableIdsStillResolveTheSelectedRuleInIr() {
+    @Test
+    fun dependencyTopLevelFunctionsWithSharedCallableIdsStillResolveTheSelectedRuleInIr() {
         val api =
             HarnessDependency(
                 name = "dep-shared-api",
@@ -807,7 +870,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
                             context(show: Show<A>)
                             fun <A> render(value: A): String = show.show(value)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val ints =
@@ -829,7 +893,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                                 object : Show<IntBox> {
                                     override fun show(value: IntBox): String = "int:${'$'}{value.value}"
                                 }
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
                 dependencies = listOf(api),
             )
@@ -852,7 +917,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                                 object : Show<StringBox> {
                                     override fun show(value: StringBox): String = "string:${'$'}{value.value}"
                                 }
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
                 dependencies = listOf(api),
             )
@@ -866,7 +932,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(IntBox(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -875,7 +942,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun dependencyTopLevelPropertiesWithSharedCallableIdsStillResolveTheSelectedRuleInIr() {
+    @Test
+    fun dependencyTopLevelPropertiesWithSharedCallableIdsStillResolveTheSelectedRuleInIr() {
         val api =
             HarnessDependency(
                 name = "dep-shared-api",
@@ -894,7 +962,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
                             context(show: Show<A>)
                             fun <A> render(value: A): String = show.show(value)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val ints =
@@ -916,7 +985,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                                 object : Show<IntBox> {
                                     override fun show(value: IntBox): String = "prop-int:${'$'}{value.value}"
                                 }
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
                 dependencies = listOf(api),
             )
@@ -939,7 +1009,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                                 object : Show<StringBox> {
                                     override fun show(value: StringBox): String = "prop-string:${'$'}{value.value}"
                                 }
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
                 dependencies = listOf(api),
             )
@@ -953,7 +1024,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(IntBox(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -962,7 +1034,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun privateAssociatedCompanionInstancesDoNotLeakAcrossDependencyBoundaries() {
+    @Test
+    fun privateAssociatedCompanionInstancesDoNotLeakAcrossDependencyBoundaries() {
         val dependency =
             HarnessDependency(
                 name = "dep-private-companion",
@@ -992,7 +1065,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
                             context(show: Show<Box>)
                             fun render(value: Box): String = show.show(value)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -1005,7 +1079,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1))) // E:TC_NO_CONTEXT_ARGUMENT private companion instance from dependency should not leak
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1014,7 +1089,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun nonPublicDependencyAssociatedInstancesDoNotInfluenceIrContextualOverloadFallback() {
+    @Test
+    fun nonPublicDependencyAssociatedInstancesDoNotInfluenceIrContextualOverloadFallback() {
         val dependency =
             HarnessDependency(
                 name = "dep-internal-associated-instance",
@@ -1041,7 +1117,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
                                         }
                                 }
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -1059,7 +1136,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1099,8 +1177,9 @@ class ImportVisibilityTest : IntegrationTestSupport() {
 
                             context(show: Show<Box>)
                             fun render(value: Box): String = show.show(value)
-                            """.trimIndent(),
-                    ),
+                            """
+                                .trimIndent()
+                    )
             )
         val source =
             """
@@ -1112,7 +1191,8 @@ class ImportVisibilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,

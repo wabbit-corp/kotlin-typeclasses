@@ -70,36 +70,37 @@ internal object TypeclassErrors : KtDiagnosticsContainer() {
 }
 
 internal object TypeclassErrorMessages : BaseDiagnosticRendererFactory() {
-    override val MAP by KtDiagnosticFactoryToRendererMap("TypeclassErrors") { map ->
-        map.put(
-            TypeclassErrors.CANNOT_DERIVE,
-            "[${TypeclassDiagnosticIds.CANNOT_DERIVE}] {0}",
-            CommonRenderers.STRING,
-        )
-        map.put(
-            TypeclassErrors.INVALID_INSTANCE_DECLARATION,
-            "[${TypeclassDiagnosticIds.INVALID_INSTANCE_DECL}] {0}",
-            CommonRenderers.STRING,
-        )
-        map.put(
-            TypeclassErrors.INVALID_EQUIV_DECLARATION,
-            "[${TypeclassDiagnosticIds.INVALID_EQUIV_DECL}] {0}",
-            CommonRenderers.STRING,
-        )
-        map.put(
-            TypeclassErrors.NO_CONTEXT_ARGUMENT,
-            "[${TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT}] {0}",
-            CommonRenderers.STRING,
-        )
-        map.put(
-            TypeclassErrors.AMBIGUOUS_INSTANCE,
-            "[${TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE}] {0}",
-            CommonRenderers.STRING,
-        )
-        map.put(
-            TypeclassErrors.INVALID_BUILTIN_EVIDENCE,
-            "[${TypeclassDiagnosticIds.INVALID_BUILTIN_EVIDENCE}] {0}",
-            CommonRenderers.STRING,
-        )
-    }
+    override val MAP by
+        KtDiagnosticFactoryToRendererMap("TypeclassErrors") { map ->
+            map.put(
+                TypeclassErrors.CANNOT_DERIVE,
+                "[${TypeclassDiagnosticIds.CANNOT_DERIVE}] {0}",
+                CommonRenderers.STRING,
+            )
+            map.put(
+                TypeclassErrors.INVALID_INSTANCE_DECLARATION,
+                "[${TypeclassDiagnosticIds.INVALID_INSTANCE_DECL}] {0}",
+                CommonRenderers.STRING,
+            )
+            map.put(
+                TypeclassErrors.INVALID_EQUIV_DECLARATION,
+                "[${TypeclassDiagnosticIds.INVALID_EQUIV_DECL}] {0}",
+                CommonRenderers.STRING,
+            )
+            map.put(
+                TypeclassErrors.NO_CONTEXT_ARGUMENT,
+                "[${TypeclassDiagnosticIds.NO_CONTEXT_ARGUMENT}] {0}",
+                CommonRenderers.STRING,
+            )
+            map.put(
+                TypeclassErrors.AMBIGUOUS_INSTANCE,
+                "[${TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE}] {0}",
+                CommonRenderers.STRING,
+            )
+            map.put(
+                TypeclassErrors.INVALID_BUILTIN_EVIDENCE,
+                "[${TypeclassDiagnosticIds.INVALID_BUILTIN_EVIDENCE}] {0}",
+                CommonRenderers.STRING,
+            )
+        }
 }

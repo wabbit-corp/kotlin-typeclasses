@@ -1,12 +1,12 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin
 
-import one.wabbit.typeclass.plugin.model.TcType
-import org.jetbrains.kotlin.types.Variance
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import one.wabbit.typeclass.plugin.model.TcType
+import org.jetbrains.kotlin.types.Variance
 
 class BuiltinGoalSupportTest {
     @Test
@@ -29,7 +29,8 @@ class BuiltinGoalSupportTest {
 
     @Test
     fun `known type and type id admissibility follow nested runtime materialization`() {
-        val target = typeConstructor("demo.Box", projected(Variance.OUT_VARIANCE, typeVariable("T")))
+        val target =
+            typeConstructor("demo.Box", projected(Variance.OUT_VARIANCE, typeVariable("T")))
         val knownTypeGoal = typeConstructor(KNOWN_TYPE_CLASS_ID.asString(), target)
         val typeIdGoal = typeConstructor(TYPE_ID_CLASS_ID.asString(), target)
 
@@ -46,34 +47,29 @@ class BuiltinGoalSupportTest {
         assertFalse(supportsRuntimeTypeMaterialization(TcType.StarProjection) { true })
         assertFalse(supportsRuntimeTypeMaterialization(topLevelProjection) { true })
         assertTrue(
-            supportsRuntimeTypeMaterialization(
-                typeConstructor("demo.Box", TcType.StarProjection),
-            ) { true },
+            supportsRuntimeTypeMaterialization(typeConstructor("demo.Box", TcType.StarProjection)) {
+                true
+            }
         )
         assertTrue(
             supportsRuntimeTypeMaterialization(
-                typeConstructor("demo.Box", projected(Variance.OUT_VARIANCE, typeVariable("T"))),
-            ) { it == "T" },
+                typeConstructor("demo.Box", projected(Variance.OUT_VARIANCE, typeVariable("T")))
+            ) {
+                it == "T"
+            }
         )
     }
 
     @Test
     fun `builtin admissibility rejects top level stars and projections`() {
         val knownTypeStarGoal =
-            typeConstructor(
-                KNOWN_TYPE_CLASS_ID.asString(),
-                TcType.StarProjection,
-            )
+            typeConstructor(KNOWN_TYPE_CLASS_ID.asString(), TcType.StarProjection)
         val typeIdProjectedGoal =
             typeConstructor(
                 TYPE_ID_CLASS_ID.asString(),
                 projected(Variance.OUT_VARIANCE, typeConstructor("kotlin.Any", isNullable = true)),
             )
-        val kClassStarGoal =
-            typeConstructor(
-                KCLASS_CLASS_ID.asString(),
-                TcType.StarProjection,
-            )
+        val kClassStarGoal = typeConstructor(KCLASS_CLASS_ID.asString(), TcType.StarProjection)
         val kSerializerProjectedGoal =
             typeConstructor(
                 KSERIALIZER_CLASS_ID.asString(),
@@ -134,14 +130,18 @@ class BuiltinGoalSupportTest {
         assertFalse(
             supportsBuiltinIsTypeclassInstanceGoal(
                 goal = projectedTargetGoal,
-                isTypeclassClassifier = { classifierId -> classifierId == KCLASS_CLASS_ID.asString() },
-            ),
+                isTypeclassClassifier = { classifierId ->
+                    classifierId == KCLASS_CLASS_ID.asString()
+                },
+            )
         )
         assertFalse(
             provablySupportsBuiltinIsTypeclassInstanceGoal(
                 goal = projectedTargetGoal,
-                isTypeclassClassifier = { classifierId -> classifierId == KCLASS_CLASS_ID.asString() },
-            ),
+                isTypeclassClassifier = { classifierId ->
+                    classifierId == KCLASS_CLASS_ID.asString()
+                },
+            )
         )
     }
 
@@ -158,28 +158,25 @@ class BuiltinGoalSupportTest {
                 typeConstructor("demo.Show", typeConstructor("kotlin.Int")),
             )
         val variableGoal =
-            typeConstructor(
-                IS_TYPECLASS_INSTANCE_CLASS_ID.asString(),
-                typeVariable("TC"),
-            )
+            typeConstructor(IS_TYPECLASS_INSTANCE_CLASS_ID.asString(), typeVariable("TC"))
 
         assertFalse(
             supportsBuiltinIsTypeclassInstanceGoal(
                 goal = nonTypeclassGoal,
                 isTypeclassClassifier = { classifierId -> classifierId == "demo.Show" },
-            ),
+            )
         )
         assertTrue(
             supportsBuiltinIsTypeclassInstanceGoal(
                 goal = typeclassGoal,
                 isTypeclassClassifier = { classifierId -> classifierId == "demo.Show" },
-            ),
+            )
         )
         assertTrue(
             supportsBuiltinIsTypeclassInstanceGoal(
                 goal = variableGoal,
                 isTypeclassClassifier = { false },
-            ),
+            )
         )
     }
 
@@ -238,7 +235,8 @@ class BuiltinGoalSupportTest {
                                 typeConstructor(
                                     "kotlin.collections.Collection",
                                     typeConstructor("kotlin.String"),
-                                ) as TcType.Constructor,
+                                )
+                                    as TcType.Constructor
                             ),
                     ),
                 "kotlin.collections.Collection" to
@@ -324,10 +322,7 @@ class BuiltinGoalSupportTest {
     @Test
     fun `provable-only is-typeclass-instance support rejects speculative variables`() {
         val speculativeGoal =
-            typeConstructor(
-                IS_TYPECLASS_INSTANCE_CLASS_ID.asString(),
-                typeVariable("TC"),
-            )
+            typeConstructor(IS_TYPECLASS_INSTANCE_CLASS_ID.asString(), typeVariable("TC"))
         val provableGoal =
             typeConstructor(
                 IS_TYPECLASS_INSTANCE_CLASS_ID.asString(),
@@ -338,19 +333,19 @@ class BuiltinGoalSupportTest {
             supportsBuiltinIsTypeclassInstanceGoal(
                 goal = speculativeGoal,
                 isTypeclassClassifier = { classifierId -> classifierId == "demo.Show" },
-            ),
+            )
         )
         assertFalse(
             provablySupportsBuiltinIsTypeclassInstanceGoal(
                 goal = speculativeGoal,
                 isTypeclassClassifier = { classifierId -> classifierId == "demo.Show" },
-            ),
+            )
         )
         assertTrue(
             provablySupportsBuiltinIsTypeclassInstanceGoal(
                 goal = provableGoal,
                 isTypeclassClassifier = { classifierId -> classifierId == "demo.Show" },
-            ),
+            )
         )
     }
 
@@ -365,13 +360,9 @@ class BuiltinGoalSupportTest {
             isNullable = isNullable,
         )
 
-    private fun typeVariable(
-        id: String,
-        isNullable: Boolean = false,
-    ): TcType = TcType.Variable(id = id, displayName = id, isNullable = isNullable)
+    private fun typeVariable(id: String, isNullable: Boolean = false): TcType =
+        TcType.Variable(id = id, displayName = id, isNullable = isNullable)
 
-    private fun projected(
-        variance: Variance,
-        type: TcType,
-    ): TcType = TcType.Projected(variance, type)
+    private fun projected(variance: Variance, type: TcType): TcType =
+        TcType.Projected(variance, type)
 }

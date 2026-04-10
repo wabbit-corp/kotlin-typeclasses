@@ -78,7 +78,7 @@ internal fun <Source, Target, Assignment> uniquePerfectAssignmentPreservingMulti
                                 sourceIndex = sourceIndex,
                                 targetIndex = targetIndex,
                                 value = assignment,
-                            ),
+                            )
                         )
                     }
                 }

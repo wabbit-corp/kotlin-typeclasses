@@ -19,53 +19,51 @@ import one.wabbit.typeclass.plugin.model.isExactTypeIdentity
 import one.wabbit.typeclass.plugin.model.isProvablyNotNullable
 import one.wabbit.typeclass.plugin.model.isProvablyNullable
 import one.wabbit.typeclass.plugin.model.normalizedKey
-import one.wabbit.typeclass.plugin.model.render
 import one.wabbit.typeclass.plugin.model.referencedVariableIds
+import one.wabbit.typeclass.plugin.model.render
 import one.wabbit.typeclass.plugin.model.substituteType
 import one.wabbit.typeclass.plugin.model.toCanonicalTypeIdName
 import one.wabbit.typeclass.plugin.model.unifyTypes
-import org.jetbrains.kotlin.backend.jvm.JvmIrTypeSystemContext
-import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
+import org.jetbrains.kotlin.backend.jvm.JvmIrTypeSystemContext
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSourceLocation
 import org.jetbrains.kotlin.descriptors.ClassKind
+import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.ir.IrElement
-import org.jetbrains.kotlin.ir.builders.IrBlockBodyBuilder
+import org.jetbrains.kotlin.ir.IrStatement
 import org.jetbrains.kotlin.ir.builders.IrBuilderWithScope
 import org.jetbrains.kotlin.ir.builders.IrStatementsBuilder
+import org.jetbrains.kotlin.ir.builders.declarations.addValueParameter
+import org.jetbrains.kotlin.ir.builders.declarations.buildFun
 import org.jetbrains.kotlin.ir.builders.irAs
-import org.jetbrains.kotlin.ir.builders.irBoolean
 import org.jetbrains.kotlin.ir.builders.irBlock
+import org.jetbrains.kotlin.ir.builders.irBlockBody
+import org.jetbrains.kotlin.ir.builders.irBoolean
 import org.jetbrains.kotlin.ir.builders.irCall
 import org.jetbrains.kotlin.ir.builders.irCallConstructor
-import org.jetbrains.kotlin.ir.builders.irIfThenElse
-import org.jetbrains.kotlin.ir.builders.irInt
 import org.jetbrains.kotlin.ir.builders.irGet
 import org.jetbrains.kotlin.ir.builders.irGetObject
+import org.jetbrains.kotlin.ir.builders.irIfThenElse
+import org.jetbrains.kotlin.ir.builders.irInt
 import org.jetbrains.kotlin.ir.builders.irIs
-import org.jetbrains.kotlin.ir.builders.irBlockBody
 import org.jetbrains.kotlin.ir.builders.irNull
 import org.jetbrains.kotlin.ir.builders.irReturn
 import org.jetbrains.kotlin.ir.builders.irSet
-import org.jetbrains.kotlin.ir.builders.irSetField
 import org.jetbrains.kotlin.ir.builders.irString
 import org.jetbrains.kotlin.ir.builders.irTemporary
 import org.jetbrains.kotlin.ir.builders.irVararg
-import org.jetbrains.kotlin.ir.builders.declarations.addValueParameter
-import org.jetbrains.kotlin.ir.builders.declarations.buildFun
-import org.jetbrains.kotlin.ir.IrStatement
+import org.jetbrains.kotlin.ir.declarations.DescriptorMetadataSource
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationBase
-import org.jetbrains.kotlin.ir.declarations.IrDeclarationWithVisibility
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationParent
-import org.jetbrains.kotlin.ir.declarations.DescriptorMetadataSource
+import org.jetbrains.kotlin.ir.declarations.IrDeclarationWithVisibility
 import org.jetbrains.kotlin.ir.declarations.IrEnumEntry
 import org.jetbrains.kotlin.ir.declarations.IrField
 import org.jetbrains.kotlin.ir.declarations.IrFile
@@ -75,8 +73,8 @@ import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.declarations.IrProperty
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.declarations.IrTypeParameter
-import org.jetbrains.kotlin.ir.declarations.IrVariable
 import org.jetbrains.kotlin.ir.declarations.IrValueParameter
+import org.jetbrains.kotlin.ir.declarations.IrVariable
 import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.expressions.IrClassReference
 import org.jetbrains.kotlin.ir.expressions.IrComposite
@@ -84,38 +82,38 @@ import org.jetbrains.kotlin.ir.expressions.IrConst
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrExpressionBody
-import org.jetbrains.kotlin.ir.expressions.IrGetValue
 import org.jetbrains.kotlin.ir.expressions.IrGetObjectValue
+import org.jetbrains.kotlin.ir.expressions.IrGetValue
 import org.jetbrains.kotlin.ir.expressions.IrReturn
-import org.jetbrains.kotlin.ir.expressions.IrStatementOrigin
 import org.jetbrains.kotlin.ir.expressions.IrSpreadElement
+import org.jetbrains.kotlin.ir.expressions.IrStatementOrigin
 import org.jetbrains.kotlin.ir.expressions.IrTry
 import org.jetbrains.kotlin.ir.expressions.IrTypeOperatorCall
 import org.jetbrains.kotlin.ir.expressions.IrVararg
 import org.jetbrains.kotlin.ir.expressions.IrWhen
 import org.jetbrains.kotlin.ir.expressions.impl.IrFunctionExpressionImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrGetEnumValueImpl
-import org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
+import org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol
 import org.jetbrains.kotlin.ir.types.IrSimpleType
-import org.jetbrains.kotlin.ir.types.IrTypeSubstitutor
 import org.jetbrains.kotlin.ir.types.IrStarProjection
-import org.jetbrains.kotlin.ir.types.IrTypeArgument
 import org.jetbrains.kotlin.ir.types.IrType
+import org.jetbrains.kotlin.ir.types.IrTypeArgument
+import org.jetbrains.kotlin.ir.types.IrTypeSubstitutor
 import org.jetbrains.kotlin.ir.types.classOrNull
 import org.jetbrains.kotlin.ir.types.defaultType
-import org.jetbrains.kotlin.ir.types.makeNullable
-import org.jetbrains.kotlin.ir.types.typeWith
 import org.jetbrains.kotlin.ir.types.impl.IrSimpleTypeImpl
 import org.jetbrains.kotlin.ir.types.impl.IrStarProjectionImpl
 import org.jetbrains.kotlin.ir.types.impl.makeTypeProjection
+import org.jetbrains.kotlin.ir.types.makeNullable
+import org.jetbrains.kotlin.ir.types.typeWith
 import org.jetbrains.kotlin.ir.util.callableId
 import org.jetbrains.kotlin.ir.util.classId
 import org.jetbrains.kotlin.ir.util.classIdOrFail
 import org.jetbrains.kotlin.ir.util.hasAnnotation
 import org.jetbrains.kotlin.ir.util.isNullable
-import org.jetbrains.kotlin.ir.util.isSubtypeOf
 import org.jetbrains.kotlin.ir.util.isObject
+import org.jetbrains.kotlin.ir.util.isSubtypeOf
 import org.jetbrains.kotlin.ir.util.parentAsClass
 import org.jetbrains.kotlin.ir.util.render
 import org.jetbrains.kotlin.ir.util.substitute
@@ -130,13 +128,9 @@ import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedCallableMemberDescriptor
 import org.jetbrains.kotlin.types.Variance
 
-internal class TypeclassIrGenerationExtension(
-    private val sharedState: TypeclassPluginSharedState,
-) : IrGenerationExtension {
-    override fun generate(
-        moduleFragment: IrModuleFragment,
-        pluginContext: IrPluginContext,
-    ) {
+internal class TypeclassIrGenerationExtension(private val sharedState: TypeclassPluginSharedState) :
+    IrGenerationExtension {
+    override fun generate(moduleFragment: IrModuleFragment, pluginContext: IrPluginContext) {
         try {
             val ruleIndex = IrRuleIndex.build(moduleFragment, pluginContext, sharedState)
             val transformer = TypeclassIrCallTransformer(pluginContext, ruleIndex)
@@ -224,8 +218,11 @@ private class TypeclassIrCallTransformer(
             return rewritten
         }
 
-        val currentDeclaration = declarationStack.lastOrNull()
-            ?: error("Typeclass call ${callee.safeCallableIdentity()} is not enclosed by a declaration")
+        val currentDeclaration =
+            declarationStack.lastOrNull()
+                ?: error(
+                    "Typeclass call ${callee.safeCallableIdentity()} is not enclosed by a declaration"
+                )
         val enclosingFunction = functionStack.lastOrNull()
         return buildResolvedTypeclassCall(
             call = rewritten,
@@ -248,7 +245,10 @@ private class TypeclassIrCallTransformer(
                         candidate.requiresSyntheticTypeclassResolution(call, configuration)
                     }
             }
-        if (directCandidate != null && directCandidate.canAcceptSyntheticResolutionCall(call, configuration)) {
+        if (
+            directCandidate != null &&
+                directCandidate.canAcceptSyntheticResolutionCall(call, configuration)
+        ) {
             return directCandidate
         }
 
@@ -267,8 +267,7 @@ private class TypeclassIrCallTransformer(
     private fun contextualOverloadFallback(
         callee: IrSimpleFunction,
         call: IrCall,
-    ): IrSimpleFunction? =
-        contextualOverloadCandidates(callee, call).singleOrNull()
+    ): IrSimpleFunction? = contextualOverloadCandidates(callee, call).singleOrNull()
 
     private fun exactPlainOverloadFallback(
         callee: IrSimpleFunction,
@@ -286,7 +285,9 @@ private class TypeclassIrCallTransformer(
         }
         val candidates =
             referencedCallableIdFunctions(callableId)
-                .map { candidate -> ruleIndex.originalForWrapperLikeFunction(candidate) ?: candidate }
+                .map { candidate ->
+                    ruleIndex.originalForWrapperLikeFunction(candidate) ?: candidate
+                }
                 .distinctBy { candidate -> candidate.symbol }
                 .toList()
         val result =
@@ -300,8 +301,12 @@ private class TypeclassIrCallTransformer(
                         candidateDeclaredTypeParameterCount = candidate.typeParameters.size,
                     )
                 }
-                .filter { candidate -> !candidate.requiresSyntheticTypeclassResolution(call, configuration) }
-                .filter { candidate -> exactPlainOverloadFallbackShapesMatch(candidate, callee, configuration) }
+                .filter { candidate ->
+                    !candidate.requiresSyntheticTypeclassResolution(call, configuration)
+                }
+                .filter { candidate ->
+                    exactPlainOverloadFallbackShapesMatch(candidate, callee, configuration)
+                }
                 .singleOrNull()
         return result
     }
@@ -319,19 +324,26 @@ private class TypeclassIrCallTransformer(
             .map { candidate -> ruleIndex.originalForWrapperLikeFunction(candidate) ?: candidate }
             .filter { candidate -> candidate != callee }
             .filter { candidate ->
-                candidate.dispatchReceiverParameter != null == (callee.dispatchReceiverParameter != null) &&
-                    candidate.extensionReceiverParameter != null == (callee.extensionReceiverParameter != null)
+                candidate.dispatchReceiverParameter != null ==
+                    (callee.dispatchReceiverParameter != null) &&
+                    candidate.extensionReceiverParameter != null ==
+                        (callee.extensionReceiverParameter != null)
             }
-            .filter { candidate -> candidate.visibleNonTypeclassParameterCount(configuration) == calleeVisibleParameterCount }
-            .filter { candidate -> candidate.requiresSyntheticTypeclassResolution(call, configuration) }
+            .filter { candidate ->
+                candidate.visibleNonTypeclassParameterCount(configuration) ==
+                    calleeVisibleParameterCount
+            }
+            .filter { candidate ->
+                candidate.requiresSyntheticTypeclassResolution(call, configuration)
+            }
             .distinctBy { candidate -> candidate.symbol }
             .toList()
     }
 
     private fun referencedCallableIdFunctions(callableId: CallableId): Sequence<IrSimpleFunction> =
-        pluginContext.referenceFunctions(callableId)
-            .asSequence()
-            .mapNotNull { symbol -> symbol.safeCallableLookupOwnerOrNull() }
+        pluginContext.referenceFunctions(callableId).asSequence().mapNotNull { symbol ->
+            symbol.safeCallableLookupOwnerOrNull()
+        }
 
     private fun IrSimpleFunctionSymbol.safeCallableLookupOwnerOrNull(): IrSimpleFunction? {
         val owner = runCatching { owner }.getOrNull() ?: return null
@@ -345,46 +357,62 @@ private class TypeclassIrCallTransformer(
         currentFunction: IrFunction?,
         enclosingFunctions: List<IrFunction>,
     ): IrExpression =
-        DeclarationIrBuilder(pluginContext, currentDeclaration.symbol, call.startOffset, call.endOffset).run {
-            val visibleTypeParameters = visibleTypeParameters(currentDeclaration, enclosingFunctions)
-            val localContexts = collectLocalContexts(enclosingFunctions, visibleTypeParameters, configuration)
-            val normalizedCall = call.normalizedArgumentsForTypeclassRewrite(original)
-            val inferredOriginalTypeArguments =
-                try {
-                    inferOriginalTypeArguments(
+        DeclarationIrBuilder(
+                pluginContext,
+                currentDeclaration.symbol,
+                call.startOffset,
+                call.endOffset,
+            )
+            .run {
+                val visibleTypeParameters =
+                    visibleTypeParameters(currentDeclaration, enclosingFunctions)
+                val localContexts =
+                    collectLocalContexts(enclosingFunctions, visibleTypeParameters, configuration)
+                val normalizedCall = call.normalizedArgumentsForTypeclassRewrite(original)
+                val inferredOriginalTypeArguments =
+                    try {
+                        inferOriginalTypeArguments(
+                            original = original,
+                            normalizedCall = normalizedCall,
+                            currentCallTypeArgumentsByName =
+                                currentCallTypeArgumentsByOriginalName(
+                                    call,
+                                    original,
+                                    configuration,
+                                ),
+                            visibleTypeParameters = visibleTypeParameters,
+                            localContexts = localContexts,
+                            pluginContext = pluginContext,
+                            configuration = configuration,
+                        )
+                    } catch (error: TypeArgumentInferenceFailure) {
+                        reportTypeclassResolutionFailure(
+                            error.message
+                                ?: "Type argument inference failed for ${original.renderIdentity()}"
+                        )
+                        return call
+                    }
+                val explicitArguments =
+                    extractExplicitArguments(
                         original = original,
-                        normalizedCall = normalizedCall,
-                        currentCallTypeArgumentsByName = currentCallTypeArgumentsByOriginalName(call, original, configuration),
+                        normalizedValueArguments = normalizedCall.valueArguments,
+                        substitutionBySymbol = inferredOriginalTypeArguments.substitutionBySymbol,
                         visibleTypeParameters = visibleTypeParameters,
-                        localContexts = localContexts,
-                        pluginContext = pluginContext,
                         configuration = configuration,
                     )
-                } catch (error: TypeArgumentInferenceFailure) {
-                    reportTypeclassResolutionFailure(error.message ?: "Type argument inference failed for ${original.renderIdentity()}")
-                    return call
-                }
-            val explicitArguments =
-                extractExplicitArguments(
+                buildOriginalCall(
                     original = original,
-                    normalizedValueArguments = normalizedCall.valueArguments,
-                    substitutionBySymbol = inferredOriginalTypeArguments.substitutionBySymbol,
+                    currentDeclaration = currentDeclaration,
+                    currentFunction = currentFunction,
+                    localContexts = localContexts,
                     visibleTypeParameters = visibleTypeParameters,
-                    configuration = configuration,
+                    inferredOriginalTypeArguments = inferredOriginalTypeArguments,
+                    fallbackCall = call,
+                    dispatchReceiver = normalizedCall.dispatchReceiver,
+                    extensionReceiver = normalizedCall.extensionReceiver,
+                    explicitArguments = explicitArguments,
                 )
-            buildOriginalCall(
-                original = original,
-                currentDeclaration = currentDeclaration,
-                currentFunction = currentFunction,
-                localContexts = localContexts,
-                visibleTypeParameters = visibleTypeParameters,
-                inferredOriginalTypeArguments = inferredOriginalTypeArguments,
-                fallbackCall = call,
-                dispatchReceiver = normalizedCall.dispatchReceiver,
-                extensionReceiver = normalizedCall.extensionReceiver,
-                explicitArguments = explicitArguments,
-            )
-        }
+            }
 
     private fun reportTypeclassResolutionFailure(
         message: String,
@@ -415,10 +443,12 @@ private class TypeclassIrCallTransformer(
         explicitArguments: ExtractedExplicitArguments,
     ): IrExpression {
         val typeArgumentMap = inferredOriginalTypeArguments.substitutionBySymbol
-        val currentScopeIdentity = currentFunction?.renderIdentity() ?: currentDeclaration.renderIdentity()
+        val currentScopeIdentity =
+            currentFunction?.renderIdentity() ?: currentDeclaration.renderIdentity()
         val diagnosticLocation = currentDeclaration.compilerMessageLocation(fallbackCall)
         val plainOverloadFallback = exactPlainOverloadFallback(original, fallbackCall)
-        val traceActivation = resolveTraceActivation(traceScopeStack.toList(), configuration.traceMode)
+        val traceActivation =
+            resolveTraceActivation(traceScopeStack.toList(), configuration.traceMode)
         val planner =
             TypeclassResolutionPlanner(
                 ruleProvider = { goal: TcType ->
@@ -434,7 +464,7 @@ private class TypeclassIrCallTransformer(
                                 classInfoById = ruleIndex.classInfoById,
                             ),
                     )
-                },
+                }
             )
 
         val originalCall = irCall(original.symbol)
@@ -451,25 +481,42 @@ private class TypeclassIrCallTransformer(
         original.regularAndContextParameters().forEachIndexed { parameterIndex, parameter ->
             val valueArgumentIndex = original.valueArgumentIndex(parameter, parameterIndex)
             val substitutedGoalType = parameter.type.substitute(typeArgumentMap)
-            if (parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context && substitutedGoalType.isTypeclassType(configuration)) {
-                explicitArguments.preservedTypeclassArguments[valueArgumentIndex]?.let { preservedExpression ->
-                    originalCall.putValueArgument(valueArgumentIndex, irAs(preservedExpression, substitutedGoalType))
+            if (
+                parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context &&
+                    substitutedGoalType.isTypeclassType(configuration)
+            ) {
+                explicitArguments.preservedTypeclassArguments[valueArgumentIndex]?.let {
+                    preservedExpression ->
+                    originalCall.putValueArgument(
+                        valueArgumentIndex,
+                        irAs(preservedExpression, substitutedGoalType),
+                    )
                     return@forEachIndexed
                 }
                 val goal =
                     irTypeToModel(
                         type = substitutedGoalType,
                         typeParameterBySymbol = visibleTypeParameters.bySymbol,
-                    ) ?: error("Unsupported typeclass goal type ${substitutedGoalType.render()} in ${original.callableId}")
+                    )
+                        ?: error(
+                            "Unsupported typeclass goal type ${substitutedGoalType.render()} in ${original.callableId}"
+                        )
                 val tracedResult =
                     traceActivation?.let { activation ->
-                        planner.resolveWithTrace(goal, localContextTypes, activation.mode.explainsAlternatives)
+                        planner.resolveWithTrace(
+                            goal,
+                            localContextTypes,
+                            activation.mode.explainsAlternatives,
+                        )
                     }
                 val result = tracedResult?.result ?: planner.resolve(goal, localContextTypes)
                 val expression =
                     when (result) {
                         is ResolutionSearchResult.Success -> {
-                            if (traceActivation?.mode?.tracesSuccesses == true && tracedResult != null) {
+                            if (
+                                traceActivation?.mode?.tracesSuccesses == true &&
+                                    tracedResult != null
+                            ) {
                                 pluginContext.reportTypeclassTrace(
                                     renderResolutionTrace(
                                         trace = tracedResult.trace,
@@ -502,7 +549,8 @@ private class TypeclassIrCallTransformer(
                                     ambiguousTypeclassInstanceDiagnostic(
                                         goal = goal.render(),
                                         scope = currentScopeIdentity,
-                                        candidates = result.matchingPlans.map { it.renderForDiagnostic() },
+                                        candidates =
+                                            result.matchingPlans.map { it.renderForDiagnostic() },
                                     ),
                                 diagnosticId = TypeclassDiagnosticIds.AMBIGUOUS_INSTANCE,
                                 location = diagnosticLocation,
@@ -596,11 +644,15 @@ private class TypeclassIrCallTransformer(
                     }
                 originalCall.putValueArgument(valueArgumentIndex, expression)
             } else {
-                val nextArgument = explicitIterator.nextOrNull()
-                    ?: error("Not enough explicit arguments when rewriting ${original.callableId}")
+                val nextArgument =
+                    explicitIterator.nextOrNull()
+                        ?: error(
+                            "Not enough explicit arguments when rewriting ${original.callableId}"
+                        )
                 when (nextArgument) {
                     ExplicitArgument.Omitted -> Unit
-                    is ExplicitArgument.PassThrough -> originalCall.putValueArgument(valueArgumentIndex, nextArgument.expression)
+                    is ExplicitArgument.PassThrough ->
+                        originalCall.putValueArgument(valueArgumentIndex, nextArgument.expression)
                 }
             }
         }
@@ -624,8 +676,12 @@ private class TypeclassIrCallTransformer(
         plainFallback.valueParameters.forEachIndexed { parameterIndex, parameter ->
             when (val nextArgument = explicitIterator.nextOrNull()) {
                 ExplicitArgument.Omitted -> Unit
-                is ExplicitArgument.PassThrough -> plainCall.putValueArgument(parameterIndex, nextArgument.expression)
-                null -> error("Not enough explicit arguments when rewriting ${plainFallback.callableId}")
+                is ExplicitArgument.PassThrough ->
+                    plainCall.putValueArgument(parameterIndex, nextArgument.expression)
+                null ->
+                    error(
+                        "Not enough explicit arguments when rewriting ${plainFallback.callableId}"
+                    )
             }
         }
         return plainCall
@@ -637,31 +693,40 @@ private class TypeclassIrCallTransformer(
         diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
-        val targetModel = plan.appliedTypeArguments.singleOrNull()
-            ?: return invalidBuiltinKClassExpression(
-                expressionType = expressionType,
-                message = "Builtin KClass typeclass resolution requires exactly one target type argument.",
-                diagnosticLocation = diagnosticLocation,
-            )
+        val targetModel =
+            plan.appliedTypeArguments.singleOrNull()
+                ?: return invalidBuiltinKClassExpression(
+                    expressionType = expressionType,
+                    message =
+                        "Builtin KClass typeclass resolution requires exactly one target type argument.",
+                    diagnosticLocation = diagnosticLocation,
+                )
         val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
         if (targetType.isNullable()) {
             return invalidBuiltinKClassExpression(
                 expressionType = expressionType,
-                message = "Builtin KClass typeclass resolution requires a non-null concrete runtime type, but found ${targetType.render()}.",
+                message =
+                    "Builtin KClass typeclass resolution requires a non-null concrete runtime type, but found ${targetType.render()}.",
                 diagnosticLocation = diagnosticLocation,
             )
         }
-        val targetSimpleType = targetType as? IrSimpleType
-            ?: return invalidBuiltinKClassExpression(
-                expressionType = expressionType,
-                message = "Builtin KClass typeclass resolution requires a concrete runtime type, but found ${targetType.render()}.",
-                diagnosticLocation = diagnosticLocation,
-            )
+        val targetSimpleType =
+            targetType as? IrSimpleType
+                ?: return invalidBuiltinKClassExpression(
+                    expressionType = expressionType,
+                    message =
+                        "Builtin KClass typeclass resolution requires a concrete runtime type, but found ${targetType.render()}.",
+                    diagnosticLocation = diagnosticLocation,
+                )
         val classifier = targetSimpleType.classifier
-        if (classifier is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol && !classifier.owner.isReified) {
+        if (
+            classifier is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol &&
+                !classifier.owner.isReified
+        ) {
             return invalidBuiltinKClassExpression(
                 expressionType = expressionType,
-                message = "Builtin KClass typeclass resolution requires a concrete runtime type or a reified type parameter, but found ${targetType.render()}.",
+                message =
+                    "Builtin KClass typeclass resolution requires a concrete runtime type or a reified type parameter, but found ${targetType.render()}.",
                 diagnosticLocation = diagnosticLocation,
             )
         }
@@ -693,29 +758,40 @@ private class TypeclassIrCallTransformer(
         diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
-        val targetModel = plan.appliedTypeArguments.singleOrNull()
-            ?: return invalidBuiltinKSerializerExpression(
-                expressionType = expressionType,
-                message = "Builtin KSerializer typeclass resolution requires exactly one target type argument.",
-                diagnosticLocation = diagnosticLocation,
-            )
+        val targetModel =
+            plan.appliedTypeArguments.singleOrNull()
+                ?: return invalidBuiltinKSerializerExpression(
+                    expressionType = expressionType,
+                    message =
+                        "Builtin KSerializer typeclass resolution requires exactly one target type argument.",
+                    diagnosticLocation = diagnosticLocation,
+                )
         val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
-        val targetSimpleType = targetType as? IrSimpleType
-            ?: return invalidBuiltinKSerializerExpression(
-                expressionType = expressionType,
-                message = "Builtin KSerializer typeclass resolution requires a concrete or reified target type, but found ${targetType.render()}.",
-                diagnosticLocation = diagnosticLocation,
-            )
+        val targetSimpleType =
+            targetType as? IrSimpleType
+                ?: return invalidBuiltinKSerializerExpression(
+                    expressionType = expressionType,
+                    message =
+                        "Builtin KSerializer typeclass resolution requires a concrete or reified target type, but found ${targetType.render()}.",
+                    diagnosticLocation = diagnosticLocation,
+                )
         val classifier = targetSimpleType.classifier
-        if (classifier is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol && !classifier.owner.isReified) {
+        if (
+            classifier is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol &&
+                !classifier.owner.isReified
+        ) {
             return invalidBuiltinKSerializerExpression(
                 expressionType = expressionType,
-                message = "Builtin KSerializer typeclass resolution requires a concrete target type or a reified type parameter, but found ${targetType.render()}.",
+                message =
+                    "Builtin KSerializer typeclass resolution requires a concrete target type or a reified type parameter, but found ${targetType.render()}.",
                 diagnosticLocation = diagnosticLocation,
             )
         }
         val serializerFunction =
-            pluginContext.referenceFunctions(CallableId(FqName("kotlinx.serialization"), Name.identifier("serializer")))
+            pluginContext
+                .referenceFunctions(
+                    CallableId(FqName("kotlinx.serialization"), Name.identifier("serializer"))
+                )
                 .map { it.owner }
                 .singleOrNull { function ->
                     function.dispatchReceiverParameter == null &&
@@ -725,7 +801,8 @@ private class TypeclassIrCallTransformer(
                 }
                 ?: return invalidBuiltinKSerializerExpression(
                     expressionType = expressionType,
-                    message = "Could not resolve kotlinx.serialization.serializer<T>() on the compilation classpath.",
+                    message =
+                        "Could not resolve kotlinx.serialization.serializer<T>() on the compilation classpath.",
                     diagnosticLocation = diagnosticLocation,
                 )
         return irCall(serializerFunction.symbol, expressionType).apply {
@@ -751,12 +828,14 @@ private class TypeclassIrCallTransformer(
         proofClassId: ClassId,
         diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
-        val proofClass = pluginContext.referenceClass(proofClassId)?.owner
-            ?: return invalidBuiltinProofExpression(
-                expressionType = expressionType,
-                message = "Could not resolve builtin proof carrier $proofClassId on the compilation classpath.",
-                diagnosticLocation = diagnosticLocation,
-            )
+        val proofClass =
+            pluginContext.referenceClass(proofClassId)?.owner
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message =
+                        "Could not resolve builtin proof carrier $proofClassId on the compilation classpath.",
+                    diagnosticLocation = diagnosticLocation,
+                )
         return irAs(irGetObject(proofClass.symbol), expressionType)
     }
 
@@ -766,10 +845,20 @@ private class TypeclassIrCallTransformer(
         diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
-        val left = plan.appliedTypeArguments.getOrNull(0)
-            ?: return invalidBuiltinProofExpression(expressionType, "NotSame proof requires two type arguments.", diagnosticLocation)
-        val right = plan.appliedTypeArguments.getOrNull(1)
-            ?: return invalidBuiltinProofExpression(expressionType, "NotSame proof requires two type arguments.", diagnosticLocation)
+        val left =
+            plan.appliedTypeArguments.getOrNull(0)
+                ?: return invalidBuiltinProofExpression(
+                    expressionType,
+                    "NotSame proof requires two type arguments.",
+                    diagnosticLocation,
+                )
+        val right =
+            plan.appliedTypeArguments.getOrNull(1)
+                ?: return invalidBuiltinProofExpression(
+                    expressionType,
+                    "NotSame proof requires two type arguments.",
+                    diagnosticLocation,
+                )
         if (
             !irCanProveNotSame(
                 left,
@@ -784,11 +873,16 @@ private class TypeclassIrCallTransformer(
         ) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
-                message = "NotSame proof could not prove ${left.render()} and ${right.render()} differ.",
+                message =
+                    "NotSame proof could not prove ${left.render()} and ${right.render()} differ.",
                 diagnosticLocation = diagnosticLocation,
             )
         }
-        return buildBuiltinProofSingletonExpression(expressionType, NOT_SAME_PROOF_CLASS_ID, diagnosticLocation)
+        return buildBuiltinProofSingletonExpression(
+            expressionType,
+            NOT_SAME_PROOF_CLASS_ID,
+            diagnosticLocation,
+        )
     }
 
     private fun IrStatementsBuilder<*>.buildBuiltinSubtypeExpression(
@@ -797,20 +891,35 @@ private class TypeclassIrCallTransformer(
         diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
-        val subModel = plan.appliedTypeArguments.getOrNull(0)
-            ?: return invalidBuiltinProofExpression(expressionType, "Subtype proof requires two type arguments.", diagnosticLocation)
-        val superModel = plan.appliedTypeArguments.getOrNull(1)
-            ?: return invalidBuiltinProofExpression(expressionType, "Subtype proof requires two type arguments.", diagnosticLocation)
+        val subModel =
+            plan.appliedTypeArguments.getOrNull(0)
+                ?: return invalidBuiltinProofExpression(
+                    expressionType,
+                    "Subtype proof requires two type arguments.",
+                    diagnosticLocation,
+                )
+        val superModel =
+            plan.appliedTypeArguments.getOrNull(1)
+                ?: return invalidBuiltinProofExpression(
+                    expressionType,
+                    "Subtype proof requires two type arguments.",
+                    diagnosticLocation,
+                )
         val subType = modelToIrType(subModel, visibleTypeParameters, pluginContext)
         val superType = modelToIrType(superModel, visibleTypeParameters, pluginContext)
         if (!canProveSubtype(subType, superType, pluginContext)) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
-                message = "Subtype proof could not prove ${subModel.render()} is a subtype of ${superModel.render()}.",
+                message =
+                    "Subtype proof could not prove ${subModel.render()} is a subtype of ${superModel.render()}.",
                 diagnosticLocation = diagnosticLocation,
             )
         }
-        return buildBuiltinProofSingletonExpression(expressionType, SUBTYPE_PROOF_CLASS_ID, diagnosticLocation)
+        return buildBuiltinProofSingletonExpression(
+            expressionType,
+            SUBTYPE_PROOF_CLASS_ID,
+            diagnosticLocation,
+        )
     }
 
     private fun IrStatementsBuilder<*>.buildBuiltinStrictSubtypeExpression(
@@ -819,23 +928,34 @@ private class TypeclassIrCallTransformer(
         diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
-        val subModel = plan.appliedTypeArguments.getOrNull(0)
-            ?: return invalidBuiltinProofExpression(expressionType, "StrictSubtype proof requires two type arguments.", diagnosticLocation)
-        val superModel = plan.appliedTypeArguments.getOrNull(1)
-            ?: return invalidBuiltinProofExpression(expressionType, "StrictSubtype proof requires two type arguments.", diagnosticLocation)
+        val subModel =
+            plan.appliedTypeArguments.getOrNull(0)
+                ?: return invalidBuiltinProofExpression(
+                    expressionType,
+                    "StrictSubtype proof requires two type arguments.",
+                    diagnosticLocation,
+                )
+        val superModel =
+            plan.appliedTypeArguments.getOrNull(1)
+                ?: return invalidBuiltinProofExpression(
+                    expressionType,
+                    "StrictSubtype proof requires two type arguments.",
+                    diagnosticLocation,
+                )
         val subType = modelToIrType(subModel, visibleTypeParameters, pluginContext)
         val superType = modelToIrType(superModel, visibleTypeParameters, pluginContext)
-        if (!canProveSubtype(subType, superType, pluginContext) ||
-            !irCanProveNotSame(
-                subModel,
-                superModel,
-                IrBuiltinGoalExactContext(
-                    visibleTypeParameters = visibleTypeParameters,
-                    pluginContext = pluginContext,
-                    configuration = configuration,
-                    classInfoById = ruleIndex.classInfoById,
-                ),
-            )
+        if (
+            !canProveSubtype(subType, superType, pluginContext) ||
+                !irCanProveNotSame(
+                    subModel,
+                    superModel,
+                    IrBuiltinGoalExactContext(
+                        visibleTypeParameters = visibleTypeParameters,
+                        pluginContext = pluginContext,
+                        configuration = configuration,
+                        classInfoById = ruleIndex.classInfoById,
+                    ),
+                )
         ) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
@@ -844,7 +964,11 @@ private class TypeclassIrCallTransformer(
                 diagnosticLocation = diagnosticLocation,
             )
         }
-        return buildBuiltinProofSingletonExpression(expressionType, STRICT_SUBTYPE_PROOF_CLASS_ID, diagnosticLocation)
+        return buildBuiltinProofSingletonExpression(
+            expressionType,
+            STRICT_SUBTYPE_PROOF_CLASS_ID,
+            diagnosticLocation,
+        )
     }
 
     private fun IrStatementsBuilder<*>.buildBuiltinNullableExpression(
@@ -853,17 +977,27 @@ private class TypeclassIrCallTransformer(
         diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
-        val targetModel = plan.appliedTypeArguments.singleOrNull()
-            ?: return invalidBuiltinProofExpression(expressionType, "Nullable proof requires exactly one type argument.", diagnosticLocation)
+        val targetModel =
+            plan.appliedTypeArguments.singleOrNull()
+                ?: return invalidBuiltinProofExpression(
+                    expressionType,
+                    "Nullable proof requires exactly one type argument.",
+                    diagnosticLocation,
+                )
         val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
         if (!canProveNullable(targetType, pluginContext)) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
-                message = "Nullable proof could not prove null is a valid inhabitant of ${targetModel.render()}.",
+                message =
+                    "Nullable proof could not prove null is a valid inhabitant of ${targetModel.render()}.",
                 diagnosticLocation = diagnosticLocation,
             )
         }
-        return buildBuiltinProofSingletonExpression(expressionType, NULLABLE_PROOF_CLASS_ID, diagnosticLocation)
+        return buildBuiltinProofSingletonExpression(
+            expressionType,
+            NULLABLE_PROOF_CLASS_ID,
+            diagnosticLocation,
+        )
     }
 
     private fun IrStatementsBuilder<*>.buildBuiltinNotNullableExpression(
@@ -872,17 +1006,27 @@ private class TypeclassIrCallTransformer(
         diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
-        val targetModel = plan.appliedTypeArguments.singleOrNull()
-            ?: return invalidBuiltinProofExpression(expressionType, "NotNullable proof requires exactly one type argument.", diagnosticLocation)
+        val targetModel =
+            plan.appliedTypeArguments.singleOrNull()
+                ?: return invalidBuiltinProofExpression(
+                    expressionType,
+                    "NotNullable proof requires exactly one type argument.",
+                    diagnosticLocation,
+                )
         val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
         if (!canProveNotNullable(targetType, pluginContext)) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
-                message = "NotNullable proof could not prove ${targetModel.render()} excludes null.",
+                message =
+                    "NotNullable proof could not prove ${targetModel.render()} excludes null.",
                 diagnosticLocation = diagnosticLocation,
             )
         }
-        return buildBuiltinProofSingletonExpression(expressionType, NOT_NULLABLE_PROOF_CLASS_ID, diagnosticLocation)
+        return buildBuiltinProofSingletonExpression(
+            expressionType,
+            NOT_NULLABLE_PROOF_CLASS_ID,
+            diagnosticLocation,
+        )
     }
 
     private fun IrStatementsBuilder<*>.buildBuiltinIsTypeclassInstanceExpression(
@@ -891,21 +1035,27 @@ private class TypeclassIrCallTransformer(
         diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
-        val targetModel = plan.appliedTypeArguments.singleOrNull()
-            ?: return invalidBuiltinProofExpression(
-                expressionType,
-                "IsTypeclassInstance proof requires exactly one type argument.",
-                diagnosticLocation,
-            )
+        val targetModel =
+            plan.appliedTypeArguments.singleOrNull()
+                ?: return invalidBuiltinProofExpression(
+                    expressionType,
+                    "IsTypeclassInstance proof requires exactly one type argument.",
+                    diagnosticLocation,
+                )
         val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
         if (!targetType.isTypeclassType(configuration)) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
-                message = "IsTypeclassInstance proof requires a typeclass application, but found ${targetModel.render()}.",
+                message =
+                    "IsTypeclassInstance proof requires a typeclass application, but found ${targetModel.render()}.",
                 diagnosticLocation = diagnosticLocation,
             )
         }
-        return buildBuiltinProofSingletonExpression(expressionType, IS_TYPECLASS_INSTANCE_PROOF_CLASS_ID, diagnosticLocation)
+        return buildBuiltinProofSingletonExpression(
+            expressionType,
+            IS_TYPECLASS_INSTANCE_PROOF_CLASS_ID,
+            diagnosticLocation,
+        )
     }
 
     private fun IrStatementsBuilder<*>.buildBuiltinKnownTypeExpression(
@@ -914,52 +1064,61 @@ private class TypeclassIrCallTransformer(
         diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
-        val targetModel = plan.appliedTypeArguments.singleOrNull()
-            ?: return invalidBuiltinProofExpression(expressionType, "KnownType proof requires exactly one type argument.", diagnosticLocation)
+        val targetModel =
+            plan.appliedTypeArguments.singleOrNull()
+                ?: return invalidBuiltinProofExpression(
+                    expressionType,
+                    "KnownType proof requires exactly one type argument.",
+                    diagnosticLocation,
+                )
         val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
-        val targetSimpleType = targetType as? IrSimpleType
-            ?: return invalidBuiltinProofExpression(
-                expressionType = expressionType,
-                message = "KnownType proof requires an exact known KType, but found ${targetModel.render()}.",
-                diagnosticLocation = diagnosticLocation,
-            )
+        val targetSimpleType =
+            targetType as? IrSimpleType
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message =
+                        "KnownType proof requires an exact known KType, but found ${targetModel.render()}.",
+                    diagnosticLocation = diagnosticLocation,
+                )
         val classifier = targetSimpleType.classifier
-        if (classifier is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol && !classifier.owner.isReified) {
+        if (
+            classifier is org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol &&
+                !classifier.owner.isReified
+        ) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
-                message = "KnownType proof requires an exact known KType, but found ${targetModel.render()}.",
+                message =
+                    "KnownType proof requires an exact known KType, but found ${targetModel.render()}.",
                 diagnosticLocation = diagnosticLocation,
             )
         }
         val typeOfFunction =
-            pluginContext.referenceFunctions(CallableId(FqName("kotlin.reflect"), Name.identifier("typeOf")))
+            pluginContext
+                .referenceFunctions(CallableId(FqName("kotlin.reflect"), Name.identifier("typeOf")))
                 .map { it.owner }
                 .singleOrNull { function ->
-                    function.typeParameters.size == 1 &&
-                        function.valueParameters.isEmpty()
+                    function.typeParameters.size == 1 && function.valueParameters.isEmpty()
                 }
                 ?: return invalidBuiltinProofExpression(
                     expressionType = expressionType,
-                    message = "Could not resolve kotlin.reflect.typeOf<T>() on the compilation classpath.",
+                    message =
+                        "Could not resolve kotlin.reflect.typeOf<T>() on the compilation classpath.",
                     diagnosticLocation = diagnosticLocation,
                 )
         val knownTypeFactory =
-            pluginContext.referenceFunctions(KNOWN_TYPE_FACTORY_CALLABLE_ID)
+            pluginContext
+                .referenceFunctions(KNOWN_TYPE_FACTORY_CALLABLE_ID)
                 .map { it.owner }
                 .singleOrNull { function -> function.valueParameters.size == 1 }
                 ?: return invalidBuiltinProofExpression(
                     expressionType = expressionType,
-                    message = "Could not resolve one.wabbit.typeclass.knownType(...) on the compilation classpath.",
+                    message =
+                        "Could not resolve one.wabbit.typeclass.knownType(...) on the compilation classpath.",
                     diagnosticLocation = diagnosticLocation,
                 )
-        val typeOfCall =
-            irCall(typeOfFunction.symbol).apply {
-                putTypeArgument(0, targetType)
-            }
+        val typeOfCall = irCall(typeOfFunction.symbol).apply { putTypeArgument(0, targetType) }
         val knownTypeCall =
-            irCall(knownTypeFactory.symbol).apply {
-                putValueArgument(0, typeOfCall)
-            }
+            irCall(knownTypeFactory.symbol).apply { putValueArgument(0, typeOfCall) }
         return irAs(knownTypeCall, expressionType)
     }
 
@@ -969,25 +1128,39 @@ private class TypeclassIrCallTransformer(
         diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
-        val targetModel = plan.appliedTypeArguments.singleOrNull()
-            ?: return invalidBuiltinProofExpression(expressionType, "TypeId proof requires exactly one type argument.", diagnosticLocation)
+        val targetModel =
+            plan.appliedTypeArguments.singleOrNull()
+                ?: return invalidBuiltinProofExpression(
+                    expressionType,
+                    "TypeId proof requires exactly one type argument.",
+                    diagnosticLocation,
+                )
         val targetType = modelToIrType(targetModel, visibleTypeParameters, pluginContext)
-        val targetSimpleType = targetType as? IrSimpleType
-            ?: return invalidBuiltinProofExpression(
-                expressionType = expressionType,
-                message = "TypeId proof requires an exact semantic type, but found ${targetModel.render()}.",
-                diagnosticLocation = diagnosticLocation,
-            )
+        val targetSimpleType =
+            targetType as? IrSimpleType
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message =
+                        "TypeId proof requires an exact semantic type, but found ${targetModel.render()}.",
+                    diagnosticLocation = diagnosticLocation,
+                )
         if (targetModel.isExactTypeIdentity()) {
             val stringTypeIdFactory =
-                pluginContext.referenceFunctions(TYPE_ID_FACTORY_CALLABLE_ID)
+                pluginContext
+                    .referenceFunctions(TYPE_ID_FACTORY_CALLABLE_ID)
                     .map { it.owner }
                     .singleOrNull { function ->
-                        function.valueParameters.singleOrNull()?.type?.classOrNull?.owner?.classId == STRING_CLASS_ID
+                        function.valueParameters
+                            .singleOrNull()
+                            ?.type
+                            ?.classOrNull
+                            ?.owner
+                            ?.classId == STRING_CLASS_ID
                     }
                     ?: return invalidBuiltinProofExpression(
                         expressionType = expressionType,
-                        message = "Could not resolve one.wabbit.typeclass.typeId(String) on the compilation classpath.",
+                        message =
+                            "Could not resolve one.wabbit.typeclass.typeId(String) on the compilation classpath.",
                         diagnosticLocation = diagnosticLocation,
                     )
             val typeIdCall =
@@ -1000,42 +1173,41 @@ private class TypeclassIrCallTransformer(
         if (!canMaterializeTypeIdViaTypeOf(targetSimpleType)) {
             return invalidBuiltinProofExpression(
                 expressionType = expressionType,
-                message = "TypeId proof requires an exact semantic type, but found ${targetModel.render()}.",
+                message =
+                    "TypeId proof requires an exact semantic type, but found ${targetModel.render()}.",
                 diagnosticLocation = diagnosticLocation,
             )
         }
 
         val typeOfFunction =
-            pluginContext.referenceFunctions(CallableId(FqName("kotlin.reflect"), Name.identifier("typeOf")))
+            pluginContext
+                .referenceFunctions(CallableId(FqName("kotlin.reflect"), Name.identifier("typeOf")))
                 .map { it.owner }
                 .singleOrNull { function ->
-                    function.typeParameters.size == 1 &&
-                        function.valueParameters.isEmpty()
+                    function.typeParameters.size == 1 && function.valueParameters.isEmpty()
                 }
                 ?: return invalidBuiltinProofExpression(
                     expressionType = expressionType,
-                    message = "Could not resolve kotlin.reflect.typeOf<T>() on the compilation classpath.",
+                    message =
+                        "Could not resolve kotlin.reflect.typeOf<T>() on the compilation classpath.",
                     diagnosticLocation = diagnosticLocation,
                 )
         val kTypeIdFactory =
-            pluginContext.referenceFunctions(TYPE_ID_FACTORY_CALLABLE_ID)
+            pluginContext
+                .referenceFunctions(TYPE_ID_FACTORY_CALLABLE_ID)
                 .map { it.owner }
                 .singleOrNull { function ->
-                    function.valueParameters.singleOrNull()?.type?.classOrNull?.owner?.classId == KTYPE_CLASS_ID
+                    function.valueParameters.singleOrNull()?.type?.classOrNull?.owner?.classId ==
+                        KTYPE_CLASS_ID
                 }
                 ?: return invalidBuiltinProofExpression(
                     expressionType = expressionType,
-                    message = "Could not resolve one.wabbit.typeclass.typeId(KType) on the compilation classpath.",
+                    message =
+                        "Could not resolve one.wabbit.typeclass.typeId(KType) on the compilation classpath.",
                     diagnosticLocation = diagnosticLocation,
                 )
-        val typeOfCall =
-            irCall(typeOfFunction.symbol).apply {
-                putTypeArgument(0, targetType)
-            }
-        val typeIdCall =
-            irCall(kTypeIdFactory.symbol).apply {
-                putValueArgument(0, typeOfCall)
-            }
+        val typeOfCall = irCall(typeOfFunction.symbol).apply { putTypeArgument(0, targetType) }
+        val typeIdCall = irCall(kTypeIdFactory.symbol).apply { putValueArgument(0, typeOfCall) }
         return irAs(typeIdCall, expressionType)
     }
 
@@ -1045,10 +1217,20 @@ private class TypeclassIrCallTransformer(
         diagnosticLocation: CompilerMessageSourceLocation?,
     ): IrExpression {
         val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
-        val left = plan.appliedTypeArguments.getOrNull(0)
-            ?: return invalidBuiltinProofExpression(expressionType, "SameTypeConstructor proof requires two type arguments.", diagnosticLocation)
-        val right = plan.appliedTypeArguments.getOrNull(1)
-            ?: return invalidBuiltinProofExpression(expressionType, "SameTypeConstructor proof requires two type arguments.", diagnosticLocation)
+        val left =
+            plan.appliedTypeArguments.getOrNull(0)
+                ?: return invalidBuiltinProofExpression(
+                    expressionType,
+                    "SameTypeConstructor proof requires two type arguments.",
+                    diagnosticLocation,
+                )
+        val right =
+            plan.appliedTypeArguments.getOrNull(1)
+                ?: return invalidBuiltinProofExpression(
+                    expressionType,
+                    "SameTypeConstructor proof requires two type arguments.",
+                    diagnosticLocation,
+                )
         val valid =
             left is TcType.Constructor &&
                 right is TcType.Constructor &&
@@ -1061,7 +1243,11 @@ private class TypeclassIrCallTransformer(
                 diagnosticLocation = diagnosticLocation,
             )
         }
-        return buildBuiltinProofSingletonExpression(expressionType, SAME_TYPE_CONSTRUCTOR_PROOF_CLASS_ID, diagnosticLocation)
+        return buildBuiltinProofSingletonExpression(
+            expressionType,
+            SAME_TYPE_CONSTRUCTOR_PROOF_CLASS_ID,
+            diagnosticLocation,
+        )
     }
 
     private fun IrStatementsBuilder<*>.invalidBuiltinProofExpression(
@@ -1090,13 +1276,14 @@ private class TypeclassIrCallTransformer(
             is ResolutionPlan.LocalContext -> localContexts[plan.index].expression.invoke(this)
 
             is ResolutionPlan.RecursiveReference ->
-                recursiveDerivedResolvers[plan.providedType.normalizedKey()]
-                    ?.let { resolver -> irAs(irGet(resolver.cache), resolver.expectedType) }
-                    ?: error("Missing recursive resolver for ${plan.providedType.render()}")
+                recursiveDerivedResolvers[plan.providedType.normalizedKey()]?.let { resolver ->
+                    irAs(irGet(resolver.cache), resolver.expectedType)
+                } ?: error("Missing recursive resolver for ${plan.providedType.render()}")
 
             is ResolutionPlan.ApplyRule -> {
-                val resolvedRule = ruleIndex.ruleById(plan.ruleId)
-                    ?: error("Missing rule reference for ${plan.ruleId}")
+                val resolvedRule =
+                    ruleIndex.ruleById(plan.ruleId)
+                        ?: error("Missing rule reference for ${plan.ruleId}")
                 when (val reference = resolvedRule.reference) {
                     is RuleReference.DirectFunction -> {
                         val prerequisiteExpressions =
@@ -1122,8 +1309,11 @@ private class TypeclassIrCallTransformer(
                     }
 
                     is RuleReference.LookupFunction -> {
-                        val function = ruleIndex.resolveLookupFunction(reference, resolvedRule.rule)
-                            ?: error("Could not resolve instance function ${reference.callableId}")
+                        val function =
+                            ruleIndex.resolveLookupFunction(reference, resolvedRule.rule)
+                                ?: error(
+                                    "Could not resolve instance function ${reference.callableId}"
+                                )
                         val prerequisiteExpressions =
                             plan.prerequisitePlans.map { nested ->
                                 buildExpressionForPlan(
@@ -1150,22 +1340,31 @@ private class TypeclassIrCallTransformer(
                         buildInstancePropertyAccess(reference.property)
 
                     is RuleReference.LookupProperty -> {
-                        val property = ruleIndex.resolveLookupProperty(reference, resolvedRule.rule)
-                            ?: error("Could not resolve instance property ${reference.callableId}")
+                        val property =
+                            ruleIndex.resolveLookupProperty(reference, resolvedRule.rule)
+                                ?: error(
+                                    "Could not resolve instance property ${reference.callableId}"
+                                )
                         buildInstancePropertyAccess(property)
                     }
 
                     is RuleReference.DirectObject -> irGetObject(reference.klass.symbol)
 
                     is RuleReference.LookupObject -> {
-                        val klass = pluginContext.referenceClass(reference.classId)?.owner
-                            ?: error("Could not resolve instance object ${reference.classId}")
+                        val klass =
+                            pluginContext.referenceClass(reference.classId)?.owner
+                                ?: error("Could not resolve instance object ${reference.classId}")
                         irGetObject(klass.symbol)
                     }
 
                     RuleReference.BuiltinSame ->
                         buildBuiltinProofSingletonExpression(
-                            expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext),
+                            expressionType =
+                                modelToIrType(
+                                    plan.providedType,
+                                    visibleTypeParameters,
+                                    pluginContext,
+                                ),
                             proofClassId = SAME_PROOF_CLASS_ID,
                             diagnosticLocation = diagnosticLocation,
                         )
@@ -1281,10 +1480,18 @@ private class TypeclassIrCallTransformer(
                                     recursiveDerivedResolvers = recursiveDerivedResolvers,
                                     diagnosticLocation = diagnosticLocation,
                                 )
-                            } ?: error("DeriveVia rule ${plan.ruleId} must have exactly one prerequisite")
+                            }
+                                ?: error(
+                                    "DeriveVia rule ${plan.ruleId} must have exactly one prerequisite"
+                                )
                         buildDeriveViaAdapterExpression(
                             typeclassInterface = reference.typeclassInterface,
-                            expectedType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext),
+                            expectedType =
+                                modelToIrType(
+                                    plan.providedType,
+                                    visibleTypeParameters,
+                                    pluginContext,
+                                ),
                             viaType = reference.viaType,
                             viaInstance = prerequisiteExpression,
                             targetType = reference.targetType,
@@ -1330,8 +1537,9 @@ private class TypeclassIrCallTransformer(
             }
 
             is ResolutionPlan.ApplyRule -> {
-                val resolvedRule = ruleIndex.ruleById(plan.ruleId)
-                    ?: error("Missing rule reference for ${plan.ruleId}")
+                val resolvedRule =
+                    ruleIndex.ruleById(plan.ruleId)
+                        ?: error("Missing rule reference for ${plan.ruleId}")
                 when (val reference = resolvedRule.reference) {
                     is RuleReference.Derived ->
                         buildDerivedInstanceExpression(
@@ -1356,7 +1564,8 @@ private class TypeclassIrCallTransformer(
                                 recursiveDerivedResolvers = recursiveDerivedResolvers,
                                 diagnosticLocation = currentDeclaration.compilerMessageLocation(),
                             )
-                        val slot = irTemporary(expression, nameHint = "typeclassMetadataInstanceSlot")
+                        val slot =
+                            irTemporary(expression, nameHint = "typeclassMetadataInstanceSlot")
                         irGet(slot)
                     }
                 }
@@ -1377,25 +1586,35 @@ private class TypeclassIrCallTransformer(
             call.dispatchReceiver = irGetObject(parentClass.symbol)
         }
 
-        rule.rule.typeParameters.zip(appliedTypeArguments).forEachIndexed { index, (_, appliedTypeArgument) ->
-            call.putTypeArgument(index, modelToIrType(appliedTypeArgument, visibleTypeParameters, pluginContext))
+        rule.rule.typeParameters.zip(appliedTypeArguments).forEachIndexed {
+            index,
+            (_, appliedTypeArgument) ->
+            call.putTypeArgument(
+                index,
+                modelToIrType(appliedTypeArgument, visibleTypeParameters, pluginContext),
+            )
         }
 
         val prerequisites = prerequisiteExpressions.iterator()
         function.regularAndContextParameters().forEachIndexed { parameterIndex, parameter ->
             if (parameter.kind != org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context) {
-                error("Instance function ${function.callableId} unexpectedly has a regular parameter")
+                error(
+                    "Instance function ${function.callableId} unexpectedly has a regular parameter"
+                )
             }
             val valueArgumentIndex = function.valueArgumentIndex(parameter, parameterIndex)
-            call.putValueArgument(valueArgumentIndex, prerequisites.nextOrNull() ?: error("Missing prerequisite expression for ${function.callableId}"))
+            call.putValueArgument(
+                valueArgumentIndex,
+                prerequisites.nextOrNull()
+                    ?: error("Missing prerequisite expression for ${function.callableId}"),
+            )
         }
         return call
     }
 
-    private fun IrBuilderWithScope.buildInstancePropertyAccess(
-        property: IrProperty,
-    ): IrExpression {
-        val getter = property.getter ?: error("Instance property ${property.name} is missing a getter")
+    private fun IrBuilderWithScope.buildInstancePropertyAccess(property: IrProperty): IrExpression {
+        val getter =
+            property.getter ?: error("Instance property ${property.name} is missing a getter")
         return irCall(getter.symbol).apply {
             val parentClass = property.parent as? IrClass
             if (parentClass != null && parentClass.isCompanion) {
@@ -1429,14 +1648,19 @@ private class TypeclassIrCallTransformer(
             pluginContext.referenceClass(RECURSIVE_TYPECLASS_INSTANCE_CELL_CLASS_ID)?.owner
                 ?: error("Could not resolve $RECURSIVE_TYPECLASS_INSTANCE_CELL_FQ_NAME")
         val recursiveCellValueProperty =
-            recursiveCellClass.declarations
-                .filterIsInstance<IrProperty>()
-                .singleOrNull { property -> property.name.asString() == "value" }
-                ?: error("Could not resolve RecursiveTypeclassInstanceCell.value")
+            recursiveCellClass.declarations.filterIsInstance<IrProperty>().singleOrNull { property
+                ->
+                property.name.asString() == "value"
+            } ?: error("Could not resolve RecursiveTypeclassInstanceCell.value")
         val recursiveCellValueSetter =
             recursiveCellValueProperty.setter
                 ?: error("Could not resolve RecursiveTypeclassInstanceCell.value setter")
-        val cache = irTemporary(irAs(irNull(), cacheType), nameHint = "typeclassRecursiveCache", isMutable = true)
+        val cache =
+            irTemporary(
+                irAs(irNull(), cacheType),
+                nameHint = "typeclassRecursiveCache",
+                isMutable = true,
+            )
         val recursiveCell =
             irTemporary(
                 irCallConstructor(recursiveCellClass.primaryConstructorSymbol(), emptyList()),
@@ -1461,8 +1685,10 @@ private class TypeclassIrCallTransformer(
                 )
             }
         val appliedBindings =
-            reference.ruleTypeParameters.zip(plan.appliedTypeArguments)
-                .associate { (parameter, appliedType) -> parameter.id to appliedType }
+            reference.ruleTypeParameters.zip(plan.appliedTypeArguments).associate {
+                (parameter, appliedType) ->
+                parameter.id to appliedType
+            }
         val metadataLambdaParent = metadataLambdaParent(currentDeclaration, currentFunction)
         val metadata =
             when (val shape = reference.shape) {
@@ -1517,17 +1743,15 @@ private class TypeclassIrCallTransformer(
                         irTemporary(
                             irAs(
                                 irCall(deriveMethod.symbol).apply {
-                                    dispatchReceiver = irGetObject(reference.deriverCompanion.symbol)
+                                    dispatchReceiver =
+                                        irGetObject(reference.deriverCompanion.symbol)
                                     putValueArgument(0, metadata)
                                 },
                                 expectedType,
                             ),
                             nameHint = "typeclassDerivedInstance",
                         )
-                    +irSet(
-                        cache.symbol,
-                        irGet(derivedInstance),
-                    )
+                    +irSet(cache.symbol, irGet(derivedInstance))
                     +irCall(recursiveCellValueSetter.symbol).apply {
                         dispatchReceiver = irGet(recursiveCell)
                         putValueArgument(0, irGet(derivedInstance))
@@ -1556,7 +1780,8 @@ private class TypeclassIrCallTransformer(
             typeclassInterface = typeclassInterface,
             deriverCompanion = deriverCompanion,
             deriveMethod = deriveMethod,
-            publishedGeneratedMetadata = ruleIndex.publishedGeneratedDerivedMetadata(deriverCompanion),
+            publishedGeneratedMetadata =
+                ruleIndex.publishedGeneratedDerivedMetadata(deriverCompanion),
             configuration = configuration,
             pluginContext = pluginContext,
             cache = deriverReturnValidationCache,
@@ -1579,13 +1804,13 @@ private class TypeclassIrCallTransformer(
         val fieldElements =
             shape.fields.zip(prerequisiteInstanceSlots).map { (field, instanceSlotExpression) ->
                 val instanceSlot =
-                    irTemporary(
-                        instanceSlotExpression,
-                        nameHint = "typeclassMetadataInstanceSlot",
-                    )
+                    irTemporary(instanceSlotExpression, nameHint = "typeclassMetadataInstanceSlot")
                 irCallConstructor(fieldClass.primaryConstructorSymbol(), emptyList()).apply {
                     putValueArgument(0, irString(field.name))
-                    putValueArgument(1, irString(field.type.substituteType(appliedBindings).render()))
+                    putValueArgument(
+                        1,
+                        irString(field.type.substituteType(appliedBindings).render()),
+                    )
                     putValueArgument(2, irGet(instanceSlot))
                     putValueArgument(
                         3,
@@ -1629,116 +1854,129 @@ private class TypeclassIrCallTransformer(
                 ?: error("Could not resolve kotlin.collections.List")
         val listType = listClass.symbol.typeWith(anyType)
         val getFunction =
-            listClass.declarations
-                .filterIsInstance<IrSimpleFunction>()
-                .singleOrNull { function ->
-                    function.name.asString() == "get" && function.valueParameters.size == 1
-                } ?: error("Could not resolve kotlin.collections.List.get(Int)")
+            listClass.declarations.filterIsInstance<IrSimpleFunction>().singleOrNull { function ->
+                function.name.asString() == "get" && function.valueParameters.size == 1
+            } ?: error("Could not resolve kotlin.collections.List.get(Int)")
         val collectionClass =
-            pluginContext.referenceClass(ClassId.topLevel(FqName("kotlin.collections.Collection")))?.owner
-                ?: error("Could not resolve kotlin.collections.Collection")
+            pluginContext
+                .referenceClass(ClassId.topLevel(FqName("kotlin.collections.Collection")))
+                ?.owner ?: error("Could not resolve kotlin.collections.Collection")
         val isEmptyFunction =
-            collectionClass.declarations
-                .filterIsInstance<IrSimpleFunction>()
-                .singleOrNull { function ->
-                    function.name.asString() == "isEmpty" && function.valueParameters.isEmpty()
-                } ?: error("Could not resolve kotlin.collections.Collection.isEmpty()")
+            collectionClass.declarations.filterIsInstance<IrSimpleFunction>().singleOrNull {
+                function ->
+                function.name.asString() == "isEmpty" && function.valueParameters.isEmpty()
+            } ?: error("Could not resolve kotlin.collections.Collection.isEmpty()")
         val sizeGetter =
             collectionClass.declarations
                 .filterIsInstance<IrProperty>()
-                .singleOrNull { property ->
-                    property.name.asString() == "size"
-                }?.getter ?: error("Could not resolve kotlin.collections.Collection.size")
-        val lambdaType =
-            pluginContext.irBuiltIns.functionN(1).typeWith(
-                listType,
-                anyType,
-            )
+                .singleOrNull { property -> property.name.asString() == "size" }
+                ?.getter ?: error("Could not resolve kotlin.collections.Collection.size")
+        val lambdaType = pluginContext.irBuiltIns.functionN(1).typeWith(listType, anyType)
         val constructorLambda =
-            context.irFactory.buildFun {
-                name = Name.special("<typeclass-product-constructor>")
-                origin = IrDeclarationOrigin.LOCAL_FUNCTION
-                visibility = DescriptorVisibilities.LOCAL
-                returnType = anyType
-            }.apply {
-                parent = lambdaParent
-            }
+            context.irFactory
+                .buildFun {
+                    name = Name.special("<typeclass-product-constructor>")
+                    origin = IrDeclarationOrigin.LOCAL_FUNCTION
+                    visibility = DescriptorVisibilities.LOCAL
+                    returnType = anyType
+                }
+                .apply { parent = lambdaParent }
         val argumentsParameter = constructorLambda.addValueParameter("arguments", listType)
         val appliedIrTypesByRuleId =
             reference.ruleTypeParameters.associate { parameter ->
-                parameter.id to modelToIrType(
-                    type = appliedBindings[parameter.id]
-                        ?: error("Missing applied type binding for ${parameter.id}"),
-                    visibleTypeParameters = visibleTypeParameters,
-                    pluginContext = pluginContext,
-                )
+                parameter.id to
+                    modelToIrType(
+                        type =
+                            appliedBindings[parameter.id]
+                                ?: error("Missing applied type binding for ${parameter.id}"),
+                        visibleTypeParameters = visibleTypeParameters,
+                        pluginContext = pluginContext,
+                    )
             }
         val constructorTypeArguments =
             reference.ruleTypeParameters.map { parameter ->
                 appliedIrTypesByRuleId.getValue(parameter.id)
             }
         val typeArgumentMap =
-            reference.targetClass.typeParameters.zip(reference.ruleTypeParameters).associate { (typeParameter, parameter) ->
+            reference.targetClass.typeParameters.zip(reference.ruleTypeParameters).associate {
+                (typeParameter, parameter) ->
                 typeParameter.symbol to appliedIrTypesByRuleId.getValue(parameter.id)
             }
         constructorLambda.body =
-            DeclarationIrBuilder(pluginContext, constructorLambda.symbol, startOffset, endOffset).irBlockBody {
-                if (reference.targetClass.isObject) {
+            DeclarationIrBuilder(pluginContext, constructorLambda.symbol, startOffset, endOffset)
+                .irBlockBody {
+                    if (reference.targetClass.isObject) {
+                        +irReturn(
+                            irIfThenElse(
+                                type = anyType,
+                                condition =
+                                    irCall(isEmptyFunction.symbol).apply {
+                                        dispatchReceiver = irGet(argumentsParameter)
+                                    },
+                                thenPart = irGetObject(reference.targetClass.symbol),
+                                elsePart =
+                                    irTypeclassInternalError(
+                                        pluginContext = pluginContext,
+                                        message =
+                                            objectProductConstructorArityRuntimeMessage(
+                                                reference.targetClass.classIdOrFail.asString()
+                                            ),
+                                    ),
+                            )
+                        )
+                        return@irBlockBody
+                    }
+                    val constructor =
+                        shape.constructor
+                            ?: error(
+                                "Constructive product derivation requires a constructor for ${reference.targetClass.classIdOrFail}"
+                            )
+                    val actualArgumentCount =
+                        irCall(sizeGetter.symbol).apply {
+                            dispatchReceiver = irGet(argumentsParameter)
+                        }
+                    val expectedArgumentCount = constructor.valueParameters.size
                     +irReturn(
                         irIfThenElse(
                             type = anyType,
                             condition =
-                                irCall(isEmptyFunction.symbol).apply {
-                                    dispatchReceiver = irGet(argumentsParameter)
+                                irCall(pluginContext.irBuiltIns.eqeqSymbol).apply {
+                                    putValueArgument(0, actualArgumentCount)
+                                    putValueArgument(1, irInt(expectedArgumentCount))
                                 },
-                            thenPart = irGetObject(reference.targetClass.symbol),
+                            thenPart =
+                                irCallConstructor(constructor.symbol, constructorTypeArguments)
+                                    .apply {
+                                        constructor.valueParameters.forEachIndexed {
+                                            index,
+                                            parameter ->
+                                            val argument =
+                                                irCall(getFunction.symbol).apply {
+                                                    dispatchReceiver = irGet(argumentsParameter)
+                                                    putValueArgument(0, irInt(index))
+                                                }
+                                            putValueArgument(
+                                                index,
+                                                irAs(
+                                                    argument,
+                                                    parameter.type.substitute(typeArgumentMap),
+                                                ),
+                                            )
+                                        }
+                                    },
                             elsePart =
                                 irTypeclassInternalError(
                                     pluginContext = pluginContext,
-                                    message = objectProductConstructorArityRuntimeMessage(reference.targetClass.classIdOrFail.asString()),
+                                    message =
+                                        productConstructorArityRuntimeMessage(
+                                            className =
+                                                reference.targetClass.classIdOrFail.asString(),
+                                            expectedArguments = expectedArgumentCount,
+                                        ),
                                 ),
-                        ),
+                        )
                     )
-                    return@irBlockBody
                 }
-                val constructor = shape.constructor
-                    ?: error("Constructive product derivation requires a constructor for ${reference.targetClass.classIdOrFail}")
-                val actualArgumentCount =
-                    irCall(sizeGetter.symbol).apply {
-                        dispatchReceiver = irGet(argumentsParameter)
-                    }
-                val expectedArgumentCount = constructor.valueParameters.size
-                +irReturn(
-                    irIfThenElse(
-                        type = anyType,
-                        condition =
-                            irCall(pluginContext.irBuiltIns.eqeqSymbol).apply {
-                                putValueArgument(0, actualArgumentCount)
-                                putValueArgument(1, irInt(expectedArgumentCount))
-                            },
-                        thenPart =
-                            irCallConstructor(constructor.symbol, constructorTypeArguments).apply {
-                                constructor.valueParameters.forEachIndexed { index, parameter ->
-                                    val argument =
-                                        irCall(getFunction.symbol).apply {
-                                            dispatchReceiver = irGet(argumentsParameter)
-                                            putValueArgument(0, irInt(index))
-                                        }
-                                    putValueArgument(index, irAs(argument, parameter.type.substitute(typeArgumentMap)))
-                                }
-                            },
-                        elsePart =
-                            irTypeclassInternalError(
-                                pluginContext = pluginContext,
-                                message =
-                                    productConstructorArityRuntimeMessage(
-                                        className = reference.targetClass.classIdOrFail.asString(),
-                                        expectedArguments = expectedArgumentCount,
-                                    ),
-                            ),
-                    ),
-                )
-            }
         return IrFunctionExpressionImpl(
             startOffset = startOffset,
             endOffset = endOffset,
@@ -1756,40 +1994,38 @@ private class TypeclassIrCallTransformer(
         visibleTypeParameters: VisibleTypeParameters,
     ): IrExpression {
         val anyType = pluginContext.irBuiltIns.anyNType
-        val lambdaType =
-            pluginContext.irBuiltIns.functionN(1).typeWith(
-                anyType,
-                anyType,
-            )
+        val lambdaType = pluginContext.irBuiltIns.functionN(1).typeWith(anyType, anyType)
         val targetType =
             reference.targetClass.symbol.typeWith(
                 reference.ruleTypeParameters.map { parameter ->
                     modelToIrType(
-                        type = appliedBindings[parameter.id]
-                            ?: error("Missing applied type binding for ${parameter.id}"),
+                        type =
+                            appliedBindings[parameter.id]
+                                ?: error("Missing applied type binding for ${parameter.id}"),
                         visibleTypeParameters = visibleTypeParameters,
                         pluginContext = pluginContext,
                     )
-                },
+                }
             )
         val accessor =
-            context.irFactory.buildFun {
-                name = Name.special("<typeclass-field-accessor>")
-                origin = IrDeclarationOrigin.LOCAL_FUNCTION
-                visibility = DescriptorVisibilities.LOCAL
-                returnType = anyType
-            }.apply {
-                parent = lambdaParent
-            }
+            context.irFactory
+                .buildFun {
+                    name = Name.special("<typeclass-field-accessor>")
+                    origin = IrDeclarationOrigin.LOCAL_FUNCTION
+                    visibility = DescriptorVisibilities.LOCAL
+                    returnType = anyType
+                }
+                .apply { parent = lambdaParent }
         val valueParameter = accessor.addValueParameter("value", anyType)
         accessor.body =
-            DeclarationIrBuilder(pluginContext, accessor.symbol, startOffset, endOffset).irBlockBody {
-                +irReturn(
-                    irCall(field.getter.symbol).apply {
-                        dispatchReceiver = irAs(irGet(valueParameter), targetType)
-                    },
-                )
-            }
+            DeclarationIrBuilder(pluginContext, accessor.symbol, startOffset, endOffset)
+                .irBlockBody {
+                    +irReturn(
+                        irCall(field.getter.symbol).apply {
+                            dispatchReceiver = irAs(irGet(valueParameter), targetType)
+                        }
+                    )
+                }
         return IrFunctionExpressionImpl(
             startOffset = startOffset,
             endOffset = endOffset,
@@ -1816,18 +2052,12 @@ private class TypeclassIrCallTransformer(
         val caseElements =
             shape.cases.zip(prerequisiteInstanceSlots).map { (case, instanceSlotExpression) ->
                 val instanceSlot =
-                    irTemporary(
-                        instanceSlotExpression,
-                        nameHint = "typeclassMetadataInstanceSlot",
-                    )
+                    irTemporary(instanceSlotExpression, nameHint = "typeclassMetadataInstanceSlot")
                 irCallConstructor(caseClass.primaryConstructorSymbol(), emptyList()).apply {
                     putValueArgument(0, irString(case.name))
                     putValueArgument(1, irString(case.klass.renderClassName()))
                     putValueArgument(2, irBoolean(case.klass.isValue))
-                    putValueArgument(
-                        3,
-                        irGet(instanceSlot),
-                    )
+                    putValueArgument(3, irGet(instanceSlot))
                     putValueArgument(
                         4,
                         buildSumCaseMatcher(
@@ -1891,44 +2121,47 @@ private class TypeclassIrCallTransformer(
     ): IrExpression {
         val anyType = pluginContext.irBuiltIns.anyNType
         val intType = pluginContext.irBuiltIns.intType
-        val lambdaType =
-            pluginContext.irBuiltIns.functionN(1).typeWith(
-                anyType,
-                intType,
-            )
+        val lambdaType = pluginContext.irBuiltIns.functionN(1).typeWith(anyType, intType)
         val resolver =
-            context.irFactory.buildFun {
-                name = Name.special("<typeclass-enum-ordinal>")
-                origin = IrDeclarationOrigin.LOCAL_FUNCTION
-                visibility = DescriptorVisibilities.LOCAL
-                returnType = intType
-            }.apply {
-                parent = lambdaParent
-            }
+            context.irFactory
+                .buildFun {
+                    name = Name.special("<typeclass-enum-ordinal>")
+                    origin = IrDeclarationOrigin.LOCAL_FUNCTION
+                    visibility = DescriptorVisibilities.LOCAL
+                    returnType = intType
+                }
+                .apply { parent = lambdaParent }
         val valueParameter = resolver.addValueParameter("value", anyType)
         resolver.body =
-            DeclarationIrBuilder(pluginContext, resolver.symbol, startOffset, endOffset).irBlockBody {
-                var result: IrExpression =
-                    irTypeclassInternalError(
-                        pluginContext = pluginContext,
-                        message = impossibleEnumOrdinalResolverRuntimeMessage(reference.targetClass.renderClassName()),
-                    )
-                for (index in shape.entries.indices.reversed()) {
-                    val entry = shape.entries[index]
-                    result =
-                        irIfThenElse(
-                            type = intType,
-                            condition =
-                                irCall(pluginContext.irBuiltIns.eqeqSymbol).apply {
-                                    putValueArgument(0, irGet(valueParameter))
-                                    putValueArgument(1, irEnumEntryValue(reference.targetClass, entry.entry))
-                                },
-                            thenPart = irInt(index),
-                            elsePart = result,
+            DeclarationIrBuilder(pluginContext, resolver.symbol, startOffset, endOffset)
+                .irBlockBody {
+                    var result: IrExpression =
+                        irTypeclassInternalError(
+                            pluginContext = pluginContext,
+                            message =
+                                impossibleEnumOrdinalResolverRuntimeMessage(
+                                    reference.targetClass.renderClassName()
+                                ),
                         )
+                    for (index in shape.entries.indices.reversed()) {
+                        val entry = shape.entries[index]
+                        result =
+                            irIfThenElse(
+                                type = intType,
+                                condition =
+                                    irCall(pluginContext.irBuiltIns.eqeqSymbol).apply {
+                                        putValueArgument(0, irGet(valueParameter))
+                                        putValueArgument(
+                                            1,
+                                            irEnumEntryValue(reference.targetClass, entry.entry),
+                                        )
+                                    },
+                                thenPart = irInt(index),
+                                elsePart = result,
+                            )
+                    }
+                    +irReturn(result)
                 }
-                +irReturn(result)
-            }
         return IrFunctionExpressionImpl(
             startOffset = startOffset,
             endOffset = endOffset,
@@ -1945,44 +2178,44 @@ private class TypeclassIrCallTransformer(
     ): IrExpression {
         val intType = pluginContext.irBuiltIns.intType
         val anyType = pluginContext.irBuiltIns.anyNType
-        val lambdaType =
-            pluginContext.irBuiltIns.functionN(1).typeWith(
-                intType,
-                anyType,
-            )
+        val lambdaType = pluginContext.irBuiltIns.functionN(1).typeWith(intType, anyType)
         val resolver =
-            context.irFactory.buildFun {
-                name = Name.special("<typeclass-enum-value>")
-                origin = IrDeclarationOrigin.LOCAL_FUNCTION
-                visibility = DescriptorVisibilities.LOCAL
-                returnType = anyType
-            }.apply {
-                parent = lambdaParent
-            }
+            context.irFactory
+                .buildFun {
+                    name = Name.special("<typeclass-enum-value>")
+                    origin = IrDeclarationOrigin.LOCAL_FUNCTION
+                    visibility = DescriptorVisibilities.LOCAL
+                    returnType = anyType
+                }
+                .apply { parent = lambdaParent }
         val indexParameter = resolver.addValueParameter("index", intType)
         resolver.body =
-            DeclarationIrBuilder(pluginContext, resolver.symbol, startOffset, endOffset).irBlockBody {
-                var result: IrExpression =
-                    irTypeclassInternalError(
-                        pluginContext = pluginContext,
-                        message = impossibleEnumValueResolverRuntimeMessage(reference.targetClass.renderClassName()),
-                    )
-                for (index in shape.entries.indices.reversed()) {
-                    val entry = shape.entries[index]
-                    result =
-                        irIfThenElse(
-                            type = anyType,
-                            condition =
-                                irCall(pluginContext.irBuiltIns.eqeqSymbol).apply {
-                                    putValueArgument(0, irGet(indexParameter))
-                                    putValueArgument(1, irInt(index))
-                                },
-                            thenPart = irEnumEntryValue(reference.targetClass, entry.entry),
-                            elsePart = result,
+            DeclarationIrBuilder(pluginContext, resolver.symbol, startOffset, endOffset)
+                .irBlockBody {
+                    var result: IrExpression =
+                        irTypeclassInternalError(
+                            pluginContext = pluginContext,
+                            message =
+                                impossibleEnumValueResolverRuntimeMessage(
+                                    reference.targetClass.renderClassName()
+                                ),
                         )
+                    for (index in shape.entries.indices.reversed()) {
+                        val entry = shape.entries[index]
+                        result =
+                            irIfThenElse(
+                                type = anyType,
+                                condition =
+                                    irCall(pluginContext.irBuiltIns.eqeqSymbol).apply {
+                                        putValueArgument(0, irGet(indexParameter))
+                                        putValueArgument(1, irInt(index))
+                                    },
+                                thenPart = irEnumEntryValue(reference.targetClass, entry.entry),
+                                elsePart = result,
+                            )
+                    }
+                    +irReturn(result)
                 }
-                +irReturn(result)
-            }
         return IrFunctionExpressionImpl(
             startOffset = startOffset,
             endOffset = endOffset,
@@ -1996,12 +2229,7 @@ private class TypeclassIrCallTransformer(
         enumClass: IrClass,
         entry: IrEnumEntry,
     ): IrExpression =
-        IrGetEnumValueImpl(
-            startOffset,
-            endOffset,
-            enumClass.symbol.defaultType,
-            entry.symbol,
-        )
+        IrGetEnumValueImpl(startOffset, endOffset, enumClass.symbol.defaultType, entry.symbol)
 
     private fun IrBuilderWithScope.buildSumCaseMatcher(
         case: DerivedCase,
@@ -2011,11 +2239,7 @@ private class TypeclassIrCallTransformer(
     ): IrExpression {
         val anyType = pluginContext.irBuiltIns.anyNType
         val booleanType = pluginContext.irBuiltIns.booleanType
-        val lambdaType =
-            pluginContext.irBuiltIns.functionN(1).typeWith(
-                anyType,
-                booleanType,
-            )
+        val lambdaType = pluginContext.irBuiltIns.functionN(1).typeWith(anyType, booleanType)
         val caseType =
             modelToIrType(
                 type = case.type.substituteType(appliedBindings),
@@ -2023,19 +2247,18 @@ private class TypeclassIrCallTransformer(
                 pluginContext = pluginContext,
             )
         val matcher =
-            context.irFactory.buildFun {
-                name = Name.special("<typeclass-sum-case-matcher>")
-                origin = IrDeclarationOrigin.LOCAL_FUNCTION
-                visibility = DescriptorVisibilities.LOCAL
-                returnType = booleanType
-            }.apply {
-                parent = lambdaParent
-            }
+            context.irFactory
+                .buildFun {
+                    name = Name.special("<typeclass-sum-case-matcher>")
+                    origin = IrDeclarationOrigin.LOCAL_FUNCTION
+                    visibility = DescriptorVisibilities.LOCAL
+                    returnType = booleanType
+                }
+                .apply { parent = lambdaParent }
         val valueParameter = matcher.addValueParameter("value", anyType)
         matcher.body =
-            DeclarationIrBuilder(pluginContext, matcher.symbol, startOffset, endOffset).irBlockBody {
-                +irReturn(irIs(irGet(valueParameter), caseType))
-            }
+            DeclarationIrBuilder(pluginContext, matcher.symbol, startOffset, endOffset)
+                .irBlockBody { +irReturn(irIs(irGet(valueParameter), caseType)) }
         return IrFunctionExpressionImpl(
             startOffset = startOffset,
             endOffset = endOffset,
@@ -2049,21 +2272,21 @@ private class TypeclassIrCallTransformer(
         currentDeclaration: IrDeclarationBase,
         currentFunction: IrFunction?,
     ): IrDeclarationParent =
-        currentFunction
-            ?: (currentDeclaration as? IrDeclarationParent)
-            ?: currentDeclaration.parent
+        currentFunction ?: (currentDeclaration as? IrDeclarationParent) ?: currentDeclaration.parent
 
     private fun IrBuilderWithScope.irListOf(
         elements: List<IrExpression>,
         elementType: IrType,
     ): IrExpression {
         val listOfFunction =
-            pluginContext.referenceFunctions(CallableId(FqName("kotlin.collections"), Name.identifier("listOf")))
+            pluginContext
+                .referenceFunctions(
+                    CallableId(FqName("kotlin.collections"), Name.identifier("listOf"))
+                )
                 .map { it.owner }
                 .singleOrNull { function ->
                     function.valueParameters.singleOrNull()?.varargElementType != null
-                }
-                ?: error("Could not resolve kotlin.collections.listOf(vararg)")
+                } ?: error("Could not resolve kotlin.collections.listOf(vararg)")
         return irCall(listOfFunction.symbol).apply {
             putTypeArgument(0, elementType)
             putValueArgument(0, irVararg(elementType, elements))
@@ -2080,11 +2303,11 @@ private fun IrPluginContext.reportTypeclassError(
     val enrichedMessage =
         when (diagnosticId) {
             TypeclassDiagnosticIds.CANNOT_DERIVE -> enrichCannotDeriveDiagnostic(message)
-            TypeclassDiagnosticIds.INVALID_BUILTIN_EVIDENCE -> enrichInvalidBuiltinEvidenceDiagnostic(message)
+            TypeclassDiagnosticIds.INVALID_BUILTIN_EVIDENCE ->
+                enrichInvalidBuiltinEvidenceDiagnostic(message)
             else -> message
         }
-    val renderedMessage =
-        diagnosticId?.let { id -> "[$id] $enrichedMessage" } ?: enrichedMessage
+    val renderedMessage = diagnosticId?.let { id -> "[$id] $enrichedMessage" } ?: enrichedMessage
     val finalMessage =
         if (supplementalMessage != null) {
             "$renderedMessage\n$supplementalMessage"
@@ -2148,7 +2371,12 @@ private fun IrPluginContext.reportDerivationSuccessTrace(
 }
 
 private fun IrFile.traceScopeOrNull(): TypeclassTraceScope? =
-    annotations.firstNotNullOfOrNull { annotation -> annotation.debugTypeclassTraceScope(kind = "file", label = fileEntry.name.substringAfterLast('/')) }
+    annotations.firstNotNullOfOrNull { annotation ->
+        annotation.debugTypeclassTraceScope(
+            kind = "file",
+            label = fileEntry.name.substringAfterLast('/'),
+        )
+    }
 
 private fun IrDeclarationBase.traceScopeOrNull(): TypeclassTraceScope? =
     annotations.firstNotNullOfOrNull { annotation ->
@@ -2187,7 +2415,8 @@ private fun org.jetbrains.kotlin.ir.expressions.IrConstructorCall.debugTypeclass
     )
 }
 
-private fun org.jetbrains.kotlin.ir.expressions.IrConstructorCall.debugTypeclassTraceMode(): TypeclassTraceMode? {
+private fun org.jetbrains.kotlin.ir.expressions.IrConstructorCall.debugTypeclassTraceMode():
+    TypeclassTraceMode? {
     val annotationClass = symbol.owner.parentAsClass
     if (annotationClass.classId != DEBUG_TYPECLASS_RESOLUTION_ANNOTATION_CLASS_ID) {
         return null
@@ -2195,25 +2424,31 @@ private fun org.jetbrains.kotlin.ir.expressions.IrConstructorCall.debugTypeclass
     return when (val modeArgument = getValueArgument(0)) {
         null -> TypeclassTraceMode.FAILURES
         is org.jetbrains.kotlin.ir.expressions.IrGetEnumValue ->
-            modeArgument.symbol.owner.takeIf { enumEntry ->
-                enumEntry.parentAsClass.classId == TYPECLASS_TRACE_MODE_CLASS_ID
-            }?.name?.asString()?.let { entryName ->
-                when (entryName) {
-                    "INHERIT" -> TypeclassTraceMode.INHERIT
-                    "DISABLED" -> TypeclassTraceMode.DISABLED
-                    "FAILURES" -> TypeclassTraceMode.FAILURES
-                    "FAILURES_AND_ALTERNATIVES" -> TypeclassTraceMode.FAILURES_AND_ALTERNATIVES
-                    "ALL" -> TypeclassTraceMode.ALL
-                    "ALL_AND_ALTERNATIVES" -> TypeclassTraceMode.ALL_AND_ALTERNATIVES
-                    else -> null
+            modeArgument.symbol.owner
+                .takeIf { enumEntry ->
+                    enumEntry.parentAsClass.classId == TYPECLASS_TRACE_MODE_CLASS_ID
                 }
-            }
+                ?.name
+                ?.asString()
+                ?.let { entryName ->
+                    when (entryName) {
+                        "INHERIT" -> TypeclassTraceMode.INHERIT
+                        "DISABLED" -> TypeclassTraceMode.DISABLED
+                        "FAILURES" -> TypeclassTraceMode.FAILURES
+                        "FAILURES_AND_ALTERNATIVES" -> TypeclassTraceMode.FAILURES_AND_ALTERNATIVES
+                        "ALL" -> TypeclassTraceMode.ALL
+                        "ALL_AND_ALTERNATIVES" -> TypeclassTraceMode.ALL_AND_ALTERNATIVES
+                        else -> null
+                    }
+                }
 
         else -> null
     }
 }
 
-private fun IrClass.derivationTraceActivation(configuration: TypeclassConfiguration): TypeclassTraceActivation? {
+private fun IrClass.derivationTraceActivation(
+    configuration: TypeclassConfiguration
+): TypeclassTraceActivation? {
     val scopes = mutableListOf<TypeclassTraceScope>()
     var current: IrDeclarationParent? = this
     while (current != null) {
@@ -2230,7 +2465,9 @@ private fun IrClass.derivationTraceActivation(configuration: TypeclassConfigurat
     return resolveTraceActivation(scopes.asReversed(), configuration.traceMode)
 }
 
-private fun IrDeclarationBase.compilerMessageLocation(element: IrElement? = null): CompilerMessageSourceLocation? {
+private fun IrDeclarationBase.compilerMessageLocation(
+    element: IrElement? = null
+): CompilerMessageSourceLocation? {
     val file = containingFile() ?: return null
     val offset = element?.startOffset ?: startOffset
     return file.compilerMessageLocation(offset)
@@ -2307,7 +2544,10 @@ private fun validateKnownIrDeriverReturnTypeclass(
             )
             return@getOrPut false
         }
-        if (deriveMethod.origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB && deriveMethod.body == null) {
+        if (
+            deriveMethod.origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB &&
+                deriveMethod.body == null
+        ) {
             if (
                 publishedGeneratedMetadata
                     .filterIsInstance<GeneratedDerivedMetadata.ValidatedDeriver>()
@@ -2319,7 +2559,8 @@ private fun validateKnownIrDeriverReturnTypeclass(
                 return@getOrPut true
             }
             pluginContext.reportTypeclassError(
-                message = "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>",
+                message =
+                    "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>",
                 diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                 location = deriveMethod.compilerMessageLocation(),
             )
@@ -2328,7 +2569,8 @@ private fun validateKnownIrDeriverReturnTypeclass(
         val knownReturnExpressions = deriveMethod.knownDeriverReturnExpressions()
         if (knownReturnExpressions.isEmpty()) {
             pluginContext.reportTypeclassError(
-                message = "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>",
+                message =
+                    "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>",
                 diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                 location = deriveMethod.compilerMessageLocation(),
             )
@@ -2339,7 +2581,8 @@ private fun validateKnownIrDeriverReturnTypeclass(
                 returnExpression.knownReturnedTypeclassConstructors(configuration)
             if (knownTypeclassConstructors.isEmpty()) {
                 pluginContext.reportTypeclassError(
-                    message = "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>",
+                    message =
+                        "${deriveMethod.name.asString()} must return ${typeclassInterface.name.asString()}<...>",
                     diagnosticId = TypeclassDiagnosticIds.CANNOT_DERIVE,
                     location = deriveMethod.compilerMessageLocation(),
                 )
@@ -2395,7 +2638,7 @@ private fun IrSimpleFunction.knownDeriverReturnExpressions(): List<IrExpression>
                 }
                 super.visitReturn(expression)
             }
-        },
+        }
     )
     return returnExpressions.toList()
 }
@@ -2416,7 +2659,8 @@ private fun IrExpression.knownReturnedExpressionOrSelf(): IrExpression =
     when (this) {
         is IrReturn -> value.knownReturnedExpressionOrSelf()
         is IrTypeOperatorCall -> argument.knownReturnedExpressionOrSelf()
-        is IrComposite -> (statements.lastOrNull() as? IrExpression)?.knownReturnedExpressionOrSelf() ?: this
+        is IrComposite ->
+            (statements.lastOrNull() as? IrExpression)?.knownReturnedExpressionOrSelf() ?: this
         is org.jetbrains.kotlin.ir.expressions.IrBlock ->
             (statements.lastOrNull() as? IrExpression)?.knownReturnedExpressionOrSelf() ?: this
         else -> this
@@ -2477,37 +2721,32 @@ private fun IrExpression.knownReturnedTypeclassConstructorsOrEmpty(
         currentClass.superTypes.forEach(::visitSuperType)
     }
 
-    expression.knownReturnedImplementationOwners()
+    expression
+        .knownReturnedImplementationOwners()
         .distinctBy { owner -> owner.classId?.asString() ?: owner.name.asString() }
-        .forEach { owner ->
-            owner.superTypes.forEach(::visitSuperType)
-        }
+        .forEach { owner -> owner.superTypes.forEach(::visitSuperType) }
     fun addNested(nested: IrExpression) {
-        nested.knownReturnedTypeclassConstructors(
-            configuration = configuration,
-            visitedFunctions = visitedFunctions,
-            visitedVariables = visitedVariables,
-        ).forEach(result::add)
+        nested
+            .knownReturnedTypeclassConstructors(
+                configuration = configuration,
+                visitedFunctions = visitedFunctions,
+                visitedVariables = visitedVariables,
+            )
+            .forEach(result::add)
     }
     when (expression) {
-        is IrWhen ->
-            expression.branches.forEach { branch ->
-                addNested(branch.result)
-            }
+        is IrWhen -> expression.branches.forEach { branch -> addNested(branch.result) }
 
         is IrTry -> {
             addNested(expression.tryResult)
-            expression.catches.forEach { catch ->
-                addNested(catch.result)
-            }
+            expression.catches.forEach { catch -> addNested(catch.result) }
         }
 
         is IrGetValue -> {
             val variable = expression.symbol.owner as? IrVariable
             if (variable != null && visitedVariables.add(variable)) {
                 try {
-                    variable.initializer
-                        ?.let(::addNested)
+                    variable.initializer?.let(::addNested)
                 } finally {
                     visitedVariables.remove(variable)
                 }
@@ -2549,7 +2788,10 @@ private fun IrDeclaration.isVisibleTypeclassRuleCandidate(): Boolean {
     if (visibleDeclaration.visibility == DescriptorVisibilities.PRIVATE) {
         return false
     }
-    if (origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB && visibleDeclaration.visibility != DescriptorVisibilities.PUBLIC) {
+    if (
+        origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB &&
+            visibleDeclaration.visibility != DescriptorVisibilities.PUBLIC
+    ) {
         return false
     }
     return true
@@ -2562,7 +2804,9 @@ private fun IrSimpleFunction.isValidTypeclassInstanceFunctionRuleCandidate(): Bo
     if (extensionReceiverParameter != null) {
         return false
     }
-    if (parameters.any { it.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular }) {
+    if (
+        parameters.any { it.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular }
+    ) {
         return false
     }
     return true
@@ -2582,7 +2826,8 @@ private fun IrProperty.isValidTypeclassInstancePropertyRuleCandidate(): Boolean 
     return true
 }
 
-private class IrRuleIndex private constructor(
+private class IrRuleIndex
+private constructor(
     private val pluginContext: IrPluginContext,
     val configuration: TypeclassConfiguration,
     private val scanner: IrModuleScanner,
@@ -2592,19 +2837,29 @@ private class IrRuleIndex private constructor(
     private val associatedRulesByOwner: Map<ClassId, List<ResolvedRule>>,
     val classInfoById: Map<String, VisibleClassHierarchyInfo>,
 ) {
-    private val lazilyDiscoveredAssociatedRulesByOwner: MutableMap<ClassId, List<ResolvedRule>> = linkedMapOf()
+    private val lazilyDiscoveredAssociatedRulesByOwner: MutableMap<ClassId, List<ResolvedRule>> =
+        linkedMapOf()
     private val lazilyDiscoveredRulesById: MutableMap<String, ResolvedRule> = linkedMapOf()
 
     fun originalForWrapperLikeFunction(wrapperLikeFunction: IrSimpleFunction): IrSimpleFunction? {
         val callableId = wrapperLikeFunction.safeCallableIdOrNull() ?: return null
         val candidates = originalsByCallableId[callableId].orEmpty()
         return candidates.singleOrNull { candidate ->
-            wrapperResolutionShape(candidate, dropTypeclassContexts = true, configuration = configuration) ==
-                wrapperResolutionShape(wrapperLikeFunction, dropTypeclassContexts = false, configuration = configuration)
+            wrapperResolutionShape(
+                candidate,
+                dropTypeclassContexts = true,
+                configuration = configuration,
+            ) ==
+                wrapperResolutionShape(
+                    wrapperLikeFunction,
+                    dropTypeclassContexts = false,
+                    configuration = configuration,
+                )
         }
     }
 
-    fun ruleById(ruleId: String): ResolvedRule? = rulesById[ruleId] ?: lazilyDiscoveredRulesById[ruleId]
+    fun ruleById(ruleId: String): ResolvedRule? =
+        rulesById[ruleId] ?: lazilyDiscoveredRulesById[ruleId]
 
     fun publishedGeneratedDerivedMetadata(owner: IrClass): List<GeneratedDerivedMetadata> =
         scanner.publishedGeneratedDerivedMetadataFor(owner)
@@ -2616,7 +2871,11 @@ private class IrRuleIndex private constructor(
         val candidates = pluginContext.referenceFunctions(reference.callableId).map { it.owner }
         val shapeMatchedCandidates =
             candidates.filter { function ->
-                lookupFunctionShape(function, dropTypeclassContexts = false, configuration = configuration) == reference.shape
+                lookupFunctionShape(
+                    function,
+                    dropTypeclassContexts = false,
+                    configuration = configuration,
+                ) == reference.shape
             }
         val ownerMatchedCandidates =
             shapeMatchedCandidates.filter { function ->
@@ -2656,68 +2915,83 @@ private class IrRuleIndex private constructor(
             }
         val resolvedRules =
             (topLevelRules + associated)
-            .asSequence()
-            .filter { resolvedRule ->
-                builtinRuleCanMatchGoalHead(resolvedRule.rule.id, goal)
-            }
-            .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:kclass" || supportsBuiltinKClassGoal(goal, canMaterializeVariable)
-            }
-            .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:subtype" ||
-                    builtinGoalAcceptance.accepts(
-                        irBuiltinSubtypeFeasibility(goal, classInfoById, exactBuiltinGoalContext),
-                    )
-            }
-            .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:strict-subtype" ||
-                    builtinGoalAcceptance.accepts(
-                        irBuiltinStrictSubtypeFeasibility(goal, classInfoById, exactBuiltinGoalContext),
-                    )
-            }
-            .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:kserializer" || supportsBuiltinKSerializerGoal(goal, pluginContext, canMaterializeVariable)
-            }
-            .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:notsame" ||
-                    irBuiltinNotSameFeasibility(goal, exactBuiltinGoalContext) != BuiltinGoalFeasibility.IMPOSSIBLE
-            }
-            .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:nullable" ||
-                    builtinGoalAcceptance.accepts(
-                        irBuiltinNullableFeasibility(goal, exactBuiltinGoalContext),
-                    )
-            }
-            .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:not-nullable" ||
-                    builtinGoalAcceptance.accepts(
-                        irBuiltinNotNullableFeasibility(goal, exactBuiltinGoalContext),
-                    )
-            }
-            .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:is-typeclass-instance" ||
-                    builtinGoalAcceptance.accepts(
-                        irBuiltinIsTypeclassInstanceFeasibility(
-                            goal = goal,
-                            exactBuiltinGoalContext = exactBuiltinGoalContext,
-                            isTypeclassClassifier = { classifierId ->
-                                pluginContext.supportsTypeclassClassifierId(classifierId, configuration)
-                            },
-                        ),
-                    )
-            }
-            .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:known-type" || supportsBuiltinKnownTypeGoal(goal, canMaterializeVariable)
-            }
-            .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:type-id" || supportsBuiltinTypeIdGoal(goal, canMaterializeVariable)
-            }
-            .filter { resolvedRule ->
-                resolvedRule.rule.id != "builtin:same-type-constructor" || supportsBuiltinSameTypeConstructorGoal(goal)
-            }
-            .distinctBy { resolvedRule -> resolvedRule.rule.id }
-            .map(ResolvedRule::rule)
-            .toList()
+                .asSequence()
+                .filter { resolvedRule -> builtinRuleCanMatchGoalHead(resolvedRule.rule.id, goal) }
+                .filter { resolvedRule ->
+                    resolvedRule.rule.id != "builtin:kclass" ||
+                        supportsBuiltinKClassGoal(goal, canMaterializeVariable)
+                }
+                .filter { resolvedRule ->
+                    resolvedRule.rule.id != "builtin:subtype" ||
+                        builtinGoalAcceptance.accepts(
+                            irBuiltinSubtypeFeasibility(
+                                goal,
+                                classInfoById,
+                                exactBuiltinGoalContext,
+                            )
+                        )
+                }
+                .filter { resolvedRule ->
+                    resolvedRule.rule.id != "builtin:strict-subtype" ||
+                        builtinGoalAcceptance.accepts(
+                            irBuiltinStrictSubtypeFeasibility(
+                                goal,
+                                classInfoById,
+                                exactBuiltinGoalContext,
+                            )
+                        )
+                }
+                .filter { resolvedRule ->
+                    resolvedRule.rule.id != "builtin:kserializer" ||
+                        supportsBuiltinKSerializerGoal(goal, pluginContext, canMaterializeVariable)
+                }
+                .filter { resolvedRule ->
+                    resolvedRule.rule.id != "builtin:notsame" ||
+                        irBuiltinNotSameFeasibility(goal, exactBuiltinGoalContext) !=
+                            BuiltinGoalFeasibility.IMPOSSIBLE
+                }
+                .filter { resolvedRule ->
+                    resolvedRule.rule.id != "builtin:nullable" ||
+                        builtinGoalAcceptance.accepts(
+                            irBuiltinNullableFeasibility(goal, exactBuiltinGoalContext)
+                        )
+                }
+                .filter { resolvedRule ->
+                    resolvedRule.rule.id != "builtin:not-nullable" ||
+                        builtinGoalAcceptance.accepts(
+                            irBuiltinNotNullableFeasibility(goal, exactBuiltinGoalContext)
+                        )
+                }
+                .filter { resolvedRule ->
+                    resolvedRule.rule.id != "builtin:is-typeclass-instance" ||
+                        builtinGoalAcceptance.accepts(
+                            irBuiltinIsTypeclassInstanceFeasibility(
+                                goal = goal,
+                                exactBuiltinGoalContext = exactBuiltinGoalContext,
+                                isTypeclassClassifier = { classifierId ->
+                                    pluginContext.supportsTypeclassClassifierId(
+                                        classifierId,
+                                        configuration,
+                                    )
+                                },
+                            )
+                        )
+                }
+                .filter { resolvedRule ->
+                    resolvedRule.rule.id != "builtin:known-type" ||
+                        supportsBuiltinKnownTypeGoal(goal, canMaterializeVariable)
+                }
+                .filter { resolvedRule ->
+                    resolvedRule.rule.id != "builtin:type-id" ||
+                        supportsBuiltinTypeIdGoal(goal, canMaterializeVariable)
+                }
+                .filter { resolvedRule ->
+                    resolvedRule.rule.id != "builtin:same-type-constructor" ||
+                        supportsBuiltinSameTypeConstructorGoal(goal)
+                }
+                .distinctBy { resolvedRule -> resolvedRule.rule.id }
+                .map(ResolvedRule::rule)
+                .toList()
         return resolvedRules
     }
 
@@ -2725,9 +2999,7 @@ private class IrRuleIndex private constructor(
         val constructor = goal as? TcType.Constructor ?: return emptySet()
         val ownerIds = linkedSetOf<String>()
         ownerIds += sealedOwnerChain(constructor.classifierId)
-        constructor.arguments.forEach { argument ->
-            ownerIds += associatedOwnerIds(argument)
-        }
+        constructor.arguments.forEach { argument -> ownerIds += associatedOwnerIds(argument) }
         return ownerIds.map(ClassId::fromString).toSet()
     }
 
@@ -2739,10 +3011,13 @@ private class IrRuleIndex private constructor(
                     emptyList()
                 } else {
                     directOrNestedCompanion(
-                        owner = owner,
-                        directCompanion = ownerClass.declarations.filterIsInstance<IrClass>().firstOrNull(IrClass::isCompanion),
-                        nestedLookup = { null },
-                    )
+                            owner = owner,
+                            directCompanion =
+                                ownerClass.declarations
+                                    .filterIsInstance<IrClass>()
+                                    .firstOrNull(IrClass::isCompanion),
+                            nestedLookup = { null },
+                        )
                         ?.let { companion ->
                             buildList {
                                 collectAssociatedRules(
@@ -2751,31 +3026,30 @@ private class IrRuleIndex private constructor(
                                     sink = this,
                                 )
                             }
-                        }.orEmpty()
+                        }
+                        .orEmpty()
                 }
             val derivedRules = discoverDerivedRules(owner, ownerClass)
             buildList {
-                addAll(companionRules)
-                addAll(derivedRules)
-            }.also { rules ->
-                rules.forEach { rule ->
-                    lazilyDiscoveredRulesById[rule.rule.id] = rule
+                    addAll(companionRules)
+                    addAll(derivedRules)
                 }
-            }
+                .also { rules ->
+                    rules.forEach { rule -> lazilyDiscoveredRulesById[rule.rule.id] = rule }
+                }
         }
 
     private fun discoverReferencedClass(owner: ClassId): IrClass? {
         val ownerKey = owner.asString()
-        scanner.classesById[ownerKey]?.let { return it }
+        scanner.classesById[ownerKey]?.let {
+            return it
+        }
         val referencedClass = pluginContext.referenceClass(owner)?.owner ?: return null
         scanner.registerDiscoveredClass(referencedClass)
         return scanner.classesById[ownerKey] ?: referencedClass
     }
 
-    private fun discoverDerivedRules(
-        owner: ClassId,
-        ownerClass: IrClass,
-    ): List<ResolvedRule> =
+    private fun discoverDerivedRules(owner: ClassId, ownerClass: IrClass): List<ResolvedRule> =
         scanner.derivedRulesForOwner(owner.asString()).ifEmpty {
             scanner.registerDiscoveredClass(ownerClass)
             scanner.derivedRulesForOwner(owner.asString())
@@ -2788,7 +3062,12 @@ private class IrRuleIndex private constructor(
     ) {
         when (declaration) {
             is IrClass -> {
-                declaration.toDiscoveredObjectRules(idPrefix = "lookup-associated-object", associatedOwner = associatedOwner).forEach(sink::add)
+                declaration
+                    .toDiscoveredObjectRules(
+                        idPrefix = "lookup-associated-object",
+                        associatedOwner = associatedOwner,
+                    )
+                    .forEach(sink::add)
                 declaration.declarations.forEach { nestedDeclaration ->
                     collectAssociatedRules(
                         declaration = nestedDeclaration,
@@ -2799,10 +3078,20 @@ private class IrRuleIndex private constructor(
             }
 
             is IrSimpleFunction ->
-                declaration.toDiscoveredFunctionRules(idPrefix = "lookup-associated-function", associatedOwner = associatedOwner).forEach(sink::add)
+                declaration
+                    .toDiscoveredFunctionRules(
+                        idPrefix = "lookup-associated-function",
+                        associatedOwner = associatedOwner,
+                    )
+                    .forEach(sink::add)
 
             is IrProperty ->
-                declaration.toDiscoveredPropertyRules(idPrefix = "lookup-associated-property", associatedOwner = associatedOwner).forEach(sink::add)
+                declaration
+                    .toDiscoveredPropertyRules(
+                        idPrefix = "lookup-associated-property",
+                        associatedOwner = associatedOwner,
+                    )
+                    .forEach(sink::add)
 
             else -> Unit
         }
@@ -2812,18 +3101,24 @@ private class IrRuleIndex private constructor(
         idPrefix: String,
         associatedOwner: ClassId,
     ): List<ResolvedRule> {
-        if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) || !irInstanceOwnerContext(this).isIndexableScope || !isVisibleTypeclassRuleCandidate()) {
+        if (
+            !hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) ||
+                !irInstanceOwnerContext(this).isIndexableScope ||
+                !isVisibleTypeclassRuleCandidate()
+        ) {
             return emptyList()
         }
-        return superTypes.providedTypeExpansion(emptyMap(), configuration).validTypes.map { providedType ->
+        return superTypes.providedTypeExpansion(emptyMap(), configuration).validTypes.map {
+            providedType ->
             ResolvedRule(
                 rule =
                     InstanceRule(
-                        id = directRuleId(
-                            prefix = idPrefix,
-                            declarationKey = classIdOrFail.asString(),
-                            providedType = providedType,
-                        ),
+                        id =
+                            directRuleId(
+                                prefix = idPrefix,
+                                declarationKey = classIdOrFail.asString(),
+                                providedType = providedType,
+                            ),
                         typeParameters = emptyList(),
                         providedType = providedType,
                         prerequisiteTypes = emptyList(),
@@ -2838,74 +3133,93 @@ private class IrRuleIndex private constructor(
         idPrefix: String,
         associatedOwner: ClassId,
     ): List<ResolvedRule> {
-        if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) || !irInstanceOwnerContext(this).isIndexableScope || !isVisibleTypeclassRuleCandidate()) {
+        if (
+            !hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) ||
+                !irInstanceOwnerContext(this).isIndexableScope ||
+                !isVisibleTypeclassRuleCandidate()
+        ) {
             return emptyList()
         }
         if (!isValidTypeclassInstanceFunctionRuleCandidate()) {
             return emptyList()
         }
-        val typeParameters = this.typeParameters.map { typeParameter ->
-            TcTypeParameter(
-                id = ruleTypeParameterId(this, typeParameter),
-                displayName = typeParameter.name.asString(),
-            )
-        }
+        val typeParameters =
+            this.typeParameters.map { typeParameter ->
+                TcTypeParameter(
+                    id = ruleTypeParameterId(this, typeParameter),
+                    displayName = typeParameter.name.asString(),
+                )
+            }
         val typeParameterBySymbol = typeParametersBySymbol(this, typeParameters)
         val prerequisites =
             contextParameters().mapNotNull { parameter ->
-                parameter.type.takeIf { type -> type.isTypeclassType(configuration) }?.let { irTypeToModel(it, typeParameterBySymbol) }
+                parameter.type
+                    .takeIf { type -> type.isTypeclassType(configuration) }
+                    ?.let { irTypeToModel(it, typeParameterBySymbol) }
             }
         if (prerequisites.size != contextParameters().size) {
             return emptyList()
         }
-        return listOf(returnType).providedTypeExpansion(typeParameterBySymbol, configuration).validTypes.map { providedType ->
-            ResolvedRule(
-                rule =
-                    InstanceRule(
-                        id = directRuleId(
-                            prefix = idPrefix,
-                            declarationKey = callableId.toString(),
+        return listOf(returnType)
+            .providedTypeExpansion(typeParameterBySymbol, configuration)
+            .validTypes
+            .map { providedType ->
+                ResolvedRule(
+                    rule =
+                        InstanceRule(
+                            id =
+                                directRuleId(
+                                    prefix = idPrefix,
+                                    declarationKey = callableId.toString(),
+                                    providedType = providedType,
+                                    prerequisiteTypes = prerequisites,
+                                    typeParameters = typeParameters,
+                                ),
+                            typeParameters = typeParameters,
                             providedType = providedType,
                             prerequisiteTypes = prerequisites,
-                            typeParameters = typeParameters,
                         ),
-                        typeParameters = typeParameters,
-                        providedType = providedType,
-                        prerequisiteTypes = prerequisites,
-                    ),
-                reference = RuleReference.DirectFunction(this),
-                associatedOwner = associatedOwner,
-            )
-        }
+                    reference = RuleReference.DirectFunction(this),
+                    associatedOwner = associatedOwner,
+                )
+            }
     }
 
     private fun IrProperty.toDiscoveredPropertyRules(
         idPrefix: String,
         associatedOwner: ClassId,
     ): List<ResolvedRule> {
-        if (!hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) || !irInstanceOwnerContext(this).isIndexableScope || !isVisibleTypeclassRuleCandidate()) {
+        if (
+            !hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) ||
+                !irInstanceOwnerContext(this).isIndexableScope ||
+                !isVisibleTypeclassRuleCandidate()
+        ) {
             return emptyList()
         }
         if (!isValidTypeclassInstancePropertyRuleCandidate()) {
             return emptyList()
         }
-        return listOf(backingFieldOrGetterType()).providedTypeExpansion(emptyMap(), configuration).validTypes.map { providedType ->
-            ResolvedRule(
-                rule =
-                    InstanceRule(
-                        id = directRuleId(
-                            prefix = idPrefix,
-                            declarationKey = callableId.toString(),
+        return listOf(backingFieldOrGetterType())
+            .providedTypeExpansion(emptyMap(), configuration)
+            .validTypes
+            .map { providedType ->
+                ResolvedRule(
+                    rule =
+                        InstanceRule(
+                            id =
+                                directRuleId(
+                                    prefix = idPrefix,
+                                    declarationKey = callableId.toString(),
+                                    providedType = providedType,
+                                ),
+                            typeParameters = emptyList(),
                             providedType = providedType,
+                            prerequisiteTypes = emptyList(),
                         ),
-                        typeParameters = emptyList(),
-                        providedType = providedType,
-                        prerequisiteTypes = emptyList(),
-                    ),
-                reference = RuleReference.DirectProperty(this),
-                associatedOwner = associatedOwner,
-            )
-        }
+                    reference = RuleReference.DirectProperty(this),
+                    associatedOwner = associatedOwner,
+                )
+            }
     }
 
     private fun associatedOwnerIds(type: TcType): Set<String> =
@@ -2917,9 +3231,7 @@ private class IrRuleIndex private constructor(
             is TcType.Constructor -> {
                 val owners = linkedSetOf<String>()
                 owners += sealedOwnerChain(type.classifierId)
-                type.arguments.forEach { argument ->
-                    owners += associatedOwnerIds(argument)
-                }
+                type.arguments.forEach { argument -> owners += associatedOwnerIds(argument) }
                 owners
             }
         }
@@ -2963,10 +3275,12 @@ private class IrRuleIndex private constructor(
                     resolvedRule.reference.lookupIdentityKeyOrNull(sharedState.configuration)
                 }
             val importedDependencyTopLevelRules =
-                sharedState.importedTopLevelRulesForIr()
+                sharedState
+                    .importedTopLevelRulesForIr()
                     .filterNot { importedRule ->
                         importedRule.reference.lookupIdentityKey() in localTopLevelLookupKeys
-                    }.map { importedRule ->
+                    }
+                    .map { importedRule ->
                         ResolvedRule(
                             rule = importedRule.rule,
                             reference = importedRule.reference.toIrRuleReference(),
@@ -2978,8 +3292,9 @@ private class IrRuleIndex private constructor(
             val associatedSourceRules = directCompanionRules
             val allRules = topLevelRules + directCompanionRules
             val associatedRules =
-                associatedSourceRules
-                    .groupBy { it.associatedOwner ?: error("Associated rule must have owner") }
+                associatedSourceRules.groupBy {
+                    it.associatedOwner ?: error("Associated rule must have owner")
+                }
             return IrRuleIndex(
                 pluginContext = pluginContext,
                 configuration = sharedState.configuration,
@@ -3006,15 +3321,15 @@ private fun VisibleRuleLookupReference.toIrRuleReference(): RuleReference =
         is VisibleRuleLookupReference.LookupProperty ->
             RuleReference.LookupProperty(callableId, ownerKey = ownerKey)
 
-        is VisibleRuleLookupReference.LookupObject ->
-            RuleReference.LookupObject(classId)
+        is VisibleRuleLookupReference.LookupObject -> RuleReference.LookupObject(classId)
     }
 
 private fun RuleReference.lookupIdentityKeyOrNull(configuration: TypeclassConfiguration): String? =
     when (this) {
         is RuleReference.DirectFunction ->
             "fun:${function.lookupOwnerKeyOrNull() ?: "-"}:${function.callableId}:${lookupFunctionShape(function, dropTypeclassContexts = false, configuration = configuration)}"
-        is RuleReference.DirectProperty -> "prop:${property.lookupOwnerKeyOrNull() ?: "-"}:${property.callableId}"
+        is RuleReference.DirectProperty ->
+            "prop:${property.lookupOwnerKeyOrNull() ?: "-"}:${property.callableId}"
         is RuleReference.DirectObject -> "obj:${klass.classIdOrFail.asString()}"
         is RuleReference.LookupFunction -> "fun:${ownerKey ?: "-"}:${callableId}:$shape"
         is RuleReference.LookupProperty -> "prop:${ownerKey ?: "-"}:${callableId}"
@@ -3050,119 +3365,119 @@ private class IrModuleScanner(
 
     fun buildTopLevelRules(): List<ResolvedRule> = topLevelRules
 
-    fun buildBuiltinRules(): List<ResolvedRule> =
-        buildList {
+    fun buildBuiltinRules(): List<ResolvedRule> = buildList {
+        add(
+            ResolvedRule(
+                rule = builtinSameRule(),
+                reference = RuleReference.BuiltinSame,
+                associatedOwner = null,
+            )
+        )
+        add(
+            ResolvedRule(
+                rule = builtinNotSameRule(),
+                reference = RuleReference.BuiltinNotSame,
+                associatedOwner = null,
+            )
+        )
+        add(
+            ResolvedRule(
+                rule = builtinSubtypeRule(),
+                reference = RuleReference.BuiltinSubtype,
+                associatedOwner = null,
+            )
+        )
+        add(
+            ResolvedRule(
+                rule = builtinStrictSubtypeRule(),
+                reference = RuleReference.BuiltinStrictSubtype,
+                associatedOwner = null,
+            )
+        )
+        add(
+            ResolvedRule(
+                rule = builtinNullableRule(),
+                reference = RuleReference.BuiltinNullable,
+                associatedOwner = null,
+            )
+        )
+        add(
+            ResolvedRule(
+                rule = builtinNotNullableRule(),
+                reference = RuleReference.BuiltinNotNullable,
+                associatedOwner = null,
+            )
+        )
+        add(
+            ResolvedRule(
+                rule = builtinIsTypeclassInstanceRule(),
+                reference = RuleReference.BuiltinIsTypeclassInstance,
+                associatedOwner = null,
+            )
+        )
+        add(
+            ResolvedRule(
+                rule = builtinKnownTypeRule(),
+                reference = RuleReference.BuiltinKnownType,
+                associatedOwner = null,
+            )
+        )
+        add(
+            ResolvedRule(
+                rule = builtinTypeIdRule(),
+                reference = RuleReference.BuiltinTypeId,
+                associatedOwner = null,
+            )
+        )
+        add(
+            ResolvedRule(
+                rule = builtinSameTypeConstructorRule(),
+                reference = RuleReference.BuiltinSameTypeConstructor,
+                associatedOwner = null,
+            )
+        )
+        if (configuration.builtinKClassTypeclass == TypeclassBuiltinMode.ENABLED) {
             add(
                 ResolvedRule(
-                    rule = builtinSameRule(),
-                    reference = RuleReference.BuiltinSame,
+                    rule = builtinKClassRule(),
+                    reference = RuleReference.BuiltinKClass,
                     associatedOwner = null,
-                ),
-            )
-            add(
-                ResolvedRule(
-                    rule = builtinNotSameRule(),
-                    reference = RuleReference.BuiltinNotSame,
-                    associatedOwner = null,
-                ),
-            )
-            add(
-                ResolvedRule(
-                    rule = builtinSubtypeRule(),
-                    reference = RuleReference.BuiltinSubtype,
-                    associatedOwner = null,
-                ),
-            )
-            add(
-                ResolvedRule(
-                    rule = builtinStrictSubtypeRule(),
-                    reference = RuleReference.BuiltinStrictSubtype,
-                    associatedOwner = null,
-                ),
-            )
-            add(
-                ResolvedRule(
-                    rule = builtinNullableRule(),
-                    reference = RuleReference.BuiltinNullable,
-                    associatedOwner = null,
-                ),
-            )
-            add(
-                ResolvedRule(
-                    rule = builtinNotNullableRule(),
-                    reference = RuleReference.BuiltinNotNullable,
-                    associatedOwner = null,
-                ),
-            )
-            add(
-                ResolvedRule(
-                    rule = builtinIsTypeclassInstanceRule(),
-                    reference = RuleReference.BuiltinIsTypeclassInstance,
-                    associatedOwner = null,
-                ),
-            )
-            add(
-                ResolvedRule(
-                    rule = builtinKnownTypeRule(),
-                    reference = RuleReference.BuiltinKnownType,
-                    associatedOwner = null,
-                ),
-            )
-            add(
-                ResolvedRule(
-                    rule = builtinTypeIdRule(),
-                    reference = RuleReference.BuiltinTypeId,
-                    associatedOwner = null,
-                ),
-            )
-            add(
-                ResolvedRule(
-                    rule = builtinSameTypeConstructorRule(),
-                    reference = RuleReference.BuiltinSameTypeConstructor,
-                    associatedOwner = null,
-                ),
-            )
-            if (configuration.builtinKClassTypeclass == TypeclassBuiltinMode.ENABLED) {
-                add(
-                    ResolvedRule(
-                        rule = builtinKClassRule(),
-                        reference = RuleReference.BuiltinKClass,
-                        associatedOwner = null,
-                    ),
                 )
-            }
-            if (configuration.builtinKSerializerTypeclass == TypeclassBuiltinMode.ENABLED) {
-                add(
-                    ResolvedRule(
-                        rule = builtinKSerializerRule(),
-                        reference = RuleReference.BuiltinKSerializer,
-                        associatedOwner = null,
-                    ),
-                )
-            }
+            )
         }
+        if (configuration.builtinKSerializerTypeclass == TypeclassBuiltinMode.ENABLED) {
+            add(
+                ResolvedRule(
+                    rule = builtinKSerializerRule(),
+                    reference = RuleReference.BuiltinKSerializer,
+                    associatedOwner = null,
+                )
+            )
+        }
+    }
 
     fun publishDirectDerivedMetadata() {
         val subclassesBySuper = subclassesBySuper()
-        val metadataEntries =
-            buildList {
-                declaredDerivationsByClassId.forEach { (classId, typeclassIds) ->
-                    val klass = classesById[classId] ?: return@forEach
-                    typeclassIds.forEach { typeclassId ->
-                        klass.directDerivedMetadata(
+        val metadataEntries = buildList {
+            declaredDerivationsByClassId.forEach { (classId, typeclassIds) ->
+                val klass = classesById[classId] ?: return@forEach
+                typeclassIds.forEach { typeclassId ->
+                    klass
+                        .directDerivedMetadata(
                             typeclassId = typeclassId,
                             subclassesBySuper = subclassesBySuper,
-                        )?.let { metadata ->
+                        )
+                        ?.let { metadata ->
                             add(OwnedGeneratedDerivedMetadata(owner = klass, metadata = metadata))
                         }
-                    }
-                }
-                classesById.values.forEach { klass ->
-                    addAll(klass.directValidatedDeriverMetadata())
-                    addAll(klass.directDerivedEquivMetadata())
-                    addAll(klass.directDerivedViaMetadata())
                 }
             }
+            classesById.values.forEach { klass ->
+                addAll(klass.directValidatedDeriverMetadata())
+                addAll(klass.directDerivedEquivMetadata())
+                addAll(klass.directDerivedViaMetadata())
+            }
+        }
         recordGeneratedDerivedMetadata(metadataEntries)
     }
 
@@ -3170,7 +3485,9 @@ private class IrModuleScanner(
         val classId = declaration.classId ?: return
         val classKey = classId.asString()
         if (classesById.containsKey(classKey) && classInfoById.containsKey(classKey)) {
-            classInfoById[classKey]?.let { info -> registerDiscoveredClassesInProjectedSupertypes(classKey, info) }
+            classInfoById[classKey]?.let { info ->
+                registerDiscoveredClassesInProjectedSupertypes(classKey, info)
+            }
             return
         }
         classesById[classKey] = declaration
@@ -3178,13 +3495,13 @@ private class IrModuleScanner(
         val info = declaration.visibleClassHierarchyInfo()
         classInfoById[classKey] = info
         registerDiscoveredClassesInProjectedSupertypes(classKey, info)
-        declaration.superTypes.mapNotNull { superType ->
-            superType.classOrNull?.owner
-        }.forEach(::registerDiscoveredClass)
+        declaration.superTypes
+            .mapNotNull { superType -> superType.classOrNull?.owner }
+            .forEach(::registerDiscoveredClass)
         if (declaration.modality == Modality.SEALED) {
-            declaration.sealedSubclasses.mapNotNull { subclassSymbol ->
-                runCatching { subclassSymbol.owner }.getOrNull()
-            }.forEach(::registerDiscoveredClass)
+            declaration.sealedSubclasses
+                .mapNotNull { subclassSymbol -> runCatching { subclassSymbol.owner }.getOrNull() }
+                .forEach(::registerDiscoveredClass)
         }
     }
 
@@ -3206,7 +3523,9 @@ private class IrModuleScanner(
             is TcType.Constructor -> {
                 val classId = runCatching { ClassId.fromString(type.classifierId) }.getOrNull()
                 if (classId != null) {
-                    runCatching { pluginContext.referenceClass(classId)?.owner }.getOrNull()?.let(::registerDiscoveredClass)
+                    runCatching { pluginContext.referenceClass(classId)?.owner }
+                        .getOrNull()
+                        ?.let(::registerDiscoveredClass)
                 }
                 type.arguments.forEach(::registerDiscoveredClassesInType)
             }
@@ -3220,16 +3539,14 @@ private class IrModuleScanner(
             addAll(
                 applicableDerivedTypeclassIdsForOwner(classifierId).flatMap { typeclassId ->
                     ownerClass.toDerivedRules(typeclassId, subclassesBySuper)
-                },
+                }
             )
             addAll(ownerClass.toDerivedEquivRules())
             addAll(ownerClass.toDeriveViaRules())
         }
     }
 
-    private fun recordGeneratedDerivedMetadata(
-        entries: List<OwnedGeneratedDerivedMetadata>,
-    ) {
+    private fun recordGeneratedDerivedMetadata(entries: List<OwnedGeneratedDerivedMetadata>) {
         val metadataByOwner = linkedMapOf<IrClass, MutableSet<GeneratedDerivedMetadata>>()
         entries.forEach { entry ->
             if (entry.owner.origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB) {
@@ -3260,9 +3577,8 @@ private class IrModuleScanner(
                     acc.getOrPut(superClassifier, ::linkedSetOf) += classId
                 }
                 acc
-            }.mapValues { (_, subclassIds) ->
-                subclassIds.sorted().toCollection(linkedSetOf())
             }
+            .mapValues { (_, subclassIds) -> subclassIds.sorted().toCollection(linkedSetOf()) }
 
     private fun sealedOwnerChain(classifierId: String): Set<String> {
         val result = linkedSetOf(classifierId)
@@ -3284,10 +3600,7 @@ private class IrModuleScanner(
         return result
     }
 
-    private fun scanDeclaration(
-        declaration: IrDeclaration,
-        associatedOwner: ClassId?,
-    ) {
+    private fun scanDeclaration(declaration: IrDeclaration, associatedOwner: ClassId?) {
         when (declaration) {
             is IrClass -> {
                 declaration.classId?.let { classId ->
@@ -3308,10 +3621,18 @@ private class IrModuleScanner(
 
                 when {
                     declaration.isInstanceObject() && associatedOwner == null -> {
-                        topLevelRules += declaration.toObjectRules(idPrefix = "top-level-object", associatedOwner = null)
+                        topLevelRules +=
+                            declaration.toObjectRules(
+                                idPrefix = "top-level-object",
+                                associatedOwner = null,
+                            )
                     }
                     declaration.isInstanceObject() && nextAssociatedOwner != null -> {
-                        companionRules += declaration.toObjectRules(idPrefix = "associated-object", associatedOwner = nextAssociatedOwner)
+                        companionRules +=
+                            declaration.toObjectRules(
+                                idPrefix = "associated-object",
+                                associatedOwner = nextAssociatedOwner,
+                            )
                     }
                 }
 
@@ -3321,20 +3642,37 @@ private class IrModuleScanner(
             }
 
             is IrSimpleFunction -> {
-                originalsByCallableId.getOrPut(declaration.callableId, ::mutableListOf) += declaration
+                originalsByCallableId.getOrPut(declaration.callableId, ::mutableListOf) +=
+                    declaration
 
                 if (associatedOwner == null) {
-                    topLevelRules += declaration.toFunctionRules(idPrefix = "top-level-function", associatedOwner = null)
+                    topLevelRules +=
+                        declaration.toFunctionRules(
+                            idPrefix = "top-level-function",
+                            associatedOwner = null,
+                        )
                 } else {
-                    companionRules += declaration.toFunctionRules(idPrefix = "associated-function", associatedOwner = associatedOwner)
+                    companionRules +=
+                        declaration.toFunctionRules(
+                            idPrefix = "associated-function",
+                            associatedOwner = associatedOwner,
+                        )
                 }
             }
 
             is IrProperty -> {
                 if (associatedOwner == null) {
-                    topLevelRules += declaration.toPropertyRules(idPrefix = "top-level-property", associatedOwner = null)
+                    topLevelRules +=
+                        declaration.toPropertyRules(
+                            idPrefix = "top-level-property",
+                            associatedOwner = null,
+                        )
                 } else {
-                    companionRules += declaration.toPropertyRules(idPrefix = "associated-property", associatedOwner = associatedOwner)
+                    companionRules +=
+                        declaration.toPropertyRules(
+                            idPrefix = "associated-property",
+                            associatedOwner = associatedOwner,
+                        )
                 }
             }
         }
@@ -3352,18 +3690,22 @@ private class IrModuleScanner(
         }
         val providedTypeExpansion = superTypes.providedTypeExpansion(emptyMap(), configuration)
         val providedTypes = providedTypeExpansion.validTypes
-        if (associatedOwner == null && !isLegalTopLevelInstanceLocation(providedTypeExpansion.declaredTypes, classesById)) {
+        if (
+            associatedOwner == null &&
+                !isLegalTopLevelInstanceLocation(providedTypeExpansion.declaredTypes, classesById)
+        ) {
             return emptyList()
         }
         return providedTypes.map { providedType ->
             ResolvedRule(
                 rule =
                     InstanceRule(
-                        id = directRuleId(
-                            prefix = idPrefix,
-                            declarationKey = classIdOrFail.asString(),
-                            providedType = providedType,
-                        ),
+                        id =
+                            directRuleId(
+                                prefix = idPrefix,
+                                declarationKey = classIdOrFail.asString(),
+                                providedType = providedType,
+                            ),
                         typeParameters = emptyList(),
                         providedType = providedType,
                         prerequisiteTypes = emptyList(),
@@ -3388,44 +3730,58 @@ private class IrModuleScanner(
             return emptyList()
         }
 
-        val typeParameters = this.typeParameters.map { typeParameter ->
-            TcTypeParameter(
-                id = ruleTypeParameterId(this, typeParameter),
-                displayName = typeParameter.name.asString(),
-            )
-        }
+        val typeParameters =
+            this.typeParameters.map { typeParameter ->
+                TcTypeParameter(
+                    id = ruleTypeParameterId(this, typeParameter),
+                    displayName = typeParameter.name.asString(),
+                )
+            }
         val typeParameterBySymbol = typeParametersBySymbol(this, typeParameters)
         val prerequisites =
             contextParameters().mapNotNull { parameter ->
-                parameter.type.takeIf { type -> type.isTypeclassType(configuration) }?.let { irTypeToModel(it, typeParameterBySymbol) }
+                parameter.type
+                    .takeIf { type -> type.isTypeclassType(configuration) }
+                    ?.let { irTypeToModel(it, typeParameterBySymbol) }
             }
         if (prerequisites.size != contextParameters().size) {
             return emptyList()
         }
 
-        val providedTypeExpansion = listOf(returnType).providedTypeExpansion(typeParameterBySymbol, configuration)
+        val providedTypeExpansion =
+            listOf(returnType).providedTypeExpansion(typeParameterBySymbol, configuration)
         val providedTypes = providedTypeExpansion.validTypes
-        if (associatedOwner == null && !isLegalTopLevelInstanceLocation(providedTypeExpansion.declaredTypes, classesById)) {
+        if (
+            associatedOwner == null &&
+                !isLegalTopLevelInstanceLocation(providedTypeExpansion.declaredTypes, classesById)
+        ) {
             return emptyList()
         }
         val declarationKey =
             RuleReference.LookupFunction(
-                callableId = callableId,
-                shape = lookupFunctionShape(this, dropTypeclassContexts = false, configuration = configuration),
-                ownerKey = lookupOwnerKeyOrNull(),
-            ).lookupIdentityKeyOrNull(configuration)
+                    callableId = callableId,
+                    shape =
+                        lookupFunctionShape(
+                            this,
+                            dropTypeclassContexts = false,
+                            configuration = configuration,
+                        ),
+                    ownerKey = lookupOwnerKeyOrNull(),
+                )
+                .lookupIdentityKeyOrNull(configuration)
                 ?: "fun:${lookupOwnerKeyOrNull() ?: "-"}:${callableId}"
         return providedTypes.map { providedType ->
             ResolvedRule(
                 rule =
                     InstanceRule(
-                        id = directRuleId(
-                            prefix = idPrefix,
-                            declarationKey = declarationKey,
-                            providedType = providedType,
-                            prerequisiteTypes = prerequisites,
-                            typeParameters = typeParameters,
-                        ),
+                        id =
+                            directRuleId(
+                                prefix = idPrefix,
+                                declarationKey = declarationKey,
+                                providedType = providedType,
+                                prerequisiteTypes = prerequisites,
+                                typeParameters = typeParameters,
+                            ),
                         typeParameters = typeParameters,
                         providedType = providedType,
                         prerequisiteTypes = prerequisites,
@@ -3449,26 +3805,29 @@ private class IrModuleScanner(
         if (!isValidTypeclassInstancePropertyRuleCandidate()) {
             return emptyList()
         }
-        val providedTypeExpansion = listOf(backingFieldOrGetterType()).providedTypeExpansion(emptyMap(), configuration)
+        val providedTypeExpansion =
+            listOf(backingFieldOrGetterType()).providedTypeExpansion(emptyMap(), configuration)
         val providedTypes = providedTypeExpansion.validTypes
-        if (associatedOwner == null && !isLegalTopLevelInstanceLocation(providedTypeExpansion.declaredTypes, classesById)) {
+        if (
+            associatedOwner == null &&
+                !isLegalTopLevelInstanceLocation(providedTypeExpansion.declaredTypes, classesById)
+        ) {
             return emptyList()
         }
         val declarationKey =
-            RuleReference.LookupProperty(
-                callableId = callableId,
-                ownerKey = lookupOwnerKeyOrNull(),
-            ).lookupIdentityKeyOrNull(configuration)
+            RuleReference.LookupProperty(callableId = callableId, ownerKey = lookupOwnerKeyOrNull())
+                .lookupIdentityKeyOrNull(configuration)
                 ?: "prop:${lookupOwnerKeyOrNull() ?: "-"}:${callableId}"
         return providedTypes.map { providedType ->
             ResolvedRule(
                 rule =
                     InstanceRule(
-                        id = directRuleId(
-                            prefix = idPrefix,
-                            declarationKey = declarationKey,
-                            providedType = providedType,
-                        ),
+                        id =
+                            directRuleId(
+                                prefix = idPrefix,
+                                declarationKey = declarationKey,
+                                providedType = providedType,
+                            ),
                         typeParameters = emptyList(),
                         providedType = providedType,
                         prerequisiteTypes = emptyList(),
@@ -3489,14 +3848,14 @@ private class IrModuleScanner(
             return null
         }
         val derivedReference =
-            derivedRules.firstOrNull()?.reference as? RuleReference.Derived
-                ?: return null
+            derivedRules.firstOrNull()?.reference as? RuleReference.Derived ?: return null
         if (
             !validateKnownIrDeriverReturnTypeclass(
                 typeclassInterface = derivedReference.deriverCompanion.parentAsClass,
                 deriverCompanion = derivedReference.deriverCompanion,
                 deriveMethod = derivedReference.deriveMethod,
-                publishedGeneratedMetadata = derivedReference.deriverCompanion.publishedGeneratedDerivedMetadata(),
+                publishedGeneratedMetadata =
+                    derivedReference.deriverCompanion.publishedGeneratedDerivedMetadata(),
                 configuration = configuration,
                 pluginContext = pluginContext,
                 cache = deriverReturnValidationCache,
@@ -3516,10 +3875,13 @@ private class IrModuleScanner(
             return emptyList()
         }
         val typeclassId = classId ?: return emptyList()
-        val deriverCompanion = declarations.filterIsInstance<IrClass>().singleOrNull(IrClass::isCompanion) ?: return emptyList()
+        val deriverCompanion =
+            declarations.filterIsInstance<IrClass>().singleOrNull(IrClass::isCompanion)
+                ?: return emptyList()
         val companionId = deriverCompanion.classId ?: return emptyList()
         return deriverCompanion.implementedDeriveMethodContracts().mapNotNull { contract ->
-            val deriveMethod = deriverCompanion.resolveDeriveMethod(contract) ?: return@mapNotNull null
+            val deriveMethod =
+                deriverCompanion.resolveDeriveMethod(contract) ?: return@mapNotNull null
             if (
                 !validateKnownIrDeriverReturnTypeclass(
                     typeclassInterface = this,
@@ -3550,7 +3912,9 @@ private class IrModuleScanner(
         val fallbackGoal = "${EQUIV_CLASS_ID.asString()}<${targetClassId.asString()},?>"
         val requestSpecs =
             deriveEquivRequests()
-                .map { request -> request.otherClassId to compilerMessageLocation(request.annotation) }
+                .map { request ->
+                    request.otherClassId to compilerMessageLocation(request.annotation)
+                }
                 .distinctBy { (otherClassId, _) -> otherClassId.asString() }
         if (requestSpecs.isEmpty()) {
             return emptyList()
@@ -3570,13 +3934,13 @@ private class IrModuleScanner(
         val planner = DirectTransportPlanner(pluginContext)
         return requestSpecs.mapNotNull { (otherClassId, location) ->
             val otherClass =
-                pluginContext.referenceClass(otherClassId)?.owner
-                    ?: return@mapNotNull null
+                pluginContext.referenceClass(otherClassId)?.owner ?: return@mapNotNull null
             if (otherClass.typeParameters.isNotEmpty()) {
                 pluginContext.reportCannotDeriveWithTrace(
                     owner = this,
                     configuration = configuration,
-                    goal = "${EQUIV_CLASS_ID.asString()}<${targetClassId.asString()},${otherClassId.asString()}>",
+                    goal =
+                        "${EQUIV_CLASS_ID.asString()}<${targetClassId.asString()},${otherClassId.asString()}>",
                     message = "@DeriveEquiv only supports monomorphic classes for now",
                     location = location,
                 )
@@ -3587,8 +3951,10 @@ private class IrModuleScanner(
                 pluginContext.reportCannotDeriveWithTrace(
                     owner = this,
                     configuration = configuration,
-                    goal = "${EQUIV_CLASS_ID.asString()}<${targetClassId.asString()},${otherClassId.asString()}>",
-                    message = "Cannot derive Equiv between ${targetClassId.asString()} and ${otherClassId.asString()}",
+                    goal =
+                        "${EQUIV_CLASS_ID.asString()}<${targetClassId.asString()},${otherClassId.asString()}>",
+                    message =
+                        "Cannot derive Equiv between ${targetClassId.asString()} and ${otherClassId.asString()}",
                     location = location,
                 )
                 return@mapNotNull null
@@ -3614,18 +3980,21 @@ private class IrModuleScanner(
                         request.path,
                         compilerMessageLocation(request.annotation),
                     )
-                }.distinctBy { (typeclassId, path, _) ->
+                }
+                .distinctBy { (typeclassId, path, _) ->
                     buildString {
                         append(typeclassId.asString())
                         append(':')
-                        append(path.joinToString("|") { segment ->
-                            val prefix =
-                                when (segment) {
-                                    is DeriveViaPathSegment.Waypoint -> "W"
-                                    is DeriveViaPathSegment.PinnedIso -> "I"
-                                }
-                            "$prefix:${segment.classId.asString()}"
-                        })
+                        append(
+                            path.joinToString("|") { segment ->
+                                val prefix =
+                                    when (segment) {
+                                        is DeriveViaPathSegment.Waypoint -> "W"
+                                        is DeriveViaPathSegment.PinnedIso -> "I"
+                                    }
+                                "$prefix:${segment.classId.asString()}"
+                            }
+                        )
                     }
                 }
         if (requestSpecs.isEmpty()) {
@@ -3656,7 +4025,8 @@ private class IrModuleScanner(
                 )
                 return@mapNotNull null
             }
-            val typeclassInterface = pluginContext.referenceClass(typeclassId)?.owner ?: return@mapNotNull null
+            val typeclassInterface =
+                pluginContext.referenceClass(typeclassId)?.owner ?: return@mapNotNull null
             if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID)) {
                 return@mapNotNull null
             }
@@ -3681,29 +4051,30 @@ private class IrModuleScanner(
                 return@mapNotNull null
             }
             val resolvedPath =
-                planner.resolveViaPath(symbol.defaultType, path)
-                    .getOrElse { error ->
-                        pluginContext.reportCannotDeriveWithTrace(
-                            owner = this,
-                            configuration = configuration,
-                            goal = rootGoal,
-                            message = error.message ?: "Failed to resolve DeriveVia path",
-                            location = location,
-                        )
-                        return@mapNotNull null
-                    }
-            val targetType = TcType.Constructor(targetClassId.asString(), emptyList())
-            val viaTypeModel =
-                irTypeToModel(resolvedPath.viaType, emptyMap()) ?: run {
+                planner.resolveViaPath(symbol.defaultType, path).getOrElse { error ->
                     pluginContext.reportCannotDeriveWithTrace(
                         owner = this,
                         configuration = configuration,
                         goal = rootGoal,
-                        message = "DeriveVia terminal type must be representable as a typeclass goal",
+                        message = error.message ?: "Failed to resolve DeriveVia path",
                         location = location,
                     )
                     return@mapNotNull null
                 }
+            val targetType = TcType.Constructor(targetClassId.asString(), emptyList())
+            val viaTypeModel =
+                irTypeToModel(resolvedPath.viaType, emptyMap())
+                    ?: run {
+                        pluginContext.reportCannotDeriveWithTrace(
+                            owner = this,
+                            configuration = configuration,
+                            goal = rootGoal,
+                            message =
+                                "DeriveVia terminal type must be representable as a typeclass goal",
+                            location = location,
+                        )
+                        return@mapNotNull null
+                    }
             if (viaTypeModel.normalizedKey() == targetType.normalizedKey()) {
                 pluginContext.reportCannotDeriveWithTrace(
                     owner = this,
@@ -3753,7 +4124,8 @@ private class IrModuleScanner(
             )
             return emptyList()
         }
-        val typeclassInterface = pluginContext.referenceClass(typeclassId)?.owner ?: return emptyList()
+        val typeclassInterface =
+            pluginContext.referenceClass(typeclassId)?.owner ?: return emptyList()
         if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID)) {
             return emptyList()
         }
@@ -3762,7 +4134,8 @@ private class IrModuleScanner(
                 owner = this,
                 configuration = configuration,
                 goal = rootGoal,
-                message = "@Derive currently only supports typeclasses with exactly one type parameter",
+                message =
+                    "@Derive currently only supports typeclasses with exactly one type parameter",
                 location = compilerMessageLocation(),
             )
             return emptyList()
@@ -3774,13 +4147,16 @@ private class IrModuleScanner(
                     displayName = typeParameter.name.asString(),
                 )
             }
-        val typeParameterBySymbol = typeParameters.zip(ruleTypeParameters).associate { (symbol, parameter) ->
-            symbol.symbol to parameter
-        }
+        val typeParameterBySymbol =
+            typeParameters.zip(ruleTypeParameters).associate { (symbol, parameter) ->
+                symbol.symbol to parameter
+            }
         val targetType =
             TcType.Constructor(
                 targetClassId.asString(),
-                ruleTypeParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) },
+                ruleTypeParameters.map { parameter ->
+                    TcType.Variable(parameter.id, parameter.displayName)
+                },
             )
         val derivedSpecs =
             when {
@@ -3791,7 +4167,7 @@ private class IrModuleScanner(
                                 targetType = targetType,
                                 shape = shape,
                                 ruleTypeParameters = ruleTypeParameters,
-                            ),
+                            )
                         )
                     }
 
@@ -3810,7 +4186,7 @@ private class IrModuleScanner(
                                 targetType = targetType,
                                 shape = shape,
                                 ruleTypeParameters = ruleTypeParameters,
-                            ),
+                            )
                         )
                     }
             } ?: return emptyList()
@@ -3818,7 +4194,8 @@ private class IrModuleScanner(
         val requiredDeriverInterface =
             when (representativeShape) {
                 is DerivedShape.Product -> PRODUCT_TYPECLASS_DERIVER_CLASS_ID
-                is DerivedShape.Sum, is DerivedShape.Enum -> TYPECLASS_DERIVER_CLASS_ID
+                is DerivedShape.Sum,
+                is DerivedShape.Enum -> TYPECLASS_DERIVER_CLASS_ID
             }
         val deriverCompanion =
             typeclassInterface.findDeriverCompanion(requiredDeriverInterface)
@@ -3850,26 +4227,28 @@ private class IrModuleScanner(
         val deriveMethod =
             deriverCompanion.resolveDeriveMethod(deriveMethodContract)
                 ?: run {
-            val message =
-                if (representativeShape is DerivedShape.Enum) {
-                    "${typeclassId.shortClassName.asString()} companion must override deriveEnum to derive enum classes"
-                } else {
-                    "Typeclass deriver ${deriverCompanion.classIdOrFail.asString()} is missing ${deriveMethodContract.methodName}"
+                    val message =
+                        if (representativeShape is DerivedShape.Enum) {
+                            "${typeclassId.shortClassName.asString()} companion must override deriveEnum to derive enum classes"
+                        } else {
+                            "Typeclass deriver ${deriverCompanion.classIdOrFail.asString()} is missing ${deriveMethodContract.methodName}"
+                        }
+                    pluginContext.reportCannotDeriveWithTrace(
+                        owner = this,
+                        configuration = configuration,
+                        goal = rootGoal,
+                        message = message,
+                        location = compilerMessageLocation(),
+                    )
+                    return emptyList()
                 }
-            pluginContext.reportCannotDeriveWithTrace(
-                owner = this,
-                configuration = configuration,
-                goal = rootGoal,
-                message = message,
-                location = compilerMessageLocation(),
-            )
-            return emptyList()
-        }
         return derivedSpecs.flatMap { spec ->
             val prerequisiteTypes =
                 when (val shape = spec.shape) {
-                    is DerivedShape.Product -> shape.fields.map { field -> typeclassGoal(typeclassId, field.type) }
-                    is DerivedShape.Sum -> shape.cases.map { case -> typeclassGoal(typeclassId, case.type) }
+                    is DerivedShape.Product ->
+                        shape.fields.map { field -> typeclassGoal(typeclassId, field.type) }
+                    is DerivedShape.Sum ->
+                        shape.cases.map { case -> typeclassGoal(typeclassId, case.type) }
                     is DerivedShape.Enum -> emptyList()
                 }
             val providedTypes = expandDerivedProvidedTypes(typeclassId, spec.targetType)
@@ -3906,7 +4285,8 @@ private class IrModuleScanner(
         }
     }
 
-    private fun DeriveViaPathSegment.toGeneratedMetadataPathSegment(): GeneratedDeriveViaPathSegment =
+    private fun DeriveViaPathSegment.toGeneratedMetadataPathSegment():
+        GeneratedDeriveViaPathSegment =
         when (this) {
             is DeriveViaPathSegment.Waypoint ->
                 GeneratedDeriveViaPathSegment(
@@ -3925,7 +4305,9 @@ private class IrModuleScanner(
         val targetClassId = classId ?: return emptyList()
         val fallbackGoal = "${EQUIV_CLASS_ID.asString()}<${targetClassId.asString()},?>"
         val explicitRequests = deriveEquivRequests()
-        val generatedRequests = publishedGeneratedDerivedMetadata().filterIsInstance<GeneratedDerivedMetadata.DeriveEquiv>()
+        val generatedRequests =
+            publishedGeneratedDerivedMetadata()
+                .filterIsInstance<GeneratedDerivedMetadata.DeriveEquiv>()
         val requestSpecs =
             if (origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB) {
                 generatedRequests.map { metadata ->
@@ -3935,15 +4317,17 @@ private class IrModuleScanner(
                 explicitRequests.map { request ->
                     request.otherClassId to compilerMessageLocation(request.annotation)
                 }
-            } else if (generatedRequests.isNotEmpty()) {
-                generatedRequests.map { metadata ->
-                    metadata.otherClassId to compilerMessageLocation()
-                }
-            } else {
-                explicitRequests.map { request ->
-                    request.otherClassId to compilerMessageLocation(request.annotation)
-                }
-            }.distinctBy { (otherClassId, _) -> otherClassId.asString() }
+            } else
+                if (generatedRequests.isNotEmpty()) {
+                        generatedRequests.map { metadata ->
+                            metadata.otherClassId to compilerMessageLocation()
+                        }
+                    } else {
+                        explicitRequests.map { request ->
+                            request.otherClassId to compilerMessageLocation(request.annotation)
+                        }
+                    }
+                    .distinctBy { (otherClassId, _) -> otherClassId.asString() }
         if (typeParameters.isNotEmpty()) {
             requestSpecs.forEach { (_, location) ->
                 pluginContext.reportCannotDeriveWithTrace(
@@ -3959,13 +4343,13 @@ private class IrModuleScanner(
         val planner = DirectTransportPlanner(pluginContext)
         return requestSpecs.flatMap { (otherClassId, location) ->
             val otherClass =
-                pluginContext.referenceClass(otherClassId)?.owner
-                    ?: return@flatMap emptyList()
+                pluginContext.referenceClass(otherClassId)?.owner ?: return@flatMap emptyList()
             if (otherClass.typeParameters.isNotEmpty()) {
                 pluginContext.reportCannotDeriveWithTrace(
                     owner = this,
                     configuration = configuration,
-                    goal = "${EQUIV_CLASS_ID.asString()}<${targetClassId.asString()},${otherClassId.asString()}>",
+                    goal =
+                        "${EQUIV_CLASS_ID.asString()}<${targetClassId.asString()},${otherClassId.asString()}>",
                     message = "@DeriveEquiv only supports monomorphic classes for now",
                     location = location,
                 )
@@ -3977,7 +4361,8 @@ private class IrModuleScanner(
                         pluginContext.reportCannotDeriveWithTrace(
                             owner = this,
                             configuration = configuration,
-                            goal = "${EQUIV_CLASS_ID.asString()}<${targetClassId.asString()},${otherClassId.asString()}>",
+                            goal =
+                                "${EQUIV_CLASS_ID.asString()}<${targetClassId.asString()},${otherClassId.asString()}>",
                             message =
                                 "Cannot derive Equiv between ${targetClassId.asString()} and ${otherClassId.asString()}",
                             location = location,
@@ -4016,10 +4401,12 @@ private class IrModuleScanner(
         forwardPlan: TransportPlan,
         backwardPlan: TransportPlan,
     ): ResolvedRule {
-        val sourceClassId = sourceType.classOrNull?.owner?.classId
-            ?: error("Derived Equiv source type ${sourceType.render()} must be a class type")
-        val targetClassId = targetType.classOrNull?.owner?.classId
-            ?: error("Derived Equiv target type ${targetType.render()} must be a class type")
+        val sourceClassId =
+            sourceType.classOrNull?.owner?.classId
+                ?: error("Derived Equiv source type ${sourceType.render()} must be a class type")
+        val targetClassId =
+            targetType.classOrNull?.owner?.classId
+                ?: error("Derived Equiv target type ${targetType.render()} must be a class type")
         return ResolvedRule(
             rule =
                 InstanceRule(
@@ -4052,70 +4439,75 @@ private class IrModuleScanner(
     private fun IrClass.toDeriveViaRules(): List<ResolvedRule> {
         val targetClassId = classId ?: return emptyList()
         val explicitRequests = deriveViaRequests(pluginContext)
-        val generatedRequests = publishedGeneratedDerivedMetadata().filterIsInstance<GeneratedDerivedMetadata.DeriveVia>()
+        val generatedRequests =
+            publishedGeneratedDerivedMetadata()
+                .filterIsInstance<GeneratedDerivedMetadata.DeriveVia>()
         val requestSpecs =
             (if (origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB) {
-                generatedRequests.map { metadata ->
-                    Triple(
-                        metadata.typeclassId,
-                        metadata.path.map { segment ->
-                            when (segment.kind) {
-                                GeneratedDeriveViaPathSegment.Kind.WAYPOINT ->
-                                    DeriveViaPathSegment.Waypoint(segment.classId)
+                    generatedRequests.map { metadata ->
+                        Triple(
+                            metadata.typeclassId,
+                            metadata.path.map { segment ->
+                                when (segment.kind) {
+                                    GeneratedDeriveViaPathSegment.Kind.WAYPOINT ->
+                                        DeriveViaPathSegment.Waypoint(segment.classId)
 
-                                GeneratedDeriveViaPathSegment.Kind.PINNED_ISO ->
-                                    DeriveViaPathSegment.PinnedIso(segment.classId)
-                            }
-                        },
-                        compilerMessageLocation(),
-                    )
-                }
-            } else if (explicitRequests.isNotEmpty()) {
-                explicitRequests.map { request ->
-                    Triple(
-                        request.typeclassId,
-                        request.path,
-                        compilerMessageLocation(request.annotation),
-                    )
-                }
-            } else if (generatedRequests.isNotEmpty()) {
-                generatedRequests.map { metadata ->
-                    Triple(
-                        metadata.typeclassId,
-                        metadata.path.map { segment ->
-                            when (segment.kind) {
-                                GeneratedDeriveViaPathSegment.Kind.WAYPOINT ->
-                                    DeriveViaPathSegment.Waypoint(segment.classId)
+                                    GeneratedDeriveViaPathSegment.Kind.PINNED_ISO ->
+                                        DeriveViaPathSegment.PinnedIso(segment.classId)
+                                }
+                            },
+                            compilerMessageLocation(),
+                        )
+                    }
+                } else if (explicitRequests.isNotEmpty()) {
+                    explicitRequests.map { request ->
+                        Triple(
+                            request.typeclassId,
+                            request.path,
+                            compilerMessageLocation(request.annotation),
+                        )
+                    }
+                } else if (generatedRequests.isNotEmpty()) {
+                    generatedRequests.map { metadata ->
+                        Triple(
+                            metadata.typeclassId,
+                            metadata.path.map { segment ->
+                                when (segment.kind) {
+                                    GeneratedDeriveViaPathSegment.Kind.WAYPOINT ->
+                                        DeriveViaPathSegment.Waypoint(segment.classId)
 
-                                GeneratedDeriveViaPathSegment.Kind.PINNED_ISO ->
-                                    DeriveViaPathSegment.PinnedIso(segment.classId)
+                                    GeneratedDeriveViaPathSegment.Kind.PINNED_ISO ->
+                                        DeriveViaPathSegment.PinnedIso(segment.classId)
+                                }
+                            },
+                            compilerMessageLocation(),
+                        )
+                    }
+                } else {
+                    explicitRequests.map { request ->
+                        Triple(
+                            request.typeclassId,
+                            request.path,
+                            compilerMessageLocation(request.annotation),
+                        )
+                    }
+                })
+                .distinctBy { (typeclassId, path, _) ->
+                    buildString {
+                        append(typeclassId.asString())
+                        append(':')
+                        append(
+                            path.joinToString("|") { segment ->
+                                val prefix =
+                                    when (segment) {
+                                        is DeriveViaPathSegment.Waypoint -> "W"
+                                        is DeriveViaPathSegment.PinnedIso -> "I"
+                                    }
+                                "$prefix:${segment.classId.asString()}"
                             }
-                        },
-                        compilerMessageLocation(),
-                    )
+                        )
+                    }
                 }
-            } else {
-                explicitRequests.map { request ->
-                    Triple(
-                        request.typeclassId,
-                        request.path,
-                        compilerMessageLocation(request.annotation),
-                    )
-                }
-            }).distinctBy { (typeclassId, path, _) ->
-                buildString {
-                    append(typeclassId.asString())
-                    append(':')
-                    append(path.joinToString("|") { segment ->
-                        val prefix =
-                            when (segment) {
-                                is DeriveViaPathSegment.Waypoint -> "W"
-                                is DeriveViaPathSegment.PinnedIso -> "I"
-                            }
-                        "$prefix:${segment.classId.asString()}"
-                    })
-                }
-            }
         if (typeParameters.isNotEmpty()) {
             requestSpecs.forEach { (_, _, location) ->
                 pluginContext.reportCannotDeriveWithTrace(
@@ -4141,7 +4533,8 @@ private class IrModuleScanner(
                 )
                 return@flatMap emptyList()
             }
-            val typeclassInterface = pluginContext.referenceClass(typeclassId)?.owner ?: return@flatMap emptyList()
+            val typeclassInterface =
+                pluginContext.referenceClass(typeclassId)?.owner ?: return@flatMap emptyList()
             if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID)) {
                 return@flatMap emptyList()
             }
@@ -4166,30 +4559,30 @@ private class IrModuleScanner(
                 return@flatMap emptyList()
             }
             val resolvedPath =
-                planner.resolveViaPath(symbol.defaultType, path)
-                    .getOrElse { error ->
-                        pluginContext.reportCannotDeriveWithTrace(
-                            owner = this,
-                            configuration = configuration,
-                            goal = rootGoal,
-                            message = error.message ?: "Failed to resolve DeriveVia path",
-                            location = location,
-                        )
-                        return@flatMap emptyList()
-                    }
-            val targetType =
-                TcType.Constructor(targetClassId.asString(), emptyList())
-            val viaTypeModel =
-                irTypeToModel(resolvedPath.viaType, emptyMap()) ?: run {
+                planner.resolveViaPath(symbol.defaultType, path).getOrElse { error ->
                     pluginContext.reportCannotDeriveWithTrace(
                         owner = this,
                         configuration = configuration,
                         goal = rootGoal,
-                        message = "DeriveVia terminal type must be representable as a typeclass goal",
+                        message = error.message ?: "Failed to resolve DeriveVia path",
                         location = location,
                     )
                     return@flatMap emptyList()
                 }
+            val targetType = TcType.Constructor(targetClassId.asString(), emptyList())
+            val viaTypeModel =
+                irTypeToModel(resolvedPath.viaType, emptyMap())
+                    ?: run {
+                        pluginContext.reportCannotDeriveWithTrace(
+                            owner = this,
+                            configuration = configuration,
+                            goal = rootGoal,
+                            message =
+                                "DeriveVia terminal type must be representable as a typeclass goal",
+                            location = location,
+                        )
+                        return@flatMap emptyList()
+                    }
             if (viaTypeModel.normalizedKey() == targetType.normalizedKey()) {
                 pluginContext.reportCannotDeriveWithTrace(
                     owner = this,
@@ -4213,7 +4606,8 @@ private class IrModuleScanner(
             )
             val expansions = expandedDerivedTypeclassHeads(typeclassId)
             val directTypeParameters = expansions.firstOrNull()?.directTypeParameters.orEmpty()
-            val transportedParameter = directTypeParameters.lastOrNull() ?: return@flatMap emptyList()
+            val transportedParameter =
+                directTypeParameters.lastOrNull() ?: return@flatMap emptyList()
             val prefixParameters = directTypeParameters.dropLast(1)
             val prefixBindings =
                 prefixParameters.associate { parameter ->
@@ -4221,13 +4615,19 @@ private class IrModuleScanner(
                 }
             expansions.mapNotNull { expansion ->
                 val providedType =
-                    expansion.head.substituteType(prefixBindings + (transportedParameter.id to targetType)) as? TcType.Constructor
-                        ?: return@mapNotNull null
+                    expansion.head.substituteType(
+                        prefixBindings + (transportedParameter.id to targetType)
+                    ) as? TcType.Constructor ?: return@mapNotNull null
                 val prerequisiteType =
-                    expansion.head.substituteType(prefixBindings + (transportedParameter.id to viaTypeModel)) as? TcType.Constructor
+                    expansion.head.substituteType(
+                        prefixBindings + (transportedParameter.id to viaTypeModel)
+                    ) as? TcType.Constructor ?: return@mapNotNull null
+                val expandedTypeclassId =
+                    runCatching { ClassId.fromString(providedType.classifierId) }.getOrNull()
                         ?: return@mapNotNull null
-                val expandedTypeclassId = runCatching { ClassId.fromString(providedType.classifierId) }.getOrNull() ?: return@mapNotNull null
-                val expandedTypeclassInterface = pluginContext.referenceClass(expandedTypeclassId)?.owner ?: return@mapNotNull null
+                val expandedTypeclassInterface =
+                    pluginContext.referenceClass(expandedTypeclassId)?.owner
+                        ?: return@mapNotNull null
                 ResolvedRule(
                     rule =
                         InstanceRule(
@@ -4254,62 +4654,67 @@ private class IrModuleScanner(
     }
 
     private fun IrClass.buildDerivedProductShape(
-        typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
+        typeParameterBySymbol:
+            Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
         rootGoal: String,
     ): DerivedShape.Product? {
         val accessContext = deriveShapeAccessContext()
-        val requiredVisibilityDescription = accessContext.requiredDerivedShapeVisibilityDescription()
+        val requiredVisibilityDescription =
+            accessContext.requiredDerivedShapeVisibilityDescription()
         if (isObject) {
             return DerivedShape.Product(fields = emptyList(), constructor = null)
         }
         val storedProperties = structuralProperties()
-        storedProperties.firstOrNull { property ->
-            !accessContext.allowsTransportVisibility(property.visibility.toTransportSyntheticVisibility()) ||
+        storedProperties
+            .firstOrNull { property ->
                 !accessContext.allowsTransportVisibility(
-                    (property.getter?.visibility ?: return@firstOrNull true).toTransportSyntheticVisibility(),
+                    property.visibility.toTransportSyntheticVisibility()
+                ) ||
+                    !accessContext.allowsTransportVisibility(
+                        (property.getter?.visibility ?: return@firstOrNull true)
+                            .toTransportSyntheticVisibility()
+                    )
+            }
+            ?.let { nonPublicProperty ->
+                pluginContext.reportCannotDeriveWithTrace(
+                    owner = this,
+                    configuration = configuration,
+                    goal = rootGoal,
+                    message =
+                        "constructive product derivation requires $requiredVisibilityDescription stored properties; ${renderClassName()}.${nonPublicProperty.name.asString()} is not $requiredVisibilityDescription.",
+                    location = compilerMessageLocation(),
                 )
-        }?.let { nonPublicProperty ->
-            pluginContext.reportCannotDeriveWithTrace(
-                owner = this,
-                configuration = configuration,
-                goal = rootGoal,
-                message =
-                    "constructive product derivation requires $requiredVisibilityDescription stored properties; ${renderClassName()}.${nonPublicProperty.name.asString()} is not $requiredVisibilityDescription.",
-                location = compilerMessageLocation(),
-            )
-            return null
-        }
+                return null
+            }
         val fields =
             storedProperties.map { property ->
-                val getter = property.getter
-                    ?: run {
-                        pluginContext.reportCannotDeriveWithTrace(
-                            owner = this,
-                            configuration = configuration,
-                            goal = rootGoal,
-                            message =
-                                "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires constructor parameters to exactly match stored properties",
-                            location = compilerMessageLocation(),
-                        )
-                        return null
-                    }
-                val fieldType = irTypeToModel(getter.returnType, typeParameterBySymbol)
-                    ?: run {
-                        pluginContext.reportCannotDeriveWithTrace(
-                            owner = this,
-                            configuration = configuration,
-                            goal = rootGoal,
-                            message =
-                                "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires all stored property types to be representable",
-                            location = compilerMessageLocation(),
-                        )
-                        return null
-                    }
-                DerivedField(
-                    name = property.name.asString(),
-                    type = fieldType,
-                    getter = getter,
-                )
+                val getter =
+                    property.getter
+                        ?: run {
+                            pluginContext.reportCannotDeriveWithTrace(
+                                owner = this,
+                                configuration = configuration,
+                                goal = rootGoal,
+                                message =
+                                    "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires constructor parameters to exactly match stored properties",
+                                location = compilerMessageLocation(),
+                            )
+                            return null
+                        }
+                val fieldType =
+                    irTypeToModel(getter.returnType, typeParameterBySymbol)
+                        ?: run {
+                            pluginContext.reportCannotDeriveWithTrace(
+                                owner = this,
+                                configuration = configuration,
+                                goal = rootGoal,
+                                message =
+                                    "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires all stored property types to be representable",
+                                location = compilerMessageLocation(),
+                            )
+                            return null
+                        }
+                DerivedField(name = property.name.asString(), type = fieldType, getter = getter)
             }
         val constructor = primaryConstructorOrNull()
         if (constructor == null) {
@@ -4323,7 +4728,11 @@ private class IrModuleScanner(
             )
             return null
         }
-        if (!accessContext.allowsTransportVisibility(constructor.visibility.toTransportSyntheticVisibility())) {
+        if (
+            !accessContext.allowsTransportVisibility(
+                constructor.visibility.toTransportSyntheticVisibility()
+            )
+        ) {
             pluginContext.reportCannotDeriveWithTrace(
                 owner = this,
                 configuration = configuration,
@@ -4334,7 +4743,8 @@ private class IrModuleScanner(
             )
             return null
         }
-        val constructorParameterNames = constructor.valueParameters.map { parameter -> parameter.name.asString() }
+        val constructorParameterNames =
+            constructor.valueParameters.map { parameter -> parameter.name.asString() }
         val fieldNames = fields.map(DerivedField::name)
         if (constructorParameterNames != fieldNames) {
             pluginContext.reportCannotDeriveWithTrace(
@@ -4363,7 +4773,8 @@ private class IrModuleScanner(
             val requiredDeriverInterface =
                 when (contract) {
                     DeriveMethodContract.PRODUCT -> PRODUCT_TYPECLASS_DERIVER_CLASS_ID
-                    DeriveMethodContract.SUM, DeriveMethodContract.ENUM -> TYPECLASS_DERIVER_CLASS_ID
+                    DeriveMethodContract.SUM,
+                    DeriveMethodContract.ENUM -> TYPECLASS_DERIVER_CLASS_ID
                 }
             val deriverCompanion =
                 typeclassInterface.findDeriverCompanion(requiredDeriverInterface)
@@ -4395,21 +4806,24 @@ private class IrModuleScanner(
                     rootTargetType = targetType,
                     subclassesBySuper = subclassesBySuper,
                 )
-            val specs = buildResult.specs
-                ?: return buildResult.failureMessage
-                    ?: "Cannot derive ${classIdOrFail.asString()} because no sealed subclasses are admissible for the requested typeclass"
+            val specs =
+                buildResult.specs
+                    ?: return buildResult.failureMessage
+                        ?: "Cannot derive ${classIdOrFail.asString()} because no sealed subclasses are admissible for the requested typeclass"
             if (
                 specs.any { spec ->
                     unifyTypes(
                         left = spec.targetType,
                         right = targetType,
-                        bindableVariableIds = spec.ruleTypeParameters.mapTo(linkedSetOf(), TcTypeParameter::id),
+                        bindableVariableIds =
+                            spec.ruleTypeParameters.mapTo(linkedSetOf(), TcTypeParameter::id),
                     ) != null
                 }
             ) {
                 return null
             }
-            return buildResult.failureMessage ?: "Cannot derive ${classIdOrFail.asString()} because no sealed subclasses are admissible for the requested typeclass"
+            return buildResult.failureMessage
+                ?: "Cannot derive ${classIdOrFail.asString()} because no sealed subclasses are admissible for the requested typeclass"
         }
 
         val ruleTypeParameters =
@@ -4419,30 +4833,47 @@ private class IrModuleScanner(
                     displayName = typeParameter.name.asString(),
                 )
             }
-        val typeParameterBySymbol = typeParameters.zip(ruleTypeParameters).associate { (symbol, parameter) -> symbol.symbol to parameter }
+        val typeParameterBySymbol =
+            typeParameters.zip(ruleTypeParameters).associate { (symbol, parameter) ->
+                symbol.symbol to parameter
+            }
         val accessContext = deriveShapeAccessContext()
-        val requiredVisibilityDescription = accessContext.requiredDerivedShapeVisibilityDescription()
+        val requiredVisibilityDescription =
+            accessContext.requiredDerivedShapeVisibilityDescription()
         val storedProperties = structuralProperties()
-        storedProperties.firstOrNull { property ->
-            !accessContext.allowsTransportVisibility(property.visibility.toTransportSyntheticVisibility()) ||
+        storedProperties
+            .firstOrNull { property ->
                 !accessContext.allowsTransportVisibility(
-                    (property.getter?.visibility ?: return@firstOrNull true).toTransportSyntheticVisibility(),
-                )
-        }?.let { nonPublicProperty ->
-            return "constructive product derivation requires $requiredVisibilityDescription stored properties; ${renderClassName()}.${nonPublicProperty.name.asString()} is not $requiredVisibilityDescription."
-        }
+                    property.visibility.toTransportSyntheticVisibility()
+                ) ||
+                    !accessContext.allowsTransportVisibility(
+                        (property.getter?.visibility ?: return@firstOrNull true)
+                            .toTransportSyntheticVisibility()
+                    )
+            }
+            ?.let { nonPublicProperty ->
+                return "constructive product derivation requires $requiredVisibilityDescription stored properties; ${renderClassName()}.${nonPublicProperty.name.asString()} is not $requiredVisibilityDescription."
+            }
         storedProperties.forEach { property ->
-            val getter = property.getter ?: return "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires constructor parameters to exactly match stored properties"
+            val getter =
+                property.getter
+                    ?: return "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires constructor parameters to exactly match stored properties"
             if (irTypeToModel(getter.returnType, typeParameterBySymbol) == null) {
                 return "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires all stored property types to be representable"
             }
         }
-        val constructor = primaryConstructorOrNull()
-            ?: return "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires a primary constructor"
-        if (!accessContext.allowsTransportVisibility(constructor.visibility.toTransportSyntheticVisibility())) {
+        val constructor =
+            primaryConstructorOrNull()
+                ?: return "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires a primary constructor"
+        if (
+            !accessContext.allowsTransportVisibility(
+                constructor.visibility.toTransportSyntheticVisibility()
+            )
+        ) {
             return "constructive product derivation requires a $requiredVisibilityDescription primary constructor for ${renderClassName()}."
         }
-        val constructorParameterNames = constructor.valueParameters.map { parameter -> parameter.name.asString() }
+        val constructorParameterNames =
+            constructor.valueParameters.map { parameter -> parameter.name.asString() }
         val fieldNames = storedProperties.map { property -> property.name.asString() }
         if (constructorParameterNames != fieldNames) {
             return "Cannot derive ${classIdOrFail.asString()} because constructive product derivation requires constructor parameters to exactly match stored properties"
@@ -4487,7 +4918,8 @@ private class IrModuleScanner(
         if (directSubclasses.isEmpty()) {
             return DerivedSumRuleBuildResult(
                 specs = null,
-                failureMessage = "Cannot derive ${classIdOrFail.asString()} because no sealed subclasses are admissible for the requested typeclass",
+                failureMessage =
+                    "Cannot derive ${classIdOrFail.asString()} because no sealed subclasses are admissible for the requested typeclass",
             )
         }
         val caseInfos =
@@ -4498,7 +4930,8 @@ private class IrModuleScanner(
         if (caseInfos.size != directSubclasses.size) {
             return DerivedSumRuleBuildResult(
                 specs = null,
-                failureMessage = "Cannot derive ${classIdOrFail.asString()} because one or more sealed subclasses cannot be expressed from the sealed root's type parameters",
+                failureMessage =
+                    "Cannot derive ${classIdOrFail.asString()} because one or more sealed subclasses cannot be expressed from the sealed root's type parameters",
             )
         }
 
@@ -4509,21 +4942,26 @@ private class IrModuleScanner(
                     listOf(
                         DerivedSumCandidate(
                             targetType = rootTargetType,
-                            ruleTypeParameters = typeParameters.mapIndexed { index, typeParameter ->
-                                TcTypeParameter(
-                                    id = "${classIdOrFail.asString()}#$index",
-                                    displayName = typeParameter.name.asString(),
-                                )
-                            },
+                            ruleTypeParameters =
+                                typeParameters.mapIndexed { index, typeParameter ->
+                                    TcTypeParameter(
+                                        id = "${classIdOrFail.asString()}#$index",
+                                        displayName = typeParameter.name.asString(),
+                                    )
+                                },
                             priority = rootTargetType.gadtSpecificityScore(),
-                        ),
+                        )
                     )
 
                 GadtAdmissionMode.SURFACE_TRUSTED ->
                     caseInfos
                         .map { caseInfo ->
-                            caseInfo.projectedHead.toDerivedSumCandidate(classIdOrFail.asString(), caseInfo.subclass.name.asString())
-                        }.distinctBy { candidate -> candidate.targetType.normalizedKey() }
+                            caseInfo.projectedHead.toDerivedSumCandidate(
+                                classIdOrFail.asString(),
+                                caseInfo.subclass.name.asString(),
+                            )
+                        }
+                        .distinctBy { candidate -> candidate.targetType.normalizedKey() }
             }
 
         val firstRejectionMessages = mutableListOf<String>()
@@ -4560,23 +4998,32 @@ private class IrModuleScanner(
                     } else {
                         val message =
                             "Cannot derive ${classIdOrFail.asString()} because sealed subclass ${caseInfo.subclass.classIdOrFail.asString()} is not itself derivable: $exactCaseFailure"
-                        unrecoverableCaseMessages.putIfAbsent(caseInfo.subclass.classIdOrFail.asString(), message)
+                        unrecoverableCaseMessages.putIfAbsent(
+                            caseInfo.subclass.classIdOrFail.asString(),
+                            message,
+                        )
                         firstRejectionMessages += message
                     }
                 } else {
                     admission.rejectionMessage?.let { message ->
-                        unrecoverableCaseMessages.putIfAbsent(caseInfo.subclass.classIdOrFail.asString(), message)
+                        unrecoverableCaseMessages.putIfAbsent(
+                            caseInfo.subclass.classIdOrFail.asString(),
+                            message,
+                        )
                         firstRejectionMessages += message
                     }
                 }
             }
 
-            if (admissionMode == GadtAdmissionMode.CONSERVATIVE_ONLY && admittedCases.size != caseInfos.size) {
+            if (
+                admissionMode == GadtAdmissionMode.CONSERVATIVE_ONLY &&
+                    admittedCases.size != caseInfos.size
+            ) {
                 return DerivedSumRuleBuildResult(
                     specs = null,
                     failureMessage =
-                    admissions.mapNotNull(CaseAdmission::rejectionMessage).firstOrNull()
-                        ?: "Cannot derive ${classIdOrFail.asString()} because one or more sealed subclasses require result-head refinements beyond the conservative admissibility policy",
+                        admissions.mapNotNull(CaseAdmission::rejectionMessage).firstOrNull()
+                            ?: "Cannot derive ${classIdOrFail.asString()} because one or more sealed subclasses require result-head refinements beyond the conservative admissibility policy",
                 )
             }
 
@@ -4620,33 +5067,28 @@ private class IrModuleScanner(
     }
 
     private fun IrClass.stableDirectSealedSubclassIds(
-        subclassesBySuper: Map<String, Set<String>>,
+        subclassesBySuper: Map<String, Set<String>>
     ): List<String> {
         val discoveredSubclassIds = subclassesBySuper[classIdOrFail.asString()].orEmpty()
         val sourceOrderedSubclassIds =
-            sealedSubclasses
-                .mapNotNull { subclassSymbol ->
-                    runCatching { subclassSymbol.owner }.getOrNull()?.classId?.asString()
-                }
+            sealedSubclasses.mapNotNull { subclassSymbol ->
+                runCatching { subclassSymbol.owner }.getOrNull()?.classId?.asString()
+            }
         return stableSealedSubclassIds(sourceOrderedSubclassIds, discoveredSubclassIds)
     }
 
-    private fun IrClass.buildDerivedEnumShape(
-        rootGoal: String,
-    ): DerivedShape.Enum? {
+    private fun IrClass.buildDerivedEnumShape(rootGoal: String): DerivedShape.Enum? {
         val entries =
             declarations.filterIsInstance<IrEnumEntry>().map { entry ->
-                DerivedEnumEntry(
-                    name = entry.name.asString(),
-                    entry = entry,
-                )
+                DerivedEnumEntry(name = entry.name.asString(), entry = entry)
             }
         if (entries.isEmpty()) {
             pluginContext.reportCannotDeriveWithTrace(
                 owner = this,
                 configuration = configuration,
                 goal = rootGoal,
-                message = "Cannot derive ${classIdOrFail.asString()} because enum derivation requires at least one enum entry",
+                message =
+                    "Cannot derive ${classIdOrFail.asString()} because enum derivation requires at least one enum entry",
                 location = compilerMessageLocation(),
             )
             return null
@@ -4666,13 +5108,16 @@ private class IrModuleScanner(
                     displayName = typeParameter.name.asString(),
                 )
             }
-        val caseTypeBySymbol = typeParameters.zip(caseTypeParameters).associate { (symbol, parameter) ->
-            symbol.symbol to parameter
-        }
+        val caseTypeBySymbol =
+            typeParameters.zip(caseTypeParameters).associate { (symbol, parameter) ->
+                symbol.symbol to parameter
+            }
         val subclassDeclaredType =
             TcType.Constructor(
                 subclassClassId.asString(),
-                caseTypeParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) },
+                caseTypeParameters.map { parameter ->
+                    TcType.Variable(parameter.id, parameter.displayName)
+                },
             )
         val sealedSupertype =
             superTypes.firstOrNull { superType ->
@@ -4692,9 +5137,7 @@ private class IrModuleScanner(
         }
     }
 
-    private fun IrClass.buildDerivedSumCaseInfo(
-        sealedBase: IrClass,
-    ): DerivedSumCaseInfo? {
+    private fun IrClass.buildDerivedSumCaseInfo(sealedBase: IrClass): DerivedSumCaseInfo? {
         val subclassClassId = classId ?: return null
         val caseTypeParameters =
             typeParameters.mapIndexed { index, typeParameter ->
@@ -4708,11 +5151,12 @@ private class IrModuleScanner(
                 symbol.symbol to parameter
             }
         val projectedHead =
-            superTypes.firstOrNull { superType ->
-                superType.classOrNull?.owner?.classId == sealedBase.classId
-            }?.let { superType ->
-                irTypeToModel(superType, caseTypeBySymbol)
-            } as? TcType.Constructor ?: return null
+            superTypes
+                .firstOrNull { superType ->
+                    superType.classOrNull?.owner?.classId == sealedBase.classId
+                }
+                ?.let { superType -> irTypeToModel(superType, caseTypeBySymbol) }
+                as? TcType.Constructor ?: return null
         val fieldTypes =
             structuralProperties().map { property ->
                 val getter = property.getter ?: return null
@@ -4724,7 +5168,9 @@ private class IrModuleScanner(
             subclassDeclaredType =
                 TcType.Constructor(
                     subclassClassId.asString(),
-                    caseTypeParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) },
+                    caseTypeParameters.map { parameter ->
+                        TcType.Variable(parameter.id, parameter.displayName)
+                    },
                 ),
             caseTypeParameters = caseTypeParameters,
             fieldTypes = fieldTypes,
@@ -4741,8 +5187,10 @@ private class IrModuleScanner(
         return annotations
             .filter { constructorCall ->
                 constructorCall.symbol.owner.parentAsClass.classId == DERIVE_ANNOTATION_CLASS_ID
-            }.flatMapTo(linkedSetOf()) { annotation ->
-                val values = annotation.getValueArgument(0) as? IrVararg ?: return@flatMapTo emptyList()
+            }
+            .flatMapTo(linkedSetOf()) { annotation ->
+                val values =
+                    annotation.getValueArgument(0) as? IrVararg ?: return@flatMapTo emptyList()
                 values.elements.mapNotNull { element ->
                     val expression =
                         when (element) {
@@ -4751,8 +5199,11 @@ private class IrModuleScanner(
                             else -> null
                         } ?: return@mapNotNull null
                     val classReference = expression as? IrClassReference ?: return@mapNotNull null
-                    val classId = classReference.classType.classOrNull?.owner?.classId ?: return@mapNotNull null
-                    val typeclassClass = pluginContext.referenceClass(classId)?.owner ?: return@mapNotNull null
+                    val classId =
+                        classReference.classType.classOrNull?.owner?.classId
+                            ?: return@mapNotNull null
+                    val typeclassClass =
+                        pluginContext.referenceClass(classId)?.owner ?: return@mapNotNull null
                     classId.takeIf { typeclassClass.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID) }
                 }
             }
@@ -4776,7 +5227,7 @@ private class IrModuleScanner(
                     publishedGeneratedDerivedMetadata()
                         .filterIsInstance<GeneratedDerivedMetadata.Derive>()
                         .filter(GeneratedDerivedMetadata.Derive::validatedReturnTypeclass)
-                        .map { metadata -> metadata.typeclassId },
+                        .map { metadata -> metadata.typeclassId }
                 )
                 addAll(derivedTypeclassIds())
             }
@@ -4791,11 +5242,10 @@ private class IrModuleScanner(
             return directMetadata
         }
         val ownerId = classId ?: return directMetadata
-        return (
-            directMetadata +
+        return (directMetadata +
                 sharedState.importedGeneratedDerivedMetadataForIr(ownerId) +
-                sharedState.binaryGeneratedDerivedMetadataForIr(ownerId)
-        ).distinct()
+                sharedState.binaryGeneratedDerivedMetadataForIr(ownerId))
+            .distinct()
     }
 
     private fun IrClass.generatedDerivedMetadata(): List<GeneratedDerivedMetadata> =
@@ -4815,40 +5265,35 @@ private class IrModuleScanner(
         when (symbol.owner.parentAsClass.classId) {
             GENERATED_INSTANCE_ANNOTATION_CLASS_ID -> listOf(this)
             GENERATED_INSTANCE_ANNOTATION_CONTAINER_CLASS_ID ->
-                ((getValueArgument(0) as? IrVararg)?.elements.orEmpty())
-                    .mapNotNull { element ->
-                        when (element) {
-                            is IrSpreadElement -> element.expression as? IrConstructorCall
-                            is IrExpression -> element as? IrConstructorCall
-                            else -> null
-                        }
+                ((getValueArgument(0) as? IrVararg)?.elements.orEmpty()).mapNotNull { element ->
+                    when (element) {
+                        is IrSpreadElement -> element.expression as? IrConstructorCall
+                        is IrExpression -> element as? IrConstructorCall
+                        else -> null
                     }
+                }
             else -> emptyList()
         }
 
     private fun IrClass.recordGeneratedDerivedTypeclassMetadata(
-        directEntries: List<GeneratedDerivedMetadata>,
+        directEntries: List<GeneratedDerivedMetadata>
     ) {
-        val annotationClass = pluginContext.referenceClass(GENERATED_INSTANCE_ANNOTATION_CLASS_ID)?.owner ?: return
+        val annotationClass =
+            pluginContext.referenceClass(GENERATED_INSTANCE_ANNOTATION_CLASS_ID)?.owner ?: return
         val annotationConstructor = annotationClass.primaryConstructorOrNull() ?: return
-        val existingEntries =
-            generatedDerivedMetadata().toSet()
+        val existingEntries = generatedDerivedMetadata().toSet()
         val builder = DeclarationIrBuilder(pluginContext, symbol, startOffset, endOffset)
-        directEntries
-            .filterNot(existingEntries::contains)
-            .forEach { metadata ->
-                val encoded = metadata.encode()
-                val generatedAnnotation =
-                    builder
-                        .buildTypeclassGeneratedAnnotation(annotationConstructor)
-                        .apply {
-                            putValueArgument(0, builder.irString(encoded.typeclassId))
-                            putValueArgument(1, builder.irString(encoded.targetId))
-                            putValueArgument(2, builder.irString(encoded.kind))
-                            putValueArgument(3, builder.irString(encoded.payload))
-                        }
-                appendTypeclassGeneratedAnnotation(generatedAnnotation)
-            }
+        directEntries.filterNot(existingEntries::contains).forEach { metadata ->
+            val encoded = metadata.encode()
+            val generatedAnnotation =
+                builder.buildTypeclassGeneratedAnnotation(annotationConstructor).apply {
+                    putValueArgument(0, builder.irString(encoded.typeclassId))
+                    putValueArgument(1, builder.irString(encoded.targetId))
+                    putValueArgument(2, builder.irString(encoded.kind))
+                    putValueArgument(3, builder.irString(encoded.payload))
+                }
+            appendTypeclassGeneratedAnnotation(generatedAnnotation)
+        }
     }
 
     private data class IrExpandedDerivedTypeclassHead(
@@ -4857,30 +5302,29 @@ private class IrModuleScanner(
         val head: TcType.Constructor,
     )
 
-    private fun typeclassGoal(
-        typeclassId: ClassId,
-        targetType: TcType,
-    ): TcType = TcType.Constructor(typeclassId.asString(), listOf(targetType))
+    private fun typeclassGoal(typeclassId: ClassId, targetType: TcType): TcType =
+        TcType.Constructor(typeclassId.asString(), listOf(targetType))
 
-    private fun expandDerivedProvidedTypes(
-        typeclassId: ClassId,
-        targetType: TcType,
-    ): List<TcType> {
+    private fun expandDerivedProvidedTypes(typeclassId: ClassId, targetType: TcType): List<TcType> {
         val expansions = expandedDerivedTypeclassHeads(typeclassId)
         val directTypeParameters = expansions.firstOrNull()?.directTypeParameters.orEmpty()
         if (directTypeParameters.size != 1) {
             return emptyList()
         }
         val transportedParameter = directTypeParameters.single()
-        return expansions.mapNotNull { expansion ->
-            expansion.head.substituteType(mapOf(transportedParameter.id to targetType)) as? TcType.Constructor
-        }.distinctBy(TcType::normalizedKey)
+        return expansions
+            .mapNotNull { expansion ->
+                expansion.head.substituteType(mapOf(transportedParameter.id to targetType))
+                    as? TcType.Constructor
+            }
+            .distinctBy(TcType::normalizedKey)
     }
 
     private fun expandedDerivedTypeclassHeads(
-        typeclassId: ClassId,
+        typeclassId: ClassId
     ): List<IrExpandedDerivedTypeclassHead> {
-        val typeclassInterface = pluginContext.referenceClass(typeclassId)?.owner ?: return emptyList()
+        val typeclassInterface =
+            pluginContext.referenceClass(typeclassId)?.owner ?: return emptyList()
         val directTypeParameters =
             typeclassInterface.typeParameters.mapIndexed { index, typeParameter ->
                 TcTypeParameter(
@@ -4891,7 +5335,10 @@ private class IrModuleScanner(
         val rootHead =
             TcType.Constructor(
                 classifierId = typeclassId.asString(),
-                arguments = directTypeParameters.map { parameter -> TcType.Variable(parameter.id, parameter.displayName) },
+                arguments =
+                    directTypeParameters.map { parameter ->
+                        TcType.Variable(parameter.id, parameter.displayName)
+                    },
             )
         return expandDerivedTypeclassHeads(
             typeclassInterface = typeclassInterface,
@@ -4924,7 +5371,8 @@ private class IrModuleScanner(
                 )
             }
         val typeParameterBySymbol =
-            typeclassInterface.typeParameters.zip(localTypeParameters).associate { (typeParameter, parameter) ->
+            typeclassInterface.typeParameters.zip(localTypeParameters).associate {
+                (typeParameter, parameter) ->
                 typeParameter.symbol to parameter
             }
         val bindings =
@@ -4934,33 +5382,39 @@ private class IrModuleScanner(
         val nextPreviousWereTypeclass = previousWereTypeclass && currentIsTypeclass
         val nextVisited = visited + visitKey
         return buildList {
-            if (currentIsTypeclass && previousWereTypeclass) {
-                add(
-                    IrExpandedDerivedTypeclassHead(
-                        directTypeclassId = directTypeclassId,
-                        directTypeParameters = directTypeParameters,
-                        head = currentHead,
-                    ),
-                )
+                if (currentIsTypeclass && previousWereTypeclass) {
+                    add(
+                        IrExpandedDerivedTypeclassHead(
+                            directTypeclassId = directTypeclassId,
+                            directTypeParameters = directTypeParameters,
+                            head = currentHead,
+                        )
+                    )
+                }
+                typeclassInterface.superTypes.forEach { superType ->
+                    val appliedSuperType =
+                        (irTypeToModel(superType, typeParameterBySymbol)?.substituteType(bindings)
+                            as? TcType.Constructor) ?: return@forEach
+                    val superTypeclassId =
+                        runCatching { ClassId.fromString(appliedSuperType.classifierId) }
+                            .getOrNull() ?: return@forEach
+                    val superTypeclassInterface =
+                        pluginContext.referenceClass(superTypeclassId)?.owner ?: return@forEach
+                    addAll(
+                        expandDerivedTypeclassHeads(
+                            typeclassInterface = superTypeclassInterface,
+                            currentHead = appliedSuperType,
+                            directTypeclassId = directTypeclassId,
+                            directTypeParameters = directTypeParameters,
+                            previousWereTypeclass = nextPreviousWereTypeclass,
+                            visited = nextVisited,
+                        )
+                    )
+                }
             }
-            typeclassInterface.superTypes.forEach { superType ->
-                val appliedSuperType =
-                    (irTypeToModel(superType, typeParameterBySymbol)?.substituteType(bindings) as? TcType.Constructor)
-                        ?: return@forEach
-                val superTypeclassId = runCatching { ClassId.fromString(appliedSuperType.classifierId) }.getOrNull() ?: return@forEach
-                val superTypeclassInterface = pluginContext.referenceClass(superTypeclassId)?.owner ?: return@forEach
-                addAll(
-                    expandDerivedTypeclassHeads(
-                        typeclassInterface = superTypeclassInterface,
-                        currentHead = appliedSuperType,
-                        directTypeclassId = directTypeclassId,
-                        directTypeParameters = directTypeParameters,
-                        previousWereTypeclass = nextPreviousWereTypeclass,
-                        visited = nextVisited,
-                    ),
-                )
+            .distinctBy { expansion ->
+                "${expansion.directTypeclassId.asString()}:${expansion.head.normalizedKey()}"
             }
-        }.distinctBy { expansion -> "${expansion.directTypeclassId.asString()}:${expansion.head.normalizedKey()}" }
     }
 }
 
@@ -5207,7 +5661,8 @@ private fun irBuiltinNullableFeasibility(
     if (constructor.classifierId != NULLABLE_CLASS_ID.asString()) {
         return BuiltinGoalFeasibility.PROVABLE
     }
-    val targetModel = constructor.arguments.singleOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val targetModel =
+        constructor.arguments.singleOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
     if (exactBuiltinGoalContext == null) {
         return if (supportsBuiltinNullableGoal(goal)) {
             BuiltinGoalFeasibility.PROVABLE
@@ -5216,8 +5671,14 @@ private fun irBuiltinNullableFeasibility(
         }
     }
     val targetType =
-        runCatching { modelToIrType(targetModel, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
-            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+        runCatching {
+                modelToIrType(
+                    targetModel,
+                    exactBuiltinGoalContext.visibleTypeParameters,
+                    exactBuiltinGoalContext.pluginContext,
+                )
+            }
+            .getOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
     return if (canProveNullable(targetType, exactBuiltinGoalContext.pluginContext)) {
         BuiltinGoalFeasibility.PROVABLE
     } else {
@@ -5233,7 +5694,8 @@ private fun irBuiltinNotNullableFeasibility(
     if (constructor.classifierId != NOT_NULLABLE_CLASS_ID.asString()) {
         return BuiltinGoalFeasibility.PROVABLE
     }
-    val targetModel = constructor.arguments.singleOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val targetModel =
+        constructor.arguments.singleOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
     if (exactBuiltinGoalContext == null) {
         return if (supportsBuiltinNotNullableGoal(goal)) {
             BuiltinGoalFeasibility.PROVABLE
@@ -5242,8 +5704,14 @@ private fun irBuiltinNotNullableFeasibility(
         }
     }
     val targetType =
-        runCatching { modelToIrType(targetModel, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
-            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+        runCatching {
+                modelToIrType(
+                    targetModel,
+                    exactBuiltinGoalContext.visibleTypeParameters,
+                    exactBuiltinGoalContext.pluginContext,
+                )
+            }
+            .getOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
     return if (canProveNotNullable(targetType, exactBuiltinGoalContext.pluginContext)) {
         BuiltinGoalFeasibility.PROVABLE
     } else {
@@ -5271,7 +5739,8 @@ private fun isProvablySerializableType(
                     isProvablySerializableType(argument, pluginContext, visiting)
                 }
             }
-            val classId = runCatching { ClassId.fromString(type.classifierId) }.getOrNull() ?: return false
+            val classId =
+                runCatching { ClassId.fromString(type.classifierId) }.getOrNull() ?: return false
             val klass = pluginContext.referenceClass(classId)?.owner ?: return false
             klass.hasAnnotation(SERIALIZABLE_ANNOTATION_CLASS_ID) &&
                 type.arguments.all { argument ->
@@ -5321,16 +5790,30 @@ private fun irBuiltinSubtypeFeasibility(
         return BuiltinGoalFeasibility.PROVABLE
     }
     if (exactBuiltinGoalContext == null) {
-        return if (supportsBuiltinSubtypeGoal(goal, classInfoById)) BuiltinGoalFeasibility.SPECULATIVE else BuiltinGoalFeasibility.IMPOSSIBLE
+        return if (supportsBuiltinSubtypeGoal(goal, classInfoById))
+            BuiltinGoalFeasibility.SPECULATIVE
+        else BuiltinGoalFeasibility.IMPOSSIBLE
     }
     val subModel = constructor.arguments.getOrNull(0) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
     val superModel = constructor.arguments.getOrNull(1) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
     val subType =
-        runCatching { modelToIrType(subModel, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
-            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+        runCatching {
+                modelToIrType(
+                    subModel,
+                    exactBuiltinGoalContext.visibleTypeParameters,
+                    exactBuiltinGoalContext.pluginContext,
+                )
+            }
+            .getOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
     val superType =
-        runCatching { modelToIrType(superModel, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
-            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+        runCatching {
+                modelToIrType(
+                    superModel,
+                    exactBuiltinGoalContext.visibleTypeParameters,
+                    exactBuiltinGoalContext.pluginContext,
+                )
+            }
+            .getOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
     return if (canProveSubtype(subType, superType, exactBuiltinGoalContext.pluginContext)) {
         BuiltinGoalFeasibility.PROVABLE
     } else {
@@ -5370,14 +5853,28 @@ private fun irBuiltinStrictSubtypeFeasibility(
         return BuiltinGoalFeasibility.IMPOSSIBLE
     }
     if (exactBuiltinGoalContext == null) {
-        return if (supportsBuiltinStrictSubtypeGoal(goal, classInfoById)) BuiltinGoalFeasibility.SPECULATIVE else BuiltinGoalFeasibility.IMPOSSIBLE
+        return if (supportsBuiltinStrictSubtypeGoal(goal, classInfoById))
+            BuiltinGoalFeasibility.SPECULATIVE
+        else BuiltinGoalFeasibility.IMPOSSIBLE
     }
     val subType =
-        runCatching { modelToIrType(subModel, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
-            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+        runCatching {
+                modelToIrType(
+                    subModel,
+                    exactBuiltinGoalContext.visibleTypeParameters,
+                    exactBuiltinGoalContext.pluginContext,
+                )
+            }
+            .getOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
     val superType =
-        runCatching { modelToIrType(superModel, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
-            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+        runCatching {
+                modelToIrType(
+                    superModel,
+                    exactBuiltinGoalContext.visibleTypeParameters,
+                    exactBuiltinGoalContext.pluginContext,
+                )
+            }
+            .getOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
     return if (canProveSubtype(subType, superType, exactBuiltinGoalContext.pluginContext)) {
         BuiltinGoalFeasibility.PROVABLE
     } else {
@@ -5394,7 +5891,9 @@ private fun IrBuiltinGoalExactContext.exactSubtypeKnowledge(
         return IrTypeRelationKnowledge.PROVABLE
     }
     if (sub.containsProjectionOrStar() || sup.containsProjectionOrStar()) {
-        exactMaterializedSubtypeKnowledge(sub, sup)?.let { return it }
+        exactMaterializedSubtypeKnowledge(sub, sup)?.let {
+            return it
+        }
     }
     when (sub) {
         TcType.StarProjection -> return IrTypeRelationKnowledge.UNKNOWN
@@ -5405,12 +5904,18 @@ private fun IrBuiltinGoalExactContext.exactSubtypeKnowledge(
                 return IrTypeRelationKnowledge.UNKNOWN
             }
             try {
-                val symbol = visibleTypeParameters.byId[sub.id] ?: return IrTypeRelationKnowledge.UNKNOWN
+                val symbol =
+                    visibleTypeParameters.byId[sub.id] ?: return IrTypeRelationKnowledge.UNKNOWN
                 val bounds =
                     symbol.owner.superTypes.mapNotNull { boundType ->
                         irTypeToModel(boundType, visibleTypeParameters.bySymbol)
                     }
-                if (bounds.any { bound -> exactSubtypeKnowledge(bound, sup, visiting) == IrTypeRelationKnowledge.PROVABLE }) {
+                if (
+                    bounds.any { bound ->
+                        exactSubtypeKnowledge(bound, sup, visiting) ==
+                            IrTypeRelationKnowledge.PROVABLE
+                    }
+                ) {
                     return IrTypeRelationKnowledge.PROVABLE
                 }
                 return IrTypeRelationKnowledge.UNKNOWN
@@ -5431,7 +5936,8 @@ private fun IrBuiltinGoalExactContext.exactSubtypeKnowledge(
                 return IrTypeRelationKnowledge.UNKNOWN
             }
             try {
-                val symbol = visibleTypeParameters.byId[sup.id] ?: return IrTypeRelationKnowledge.UNKNOWN
+                val symbol =
+                    visibleTypeParameters.byId[sup.id] ?: return IrTypeRelationKnowledge.UNKNOWN
                 val bounds =
                     symbol.owner.superTypes.mapNotNull { boundType ->
                         irTypeToModel(boundType, visibleTypeParameters.bySymbol)
@@ -5440,7 +5946,10 @@ private fun IrBuiltinGoalExactContext.exactSubtypeKnowledge(
                     return IrTypeRelationKnowledge.UNKNOWN
                 }
                 bounds.forEach { bound ->
-                    if (exactSubtypeKnowledge(sub, bound, visiting) == IrTypeRelationKnowledge.DISPROVABLE) {
+                    if (
+                        exactSubtypeKnowledge(sub, bound, visiting) ==
+                            IrTypeRelationKnowledge.DISPROVABLE
+                    ) {
                         return IrTypeRelationKnowledge.DISPROVABLE
                     }
                 }
@@ -5464,10 +5973,11 @@ private fun IrBuiltinGoalExactContext.exactSubtypeKnowledge(
     if (sub.referencedVariableIds().isNotEmpty() || sup.referencedVariableIds().isNotEmpty()) {
         val subtype =
             runCatching {
-                val subType = modelToIrType(sub, visibleTypeParameters, pluginContext)
-                val supType = modelToIrType(sup, visibleTypeParameters, pluginContext)
-                canProveSubtype(subType, supType, pluginContext)
-            }.getOrDefault(false)
+                    val subType = modelToIrType(sub, visibleTypeParameters, pluginContext)
+                    val supType = modelToIrType(sup, visibleTypeParameters, pluginContext)
+                    canProveSubtype(subType, supType, pluginContext)
+                }
+                .getOrDefault(false)
         return if (subtype) IrTypeRelationKnowledge.PROVABLE else IrTypeRelationKnowledge.UNKNOWN
     }
     val subType =
@@ -5487,8 +5997,12 @@ private fun IrBuiltinGoalExactContext.exactMaterializedSubtypeKnowledge(
     sub: TcType,
     sup: TcType,
 ): IrTypeRelationKnowledge? {
-    val subType = runCatching { modelToIrType(sub, visibleTypeParameters, pluginContext) }.getOrNull() ?: return null
-    val supType = runCatching { modelToIrType(sup, visibleTypeParameters, pluginContext) }.getOrNull() ?: return null
+    val subType =
+        runCatching { modelToIrType(sub, visibleTypeParameters, pluginContext) }.getOrNull()
+            ?: return null
+    val supType =
+        runCatching { modelToIrType(sup, visibleTypeParameters, pluginContext) }.getOrNull()
+            ?: return null
     return if (canProveSubtype(subType, supType, pluginContext)) {
         IrTypeRelationKnowledge.PROVABLE
     } else {
@@ -5520,9 +6034,12 @@ private fun IrBuiltinGoalExactContext.exactSameClassifierSubtypeKnowledge(
         val variance = variances.getOrNull(index) ?: Variance.INVARIANT
         val argumentKnowledge =
             when {
-                subArgument is TcType.Projected || superArgument is TcType.Projected -> IrTypeRelationKnowledge.UNKNOWN
-                variance == Variance.OUT_VARIANCE -> exactSubtypeKnowledge(subArgument, superArgument, visiting)
-                variance == Variance.IN_VARIANCE -> exactSubtypeKnowledge(superArgument, subArgument, visiting)
+                subArgument is TcType.Projected || superArgument is TcType.Projected ->
+                    IrTypeRelationKnowledge.UNKNOWN
+                variance == Variance.OUT_VARIANCE ->
+                    exactSubtypeKnowledge(subArgument, superArgument, visiting)
+                variance == Variance.IN_VARIANCE ->
+                    exactSubtypeKnowledge(superArgument, subArgument, visiting)
                 else ->
                     if (subArgument.normalizedKey() == superArgument.normalizedKey()) {
                         IrTypeRelationKnowledge.PROVABLE
@@ -5548,7 +6065,8 @@ private fun irBuiltinIsTypeclassInstanceFeasibility(
     if (constructor.classifierId != IS_TYPECLASS_INSTANCE_CLASS_ID.asString()) {
         return BuiltinGoalFeasibility.PROVABLE
     }
-    val targetModel = constructor.arguments.singleOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val targetModel =
+        constructor.arguments.singleOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
     if (exactBuiltinGoalContext == null) {
         return if (
             supportsBuiltinIsTypeclassInstanceGoal(
@@ -5562,8 +6080,14 @@ private fun irBuiltinIsTypeclassInstanceFeasibility(
         }
     }
     val targetType =
-        runCatching { modelToIrType(targetModel, exactBuiltinGoalContext.visibleTypeParameters, exactBuiltinGoalContext.pluginContext) }.getOrNull()
-            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+        runCatching {
+                modelToIrType(
+                    targetModel,
+                    exactBuiltinGoalContext.visibleTypeParameters,
+                    exactBuiltinGoalContext.pluginContext,
+                )
+            }
+            .getOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
     return if (targetType.isTypeclassType(exactBuiltinGoalContext.configuration)) {
         BuiltinGoalFeasibility.PROVABLE
     } else {
@@ -5571,15 +6095,17 @@ private fun irBuiltinIsTypeclassInstanceFeasibility(
     }
 }
 
-private fun canProveNullable(
-    targetType: IrType,
-    pluginContext: IrPluginContext,
-): Boolean = pluginContext.irBuiltIns.nothingNType.isSubtypeOf(targetType, JvmIrTypeSystemContext(pluginContext.irBuiltIns))
+private fun canProveNullable(targetType: IrType, pluginContext: IrPluginContext): Boolean =
+    pluginContext.irBuiltIns.nothingNType.isSubtypeOf(
+        targetType,
+        JvmIrTypeSystemContext(pluginContext.irBuiltIns),
+    )
 
-private fun canProveNotNullable(
-    targetType: IrType,
-    pluginContext: IrPluginContext,
-): Boolean = targetType.isSubtypeOf(pluginContext.irBuiltIns.anyType, JvmIrTypeSystemContext(pluginContext.irBuiltIns))
+private fun canProveNotNullable(targetType: IrType, pluginContext: IrPluginContext): Boolean =
+    targetType.isSubtypeOf(
+        pluginContext.irBuiltIns.anyType,
+        JvmIrTypeSystemContext(pluginContext.irBuiltIns),
+    )
 
 private fun canMaterializeTypeIdViaTypeOf(targetType: IrType): Boolean {
     val simpleType = targetType as? IrSimpleType ?: return false
@@ -5589,7 +6115,8 @@ private fun canMaterializeTypeIdViaTypeOf(targetType: IrType): Boolean {
             simpleType.arguments.all { argument ->
                 when (argument) {
                     is IrStarProjection -> true
-                    is org.jetbrains.kotlin.ir.types.IrTypeProjection -> canMaterializeTypeIdViaTypeOf(argument.type)
+                    is org.jetbrains.kotlin.ir.types.IrTypeProjection ->
+                        canMaterializeTypeIdViaTypeOf(argument.type)
                     is IrType -> canMaterializeTypeIdViaTypeOf(argument)
                 }
             }
@@ -5620,9 +6147,7 @@ private data class ResolvedRule(
 )
 
 private sealed interface RuleReference {
-    data class DirectFunction(
-        val function: IrSimpleFunction,
-    ) : RuleReference
+    data class DirectFunction(val function: IrSimpleFunction) : RuleReference
 
     data class LookupFunction(
         val callableId: CallableId,
@@ -5630,22 +6155,14 @@ private sealed interface RuleReference {
         val ownerKey: String? = null,
     ) : RuleReference
 
-    data class DirectProperty(
-        val property: IrProperty,
-    ) : RuleReference
+    data class DirectProperty(val property: IrProperty) : RuleReference
 
-    data class LookupProperty(
-        val callableId: CallableId,
-        val ownerKey: String? = null,
-    ) : RuleReference
+    data class LookupProperty(val callableId: CallableId, val ownerKey: String? = null) :
+        RuleReference
 
-    data class DirectObject(
-        val klass: IrClass,
-    ) : RuleReference
+    data class DirectObject(val klass: IrClass) : RuleReference
 
-    data class LookupObject(
-        val classId: ClassId,
-    ) : RuleReference
+    data class LookupObject(val classId: ClassId) : RuleReference
 
     data object BuiltinSame : RuleReference
 
@@ -5700,36 +6217,19 @@ private sealed interface RuleReference {
 }
 
 private sealed interface DerivedShape {
-    data class Product(
-        val fields: List<DerivedField>,
-        val constructor: IrConstructor?,
-    ) : DerivedShape
+    data class Product(val fields: List<DerivedField>, val constructor: IrConstructor?) :
+        DerivedShape
 
-    data class Sum(
-        val cases: List<DerivedCase>,
-    ) : DerivedShape
+    data class Sum(val cases: List<DerivedCase>) : DerivedShape
 
-    data class Enum(
-        val entries: List<DerivedEnumEntry>,
-    ) : DerivedShape
+    data class Enum(val entries: List<DerivedEnumEntry>) : DerivedShape
 }
 
-private data class DerivedField(
-    val name: String,
-    val type: TcType,
-    val getter: IrSimpleFunction,
-)
+private data class DerivedField(val name: String, val type: TcType, val getter: IrSimpleFunction)
 
-private data class DerivedCase(
-    val name: String,
-    val klass: IrClass,
-    val type: TcType,
-)
+private data class DerivedCase(val name: String, val klass: IrClass, val type: TcType)
 
-private data class DerivedEnumEntry(
-    val name: String,
-    val entry: IrEnumEntry,
-)
+private data class DerivedEnumEntry(val name: String, val entry: IrEnumEntry)
 
 private data class DerivedRuleSpec(
     val targetType: TcType.Constructor,
@@ -5782,12 +6282,10 @@ private fun IrClass.gadtAdmissionMode(): GadtAdmissionMode {
     }
     return when (effectiveVarianceFor(transported.symbol)) {
         GadtEffectiveVariance.CONTRAVARIANT,
-        GadtEffectiveVariance.PHANTOM,
-        -> GadtAdmissionMode.SURFACE_TRUSTED
+        GadtEffectiveVariance.PHANTOM -> GadtAdmissionMode.SURFACE_TRUSTED
 
         GadtEffectiveVariance.COVARIANT,
-        GadtEffectiveVariance.INVARIANT,
-        -> GadtAdmissionMode.CONSERVATIVE_ONLY
+        GadtEffectiveVariance.INVARIANT -> GadtAdmissionMode.CONSERVATIVE_ONLY
     }
 }
 
@@ -5797,22 +6295,27 @@ private fun IrClass.gadtPolicyMode(): GadtAdmissionMode? =
 private fun IrTypeParameter.gadtPolicyMode(): GadtAdmissionMode? =
     annotations.firstNotNullOfOrNull { annotation -> annotation.gadtPolicyMode() }
 
-private fun org.jetbrains.kotlin.ir.expressions.IrConstructorCall.gadtPolicyMode(): GadtAdmissionMode? {
+private fun org.jetbrains.kotlin.ir.expressions.IrConstructorCall.gadtPolicyMode():
+    GadtAdmissionMode? {
     val annotationClass = symbol.owner.parentAsClass
     if (annotationClass.classId != GADT_DERIVATION_POLICY_ANNOTATION_CLASS_ID) {
         return null
     }
     return when (val modeArgument = getValueArgument(0)) {
         is org.jetbrains.kotlin.ir.expressions.IrGetEnumValue ->
-            modeArgument.symbol.owner.takeIf { enumEntry ->
-                enumEntry.parentAsClass.classId == GADT_DERIVATION_MODE_CLASS_ID
-            }?.name?.asString()?.let { entryName ->
-                when (entryName) {
-                    "CONSERVATIVE_ONLY" -> GadtAdmissionMode.CONSERVATIVE_ONLY
-                    "SURFACE_TRUSTED" -> GadtAdmissionMode.SURFACE_TRUSTED
-                    else -> null
+            modeArgument.symbol.owner
+                .takeIf { enumEntry ->
+                    enumEntry.parentAsClass.classId == GADT_DERIVATION_MODE_CLASS_ID
                 }
-            }
+                ?.name
+                ?.asString()
+                ?.let { entryName ->
+                    when (entryName) {
+                        "CONSERVATIVE_ONLY" -> GadtAdmissionMode.CONSERVATIVE_ONLY
+                        "SURFACE_TRUSTED" -> GadtAdmissionMode.SURFACE_TRUSTED
+                        else -> null
+                    }
+                }
 
         else -> {
             val renderedMode = modeArgument?.render().orEmpty()
@@ -5826,7 +6329,7 @@ private fun org.jetbrains.kotlin.ir.expressions.IrConstructorCall.gadtPolicyMode
 }
 
 private fun IrClass.effectiveVarianceFor(
-    transported: IrTypeParameterSymbol,
+    transported: IrTypeParameterSymbol
 ): GadtEffectiveVariance {
     val declaredVariance = transported.owner.variance
     return when (declaredVariance) {
@@ -5834,7 +6337,10 @@ private fun IrClass.effectiveVarianceFor(
         Variance.OUT_VARIANCE -> GadtEffectiveVariance.COVARIANT
         Variance.INVARIANT ->
             analyzeCallableSurfaceVariance(
-                substitution = typeParameters.associate { parameter -> parameter.symbol to parameter.symbol.defaultType },
+                substitution =
+                    typeParameters.associate { parameter ->
+                        parameter.symbol to parameter.symbol.defaultType
+                    },
                 transported = transported,
                 visited = linkedSetOf(),
             )
@@ -5847,16 +6353,15 @@ private fun IrClass.analyzeCallableSurfaceVariance(
     transported: IrTypeParameterSymbol,
     visited: MutableSet<String>,
 ): GadtEffectiveVariance {
-    val visitKey =
-        buildString {
-            append(classIdOrFail.asString())
-            append(':')
-            append(
-                typeParameters.joinToString(separator = ",") { parameter ->
-                    substitution[parameter.symbol]?.render() ?: parameter.name.asString()
-                },
-            )
-        }
+    val visitKey = buildString {
+        append(classIdOrFail.asString())
+        append(':')
+        append(
+            typeParameters.joinToString(separator = ",") { parameter ->
+                substitution[parameter.symbol]?.render() ?: parameter.name.asString()
+            }
+        )
+    }
     if (!visited.add(visitKey)) {
         return GadtEffectiveVariance.PHANTOM
     }
@@ -5871,7 +6376,7 @@ private fun IrClass.analyzeCallableSurfaceVariance(
                     type = getter.returnType.substitute(substitution),
                     position = GadtEffectiveVariance.COVARIANT,
                     transported = transported,
-                ),
+                )
             )
     }
 
@@ -5886,7 +6391,7 @@ private fun IrClass.analyzeCallableSurfaceVariance(
                         type = receiver.type.substitute(substitution),
                         position = GadtEffectiveVariance.CONTRAVARIANT,
                         transported = transported,
-                    ),
+                    )
                 )
         }
         function.parameters
@@ -5901,7 +6406,7 @@ private fun IrClass.analyzeCallableSurfaceVariance(
                             type = parameter.type.substitute(substitution),
                             position = GadtEffectiveVariance.CONTRAVARIANT,
                             transported = transported,
-                        ),
+                        )
                     )
             }
         result =
@@ -5910,7 +6415,7 @@ private fun IrClass.analyzeCallableSurfaceVariance(
                     type = function.returnType.substitute(substitution),
                     position = GadtEffectiveVariance.COVARIANT,
                     transported = transported,
-                ),
+                )
             )
     }
 
@@ -5919,17 +6424,21 @@ private fun IrClass.analyzeCallableSurfaceVariance(
         val superSimpleType = substitutedSuperType as? IrSimpleType ?: return@forEach
         val superClass = superSimpleType.classOrNull?.owner ?: return@forEach
         val superSubstitution =
-            superClass.typeParameters.mapIndexedNotNull { index, parameter ->
-                val argument = superSimpleType.arguments.getOrNull(index)?.argumentTypeOrNull() ?: return@mapIndexedNotNull null
-                parameter.symbol to argument
-            }.toMap()
+            superClass.typeParameters
+                .mapIndexedNotNull { index, parameter ->
+                    val argument =
+                        superSimpleType.arguments.getOrNull(index)?.argumentTypeOrNull()
+                            ?: return@mapIndexedNotNull null
+                    parameter.symbol to argument
+                }
+                .toMap()
         result =
             result.parallelCombine(
                 superClass.analyzeCallableSurfaceVariance(
                     substitution = superSubstitution,
                     transported = transported,
                     visited = visited,
-                ),
+                )
             )
     }
 
@@ -5953,17 +6462,17 @@ private fun analyzeTypeVariance(
                         type = parameterType,
                         position = position.composeWith(GadtEffectiveVariance.CONTRAVARIANT),
                         transported = transported,
-                    ),
+                    )
                 )
         }
         functionResult =
             functionResult.parallelCombine(
                 analyzeTypeVariance(
-                        type = functionInfo.returnType,
-                        position = position.composeWith(GadtEffectiveVariance.COVARIANT),
-                        transported = transported,
-                    ),
+                    type = functionInfo.returnType,
+                    position = position.composeWith(GadtEffectiveVariance.COVARIANT),
+                    transported = transported,
                 )
+            )
         return functionResult
     }
 
@@ -5996,19 +6505,17 @@ private fun analyzeTypeVariance(
                     type = nestedType,
                     position = position.composeWith(argumentVariance),
                     transported = transported,
-                ),
+                )
             )
     }
     return result
 }
 
 private fun IrType.hasUnsafeVarianceMarker(): Boolean =
-    (this as? IrSimpleType)
-        ?.annotations
-        ?.any { annotation ->
-            annotation.symbol.owner.parentAsClass.classId ==
-                ClassId.topLevel(FqName("kotlin.UnsafeVariance"))
-        } == true
+    (this as? IrSimpleType)?.annotations?.any { annotation ->
+        annotation.symbol.owner.parentAsClass.classId ==
+            ClassId.topLevel(FqName("kotlin.UnsafeVariance"))
+    } == true
 
 private fun Variance.toGadtEffectiveVariance(): GadtEffectiveVariance =
     when (this) {
@@ -6018,30 +6525,30 @@ private fun Variance.toGadtEffectiveVariance(): GadtEffectiveVariance =
     }
 
 private fun GadtEffectiveVariance.composeWith(
-    nested: GadtEffectiveVariance,
+    nested: GadtEffectiveVariance
 ): GadtEffectiveVariance =
     when {
-        this == GadtEffectiveVariance.PHANTOM || nested == GadtEffectiveVariance.PHANTOM -> GadtEffectiveVariance.PHANTOM
-        this == GadtEffectiveVariance.INVARIANT || nested == GadtEffectiveVariance.INVARIANT -> GadtEffectiveVariance.INVARIANT
+        this == GadtEffectiveVariance.PHANTOM || nested == GadtEffectiveVariance.PHANTOM ->
+            GadtEffectiveVariance.PHANTOM
+        this == GadtEffectiveVariance.INVARIANT || nested == GadtEffectiveVariance.INVARIANT ->
+            GadtEffectiveVariance.INVARIANT
         this == nested -> GadtEffectiveVariance.COVARIANT
         else -> GadtEffectiveVariance.CONTRAVARIANT
     }
 
 private fun GadtEffectiveVariance.parallelCombine(
-    other: GadtEffectiveVariance,
+    other: GadtEffectiveVariance
 ): GadtEffectiveVariance =
     when {
-        this == GadtEffectiveVariance.INVARIANT || other == GadtEffectiveVariance.INVARIANT -> GadtEffectiveVariance.INVARIANT
+        this == GadtEffectiveVariance.INVARIANT || other == GadtEffectiveVariance.INVARIANT ->
+            GadtEffectiveVariance.INVARIANT
         this == GadtEffectiveVariance.PHANTOM -> other
         other == GadtEffectiveVariance.PHANTOM -> this
         this == other -> this
         else -> GadtEffectiveVariance.INVARIANT
     }
 
-private data class GadtFunctionTypeInfo(
-    val parameterTypes: List<IrType>,
-    val returnType: IrType,
-)
+private data class GadtFunctionTypeInfo(val parameterTypes: List<IrType>, val returnType: IrType)
 
 private fun IrType.gadtFunctionTypeInfoOrNull(): GadtFunctionTypeInfo? {
     val simpleType = this as? IrSimpleType ?: return null
@@ -6067,24 +6574,20 @@ private fun IrType.gadtFunctionTypeInfoOrNull(): GadtFunctionTypeInfo? {
     )
 }
 
-private fun TcType.toDerivedSumCandidate(
-    ownerId: String,
-    seed: String,
-): DerivedSumCandidate {
-    val constructor = this as? TcType.Constructor ?: error("Derived sum candidates must be constructor heads")
+private fun TcType.toDerivedSumCandidate(ownerId: String, seed: String): DerivedSumCandidate {
+    val constructor =
+        this as? TcType.Constructor ?: error("Derived sum candidates must be constructor heads")
     val referencedVariables = constructor.referencedVariableIds().toList()
     val ruleTypeParameters =
         referencedVariables.mapIndexed { index, variableId ->
-            TcTypeParameter(
-                id = "derived-sum:$ownerId:$seed:$index",
-                displayName = "A$index",
-            ) to variableId
+            TcTypeParameter(id = "derived-sum:$ownerId:$seed:$index", displayName = "A$index") to
+                variableId
         }
     val targetType =
         constructor.substituteType(
             ruleTypeParameters.associate { (parameter, variableId) ->
                 variableId to TcType.Variable(parameter.id, parameter.displayName)
-            },
+            }
         ) as TcType.Constructor
     return DerivedSumCandidate(
         targetType = targetType,
@@ -6103,29 +6606,29 @@ private fun DerivedSumCaseInfo.admitToCandidate(
             left = projectedHead,
             right = candidate.targetType,
             bindableVariableIds = caseTypeParameters.mapTo(linkedSetOf(), TcTypeParameter::id),
-        ) ?: when {
-            subclassDeclaredType.referencedVariableIds().isEmpty() &&
-                projectedHead.isVarianceCompatibleWithCandidate(
-                    candidate.targetType,
-                    rootClass.typeParameters.map(IrTypeParameter::variance),
-                ) ->
-                emptyMap()
+        )
+            ?: when {
+                subclassDeclaredType.referencedVariableIds().isEmpty() &&
+                    projectedHead.isVarianceCompatibleWithCandidate(
+                        candidate.targetType,
+                        rootClass.typeParameters.map(IrTypeParameter::variance),
+                    ) -> emptyMap()
 
-            conservativeOnly ->
-                return CaseAdmission(
-                    rejectionMessage =
-                        "Cannot derive ${rootClass.classIdOrFail.asString()} because sealed subclass ${subclass.classIdOrFail.asString()} refines the result head beyond the conservative admissibility policy",
-                )
+                conservativeOnly ->
+                    return CaseAdmission(
+                        rejectionMessage =
+                            "Cannot derive ${rootClass.classIdOrFail.asString()} because sealed subclass ${subclass.classIdOrFail.asString()} refines the result head beyond the conservative admissibility policy"
+                    )
 
-            else -> return CaseAdmission()
-        }
+                else -> return CaseAdmission()
+            }
 
     val allowedVariableIds = candidate.targetType.referencedVariableIds()
     val caseType = subclassDeclaredType.substituteType(bindings)
     if (!caseType.referencedVariableIds().all(allowedVariableIds::contains)) {
         return CaseAdmission(
             rejectionMessage =
-                "Cannot derive ${rootClass.classIdOrFail.asString()} because sealed subclass ${subclass.classIdOrFail.asString()} introduces type parameters that are not quantified by the admitted result head",
+                "Cannot derive ${rootClass.classIdOrFail.asString()} because sealed subclass ${subclass.classIdOrFail.asString()} introduces type parameters that are not quantified by the admitted result head"
         )
     }
     fieldTypes.forEach { fieldType ->
@@ -6133,23 +6636,19 @@ private fun DerivedSumCaseInfo.admitToCandidate(
         if (substitutedFieldType.containsStarProjection()) {
             return CaseAdmission(
                 rejectionMessage =
-                    "Cannot derive ${rootClass.classIdOrFail.asString()} because sealed subclass ${subclass.classIdOrFail.asString()} requires proof/equality-carrying field evidence hidden from the admitted result head",
+                    "Cannot derive ${rootClass.classIdOrFail.asString()} because sealed subclass ${subclass.classIdOrFail.asString()} requires proof/equality-carrying field evidence hidden from the admitted result head"
             )
         }
         if (!substitutedFieldType.referencedVariableIds().all(allowedVariableIds::contains)) {
             return CaseAdmission(
                 rejectionMessage =
-                    "Cannot derive ${rootClass.classIdOrFail.asString()} because sealed subclass ${subclass.classIdOrFail.asString()} requires field evidence that is not recoverable from the admitted result head",
+                    "Cannot derive ${rootClass.classIdOrFail.asString()} because sealed subclass ${subclass.classIdOrFail.asString()} requires field evidence that is not recoverable from the admitted result head"
             )
         }
     }
     return CaseAdmission(
         derivedCase =
-            DerivedCase(
-                name = subclass.name.asString(),
-                klass = subclass,
-                type = caseType,
-            ),
+            DerivedCase(name = subclass.name.asString(), klass = subclass, type = caseType)
     )
 }
 
@@ -6159,7 +6658,10 @@ private fun TcType.isVarianceCompatibleWithCandidate(
 ): Boolean {
     val actual = this as? TcType.Constructor ?: return false
     val expected = candidate as? TcType.Constructor ?: return false
-    if (actual.classifierId != expected.classifierId || actual.arguments.size != expected.arguments.size) {
+    if (
+        actual.classifierId != expected.classifierId ||
+            actual.arguments.size != expected.arguments.size
+    ) {
         return false
     }
     return actual.arguments.indices.all { index ->
@@ -6173,16 +6675,16 @@ private fun TcType.isVarianceCompatibleWithCandidate(
     }
 }
 
-private fun TcType.isVarianceSubtypeOf(
-    expected: TcType,
-): Boolean =
+private fun TcType.isVarianceSubtypeOf(expected: TcType): Boolean =
     when {
         expected is TcType.Variable -> true
         this == expected -> true
         this is TcType.Constructor && expected is TcType.Constructor ->
             this.classifierId == expected.classifierId &&
                 this.arguments.size == expected.arguments.size &&
-                this.arguments.zip(expected.arguments).all { (left, right) -> left.isVarianceSubtypeOf(right) }
+                this.arguments.zip(expected.arguments).all { (left, right) ->
+                    left.isVarianceSubtypeOf(right)
+                }
 
         else -> false
     }
@@ -6241,9 +6743,7 @@ private data class ExtractedExplicitArguments(
 private sealed interface ExplicitArgument {
     data object Omitted : ExplicitArgument
 
-    data class PassThrough(
-        val expression: IrExpression,
-    ) : ExplicitArgument
+    data class PassThrough(val expression: IrExpression) : ExplicitArgument
 }
 
 private fun IrType.isTypeclassType(configuration: TypeclassConfiguration): Boolean {
@@ -6259,20 +6759,23 @@ private fun IrSimpleFunction.requiresSyntheticTypeclassResolution(
     configuration: TypeclassConfiguration,
 ): Boolean {
     val substitutionBySymbol =
-        typeParameters.mapIndexedNotNull { index, typeParameter ->
-            call.typeArgumentOrNull(index)?.let { argumentType ->
-                typeParameter.symbol to argumentType
+        typeParameters
+            .mapIndexedNotNull { index, typeParameter ->
+                call.typeArgumentOrNull(index)?.let { argumentType ->
+                    typeParameter.symbol to argumentType
+                }
             }
-        }.toMap()
+            .toMap()
     val parameters = regularAndContextParameters()
     val mappedOriginalIndices =
         mapCurrentArgumentsToOriginalParameters(
-            originalParameters = parameters,
-            currentArguments = call.valueArguments(),
-            typeArgumentMap = substitutionBySymbol,
-            visibleTypeParameters = null,
-            configuration = configuration,
-        ).mapTo(linkedSetOf()) { (_, originalIndex) -> originalIndex }
+                originalParameters = parameters,
+                currentArguments = call.valueArguments(),
+                typeArgumentMap = substitutionBySymbol,
+                visibleTypeParameters = null,
+                configuration = configuration,
+            )
+            .mapTo(linkedSetOf()) { (_, originalIndex) -> originalIndex }
     return parameters.anyIndexed { parameterIndex, parameter ->
         val substitutedType = parameter.type.substitute(substitutionBySymbol)
         parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context &&
@@ -6286,20 +6789,20 @@ private fun IrSimpleFunction.canAcceptSyntheticResolutionCall(
     configuration: TypeclassConfiguration,
 ): Boolean {
     val substitutionBySymbol =
-        typeParameters.mapIndexedNotNull { index, typeParameter ->
-            call.typeArgumentOrNull(index)?.let { argumentType ->
-                typeParameter.symbol to argumentType
+        typeParameters
+            .mapIndexedNotNull { index, typeParameter ->
+                call.typeArgumentOrNull(index)?.let { argumentType ->
+                    typeParameter.symbol to argumentType
+                }
             }
-        }.toMap()
+            .toMap()
     val normalizedCall = call.normalizedArgumentsForTypeclassRewrite(this)
 
-    fun receiverMatches(
-        actual: IrExpression?,
-        expected: IrType,
-    ): Boolean {
+    fun receiverMatches(actual: IrExpression?, expected: IrType): Boolean {
         val actualType = actual?.apparentType() ?: return false
         val substitutedExpected = expected.substitute(substitutionBySymbol)
-        return actualType == substitutedExpected || actualType.satisfiesExpectedArgumentType(substitutedExpected)
+        return actualType == substitutedExpected ||
+            actualType.satisfiesExpectedArgumentType(substitutedExpected)
     }
 
     dispatchReceiverParameter?.type?.let { expectedType ->
@@ -6316,25 +6819,27 @@ private fun IrSimpleFunction.canAcceptSyntheticResolutionCall(
     val parameters = regularAndContextParameters()
     val mappedOriginalIndices =
         mapCurrentArgumentsToOriginalParameters(
-            originalParameters = parameters,
-            currentArguments = normalizedCall.valueArguments,
-            typeArgumentMap = substitutionBySymbol,
-            visibleTypeParameters = null,
-            configuration = configuration,
-        ).mapTo(linkedSetOf()) { (_, originalIndex) -> originalIndex }
+                originalParameters = parameters,
+                currentArguments = normalizedCall.valueArguments,
+                typeArgumentMap = substitutionBySymbol,
+                visibleTypeParameters = null,
+                configuration = configuration,
+            )
+            .mapTo(linkedSetOf()) { (_, originalIndex) -> originalIndex }
     return parameters.allIndexed { parameterIndex, parameter ->
         when {
             parameterIndex in mappedOriginalIndices -> true
             parameter.defaultValue != null -> true
             parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context &&
-                parameter.type.substitute(substitutionBySymbol).isTypeclassType(configuration) -> true
+                parameter.type.substitute(substitutionBySymbol).isTypeclassType(configuration) ->
+                true
             else -> false
         }
     }
 }
 
 private fun IrSimpleFunction.visibleNonTypeclassParameterCount(
-    configuration: TypeclassConfiguration,
+    configuration: TypeclassConfiguration
 ): Int =
     regularAndContextParameters().count { parameter ->
         parameter.kind != org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context ||
@@ -6355,8 +6860,11 @@ internal fun exactPlainOverloadFallbackShapesMatch(
     callee: IrSimpleFunction,
     configuration: TypeclassConfiguration,
 ): Boolean =
-    wrapperResolutionShape(candidate, dropTypeclassContexts = false, configuration = configuration) ==
-        wrapperResolutionShape(callee, dropTypeclassContexts = true, configuration = configuration)
+    wrapperResolutionShape(
+        candidate,
+        dropTypeclassContexts = false,
+        configuration = configuration,
+    ) == wrapperResolutionShape(callee, dropTypeclassContexts = true, configuration = configuration)
 
 private inline fun <T> Iterable<T>.anyIndexed(predicate: (index: Int, T) -> Boolean): Boolean {
     var index = 0
@@ -6398,9 +6906,9 @@ private fun IrClass.visibleClassHierarchyInfo(): VisibleClassHierarchyInfo {
         }
     return VisibleClassHierarchyInfo(
         superClassifiers =
-            superTypes.mapNotNull { superType ->
-                superType.classOrNull?.owner?.classId?.asString()
-            }.toSet(),
+            superTypes
+                .mapNotNull { superType -> superType.classOrNull?.owner?.classId?.asString() }
+                .toSet(),
         isSealed = modality == Modality.SEALED,
         typeParameterVariances = typeParameters.map { typeParameter -> typeParameter.variance },
         typeParameters = typeParameterModels,
@@ -6412,7 +6920,9 @@ private fun IrClass.visibleClassHierarchyInfo(): VisibleClassHierarchyInfo {
 }
 
 private fun IrProperty.backingFieldOrGetterType(): IrType =
-    backingField?.type ?: getter?.returnType ?: error("Property $name has neither backing field nor getter type")
+    backingField?.type
+        ?: getter?.returnType
+        ?: error("Property $name has neither backing field nor getter type")
 
 private fun IrFunction.contextParameters(): List<IrValueParameter> =
     parameters.filter { it.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context }
@@ -6424,22 +6934,19 @@ private fun IrFunction.regularAndContextParameters(): List<IrValueParameter> =
             !it.isTypeclassWrapperMarkerParameter()
     }
 
-private fun IrFunction.valueArgumentIndex(
-    parameter: IrValueParameter,
-    fallbackIndex: Int,
-): Int =
-    valueParameters.indexOfFirst { candidate ->
-        candidate.symbol == parameter.symbol
-    }.takeIf { index -> index >= 0 } ?: fallbackIndex
+private fun IrFunction.valueArgumentIndex(parameter: IrValueParameter, fallbackIndex: Int): Int =
+    valueParameters
+        .indexOfFirst { candidate -> candidate.symbol == parameter.symbol }
+        .takeIf { index -> index >= 0 } ?: fallbackIndex
 
 private fun IrClass.primaryConstructorSymbol() =
     primaryConstructorOrNull()?.symbol
         ?: error("Could not resolve a primary constructor for ${classIdOrFail}")
 
 private fun IrClass.primaryConstructorOrNull(): IrConstructor? =
-    declarations.filterIsInstance<IrConstructor>()
-        .singleOrNull { constructor -> constructor.isPrimary }
-        ?: declarations.filterIsInstance<IrConstructor>().singleOrNull()
+    declarations.filterIsInstance<IrConstructor>().singleOrNull { constructor ->
+        constructor.isPrimary
+    } ?: declarations.filterIsInstance<IrConstructor>().singleOrNull()
 
 internal fun IrClass.implementsInterface(
     targetInterface: ClassId,
@@ -6463,18 +6970,15 @@ internal fun IrClass.implementsInterface(
     }
 }
 
-private fun IrClass.implementedDeriveMethodContracts(): Set<DeriveMethodContract> =
-    buildSet {
-        if (implementsInterface(TYPECLASS_DERIVER_CLASS_ID, linkedSetOf())) {
-            addAll(DeriveMethodContract.entries)
-        } else if (implementsInterface(PRODUCT_TYPECLASS_DERIVER_CLASS_ID, linkedSetOf())) {
-            add(DeriveMethodContract.PRODUCT)
-        }
+private fun IrClass.implementedDeriveMethodContracts(): Set<DeriveMethodContract> = buildSet {
+    if (implementsInterface(TYPECLASS_DERIVER_CLASS_ID, linkedSetOf())) {
+        addAll(DeriveMethodContract.entries)
+    } else if (implementsInterface(PRODUCT_TYPECLASS_DERIVER_CLASS_ID, linkedSetOf())) {
+        add(DeriveMethodContract.PRODUCT)
     }
+}
 
-private fun IrClass.resolveDeriveMethod(
-    contract: DeriveMethodContract,
-): IrSimpleFunction? {
+private fun IrClass.resolveDeriveMethod(contract: DeriveMethodContract): IrSimpleFunction? {
     if (contract !in implementedDeriveMethodContracts()) {
         return null
     }
@@ -6499,31 +7003,30 @@ private fun IrClass.resolveInheritedDeriveMethod(
             .mapNotNull { superOwner ->
                 superOwner.declaredDeriveMethod(contract)
                     ?: superOwner.resolveInheritedDeriveMethod(contract, visited)
-            }.distinctBy { function ->
-                function.symbol.signature?.toString()
-                    ?: function.name.asString()
+            }
+            .distinctBy { function ->
+                function.symbol.signature?.toString() ?: function.name.asString()
             }
     return matches.singleOrNull()
 }
 
-private fun IrClass.declaredDeriveMethod(
-    contract: DeriveMethodContract,
-): IrSimpleFunction? =
-    declarations
-        .filterIsInstance<IrSimpleFunction>()
-        .singleOrNull { function ->
-            function.isConcreteDeriveImplementation(owner = this, contract = contract) &&
-                function.name.asString() == contract.methodName &&
-                function.valueParameters.size == 1 &&
-                function.valueParameters.single().type.classOrNull?.owner?.classId == contract.metadataClassId
-        }
+private fun IrClass.declaredDeriveMethod(contract: DeriveMethodContract): IrSimpleFunction? =
+    declarations.filterIsInstance<IrSimpleFunction>().singleOrNull { function ->
+        function.isConcreteDeriveImplementation(owner = this, contract = contract) &&
+            function.name.asString() == contract.methodName &&
+            function.valueParameters.size == 1 &&
+            function.valueParameters.single().type.classOrNull?.owner?.classId ==
+                contract.metadataClassId
+    }
 
 private fun IrSimpleFunction.isConcreteDeriveImplementation(
     owner: IrClass,
     contract: DeriveMethodContract,
 ): Boolean =
     !isTypeclassDeriverEnumSentinel(owner, contract) &&
-        (body != null || (owner.origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB && modality != Modality.ABSTRACT))
+        (body != null ||
+            (owner.origin == IrDeclarationOrigin.IR_EXTERNAL_DECLARATION_STUB &&
+                modality != Modality.ABSTRACT))
 
 private fun isTypeclassDeriverEnumSentinel(
     owner: IrClass,
@@ -6557,28 +7060,36 @@ private fun lookupFunctionShape(
     val placeholderParameters =
         visibleTypeParametersForShape(function).associateBy(TcTypeParameter::id)
     val bySymbol =
-        visibleTypeParameterSymbols(function, listOf(function)).zip(placeholderParameters.values).associate { (symbol, parameter) ->
-            symbol to parameter
-        }
+        visibleTypeParameterSymbols(function, listOf(function))
+            .zip(placeholderParameters.values)
+            .associate { (symbol, parameter) -> symbol to parameter }
     val contextTypes =
-        function.contextParameters()
+        function
+            .contextParameters()
             .filterNot { dropTypeclassContexts && it.type.isTypeclassType(configuration) }
             .map { parameter ->
                 irTypeToModel(parameter.type, bySymbol)
-                    ?: error("Unsupported signature type ${parameter.type} in ${function.callableId}")
+                    ?: error(
+                        "Unsupported signature type ${parameter.type} in ${function.callableId}"
+                    )
             }
     val regularTypes =
-        function.parameters.filter { it.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular }
+        function.parameters
+            .filter { it.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular }
             .filterNot(IrValueParameter::isTypeclassWrapperMarkerParameter)
             .map { parameter ->
                 irTypeToModel(parameter.type, bySymbol)
-                    ?: error("Unsupported signature type ${parameter.type} in ${function.callableId}")
+                    ?: error(
+                        "Unsupported signature type ${parameter.type} in ${function.callableId}"
+                    )
             }
-    val extensionType = function.extensionReceiverParameter?.type?.let { type -> irTypeToModel(type, bySymbol) }
+    val extensionType =
+        function.extensionReceiverParameter?.type?.let { type -> irTypeToModel(type, bySymbol) }
     return LookupFunctionShape(
         dispatchReceiver = function.dispatchReceiverParameter != null,
         extensionReceiverType = extensionType,
-        typeParameterCount = function.visibleSignatureTypeParameterCount(dropTypeclassContexts, configuration),
+        typeParameterCount =
+            function.visibleSignatureTypeParameterCount(dropTypeclassContexts, configuration),
         contextParameterTypes = contextTypes,
         regularParameterTypes = regularTypes,
     )
@@ -6590,18 +7101,21 @@ private fun wrapperResolutionShape(
     configuration: TypeclassConfiguration,
 ): WrapperResolutionShape {
     val contextTypes =
-        function.contextParameters()
+        function
+            .contextParameters()
             .filterNot { dropTypeclassContexts && it.type.isTypeclassType(configuration) }
             .map { parameter -> parameter.type.render() }
     val regularTypes =
-        function.parameters.filter { it.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular }
+        function.parameters
+            .filter { it.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular }
             .filterNot(IrValueParameter::isTypeclassWrapperMarkerParameter)
             .map { parameter -> parameter.type.render() }
     val extensionType = function.extensionReceiverParameter?.type?.render()
     return WrapperResolutionShape(
         dispatchReceiver = function.dispatchReceiverParameter != null,
         extensionReceiverType = extensionType,
-        typeParameterCount = function.visibleSignatureTypeParameterCount(dropTypeclassContexts, configuration),
+        typeParameterCount =
+            function.visibleSignatureTypeParameterCount(dropTypeclassContexts, configuration),
         contextParameterTypes = contextTypes,
         regularParameterTypes = regularTypes,
     )
@@ -6638,9 +7152,7 @@ private fun visibleTypeParameterSymbols(
     val parentWithTypeParameters =
         enclosingFunctions.firstOrNull()?.parent ?: currentDeclaration.parent
     collectParentTypeParameters(parentWithTypeParameters, result)
-    enclosingFunctions.forEach { function ->
-        function.typeParameters.mapTo(result) { it.symbol }
-    }
+    enclosingFunctions.forEach { function -> function.typeParameters.mapTo(result) { it.symbol } }
     return result
 }
 
@@ -6661,7 +7173,9 @@ private fun collectParentTypeParameters(
     }
 }
 
-private fun visibleTypeParameterId(symbol: org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol): String =
+private fun visibleTypeParameterId(
+    symbol: org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol
+): String =
     when (val parent = symbol.owner.parent) {
         is IrClass -> "class:${parent.classIdOrFail.asString()}:${symbol.owner.name}"
         is IrSimpleFunction -> ruleTypeParameterId(parent, symbol.owner)
@@ -6681,7 +7195,12 @@ private fun IrDeclarationBase.enclosingFunctions(): List<IrFunction> {
 }
 
 private fun typeParameterOwnerId(function: IrSimpleFunction): String {
-    val shape = wrapperResolutionShape(function, dropTypeclassContexts = false, configuration = TypeclassConfiguration())
+    val shape =
+        wrapperResolutionShape(
+            function,
+            dropTypeclassContexts = false,
+            configuration = TypeclassConfiguration(),
+        )
     return buildString {
         append(function.safeCallableIdentity())
         append("#dispatch=")
@@ -6698,18 +7217,19 @@ private fun typeParameterOwnerId(function: IrSimpleFunction): String {
 }
 
 private fun IrSimpleFunction.safeCallableIdentity(): String =
-    runCatching { callableId.toString() }.getOrElse {
-        buildString {
-            append("local:")
-            append(name.asString())
-            append('@')
-            append(startOffset)
-            append(':')
-            append(endOffset)
-            append("#parent=")
-            append(parent.localDeclarationIdentity())
+    runCatching { callableId.toString() }
+        .getOrElse {
+            buildString {
+                append("local:")
+                append(name.asString())
+                append('@')
+                append(startOffset)
+                append(':')
+                append(endOffset)
+                append("#parent=")
+                append(parent.localDeclarationIdentity())
+            }
         }
-    }
 
 private fun IrSimpleFunction.safeCallableIdOrNull(): CallableId? =
     runCatching { callableId }.getOrNull()
@@ -6727,10 +7247,14 @@ private fun IrProperty.lookupOwnerKeyOrNull(): String? =
 private fun IrMetadataSourceOwner.deserializedLookupOwnerKeyOrNull(): String? =
     when (val metadataSource = metadata) {
         is DescriptorMetadataSource.Function ->
-            (metadataSource.descriptor as? DeserializedCallableMemberDescriptor)?.containerSource?.lookupOwnerKeyOrNull()
+            (metadataSource.descriptor as? DeserializedCallableMemberDescriptor)
+                ?.containerSource
+                ?.lookupOwnerKeyOrNull()
 
         is DescriptorMetadataSource.Property ->
-            (metadataSource.descriptor as? DeserializedCallableMemberDescriptor)?.containerSource?.lookupOwnerKeyOrNull()
+            (metadataSource.descriptor as? DeserializedCallableMemberDescriptor)
+                ?.containerSource
+                ?.lookupOwnerKeyOrNull()
 
         else -> null
     }
@@ -6748,11 +7272,14 @@ private fun IrSimpleFunction.matchesImportedLookupRule(
 ): Boolean {
     val placeholderParameters = visibleTypeParametersForShape(this)
     val bySymbol =
-        visibleTypeParameterSymbols(this, listOf(this)).zip(placeholderParameters).associate { (symbol, parameter) ->
+        visibleTypeParameterSymbols(this, listOf(this)).zip(placeholderParameters).associate {
+            (symbol, parameter) ->
             symbol to parameter
         }
-    val targetProvidedType = targetRule.providedType.normalizeLookupRuleTypeParameters(targetRule.typeParameters)
-    return listOf(returnType).providedTypeExpansion(bySymbol, configuration).validTypes.any { candidateProvidedType ->
+    val targetProvidedType =
+        targetRule.providedType.normalizeLookupRuleTypeParameters(targetRule.typeParameters)
+    return listOf(returnType).providedTypeExpansion(bySymbol, configuration).validTypes.any {
+        candidateProvidedType ->
         candidateProvidedType == targetProvidedType
     }
 }
@@ -6761,20 +7288,27 @@ private fun IrProperty.matchesImportedLookupRule(
     targetRule: InstanceRule,
     configuration: TypeclassConfiguration,
 ): Boolean {
-    val targetProvidedType = targetRule.providedType.normalizeLookupRuleTypeParameters(targetRule.typeParameters)
-    return listOf(backingFieldOrGetterType()).providedTypeExpansion(emptyMap(), configuration).validTypes.any { candidateProvidedType ->
-        candidateProvidedType == targetProvidedType
-    }
+    val targetProvidedType =
+        targetRule.providedType.normalizeLookupRuleTypeParameters(targetRule.typeParameters)
+    return listOf(backingFieldOrGetterType())
+        .providedTypeExpansion(emptyMap(), configuration)
+        .validTypes
+        .any { candidateProvidedType -> candidateProvidedType == targetProvidedType }
 }
 
-private fun TcType.normalizeLookupRuleTypeParameters(typeParameters: List<TcTypeParameter>): TcType =
+private fun TcType.normalizeLookupRuleTypeParameters(
+    typeParameters: List<TcTypeParameter>
+): TcType =
     substituteType(
-        typeParameters.mapIndexed { index, parameter ->
-            parameter.id to TcType.Variable(id = "P$index", displayName = "P$index")
-        }.toMap(),
+        typeParameters
+            .mapIndexed { index, parameter ->
+                parameter.id to TcType.Variable(id = "P$index", displayName = "P$index")
+            }
+            .toMap()
     )
 
-private fun org.jetbrains.kotlin.ir.declarations.IrDeclarationParent.localDeclarationIdentity(): String =
+private fun org.jetbrains.kotlin.ir.declarations.IrDeclarationParent.localDeclarationIdentity():
+    String =
     when (this) {
         is IrSimpleFunction ->
             buildString {
@@ -6812,37 +7346,38 @@ private fun collectLocalContexts(
 ): List<LocalTypeclassContext> {
     return buildList {
         enclosingFunctions.asReversed().forEach { function ->
-            function.extensionReceiverParameter
-                ?.let { parameter ->
-                    parameter.type.localEvidenceTypes(visible.bySymbol, configuration).forEach { providedType ->
-                        add(
-                            LocalTypeclassContext(
-                                expression = { irGet(parameter) },
-                                providedType = providedType,
-                                displayName = parameter.name.asString(),
-                            ),
+            function.extensionReceiverParameter?.let { parameter ->
+                parameter.type.localEvidenceTypes(visible.bySymbol, configuration).forEach {
+                    providedType ->
+                    add(
+                        LocalTypeclassContext(
+                            expression = { irGet(parameter) },
+                            providedType = providedType,
+                            displayName = parameter.name.asString(),
                         )
-                    }
+                    )
                 }
-            function.contextParameters()
-                .forEach { parameter ->
-                    parameter.type.localEvidenceTypes(visible.bySymbol, configuration).forEach { providedType ->
-                        add(
-                            LocalTypeclassContext(
-                                expression = { irGet(parameter) },
-                                providedType = providedType,
-                                displayName = parameter.name.asString(),
-                            ),
+            }
+            function.contextParameters().forEach { parameter ->
+                parameter.type.localEvidenceTypes(visible.bySymbol, configuration).forEach {
+                    providedType ->
+                    add(
+                        LocalTypeclassContext(
+                            expression = { irGet(parameter) },
+                            providedType = providedType,
+                            displayName = parameter.name.asString(),
                         )
-                    }
+                    )
                 }
+            }
         }
     }
 }
 
 private fun irTypeToModel(
     type: IrType,
-    typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
+    typeParameterBySymbol:
+        Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
 ): TcType? {
     val simpleType = type as? IrSimpleType ?: return null
     return when (val classifier = simpleType.classifier) {
@@ -6875,7 +7410,8 @@ private fun irTypeToModel(
 
 private fun irTypeArgumentToModel(
     argument: org.jetbrains.kotlin.ir.types.IrTypeArgument,
-    typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
+    typeParameterBySymbol:
+        Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
 ): TcType? =
     when (argument) {
         is IrStarProjection -> TcType.StarProjection
@@ -6892,7 +7428,8 @@ private fun irTypeArgumentToModel(
     }
 
 private fun Iterable<IrType>.providedTypeExpansion(
-    typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
+    typeParameterBySymbol:
+        Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
     configuration: TypeclassConfiguration,
 ): ProvidedTypeExpansion {
     val declaredTypes = linkedMapOf<String, TcType>()
@@ -6924,7 +7461,8 @@ private fun Iterable<IrType>.providedTypeExpansion(
 }
 
 private fun IrType.declaredProvidedTypeOrNull(
-    typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
+    typeParameterBySymbol:
+        Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
     configuration: TypeclassConfiguration,
 ): TcType? {
     val simpleType = this as? IrSimpleType ?: return null
@@ -6933,19 +7471,25 @@ private fun IrType.declaredProvidedTypeOrNull(
 }
 
 private fun IrType.providedTypeExpansion(
-    typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
+    typeParameterBySymbol:
+        Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
     configuration: TypeclassConfiguration,
     previousWereTypeclass: Boolean,
     visited: Set<String>,
 ): ProvidedTypeExpansion {
-    val simpleType = this as? IrSimpleType ?: return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
-    val currentType = irTypeToModel(this, typeParameterBySymbol) ?: return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
+    val simpleType =
+        this as? IrSimpleType ?: return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
+    val currentType =
+        irTypeToModel(this, typeParameterBySymbol)
+            ?: return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
     val visitKey = currentType.render()
     if (visitKey in visited) {
         return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
     }
 
-    val classSymbol = simpleType.classOrNull ?: return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
+    val classSymbol =
+        simpleType.classOrNull
+            ?: return ProvidedTypeExpansion(emptyList(), emptyList(), emptyList())
     val currentIsTypeclass = isTypeclassType(configuration)
     val validTypes = linkedMapOf<String, TcType>()
     val invalidTypes = linkedMapOf<String, TcType>()
@@ -6966,9 +7510,12 @@ private fun IrType.providedTypeExpansion(
     }
 
     val substitutions =
-        classSymbol.owner.typeParameters.zip(simpleType.arguments).mapNotNull { (parameter, argument) ->
-            argument.argumentTypeOrNull()?.let { type -> parameter.symbol to type }
-        }.toMap()
+        classSymbol.owner.typeParameters
+            .zip(simpleType.arguments)
+            .mapNotNull { (parameter, argument) ->
+                argument.argumentTypeOrNull()?.let { type -> parameter.symbol to type }
+            }
+            .toMap()
     val nextPreviousWereTypeclass = previousWereTypeclass && currentIsTypeclass
     val nextVisited = visited + visitKey
     classSymbol.owner.superTypes.forEach { superType ->
@@ -7013,11 +7560,14 @@ private fun modelToIrType(
     pluginContext: IrPluginContext,
 ): IrType =
     when (type) {
-        TcType.StarProjection -> error("Top-level star projections cannot be materialized as standalone IR types.")
-        is TcType.Projected -> error("Top-level projected arguments cannot be materialized as standalone IR types.")
+        TcType.StarProjection ->
+            error("Top-level star projections cannot be materialized as standalone IR types.")
+        is TcType.Projected ->
+            error("Top-level projected arguments cannot be materialized as standalone IR types.")
         is TcType.Variable -> {
-            val symbol = visibleTypeParameters.byId[type.id]
-                ?: error("Unbound type variable ${type.displayName}")
+            val symbol =
+                visibleTypeParameters.byId[type.id]
+                    ?: error("Unbound type variable ${type.displayName}")
             symbol.defaultType.let { irType ->
                 if (type.isNullable) {
                     irType.makeNullable()
@@ -7029,8 +7579,9 @@ private fun modelToIrType(
 
         is TcType.Constructor -> {
             val classId = ClassId.fromString(type.classifierId)
-            val classifier = pluginContext.referenceClass(classId)
-                ?: error("Could not resolve classifier ${type.classifierId}")
+            val classifier =
+                pluginContext.referenceClass(classId)
+                    ?: error("Could not resolve classifier ${type.classifierId}")
             val arguments: List<IrTypeArgument> =
                 type.arguments.map { nested ->
                     when (nested) {
@@ -7055,16 +7606,14 @@ private fun modelToIrType(
 private fun <T> Iterator<T>.nextOrNull(): T? = if (hasNext()) next() else null
 
 private fun IrCall.valueArguments(): List<IrExpression?> =
-    (0 until valueArgumentsCount)
-        .map(::getValueArgument)
-        .let { rawArguments ->
-            val lastPresentIndex = rawArguments.indexOfLast { argument -> argument != null }
-            if (lastPresentIndex < 0) {
-                emptyList()
-            } else {
-                rawArguments.subList(0, lastPresentIndex + 1)
-            }
+    (0 until valueArgumentsCount).map(::getValueArgument).let { rawArguments ->
+        val lastPresentIndex = rawArguments.indexOfLast { argument -> argument != null }
+        if (lastPresentIndex < 0) {
+            emptyList()
+        } else {
+            rawArguments.subList(0, lastPresentIndex + 1)
         }
+    }
 
 private fun IrCall.typeArgumentOrNull(index: Int): IrType? =
     if (index in 0 until typeArgumentsCount) {
@@ -7074,34 +7623,44 @@ private fun IrCall.typeArgumentOrNull(index: Int): IrType? =
     }
 
 private fun IrExpression.apparentType(): IrType =
-    (this as? IrCall)
-        ?.let { call ->
-            val callee = call.symbol.owner
-            val returnType = callee.returnType as? IrSimpleType ?: return@let null
-            val returnedTypeParameter = returnType.classifier as? org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol ?: return@let null
-            val typeParameterIndex = callee.typeParameters.indexOfFirst { parameter -> parameter.symbol == returnedTypeParameter }
-            if (typeParameterIndex >= 0) {
-                call.typeArgumentOrNull(typeParameterIndex)
-            } else {
-                null
+    (this as? IrCall)?.let { call ->
+        val callee = call.symbol.owner
+        val returnType = callee.returnType as? IrSimpleType ?: return@let null
+        val returnedTypeParameter =
+            returnType.classifier as? org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol
+                ?: return@let null
+        val typeParameterIndex =
+            callee.typeParameters.indexOfFirst { parameter ->
+                parameter.symbol == returnedTypeParameter
             }
+        if (typeParameterIndex >= 0) {
+            call.typeArgumentOrNull(typeParameterIndex)
+        } else {
+            null
         }
-        ?: type
+    } ?: type
 
-private fun IrCall.normalizedArgumentsForTypeclassRewrite(original: IrSimpleFunction): NormalizedCallArguments {
+private fun IrCall.normalizedArgumentsForTypeclassRewrite(
+    original: IrSimpleFunction
+): NormalizedCallArguments {
     val rawValueArguments =
         valueArguments().let { currentArguments ->
-            if (origin == IrStatementOrigin.EQ && original.name.asString() == "set" && currentArguments.lastOrNull() == null) {
+            if (
+                origin == IrStatementOrigin.EQ &&
+                    original.name.asString() == "set" &&
+                    currentArguments.lastOrNull() == null
+            ) {
                 currentArguments.dropLast(1)
             } else {
                 currentArguments
             }
         }
-    if (origin == IrStatementOrigin.EQ &&
-        original.name.asString() == "set" &&
-        original.extensionReceiverParameter != null &&
-        extensionReceiver != null &&
-        rawValueArguments.isNotEmpty()
+    if (
+        origin == IrStatementOrigin.EQ &&
+            original.name.asString() == "set" &&
+            original.extensionReceiverParameter != null &&
+            extensionReceiver != null &&
+            rawValueArguments.isNotEmpty()
     ) {
         return NormalizedCallArguments(
             dispatchReceiver = dispatchReceiver,
@@ -7113,11 +7672,12 @@ private fun IrCall.normalizedArgumentsForTypeclassRewrite(original: IrSimpleFunc
                 },
         )
     }
-    if (origin == IrStatementOrigin.IN &&
-        original.name.asString() == "contains" &&
-        original.extensionReceiverParameter != null &&
-        extensionReceiver != null &&
-        rawValueArguments.isNotEmpty()
+    if (
+        origin == IrStatementOrigin.IN &&
+            original.name.asString() == "contains" &&
+            original.extensionReceiverParameter != null &&
+            extensionReceiver != null &&
+            rawValueArguments.isNotEmpty()
     ) {
         return NormalizedCallArguments(
             dispatchReceiver = dispatchReceiver,
@@ -7129,7 +7689,11 @@ private fun IrCall.normalizedArgumentsForTypeclassRewrite(original: IrSimpleFunc
                 },
         )
     }
-    if (origin == IrStatementOrigin.GET_ARRAY_ELEMENT && original.extensionReceiverParameter != null && rawValueArguments.isNotEmpty()) {
+    if (
+        origin == IrStatementOrigin.GET_ARRAY_ELEMENT &&
+            original.extensionReceiverParameter != null &&
+            rawValueArguments.isNotEmpty()
+    ) {
         return NormalizedCallArguments(
             dispatchReceiver = dispatchReceiver,
             extensionReceiver = rawValueArguments.first(),
@@ -7141,14 +7705,17 @@ private fun IrCall.normalizedArgumentsForTypeclassRewrite(original: IrSimpleFunc
         )
     }
 
-    if (original.extensionReceiverParameter != null && extensionReceiver == null && rawValueArguments.isNotEmpty()) {
+    if (
+        original.extensionReceiverParameter != null &&
+            extensionReceiver == null &&
+            rawValueArguments.isNotEmpty()
+    ) {
         val firstParameter = original.regularAndContextParameters().firstOrNull()
         val firstRawArgument = rawValueArguments.first()
         val firstRawBelongsToExtensionReceiver =
-            firstRawArgument != null && (
-                firstParameter == null ||
-                    !firstRawArgument.type.satisfiesExpectedContextType(firstParameter.type)
-                )
+            firstRawArgument != null &&
+                (firstParameter == null ||
+                    !firstRawArgument.type.satisfiesExpectedContextType(firstParameter.type))
         if (firstRawBelongsToExtensionReceiver) {
             return NormalizedCallArguments(
                 dispatchReceiver = dispatchReceiver,
@@ -7191,7 +7758,7 @@ private fun extractExplicitArguments(
                     append(" at parameter ")
                     append(it)
                 }
-            },
+            }
         )
 
     val explicitByOriginalIndex = linkedMapOf<Int, ExplicitArgument>()
@@ -7199,8 +7766,9 @@ private fun extractExplicitArguments(
     currentToOriginal.forEach { (currentIndex, originalIndex) ->
         val argument = normalizedValueArguments.getOrNull(currentIndex)
         val parameter = originalParameters[originalIndex]
-        if (parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context &&
-            parameter.type.substitute(substitutionBySymbol).isTypeclassType(configuration)
+        if (
+            parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context &&
+                parameter.type.substitute(substitutionBySymbol).isTypeclassType(configuration)
         ) {
             if (argument != null) {
                 preservedTypeclassByOriginalIndex[originalIndex] = argument
@@ -7211,7 +7779,8 @@ private fun extractExplicitArguments(
             when {
                 argument != null -> ExplicitArgument.PassThrough(argument)
                 parameter.defaultValue != null -> ExplicitArgument.Omitted
-                parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context -> ExplicitArgument.Omitted
+                parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context ->
+                    ExplicitArgument.Omitted
                 else -> missingArgumentError(originalIndex)
             }
     }
@@ -7225,15 +7794,22 @@ private fun extractExplicitArguments(
             }
         }
     val missingNonTypeclassParameters =
-        nonTypeclassParameterIndices.filterNot { parameterIndex -> parameterIndex in explicitByOriginalIndex }
-    if (missingNonTypeclassParameters.isNotEmpty() && nonTypeclassParameterIndices.size == normalizedValueArguments.size) {
+        nonTypeclassParameterIndices.filterNot { parameterIndex ->
+            parameterIndex in explicitByOriginalIndex
+        }
+    if (
+        missingNonTypeclassParameters.isNotEmpty() &&
+            nonTypeclassParameterIndices.size == normalizedValueArguments.size
+    ) {
         explicitByOriginalIndex.clear()
         preservedTypeclassByOriginalIndex.clear()
-        nonTypeclassParameterIndices.zip(normalizedValueArguments).forEach { (parameterIndex, argument) ->
+        nonTypeclassParameterIndices.zip(normalizedValueArguments).forEach {
+            (parameterIndex, argument) ->
             explicitByOriginalIndex[parameterIndex] =
                 when {
                     argument != null -> ExplicitArgument.PassThrough(argument)
-                    originalParameters[parameterIndex].defaultValue != null -> ExplicitArgument.Omitted
+                    originalParameters[parameterIndex].defaultValue != null ->
+                        ExplicitArgument.Omitted
                     else -> missingArgumentError(parameterIndex)
                 }
         }
@@ -7242,14 +7818,20 @@ private fun extractExplicitArguments(
     val nonTypeclassArguments =
         originalParameters.mapIndexedNotNull { index, parameter ->
             val substitutedType = parameter.type.substitute(substitutionBySymbol)
-            if (parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context && substitutedType.isTypeclassType(configuration)) {
+            if (
+                parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context &&
+                    substitutedType.isTypeclassType(configuration)
+            ) {
                 return@mapIndexedNotNull null
             }
-            explicitByOriginalIndex[index] ?: when {
-                parameter.defaultValue != null -> ExplicitArgument.Omitted
-                parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context -> ExplicitArgument.Omitted
-                else -> missingArgumentError(index)
-            }
+            explicitByOriginalIndex[index]
+                ?: when {
+                    parameter.defaultValue != null -> ExplicitArgument.Omitted
+                    parameter.kind ==
+                        org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context ->
+                        ExplicitArgument.Omitted
+                    else -> missingArgumentError(index)
+                }
         }
 
     return ExtractedExplicitArguments(
@@ -7262,7 +7844,8 @@ private fun IrType.matchesTypeclassParameterType(
     expected: IrType,
     visibleTypeParameters: VisibleTypeParameters,
 ): Boolean =
-    irTypeToModel(this, visibleTypeParameters.bySymbol) == irTypeToModel(expected, visibleTypeParameters.bySymbol)
+    irTypeToModel(this, visibleTypeParameters.bySymbol) ==
+        irTypeToModel(expected, visibleTypeParameters.bySymbol)
 
 private fun IrType.isNullableNothingType(): Boolean {
     val owner = (this as? IrSimpleType)?.classOrNull?.owner ?: classOrNull?.owner ?: return false
@@ -7280,7 +7863,10 @@ private fun IrType.satisfiesExpectedArgumentType(
     if (isNullableNothingType() && expected.isNullable()) {
         return true
     }
-    if (visibleTypeParameters != null && matchesTypeclassParameterType(expected, visibleTypeParameters)) {
+    if (
+        visibleTypeParameters != null &&
+            matchesTypeclassParameterType(expected, visibleTypeParameters)
+    ) {
         return true
     }
 
@@ -7289,21 +7875,39 @@ private fun IrType.satisfiesExpectedArgumentType(
     val actualOwner = actualSimple?.classOrNull?.owner ?: classOrNull?.owner ?: return false
     val expectedOwner = expectedSimple?.classOrNull?.owner ?: expected.classOrNull?.owner
 
-    if (actualOwner.symbol == expectedOwner?.symbol && actualSimple != null && expectedSimple != null) {
+    if (
+        actualOwner.symbol == expectedOwner?.symbol &&
+            actualSimple != null &&
+            expectedSimple != null
+    ) {
         if (actualSimple.isNullable() && !expectedSimple.isNullable()) {
             return false
         }
-        if (actualSimple.arguments.size == expectedSimple.arguments.size &&
-            actualSimple.arguments.zip(expectedSimple.arguments).all { (actualArgument, expectedArgument) ->
-                when (expectedArgument) {
-                    is IrStarProjection -> true
-                    is org.jetbrains.kotlin.ir.types.IrTypeProjection ->
-                        actualArgument.argumentTypeOrNull()?.satisfiesExpectedArgumentType(expectedArgument.type, visibleTypeParameters, visited) == true
-                    is IrType ->
-                        actualArgument.argumentTypeOrNull()?.satisfiesExpectedArgumentType(expectedArgument, visibleTypeParameters, visited) == true
-                    else -> false
+        if (
+            actualSimple.arguments.size == expectedSimple.arguments.size &&
+                actualSimple.arguments.zip(expectedSimple.arguments).all {
+                    (actualArgument, expectedArgument) ->
+                    when (expectedArgument) {
+                        is IrStarProjection -> true
+                        is org.jetbrains.kotlin.ir.types.IrTypeProjection ->
+                            actualArgument
+                                .argumentTypeOrNull()
+                                ?.satisfiesExpectedArgumentType(
+                                    expectedArgument.type,
+                                    visibleTypeParameters,
+                                    visited,
+                                ) == true
+                        is IrType ->
+                            actualArgument
+                                .argumentTypeOrNull()
+                                ?.satisfiesExpectedArgumentType(
+                                    expectedArgument,
+                                    visibleTypeParameters,
+                                    visited,
+                                ) == true
+                        else -> false
+                    }
                 }
-            }
         ) {
             return true
         }
@@ -7315,16 +7919,18 @@ private fun IrType.satisfiesExpectedArgumentType(
     }
     val substitutions =
         if (actualSimple != null) {
-            actualOwner.typeParameters.mapIndexedNotNull { index, parameter ->
-                val argument = actualSimple.arguments.getOrNull(index)
-                val argumentType =
-                    when (argument) {
-                        is org.jetbrains.kotlin.ir.types.IrTypeProjection -> argument.type
-                        is IrType -> argument
-                        else -> null
-                    } ?: return@mapIndexedNotNull null
-                parameter.symbol to argumentType
-            }.toMap()
+            actualOwner.typeParameters
+                .mapIndexedNotNull { index, parameter ->
+                    val argument = actualSimple.arguments.getOrNull(index)
+                    val argumentType =
+                        when (argument) {
+                            is org.jetbrains.kotlin.ir.types.IrTypeProjection -> argument.type
+                            is IrType -> argument
+                            else -> null
+                        } ?: return@mapIndexedNotNull null
+                    parameter.symbol to argumentType
+                }
+                .toMap()
         } else {
             emptyMap()
         }
@@ -7347,7 +7953,10 @@ private fun IrType.satisfiesExpectedContextType(
     if (this == expected) {
         return true
     }
-    if (visibleTypeParameters != null && matchesTypeclassParameterType(expected, visibleTypeParameters)) {
+    if (
+        visibleTypeParameters != null &&
+            matchesTypeclassParameterType(expected, visibleTypeParameters)
+    ) {
         return true
     }
     val simpleType = this as? IrSimpleType
@@ -7358,16 +7967,18 @@ private fun IrType.satisfiesExpectedContextType(
     }
     val substitutions =
         if (simpleType != null) {
-            owner.typeParameters.mapIndexedNotNull { index, parameter ->
-                val argument = simpleType.arguments.getOrNull(index)
-                val argumentType =
-                    when (argument) {
-                        is org.jetbrains.kotlin.ir.types.IrTypeProjection -> argument.type
-                        is IrType -> argument
-                        else -> null
-                    } ?: return@mapIndexedNotNull null
-                parameter.symbol to argumentType
-            }.toMap()
+            owner.typeParameters
+                .mapIndexedNotNull { index, parameter ->
+                    val argument = simpleType.arguments.getOrNull(index)
+                    val argumentType =
+                        when (argument) {
+                            is org.jetbrains.kotlin.ir.types.IrTypeProjection -> argument.type
+                            is IrType -> argument
+                            else -> null
+                        } ?: return@mapIndexedNotNull null
+                    parameter.symbol to argumentType
+                }
+                .toMap()
         } else {
             emptyMap()
         }
@@ -7379,8 +7990,16 @@ private fun IrType.satisfiesExpectedContextType(
                 superType.substitute(substitutions)
             }
         substitutedSuperType == expected ||
-            (visibleTypeParameters != null && substitutedSuperType.matchesTypeclassParameterType(expected, visibleTypeParameters)) ||
-            substitutedSuperType.satisfiesExpectedContextType(expected, visibleTypeParameters, visited)
+            (visibleTypeParameters != null &&
+                substitutedSuperType.matchesTypeclassParameterType(
+                    expected,
+                    visibleTypeParameters,
+                )) ||
+            substitutedSuperType.satisfiesExpectedContextType(
+                expected,
+                visibleTypeParameters,
+                visited,
+            )
     }
 }
 
@@ -7389,7 +8008,8 @@ private fun IrType.matchesProjectedExplicitContextType(
     visibleTypeParameters: VisibleTypeParameters? = null,
 ): Boolean {
     val actualModel = irTypeToModel(this, visibleTypeParameters?.bySymbol.orEmpty()) ?: return false
-    val expectedModel = irTypeToModel(expected, visibleTypeParameters?.bySymbol.orEmpty()) ?: return false
+    val expectedModel =
+        irTypeToModel(expected, visibleTypeParameters?.bySymbol.orEmpty()) ?: return false
     return actualModel.matchesProjectedExplicitContextType(expectedModel)
 }
 
@@ -7421,8 +8041,7 @@ private fun IrValueParameter.isTypeclassWrapperMarkerParameter(): Boolean =
 private fun IrSimpleFunction.visibleSignatureTypeParameterCount(
     dropTypeclassContexts: Boolean,
     configuration: TypeclassConfiguration,
-): Int =
-    visibleSignatureTypeParameterNames(dropTypeclassContexts, configuration).size
+): Int = visibleSignatureTypeParameterNames(dropTypeclassContexts, configuration).size
 
 private fun IrSimpleFunction.visibleSignatureTypeParameterNames(
     dropTypeclassContexts: Boolean,
@@ -7434,12 +8053,12 @@ private fun IrSimpleFunction.visibleSignatureTypeParameterNames(
     returnType.collectReferencedTypeParameters(referenced)
     parameters
         .filter { parameter ->
-            (parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular && !parameter.isTypeclassWrapperMarkerParameter()) ||
+            (parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Regular &&
+                !parameter.isTypeclassWrapperMarkerParameter()) ||
                 (parameter.kind == org.jetbrains.kotlin.ir.declarations.IrParameterKind.Context &&
                     !(dropTypeclassContexts && parameter.type.isTypeclassType(configuration)))
-        }.forEach { parameter ->
-            parameter.type.collectReferencedTypeParameters(referenced)
         }
+        .forEach { parameter -> parameter.type.collectReferencedTypeParameters(referenced) }
 
     return typeParameters.mapNotNull { typeParameter ->
         typeParameter.name.asString().takeIf { typeParameter.symbol in referenced }
@@ -7447,7 +8066,7 @@ private fun IrSimpleFunction.visibleSignatureTypeParameterNames(
 }
 
 private fun IrType.collectReferencedTypeParameters(
-    sink: MutableSet<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol>,
+    sink: MutableSet<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol>
 ) {
     val simpleType = this as? IrSimpleType ?: return
     when (val classifier = simpleType.classifier) {
@@ -7458,7 +8077,8 @@ private fun IrType.collectReferencedTypeParameters(
     simpleType.arguments.forEach { argument ->
         when (argument) {
             is IrType -> argument.collectReferencedTypeParameters(sink)
-            is org.jetbrains.kotlin.ir.types.IrTypeProjection -> argument.type.collectReferencedTypeParameters(sink)
+            is org.jetbrains.kotlin.ir.types.IrTypeProjection ->
+                argument.type.collectReferencedTypeParameters(sink)
             is IrStarProjection -> Unit
         }
     }
@@ -7469,11 +8089,13 @@ internal fun currentCallTypeArgumentsByOriginalName(
     original: IrSimpleFunction,
     configuration: TypeclassConfiguration,
 ): Map<String, IrType> {
-    val visibleNames = original.visibleSignatureTypeParameterNames(dropTypeclassContexts = true, configuration)
+    val visibleNames =
+        original.visibleSignatureTypeParameterNames(dropTypeclassContexts = true, configuration)
     return mapCallTypeArgumentsByOriginalParameterName(
         typeArguments = call.typeArguments,
         visibleTypeParameterNames = visibleNames,
-        originalTypeParameterNames = original.typeParameters.map { typeParameter -> typeParameter.name.asString() },
+        originalTypeParameterNames =
+            original.typeParameters.map { typeParameter -> typeParameter.name.asString() },
     )
 }
 
@@ -7488,11 +8110,11 @@ internal fun mapCallTypeArgumentsByOriginalParameterName(
         } else {
             originalTypeParameterNames
         }
-    return targetNames.mapIndexedNotNull { index, typeParameterName ->
-        typeArguments.getOrNull(index)?.let { irType ->
-            typeParameterName to irType
+    return targetNames
+        .mapIndexedNotNull { index, typeParameterName ->
+            typeArguments.getOrNull(index)?.let { irType -> typeParameterName to irType }
         }
-    }.toMap()
+        .toMap()
 }
 
 private fun inferOriginalTypeArguments(
@@ -7511,12 +8133,14 @@ private fun inferOriginalTypeArguments(
                 displayName = symbol.owner.name.asString(),
             )
         }
-    val bindableVariableIds = originalTypeParameterBySymbol.values.mapTo(linkedSetOf(), TcTypeParameter::id)
+    val bindableVariableIds =
+        originalTypeParameterBySymbol.values.mapTo(linkedSetOf(), TcTypeParameter::id)
     val bindings = linkedMapOf<String, TcType>()
     val classifierVariancesCache = linkedMapOf<String, List<Variance>>()
 
     original.typeParameters.forEach { typeParameter ->
-        val currentType = currentCallTypeArgumentsByName[typeParameter.name.asString()] ?: return@forEach
+        val currentType =
+            currentCallTypeArgumentsByName[typeParameter.name.asString()] ?: return@forEach
         val parameter =
             originalTypeParameterBySymbol[typeParameter.symbol]
                 ?: error("Missing visible type parameter metadata for ${typeParameter.symbol}")
@@ -7526,16 +8150,14 @@ private fun inferOriginalTypeArguments(
         bindings[parameter.id] = currentModel
     }
 
-    fun mergeBindingsFromIrTypes(
-        expectedType: IrType,
-        actualType: IrType,
-    ) {
-        val projectedActualType = projectTypeToMatchingInferenceSupertype(expectedType, actualType) ?: actualType
+    fun mergeBindingsFromIrTypes(expectedType: IrType, actualType: IrType) {
+        val projectedActualType =
+            projectTypeToMatchingInferenceSupertype(expectedType, actualType) ?: actualType
         val expectedModel =
-            irTypeToModel(expectedType, originalTypeParameterBySymbol)
-                ?.substituteType(bindings)
+            irTypeToModel(expectedType, originalTypeParameterBySymbol)?.substituteType(bindings)
                 ?: return
-        projectedActualType.inferenceModels(visibleTypeParameters, configuration).forEach { actualModel ->
+        projectedActualType.inferenceModels(visibleTypeParameters, configuration).forEach {
+            actualModel ->
             val candidateBindings =
                 inferTypeBindings(
                     expected = expectedModel,
@@ -7543,8 +8165,15 @@ private fun inferOriginalTypeArguments(
                     bindableVariableIds = bindableVariableIds,
                     variancesForClassifier = { classifierId ->
                         classifierVariancesCache.getOrPut(classifierId) {
-                            val classId = runCatching { ClassId.fromString(classifierId) }.getOrNull() ?: return@getOrPut emptyList()
-                            pluginContext.referenceClass(classId)?.owner?.typeParameters?.map(IrTypeParameter::variance).orEmpty()
+                            val classId =
+                                runCatching { ClassId.fromString(classifierId) }.getOrNull()
+                                    ?: return@getOrPut emptyList()
+                            pluginContext
+                                .referenceClass(classId)
+                                ?.owner
+                                ?.typeParameters
+                                ?.map(IrTypeParameter::variance)
+                                .orEmpty()
                         }
                     },
                     isProvableSubtype = { sub, sup ->
@@ -7552,12 +8181,23 @@ private fun inferOriginalTypeArguments(
                             sub == sup -> true
                             else ->
                                 runCatching {
-                                    canProveSubtype(
-                                        subType = modelToIrType(sub, visibleTypeParameters, pluginContext),
-                                        superType = modelToIrType(sup, visibleTypeParameters, pluginContext),
-                                        pluginContext = pluginContext,
-                                    )
-                                }.getOrDefault(false)
+                                        canProveSubtype(
+                                            subType =
+                                                modelToIrType(
+                                                    sub,
+                                                    visibleTypeParameters,
+                                                    pluginContext,
+                                                ),
+                                            superType =
+                                                modelToIrType(
+                                                    sup,
+                                                    visibleTypeParameters,
+                                                    pluginContext,
+                                                ),
+                                            pluginContext = pluginContext,
+                                        )
+                                    }
+                                    .getOrDefault(false)
                         }
                     },
                 )
@@ -7567,14 +8207,13 @@ private fun inferOriginalTypeArguments(
         }
     }
 
-    fun mergeBindingsFromReceiverTypeArguments(
-        expectedType: IrType,
-        actualType: IrType,
-    ) {
-        receiverTypeArgumentBindings(expectedType, actualType).forEach { (parameterSymbol, actualArgumentType) ->
+    fun mergeBindingsFromReceiverTypeArguments(expectedType: IrType, actualType: IrType) {
+        receiverTypeArgumentBindings(expectedType, actualType).forEach {
+            (parameterSymbol, actualArgumentType) ->
             val parameter = parameterSymbol.owner
             val tcParameter = originalTypeParameterBySymbol[parameter.symbol] ?: return@forEach
-            val actualModel = irTypeToModel(actualArgumentType, visibleTypeParameters.bySymbol) ?: return@forEach
+            val actualModel =
+                irTypeToModel(actualArgumentType, visibleTypeParameters.bySymbol) ?: return@forEach
             mergeTypeBindings(
                 existing = bindings,
                 incoming = mapOf(tcParameter.id to actualModel),
@@ -7608,31 +8247,39 @@ private fun inferOriginalTypeArguments(
         )
     currentToOriginal.forEach { (currentValueArgumentIndex, originalParameterIndex) ->
         val parameter = originalParameters[originalParameterIndex]
-        val actualArgumentType = normalizedCall.valueArguments.getOrNull(currentValueArgumentIndex)?.apparentType()
+        val actualArgumentType =
+            normalizedCall.valueArguments.getOrNull(currentValueArgumentIndex)?.apparentType()
         if (actualArgumentType != null) {
             mergeBindingsFromIrTypes(parameter.type, actualArgumentType)
         }
     }
 
-    original.contextParameters()
+    original
+        .contextParameters()
         .filter { parameter -> parameter.type.isTypeclassType(configuration) }
         .forEach { parameter ->
             val goalType =
                 irTypeToModel(parameter.type, originalTypeParameterBySymbol)
                     ?.substituteType(bindings)
-                    ?: error("Unsupported typeclass context ${parameter.type} in ${original.callableId}")
+                    ?: error(
+                        "Unsupported typeclass context ${parameter.type} in ${original.callableId}"
+                    )
             localContexts.forEach { localContext ->
                 val candidateBindings =
-                    unifyTypes(goalType, localContext.providedType, bindableVariableIds) ?: return@forEach
+                    unifyTypes(goalType, localContext.providedType, bindableVariableIds)
+                        ?: return@forEach
                 mergeTypeBindings(bindings, candidateBindings, bindableVariableIds)
             }
         }
 
     val substitutionBySymbol =
-        originalTypeParameterBySymbol.mapNotNull { (symbol, parameter) ->
-            val model = bindings[parameter.id]?.substituteType(bindings) ?: return@mapNotNull null
-            symbol to modelToIrType(model, visibleTypeParameters, pluginContext)
-        }.toMap()
+        originalTypeParameterBySymbol
+            .mapNotNull { (symbol, parameter) ->
+                val model =
+                    bindings[parameter.id]?.substituteType(bindings) ?: return@mapNotNull null
+                symbol to modelToIrType(model, visibleTypeParameters, pluginContext)
+            }
+            .toMap()
 
     val callTypeArguments =
         original.typeParameters.map { typeParameter ->
@@ -7642,7 +8289,7 @@ private fun inferOriginalTypeArguments(
             val model =
                 bindings[parameter.id]?.substituteType(bindings)
                     ?: throw TypeArgumentInferenceFailure(
-                        missingTypeArgumentMessage(original, typeParameter, configuration),
+                        missingTypeArgumentMessage(original, typeParameter, configuration)
                     )
             modelToIrType(model, visibleTypeParameters, pluginContext)
         }
@@ -7662,12 +8309,16 @@ internal fun receiverTypeArgumentBindings(
     if (expectedClass.typeParameters.isEmpty()) {
         return emptyMap()
     }
-    val projectedActualType = actualType.projectToMatchingSupertype(expectedClass) ?: return emptyMap()
-    return expectedClass.typeParameters.mapIndexedNotNull { index, parameter ->
-        projectedActualType.arguments.getOrNull(index)?.exactArgumentTypeOrNull()?.let { argumentType ->
-            parameter.symbol to argumentType
+    val projectedActualType =
+        actualType.projectToMatchingSupertype(expectedClass) ?: return emptyMap()
+    return expectedClass.typeParameters
+        .mapIndexedNotNull { index, parameter ->
+            projectedActualType.arguments.getOrNull(index)?.exactArgumentTypeOrNull()?.let {
+                argumentType ->
+                parameter.symbol to argumentType
+            }
         }
-    }.toMap()
+        .toMap()
 }
 
 internal fun projectTypeToMatchingInferenceSupertype(
@@ -7679,17 +8330,17 @@ internal fun projectTypeToMatchingInferenceSupertype(
     return actualType.projectToMatchingSupertype(expectedClass)
 }
 
-private fun IrType.projectToMatchingSupertype(
-    expectedClass: IrClass,
-): IrSimpleType? {
+private fun IrType.projectToMatchingSupertype(expectedClass: IrClass): IrSimpleType? {
     return projectToMatchingSupertype(
         actualType = this,
         expectedClassifier = expectedClass.symbol,
         classifierOf = { type -> (type as? IrSimpleType)?.classOrNull },
         visitKeyOf = IrType::inferenceProjectionVisitKey,
         directSupertypes = { currentType ->
-            val actualSimpleType = currentType as? IrSimpleType ?: return@projectToMatchingSupertype emptyList()
-            val actualClass = actualSimpleType.classOrNull?.owner ?: return@projectToMatchingSupertype emptyList()
+            val actualSimpleType =
+                currentType as? IrSimpleType ?: return@projectToMatchingSupertype emptyList()
+            val actualClass =
+                actualSimpleType.classOrNull?.owner ?: return@projectToMatchingSupertype emptyList()
             val substitutor =
                 IrTypeSubstitutor(
                     actualClass.typeParameters.map(IrTypeParameter::symbol),
@@ -7706,7 +8357,8 @@ private fun IrType.projectToMatchingSupertype(
                 }
             }
         },
-    ) as? IrSimpleType
+    )
+        as? IrSimpleType
 }
 
 private sealed interface IrInferenceProjectionVisitKey {
@@ -7716,15 +8368,10 @@ private sealed interface IrInferenceProjectionVisitKey {
         val arguments: List<IrInferenceProjectionArgumentKey>,
     ) : IrInferenceProjectionVisitKey
 
-    data class TypeParameter(
-        val symbol: IrTypeParameterSymbol,
-        val isNullable: Boolean,
-    ) : IrInferenceProjectionVisitKey
+    data class TypeParameter(val symbol: IrTypeParameterSymbol, val isNullable: Boolean) :
+        IrInferenceProjectionVisitKey
 
-    data class Opaque(
-        val kind: String,
-        val isNullable: Boolean,
-    ) : IrInferenceProjectionVisitKey
+    data class Opaque(val kind: String, val isNullable: Boolean) : IrInferenceProjectionVisitKey
 }
 
 private data class IrInferenceProjectionArgumentKey(
@@ -7749,7 +8396,10 @@ private fun IrType.inferenceProjectionVisitKey(): IrInferenceProjectionVisitKey 
                     )
                 else ->
                     IrInferenceProjectionVisitKey.Opaque(
-                        kind = classifier::class.qualifiedName ?: classifier::class.simpleName ?: "opaque",
+                        kind =
+                            classifier::class.qualifiedName
+                                ?: classifier::class.simpleName
+                                ?: "opaque",
                         isNullable = isNullable(),
                     )
             }
@@ -7778,16 +8428,17 @@ private fun IrTypeArgument.exactArgumentTypeOrNull(): IrType? =
         is IrType -> this
     }
 
-private class TypeArgumentInferenceFailure(
-    message: String,
-) : IllegalStateException(message)
+private class TypeArgumentInferenceFailure(message: String) : IllegalStateException(message)
 
 private fun missingTypeArgumentMessage(
     original: IrSimpleFunction,
     typeParameter: IrTypeParameter,
     configuration: TypeclassConfiguration,
 ): String {
-    val typeclassContextCount = original.contextParameters().count { parameter -> parameter.type.isTypeclassType(configuration) }
+    val typeclassContextCount =
+        original.contextParameters().count { parameter ->
+            parameter.type.isTypeclassType(configuration)
+        }
     return if (typeclassContextCount > 1) {
         "Conflicting type bindings prevented inferring ${typeParameter.name} in ${original.renderIdentity()}"
     } else {
@@ -7805,13 +8456,12 @@ private fun mergeTypeBindings(
         if (current == null) {
             existing[key] = value
         } else {
-            val unified = unifyTypes(current, value, bindableVariableIds)
-                ?: throw TypeArgumentInferenceFailure(
-                    "Conflicting type bindings for $key: ${current.render()} vs ${value.render()}",
-                )
-            unified.forEach { (nestedKey, nestedValue) ->
-                existing[nestedKey] = nestedValue
-            }
+            val unified =
+                unifyTypes(current, value, bindableVariableIds)
+                    ?: throw TypeArgumentInferenceFailure(
+                        "Conflicting type bindings for $key: ${current.render()} vs ${value.render()}"
+                    )
+            unified.forEach { (nestedKey, nestedValue) -> existing[nestedKey] = nestedValue }
         }
     }
 }
@@ -7822,9 +8472,7 @@ private fun IrType.inferenceModels(
 ): List<TcType> {
     val directModel = irTypeToModel(this, visibleTypeParameters.bySymbol)
     val expandedModels =
-        listOf(this)
-            .providedTypeExpansion(visibleTypeParameters.bySymbol, configuration)
-            .validTypes
+        listOf(this).providedTypeExpansion(visibleTypeParameters.bySymbol, configuration).validTypes
     return buildList {
         directModel?.let(::add)
         expandedModels.forEach { candidate ->
@@ -7836,12 +8484,14 @@ private fun IrType.inferenceModels(
 }
 
 private fun IrType.localEvidenceTypes(
-    typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
+    typeParameterBySymbol:
+        Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
     configuration: TypeclassConfiguration,
 ): List<TcType> = localEvidenceTypes(typeParameterBySymbol, configuration, visited = linkedSetOf())
 
 private fun IrType.localEvidenceTypes(
-    typeParameterBySymbol: Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
+    typeParameterBySymbol:
+        Map<org.jetbrains.kotlin.ir.symbols.IrTypeParameterSymbol, TcTypeParameter>,
     configuration: TypeclassConfiguration,
     visited: MutableSet<String>,
 ): List<TcType> {
@@ -7863,14 +8513,18 @@ private fun IrType.localEvidenceTypes(
     }
 
     val substitutions =
-        classSymbol.owner.typeParameters.zip(simpleType.arguments).mapNotNull { (parameter, argument) ->
-            argument.argumentTypeOrNull()?.let { type -> parameter.symbol to type }
-        }.toMap()
+        classSymbol.owner.typeParameters
+            .zip(simpleType.arguments)
+            .mapNotNull { (parameter, argument) ->
+                argument.argumentTypeOrNull()?.let { type -> parameter.symbol to type }
+            }
+            .toMap()
     classSymbol.owner.superTypes.forEach { superType ->
-        val substitutedSuperType = if (substitutions.isEmpty()) superType else superType.substitute(substitutions)
-        substitutedSuperType.localEvidenceTypes(typeParameterBySymbol, configuration, visited).forEach { candidate ->
-            collected.putIfAbsent(candidate.render(), candidate)
-        }
+        val substitutedSuperType =
+            if (substitutions.isEmpty()) superType else superType.substitute(substitutions)
+        substitutedSuperType
+            .localEvidenceTypes(typeParameterBySymbol, configuration, visited)
+            .forEach { candidate -> collected.putIfAbsent(candidate.render(), candidate) }
     }
 
     return collected.values.toList()
@@ -7881,7 +8535,8 @@ private fun IrSimpleType.canLiftExactEvidenceViaSupertypes(): Boolean =
         arguments.all { argument ->
             when (argument) {
                 is IrType -> true
-                is org.jetbrains.kotlin.ir.types.IrTypeProjection -> argument.variance == Variance.INVARIANT
+                is org.jetbrains.kotlin.ir.types.IrTypeProjection ->
+                    argument.variance == Variance.INVARIANT
                 is IrStarProjection -> false
             }
         }
@@ -7921,41 +8576,38 @@ private fun mapCurrentArgumentsToOriginalParameters(
     fun IrValueParameter.isOmittable(index: Int): Boolean =
         isTypeclassContext(index) || defaultValue != null
 
-    fun argumentProvidesContext(
-        argument: IrExpression?,
-        expectedType: IrType,
-    ): Boolean {
+    fun argumentProvidesContext(argument: IrExpression?, expectedType: IrType): Boolean {
         argument ?: return false
-        val localEvidenceTypes = argument.type.localEvidenceTypes(visibleTypeParameterSymbols, configuration)
+        val localEvidenceTypes =
+            argument.type.localEvidenceTypes(visibleTypeParameterSymbols, configuration)
         val expectedModel = irTypeToModel(expectedType, visibleTypeParameterSymbols)
         val localEvidenceMatches =
             expectedModel != null &&
                 localEvidenceTypes.any { candidate ->
-                    candidate == expectedModel || candidate.matchesProjectedExplicitContextType(expectedModel)
+                    candidate == expectedModel ||
+                        candidate.matchesProjectedExplicitContextType(expectedModel)
                 }
-        return (
-            argument.type.isTypeclassType(configuration) ||
-                localEvidenceTypes.isNotEmpty()
-        ) &&
-            (
-                argument.type.satisfiesExpectedContextType(expectedType, visibleTypeParameters) ||
-                    argument.type.matchesProjectedExplicitContextType(expectedType, visibleTypeParameters) ||
-                    localEvidenceMatches
-            )
+        return (argument.type.isTypeclassType(configuration) || localEvidenceTypes.isNotEmpty()) &&
+            (argument.type.satisfiesExpectedContextType(expectedType, visibleTypeParameters) ||
+                argument.type.matchesProjectedExplicitContextType(
+                    expectedType,
+                    visibleTypeParameters,
+                ) ||
+                localEvidenceMatches)
     }
 
-    fun argumentMatchesRegularParameter(
-        argument: IrExpression?,
-        expectedType: IrType,
-    ): Boolean {
+    fun argumentMatchesRegularParameter(argument: IrExpression?, expectedType: IrType): Boolean {
         argument ?: return false
         return argument.type == expectedType ||
-            (visibleTypeParameters != null && argument.type.matchesTypeclassParameterType(expectedType, visibleTypeParameters)) ||
+            (visibleTypeParameters != null &&
+                argument.type.matchesTypeclassParameterType(expectedType, visibleTypeParameters)) ||
             argument.type.satisfiesExpectedArgumentType(expectedType, visibleTypeParameters)
     }
 
     fun mappingScore(mapping: List<Pair<Int, Int>>): Int =
-        mapping.count { (_, originalIndex) -> !originalParameters[originalIndex].isTypeclassContext(originalIndex) }
+        mapping.count { (_, originalIndex) ->
+            !originalParameters[originalIndex].isTypeclassContext(originalIndex)
+        }
 
     fun chooseBetterMapping(
         left: List<Pair<Int, Int>>?,
@@ -7970,16 +8622,16 @@ private fun mapCurrentArgumentsToOriginalParameters(
             else -> left
         }
 
-    fun search(
-        currentIndex: Int,
-        originalIndex: Int,
-    ): List<Pair<Int, Int>>? {
+    fun search(currentIndex: Int, originalIndex: Int): List<Pair<Int, Int>>? {
         val cacheKey = currentIndex to originalIndex
-        cache[cacheKey]?.let { cached -> return cached }
+        cache[cacheKey]?.let { cached ->
+            return cached
+        }
 
         if (currentIndex >= currentArguments.size) {
             val result =
-                if (originalParameters.drop(originalIndex).withIndex().all { (offset, parameter) ->
+                if (
+                    originalParameters.drop(originalIndex).withIndex().all { (offset, parameter) ->
                         parameter.isOmittable(originalIndex + offset)
                     }
                 ) {
@@ -8015,7 +8667,8 @@ private fun mapCurrentArgumentsToOriginalParameters(
                 }
             }
             if (parameter.isOmittable(originalIndex)) {
-                bestMapping = chooseBetterMapping(bestMapping, search(currentIndex, originalIndex + 1))
+                bestMapping =
+                    chooseBetterMapping(bestMapping, search(currentIndex, originalIndex + 1))
             }
         } else {
             if (argumentMatchesRegularParameter(argument, expectedType)) {
@@ -8025,7 +8678,8 @@ private fun mapCurrentArgumentsToOriginalParameters(
                 }
             }
             if (parameter.isOmittable(originalIndex)) {
-                bestMapping = chooseBetterMapping(bestMapping, search(currentIndex, originalIndex + 1))
+                bestMapping =
+                    chooseBetterMapping(bestMapping, search(currentIndex, originalIndex + 1))
             }
         }
 

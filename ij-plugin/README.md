@@ -2,6 +2,14 @@
 
 IntelliJ IDEA support for `one.wabbit:kotlin-typeclasses-plugin`.
 
+## Why This Module Exists
+
+Kotlin compiler plugins need IDE-side loading before IntelliJ can analyze source with the same assumptions as Gradle. This module only bridges project configuration into IntelliJ's external K2 compiler-plugin loading path; it does not implement a separate typeclass analyzer.
+
+## Status
+
+This module is experimental phase-1 support for trusted IntelliJ IDEA projects. It targets the repository's current IntelliJ platform line and may change as Kotlin IDE plugin APIs change.
+
 ## What It Does
 
 This plugin does not replace Kotlin analysis inside the IDE. Instead, it bridges into the Kotlin IDE plugin's existing external compiler-plugin loading path:
@@ -35,10 +43,20 @@ It does not yet add IntelliJ-native inspections, quick fixes, or a separate type
 
 This plugin does not synthesize Gradle or Maven compiler-plugin configuration by itself.
 
+## Installation
+
+Build the plugin ZIP from the repository root and install it through IntelliJ's local plugin installer:
+
+```bash
+./gradlew :kotlin-typeclasses-ij-plugin:buildPlugin
+```
+
+The project you open in IntelliJ must still apply `one.wabbit.typeclass` through Gradle or otherwise expose `kotlin-typeclasses-plugin` on the Kotlin compiler-plugin classpath.
+
 ## Build
 
 ```bash
-./gradlew :ij-plugin:buildPlugin
+./gradlew :kotlin-typeclasses-ij-plugin:buildPlugin
 ```
 
 ## Usage
@@ -51,7 +69,19 @@ This plugin does not synthesize Gradle or Maven compiler-plugin configuration by
 
 When the plugin detects the compiler plugin classpath or Gradle plugin declaration, it enables external K2 compiler plugins for that project session. If it only sees the Gradle plugin declaration, it also requests a Gradle import and tells you if a manual reimport is still needed.
 
+Expected success signal: after refresh or Gradle import, IntelliJ should stop reporting unresolved typeclass contextual calls that already compile through Gradle. If it does not, verify that the Gradle import includes `kotlin-typeclasses-plugin` in Kotlin compiler arguments.
+
+## Changelog
+
+IDE support changes are tracked with the repository release notes in [`../docs/migration.md`](../docs/migration.md).
+
+## Support
+
+Use [`../docs/troubleshooting.md`](../docs/troubleshooting.md) for project setup issues. Report bugs through the repository issue tracker with IntelliJ version, Kotlin plugin version, and whether Gradle builds pass. For contribution workflow and local development, see [`../docs/development.md`](../docs/development.md) and the legal docs under [`../legal/`](../legal/).
+
 ## Related Docs
+
+Suggested reading order for new users: root README, Gradle plugin README, troubleshooting, then this README for IDE-specific behavior.
 
 - [`../README.md`](../README.md)
 - [`../docs/user-guide.md`](../docs/user-guide.md)

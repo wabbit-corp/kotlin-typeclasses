@@ -2,10 +2,10 @@
 
 package one.wabbit.typeclass.plugin
 
-import org.jetbrains.kotlin.descriptors.DescriptorVisibility
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
-import org.jetbrains.kotlin.descriptors.Visibility
+import org.jetbrains.kotlin.descriptors.DescriptorVisibility
 import org.jetbrains.kotlin.descriptors.Visibilities
+import org.jetbrains.kotlin.descriptors.Visibility
 import org.jetbrains.kotlin.load.java.JavaDescriptorVisibilities
 
 internal enum class TransportSyntheticAccessContext {
@@ -24,7 +24,7 @@ internal const val DERIVE_VIA_SUBCLASSABLE_TYPECLASS_HEAD_MESSAGE: String =
     "DeriveVia requires an interface typeclass head or a subclassable class head with an accessible zero-arg constructor"
 
 internal fun TransportSyntheticAccessContext.allowsTransportVisibility(
-    visibility: TransportSyntheticVisibility,
+    visibility: TransportSyntheticVisibility
 ): Boolean =
     when (this) {
         TransportSyntheticAccessContext.SAME_MODULE_SOURCE ->
@@ -36,7 +36,7 @@ internal fun TransportSyntheticAccessContext.allowsTransportVisibility(
     }
 
 internal fun TransportSyntheticAccessContext.allowsDeriveViaSuperclassConstructorVisibility(
-    visibility: TransportSyntheticVisibility,
+    visibility: TransportSyntheticVisibility
 ): Boolean =
     when (this) {
         TransportSyntheticAccessContext.SAME_MODULE_SOURCE ->
@@ -59,8 +59,7 @@ internal fun Visibility.toTransportSyntheticVisibility(): TransportSyntheticVisi
         Visibilities.Local,
         Visibilities.Inherited,
         Visibilities.InvisibleFake,
-        Visibilities.Unknown,
-        -> TransportSyntheticVisibility.INACCESSIBLE
+        Visibilities.Unknown -> TransportSyntheticVisibility.INACCESSIBLE
 
         else -> TransportSyntheticVisibility.INACCESSIBLE
     }
@@ -78,8 +77,8 @@ internal fun DescriptorVisibility.toTransportSyntheticVisibility(): TransportSyn
         DescriptorVisibilities.UNKNOWN,
         JavaDescriptorVisibilities.PACKAGE_VISIBILITY,
         JavaDescriptorVisibilities.PROTECTED_STATIC_VISIBILITY,
-        JavaDescriptorVisibilities.PROTECTED_AND_PACKAGE,
-        -> TransportSyntheticVisibility.INACCESSIBLE
+        JavaDescriptorVisibilities.PROTECTED_AND_PACKAGE ->
+            TransportSyntheticVisibility.INACCESSIBLE
 
         else -> TransportSyntheticVisibility.INACCESSIBLE
     }

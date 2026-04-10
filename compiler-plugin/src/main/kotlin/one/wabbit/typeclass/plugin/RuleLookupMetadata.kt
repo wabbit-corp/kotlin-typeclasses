@@ -42,14 +42,10 @@ internal sealed interface VisibleRuleLookupReference {
         val ownerKey: String? = null,
     ) : VisibleRuleLookupReference
 
-    data class LookupProperty(
-        val callableId: CallableId,
-        val ownerKey: String? = null,
-    ) : VisibleRuleLookupReference
+    data class LookupProperty(val callableId: CallableId, val ownerKey: String? = null) :
+        VisibleRuleLookupReference
 
-    data class LookupObject(
-        val classId: ClassId,
-    ) : VisibleRuleLookupReference
+    data class LookupObject(val classId: ClassId) : VisibleRuleLookupReference
 }
 
 internal data class ImportedTopLevelInstanceRule(
@@ -69,7 +65,8 @@ internal fun classLookupOwnerKey(classId: ClassId): String = "class:${classId.as
 
 internal fun VisibleRuleLookupReference.lookupIdentityKey(): String =
     when (this) {
-        is VisibleRuleLookupReference.LookupFunction -> "fun:${ownerKey ?: "-"}:${callableId}:$shape"
+        is VisibleRuleLookupReference.LookupFunction ->
+            "fun:${ownerKey ?: "-"}:${callableId}:$shape"
         is VisibleRuleLookupReference.LookupProperty -> "prop:${ownerKey ?: "-"}:${callableId}"
         is VisibleRuleLookupReference.LookupObject -> "obj:${classId.asString()}"
     }

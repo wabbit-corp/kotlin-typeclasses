@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.idea
 
@@ -15,8 +15,8 @@ class TypeclassCompilerPluginDetectorTest {
     fun detectsTypeclassCompilerPluginInMavenLocalPath() {
         assertTrue(
             TypeclassCompilerPluginDetector.isTypeclassesCompilerPluginPath(
-                "/Users/example/.m2/repository/one/wabbit/kotlin-typeclasses-plugin/0.0.1/kotlin-typeclasses-plugin-0.0.1.jar",
-            ),
+                "/Users/example/.m2/repository/one/wabbit/kotlin-typeclasses-plugin/0.0.1/kotlin-typeclasses-plugin-0.0.1.jar"
+            )
         )
     }
 
@@ -24,8 +24,8 @@ class TypeclassCompilerPluginDetectorTest {
     fun detectsTypeclassCompilerPluginInBuildLibsPath() {
         assertTrue(
             TypeclassCompilerPluginDetector.isTypeclassesCompilerPluginPath(
-                "/workspace/kotlin-typeclasses-plugin/build/libs/kotlin-typeclasses-plugin-0.0.1.jar",
-            ),
+                "/workspace/kotlin-typeclasses-plugin/build/libs/kotlin-typeclasses-plugin-0.0.1.jar"
+            )
         )
     }
 
@@ -33,8 +33,8 @@ class TypeclassCompilerPluginDetectorTest {
     fun ignoresUnrelatedCompilerPluginPaths() {
         assertFalse(
             TypeclassCompilerPluginDetector.isTypeclassesCompilerPluginPath(
-                "/workspace/kotlin-acyclic-plugin/build/libs/kotlin-acyclic-plugin-0.0.1.jar",
-            ),
+                "/workspace/kotlin-acyclic-plugin/build/libs/kotlin-acyclic-plugin-0.0.1.jar"
+            )
         )
     }
 
@@ -46,11 +46,13 @@ class TypeclassCompilerPluginDetectorTest {
                     "/workspace/kotlin-typeclasses-plugin/build/libs/kotlin-typeclasses-plugin-0.0.1.jar",
                     "/workspace/kotlin-typeclasses-plugin/build/libs/kotlin-typeclasses-plugin-0.0.1.jar",
                     "/workspace/other-plugin/build/libs/other-plugin-0.0.1.jar",
-                ),
+                )
             )
 
         assertEquals(
-            listOf("/workspace/kotlin-typeclasses-plugin/build/libs/kotlin-typeclasses-plugin-0.0.1.jar"),
+            listOf(
+                "/workspace/kotlin-typeclasses-plugin/build/libs/kotlin-typeclasses-plugin-0.0.1.jar"
+            ),
             matches,
         )
     }
@@ -63,8 +65,9 @@ class TypeclassCompilerPluginDetectorTest {
                 plugins {
                     id("one.wabbit.typeclass")
                 }
-                """.trimIndent(),
-            ),
+                """
+                    .trimIndent()
+            )
         )
     }
 
@@ -75,43 +78,50 @@ class TypeclassCompilerPluginDetectorTest {
                 """
                 [plugins]
                 typeclass = { id = "one.wabbit.typeclass", version = "0.0.1" }
-                """.trimIndent(),
-            ),
+                """
+                    .trimIndent()
+            )
         )
     }
 
     @Test
     fun matchingGradleBuildFilesFindsPluginReferencesAndIgnoresBuildOutputs() {
         withManagedTestTempDirectory("typeclass-idea-detector-test") { projectRoot ->
-            projectRoot.resolve("build.gradle.kts").writeText(
-                """
-                plugins {
-                    id("one.wabbit.typeclass")
-                }
-                """.trimIndent(),
-            )
+            projectRoot
+                .resolve("build.gradle.kts")
+                .writeText(
+                    """
+                    plugins {
+                        id("one.wabbit.typeclass")
+                    }
+                    """
+                        .trimIndent()
+                )
             projectRoot.resolve("gradle").createDirectories()
-            projectRoot.resolve("gradle/libs.versions.toml").writeText(
-                """
-                [plugins]
-                typeclass = { id = "one.wabbit.typeclass", version = "0.0.1" }
-                """.trimIndent(),
-            )
+            projectRoot
+                .resolve("gradle/libs.versions.toml")
+                .writeText(
+                    """
+                    [plugins]
+                    typeclass = { id = "one.wabbit.typeclass", version = "0.0.1" }
+                    """
+                        .trimIndent()
+                )
             projectRoot.resolve("build/generated").createDirectories()
-            projectRoot.resolve("build/generated/build.gradle.kts").writeText(
-                """
-                plugins {
-                    id("one.wabbit.typeclass")
-                }
-                """.trimIndent(),
-            )
+            projectRoot
+                .resolve("build/generated/build.gradle.kts")
+                .writeText(
+                    """
+                    plugins {
+                        id("one.wabbit.typeclass")
+                    }
+                    """
+                        .trimIndent()
+                )
 
             val matches = TypeclassCompilerPluginDetector.matchingGradleBuildFiles(projectRoot)
 
-            assertEquals(
-                listOf("build.gradle.kts", "gradle/libs.versions.toml"),
-                matches,
-            )
+            assertEquals(listOf("build.gradle.kts", "gradle/libs.versions.toml"), matches)
         }
     }
 
@@ -131,10 +141,10 @@ class TypeclassCompilerPluginDetectorTest {
                                 TypeclassCompilerPluginMatch(
                                     ownerName = "app",
                                     classpaths = listOf("/tmp/kotlin-typeclasses-plugin.jar"),
-                                ),
+                                )
                             ),
                         gradleBuildFiles = listOf("build.gradle.kts"),
-                ),
+                    ),
                 registryUpdated = true,
                 gradleImportRequested = false,
             )
@@ -162,19 +172,15 @@ class TypeclassCompilerPluginDetectorTest {
     }
 
     private fun keepTestTempDirectories(): Boolean =
-        System.getenv("TYPECLASS_KEEP_TEST_TEMP")
-            ?.trim()
-            ?.lowercase()
-            ?.let { value -> value.isNotEmpty() && value != "0" && value != "false" && value != "no" }
-            ?: false
+        System.getenv("TYPECLASS_KEEP_TEST_TEMP")?.trim()?.lowercase()?.let { value ->
+            value.isNotEmpty() && value != "0" && value != "false" && value != "no"
+        } ?: false
 
     private fun deleteRecursivelyOrThrow(path: java.nio.file.Path) {
         val file = path.toFile()
         if (!file.exists()) {
             return
         }
-        check(file.deleteRecursively()) {
-            "Failed to delete temporary test directory $path"
-        }
+        check(file.deleteRecursively()) { "Failed to delete temporary test directory $path" }
     }
 }

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
@@ -7,7 +7,8 @@ import kotlin.test.Test
 class KSerializerBuiltinTest : IntegrationTestSupport() {
     private val serializationPlugins = listOf(CompilerHarnessPlugin.Serialization)
 
-    @Test fun doesNotTreatKSerializerAsBuiltinTypeclassWhenFlagDisabled() {
+    @Test
+    fun doesNotTreatKSerializerAsBuiltinTypeclassWhenFlagDisabled() {
         val source =
             """
             package demo
@@ -22,21 +23,19 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             fun main() {
                 println(summon<KSerializer<User>>().descriptor.serialName) // E KSerializer should not be treated as a builtin typeclass when the flag is disabled
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    ExpectedDiagnostic.Error(
-                        messageRegex = "(?i)no context argument",
-                    ),
-                ),
+                listOf(ExpectedDiagnostic.Error(messageRegex = "(?i)no context argument")),
             requiredPlugins = serializationPlugins,
         )
     }
 
-    @Test fun treatsKSerializerAsBuiltinTypeclassWhenFlagEnabled() {
+    @Test
+    fun treatsKSerializerAsBuiltinTypeclassWhenFlagEnabled() {
         val source =
             """
             package demo
@@ -53,7 +52,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             fun main() {
                 println(serialName<User>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -63,7 +63,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun doesNotRecognizeKSerializerAsTypeclassForIsTypeclassInstanceWhenFlagDisabled() {
+    @Test
+    fun doesNotRecognizeKSerializerAsTypeclassForIsTypeclassInstanceWhenFlagDisabled() {
         val source =
             """
             package demo
@@ -81,21 +82,23 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             fun main() {
                 println(proof()) // E KSerializer should not be recognized as a typeclass for IsTypeclassInstance when the flag is disabled
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
-                        messageRegex = "(?i)(typeclass application|no context argument)",
-                    ),
+                        messageRegex = "(?i)(typeclass application|no context argument)"
+                    )
                 ),
             requiredPlugins = serializationPlugins,
         )
     }
 
-    @Test fun concreteContextualAndDirectSummonsCanUseSyntheticKSerializers() {
+    @Test
+    fun concreteContextualAndDirectSummonsCanUseSyntheticKSerializers() {
         val source =
             """
             package demo
@@ -114,7 +117,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 println(contextualSerialName())
                 println(summon<KSerializer<User>>().descriptor.serialName)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -122,13 +126,15 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 """
                 demo.User
                 demo.User
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
     }
 
-    @Test fun rejectsArbitraryReifiedGenericKSerializerMaterialization() {
+    @Test
+    fun rejectsArbitraryReifiedGenericKSerializerMaterialization() {
         val source =
             """
             package demo
@@ -142,7 +148,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             fun main() {
                 println("unused")
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -152,7 +159,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun rejectsSyntheticKSerializerEvidenceForNonSerializableTypes() {
+    @Test
+    fun rejectsSyntheticKSerializerEvidenceForNonSerializableTypes() {
         val source =
             """
             package demo
@@ -167,22 +175,24 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             fun main() {
                 println(serialName<User>()) // E:TC_NO_CONTEXT_ARGUMENT no generated serializer exists for User
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
-                        messageRegex = "(?i)(serializer|no context argument|serializable|generated)",
-                    ),
+                        messageRegex = "(?i)(serializer|no context argument|serializable|generated)"
+                    )
                 ),
             requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
     }
 
-    @Test fun materializesNestedGeneratedKSerializersFromTypeArguments() {
+    @Test
+    fun materializesNestedGeneratedKSerializersFromTypeArguments() {
         val source =
             """
             package demo
@@ -197,7 +207,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             fun main() {
                 println(summon<KSerializer<Box<Int>>>().descriptor.serialName)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -207,7 +218,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun reifiedSyntheticKSerializerMatchesOfficialSerializerApi() {
+    @Test
+    fun reifiedSyntheticKSerializerMatchesOfficialSerializerApi() {
         val source =
             """
             package demo
@@ -229,7 +241,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 val officialList = serializer<List<Int?>>()
                 println(builtinList.descriptor.serialName == officialList.descriptor.serialName)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -237,13 +250,15 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
     }
 
-    @Test fun explicitLocalKSerializerEvidenceShadowsSyntheticBuiltin() {
+    @Test
+    fun explicitLocalKSerializerEvidenceShadowsSyntheticBuiltin() {
         val source =
             """
             package demo
@@ -278,7 +293,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                     println(chosenSerialName())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -322,7 +338,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 println(builtin === UserIdAsStringSerializer)
                 println(builtin::class == official::class)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -330,7 +347,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
@@ -374,7 +392,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 println(summon<KSerializer<Int>>() !== IntAsStringSerializer)
                 println(wrapperSerializer::class == officialWrapper::class)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -383,7 +402,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 true
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
@@ -425,7 +445,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 val nullableOfficial = serializer<FancyInt?>()
                 println(nullableBuiltin::class == nullableOfficial::class)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -433,7 +454,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
@@ -476,7 +498,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 println(builtin.descriptor.getElementDescriptor(0).serialName ==
                     official.descriptor.getElementDescriptor(0).serialName)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -484,7 +507,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
@@ -502,7 +526,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             fun main() {
                 println(summon<KSerializer<List<*>>>().descriptor.serialName) // E:TC_NO_CONTEXT_ARGUMENT star-projected serializers are not materializable
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -527,7 +552,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             fun main() {
                 println("unused")
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -570,7 +596,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
             fun main() {
                 println(renderName<User>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -634,7 +661,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                         officialContextual.descriptor.getElementDescriptor(0).serialName,
                 )
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -644,7 +672,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 true
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )
@@ -677,7 +706,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 println(builtin.descriptor.serialName == official.descriptor.serialName)
                 println(builtin.descriptor.elementsCount == official.descriptor.elementsCount)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -686,7 +716,8 @@ class KSerializerBuiltinTest : IntegrationTestSupport() {
                 true
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins = serializationPlugins,
             pluginOptions = listOf("builtinKSerializerTypeclass=enabled"),
         )

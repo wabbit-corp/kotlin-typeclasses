@@ -12,16 +12,9 @@ internal fun stableSealedSubclassIds(
     }
 
     val sourceOrdered =
-        sourceOrderedSubclassIds
-            .filter { subclassId -> subclassId in discovered }
-            .distinct()
+        sourceOrderedSubclassIds.filter { subclassId -> subclassId in discovered }.distinct()
 
     val orderedIds = sourceOrdered.toHashSet()
-    val fallbackSorted =
-        discovered
-            .asSequence()
-            .filterNot(orderedIds::contains)
-            .sorted()
-            .toList()
+    val fallbackSorted = discovered.asSequence().filterNot(orderedIds::contains).sorted().toList()
     return sourceOrdered + fallbackSorted
 }

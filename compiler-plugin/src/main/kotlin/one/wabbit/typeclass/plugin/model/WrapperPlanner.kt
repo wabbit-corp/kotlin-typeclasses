@@ -6,10 +6,9 @@ internal class TypeclassResolutionPlanner(
     private val ruleProvider: (TcType) -> List<InstanceRule>,
     private val bindableDesiredVariableIds: Set<String> = emptySet(),
 ) {
-    constructor(rules: List<InstanceRule>) : this(
-        ruleProvider = { _: TcType -> rules },
-        bindableDesiredVariableIds = emptySet(),
-    )
+    constructor(
+        rules: List<InstanceRule>
+    ) : this(ruleProvider = { _: TcType -> rules }, bindableDesiredVariableIds = emptySet())
 
     constructor(
         rules: List<InstanceRule>,
@@ -19,18 +18,16 @@ internal class TypeclassResolutionPlanner(
         bindableDesiredVariableIds = bindableDesiredVariableIds,
     )
 
-    fun resolve(
-        desiredType: TcType,
-        localContextTypes: List<TcType>,
-    ): ResolutionSearchResult =
+    fun resolve(desiredType: TcType, localContextTypes: List<TcType>): ResolutionSearchResult =
         resolveInternal(
-            desiredType = desiredType,
-            localContextTypes = localContextTypes,
-            inProgress = linkedSetOf(),
-            allowedRecursiveGoals = linkedSetOf(),
-            freshCounter = 0,
-            traceOptions = null,
-        ).result
+                desiredType = desiredType,
+                localContextTypes = localContextTypes,
+                inProgress = linkedSetOf(),
+                allowedRecursiveGoals = linkedSetOf(),
+                freshCounter = 0,
+                traceOptions = null,
+            )
+            .result
 
     fun resolveWithTrace(
         desiredType: TcType,
@@ -88,9 +85,11 @@ internal class TypeclassResolutionPlanner(
             val matchingLocalIndexes = linkedSetOf<Int>()
             val localMatches =
                 localContextTypes.mapIndexedNotNull { index, localType ->
-                    val substitution = Unifier(bindableDesiredVariableIds).unify(desiredType, localType) ?: run {
-                        return@mapIndexedNotNull null
-                    }
+                    val substitution =
+                        Unifier(bindableDesiredVariableIds).unify(desiredType, localType)
+                            ?: run {
+                                return@mapIndexedNotNull null
+                            }
                     matchingLocalIndexes += index
                     ResolutionPlan.LocalContext(
                         index = index,
@@ -114,8 +113,10 @@ internal class TypeclassResolutionPlanner(
                                             family = ResolutionTraceCandidateFamily.LOCAL_CONTEXT,
                                             state =
                                                 when {
-                                                    index !in matchingLocalIndexes -> ResolutionTraceCandidateState.REJECTED
-                                                    localMatches.size == 1 -> ResolutionTraceCandidateState.SELECTED
+                                                    index !in matchingLocalIndexes ->
+                                                        ResolutionTraceCandidateState.REJECTED
+                                                    localMatches.size == 1 ->
+                                                        ResolutionTraceCandidateState.SELECTED
                                                     else -> ResolutionTraceCandidateState.MATCHED
                                                 },
                                             providedType = localType,
@@ -137,7 +138,8 @@ internal class TypeclassResolutionPlanner(
                                     if (options.explainAlternatives) {
                                         ResolutionTraceRulesState.SEARCHED
                                     } else {
-                                        ResolutionTraceRulesState.NOT_EXPLORED_AFTER_LOCAL_CONTEXT_RESULT
+                                        ResolutionTraceRulesState
+                                            .NOT_EXPLORED_AFTER_LOCAL_CONTEXT_RESULT
                                     },
                                 result = localResult,
                             )
@@ -152,17 +154,19 @@ internal class TypeclassResolutionPlanner(
             var nextFreshCounter = freshCounter
             val tracedRuleCandidates = mutableListOf<ResolutionTraceCandidate>()
             val tracedLocalCandidates =
-                traceOptions?.let {
-                    localContextTypes.mapIndexed { index, localType ->
-                        ResolutionTraceCandidate(
-                            identity = "local-context[$index]",
-                            family = ResolutionTraceCandidateFamily.LOCAL_CONTEXT,
-                            state = ResolutionTraceCandidateState.REJECTED,
-                            providedType = localType,
-                            reason = mismatchReason(desiredType, localType),
-                        )
+                traceOptions
+                    ?.let {
+                        localContextTypes.mapIndexed { index, localType ->
+                            ResolutionTraceCandidate(
+                                identity = "local-context[$index]",
+                                family = ResolutionTraceCandidateFamily.LOCAL_CONTEXT,
+                                state = ResolutionTraceCandidateState.REJECTED,
+                                providedType = localType,
+                                reason = mismatchReason(desiredType, localType),
+                            )
+                        }
                     }
-                }.orEmpty()
+                    .orEmpty()
 
             ruleProvider(desiredType).forEach { rule ->
                 val instantiatedRule = instantiateRule(rule, nextFreshCounter)
@@ -170,14 +174,12 @@ internal class TypeclassResolutionPlanner(
 
                 val substitution =
                     Unifier(
-                        bindableVariableIds =
-                            instantiatedRule.rule.typeParameters.mapTo(linkedSetOf(), TcTypeParameter::id).apply {
-                                addAll(bindableDesiredVariableIds)
-                            },
-                    ).unify(
-                        desiredType,
-                        instantiatedRule.rule.providedType,
-                    )
+                            bindableVariableIds =
+                                instantiatedRule.rule.typeParameters
+                                    .mapTo(linkedSetOf(), TcTypeParameter::id)
+                                    .apply { addAll(bindableDesiredVariableIds) }
+                        )
+                        .unify(desiredType, instantiatedRule.rule.providedType)
                 if (substitution == null) {
                     if (traceOptions != null) {
                         tracedRuleCandidates +=
@@ -186,7 +188,8 @@ internal class TypeclassResolutionPlanner(
                                 family = resolutionTraceCandidateFamily(instantiatedRule.rule.id),
                                 state = ResolutionTraceCandidateState.REJECTED,
                                 providedType = instantiatedRule.rule.providedType,
-                                reason = mismatchReason(desiredType, instantiatedRule.rule.providedType),
+                                reason =
+                                    mismatchReason(desiredType, instantiatedRule.rule.providedType),
                             )
                     }
                     return@forEach
@@ -201,7 +204,8 @@ internal class TypeclassResolutionPlanner(
                 var candidateFreshCounter = nextFreshCounter
                 val recursiveGoalKey = appliedRule.providedType.normalizedKey()
                 val addedRecursiveGoal =
-                    appliedRule.supportsRecursiveResolution && allowedRecursiveGoals.add(recursiveGoalKey)
+                    appliedRule.supportsRecursiveResolution &&
+                        allowedRecursiveGoals.add(recursiveGoalKey)
                 var rejectionReason: String? = null
 
                 try {
@@ -218,22 +222,26 @@ internal class TypeclassResolutionPlanner(
                         candidateFreshCounter = nested.freshCounter
                         nested.trace?.let(prerequisiteTraces::add)
                         when (val nestedResult = nested.result) {
-                            is ResolutionSearchResult.Success -> prerequisitePlans += nestedResult.plan
+                            is ResolutionSearchResult.Success ->
+                                prerequisitePlans += nestedResult.plan
                             is ResolutionSearchResult.Recursive -> {
                                 sawRecursiveCandidate = true
-                                rejectionReason = "recursive prerequisite ${nestedResult.desiredType.render()}"
+                                rejectionReason =
+                                    "recursive prerequisite ${nestedResult.desiredType.render()}"
                                 return@forEach
                             }
 
                             is ResolutionSearchResult.Missing -> {
                                 allApplicableCandidatesWereRecursive = false
-                                rejectionReason = "missing prerequisite ${nestedResult.desiredType.render()}"
+                                rejectionReason =
+                                    "missing prerequisite ${nestedResult.desiredType.render()}"
                                 return@forEach
                             }
 
                             is ResolutionSearchResult.Ambiguous -> {
                                 allApplicableCandidatesWereRecursive = false
-                                rejectionReason = "ambiguous prerequisite ${nestedResult.desiredType.render()}"
+                                rejectionReason =
+                                    "ambiguous prerequisite ${nestedResult.desiredType.render()}"
                                 return@forEach
                             }
                         }
@@ -280,7 +288,8 @@ internal class TypeclassResolutionPlanner(
                                 providedType = appliedRule.providedType,
                                 appliedTypeArguments =
                                     instantiatedRule.rule.typeParameters.map { parameter ->
-                                        TcType.Variable(parameter.id, parameter.displayName).substitute(substitution)
+                                        TcType.Variable(parameter.id, parameter.displayName)
+                                            .substitute(substitution)
                                     },
                                 prerequisitePlans = prerequisitePlans,
                             ),
@@ -289,15 +298,20 @@ internal class TypeclassResolutionPlanner(
 
             val result =
                 when {
-                    successfulCandidates.isNotEmpty() -> successfulCandidates.toCandidateSearchResult(desiredType)
-                    sawApplicableCandidate && sawRecursiveCandidate && allApplicableCandidatesWereRecursive ->
+                    successfulCandidates.isNotEmpty() ->
+                        successfulCandidates.toCandidateSearchResult(desiredType)
+                    sawApplicableCandidate &&
+                        sawRecursiveCandidate &&
+                        allApplicableCandidatesWereRecursive ->
                         ResolutionSearchResult.Recursive(desiredType)
                     else -> ResolutionSearchResult.Missing(desiredType)
                 }
             val selectedLocalIndex =
-                ((result as? ResolutionSearchResult.Success)?.plan as? ResolutionPlan.LocalContext)?.index
+                ((result as? ResolutionSearchResult.Success)?.plan as? ResolutionPlan.LocalContext)
+                    ?.index
             val selectedRuleId =
-                ((result as? ResolutionSearchResult.Success)?.plan as? ResolutionPlan.ApplyRule)?.ruleId
+                ((result as? ResolutionSearchResult.Success)?.plan as? ResolutionPlan.ApplyRule)
+                    ?.ruleId
             return InternalResolution(
                 result = result,
                 freshCounter = nextFreshCounter,
@@ -307,8 +321,13 @@ internal class TypeclassResolutionPlanner(
                             goal = desiredType,
                             localContextCandidates =
                                 tracedLocalCandidates.map { candidate ->
-                                    if (candidate.identity == "local-context[$selectedLocalIndex]") {
-                                        candidate.copy(state = ResolutionTraceCandidateState.SELECTED, reason = null)
+                                    if (
+                                        candidate.identity == "local-context[$selectedLocalIndex]"
+                                    ) {
+                                        candidate.copy(
+                                            state = ResolutionTraceCandidateState.SELECTED,
+                                            reason = null,
+                                        )
                                     } else {
                                         candidate
                                     }
@@ -316,7 +335,9 @@ internal class TypeclassResolutionPlanner(
                             ruleCandidates =
                                 tracedRuleCandidates.map { candidate ->
                                     if (candidate.identity == selectedRuleId) {
-                                        candidate.copy(state = ResolutionTraceCandidateState.SELECTED)
+                                        candidate.copy(
+                                            state = ResolutionTraceCandidateState.SELECTED
+                                        )
                                     } else {
                                         candidate
                                     }
@@ -341,15 +362,14 @@ internal class TypeclassResolutionPlanner(
             nextFreshCounter = instantiatedRule.nextFreshCounter
             val substitution =
                 Unifier(
-                    bindableVariableIds =
-                        instantiatedRule.rule.typeParameters.mapTo(linkedSetOf(), TcTypeParameter::id).apply {
-                            addAll(bindableDesiredVariableIds)
-                        },
-                ).unify(
-                    desiredType,
-                    instantiatedRule.rule.providedType,
-                )
-            val appliedRule = substitution?.let(instantiatedRule.rule::apply) ?: instantiatedRule.rule
+                        bindableVariableIds =
+                            instantiatedRule.rule.typeParameters
+                                .mapTo(linkedSetOf(), TcTypeParameter::id)
+                                .apply { addAll(bindableDesiredVariableIds) }
+                    )
+                    .unify(desiredType, instantiatedRule.rule.providedType)
+            val appliedRule =
+                substitution?.let(instantiatedRule.rule::apply) ?: instantiatedRule.rule
             ResolutionTraceCandidate(
                 identity = appliedRule.id,
                 family = resolutionTraceCandidateFamily(appliedRule.id),
@@ -365,24 +385,17 @@ internal class TypeclassResolutionPlanner(
         }
     }
 
-    private fun instantiateRule(
-        rule: InstanceRule,
-        freshCounter: Int,
-    ): InstantiatedRule {
+    private fun instantiateRule(rule: InstanceRule, freshCounter: Int): InstantiatedRule {
         val suffix = "__$freshCounter"
         val freshParameters =
             rule.typeParameters.map { parameter ->
-                TcTypeParameter(
-                    id = parameter.id + suffix,
-                    displayName = parameter.displayName,
-                )
+                TcTypeParameter(id = parameter.id + suffix, displayName = parameter.displayName)
             }
         val substitution =
             Substitution(
-                rule.typeParameters.zip(freshParameters)
-                    .associate { (original, fresh) ->
-                        original.id to TcType.Variable(fresh.id, fresh.displayName)
-                    },
+                rule.typeParameters.zip(freshParameters).associate { (original, fresh) ->
+                    original.id to TcType.Variable(fresh.id, fresh.displayName)
+                }
             )
         return InstantiatedRule(
             rule =
@@ -413,22 +426,14 @@ private fun List<ResolutionPlan>.toSearchResult(desiredType: TcType): Resolution
     }
 
 internal sealed interface ResolutionSearchResult {
-    data class Success(
-        val plan: ResolutionPlan,
-    ) : ResolutionSearchResult
+    data class Success(val plan: ResolutionPlan) : ResolutionSearchResult
 
-    data class Missing(
-        val desiredType: TcType,
-    ) : ResolutionSearchResult
+    data class Missing(val desiredType: TcType) : ResolutionSearchResult
 
-    data class Ambiguous(
-        val desiredType: TcType,
-        val matchingPlans: List<ResolutionPlan>,
-    ) : ResolutionSearchResult
+    data class Ambiguous(val desiredType: TcType, val matchingPlans: List<ResolutionPlan>) :
+        ResolutionSearchResult
 
-    data class Recursive(
-        val desiredType: TcType,
-    ) : ResolutionSearchResult
+    data class Recursive(val desiredType: TcType) : ResolutionSearchResult
 }
 
 private data class InternalResolution(
@@ -437,16 +442,13 @@ private data class InternalResolution(
     val trace: ResolutionTrace? = null,
 )
 
-private data class InstantiatedRule(
-    val rule: InstanceRule,
-    val nextFreshCounter: Int,
-)
+private data class InstantiatedRule(val rule: InstanceRule, val nextFreshCounter: Int)
 
-private data class TraceOptions(
-    val explainAlternatives: Boolean,
-)
+private data class TraceOptions(val explainAlternatives: Boolean)
 
-private fun List<SuccessfulCandidate>.toCandidateSearchResult(desiredType: TcType): ResolutionSearchResult =
+private fun List<SuccessfulCandidate>.toCandidateSearchResult(
+    desiredType: TcType
+): ResolutionSearchResult =
     when (size) {
         0 -> ResolutionSearchResult.Missing(desiredType)
         1 -> ResolutionSearchResult.Success(single().plan)
@@ -458,7 +460,11 @@ private fun List<SuccessfulCandidate>.toCandidateSearchResult(desiredType: TcTyp
             val highestPriority = filter { candidate -> candidate.priority == maxPriority }
             when (highestPriority.size) {
                 1 -> ResolutionSearchResult.Success(highestPriority.single().plan)
-                else -> ResolutionSearchResult.Ambiguous(desiredType, highestPriority.map(SuccessfulCandidate::plan))
+                else ->
+                    ResolutionSearchResult.Ambiguous(
+                        desiredType,
+                        highestPriority.map(SuccessfulCandidate::plan),
+                    )
             }
         }
     }
@@ -468,13 +474,9 @@ private fun mismatchReason(
     @Suppress("UNUSED_PARAMETER") candidateType: TcType,
 ): String = "not applicable due to head mismatch"
 
-private data class Substitution(
-    val bindings: Map<String, TcType>,
-) {
-    fun plus(
-        variableId: String,
-        value: TcType,
-    ): Substitution = Substitution(bindings + (variableId to value))
+private data class Substitution(val bindings: Map<String, TcType>) {
+    fun plus(variableId: String, value: TcType): Substitution =
+        Substitution(bindings + (variableId to value))
 }
 
 private class Unifier {
@@ -487,20 +489,14 @@ private class Unifier {
     private var substitution = Substitution(emptyMap())
     private val bindableVariableIds: Set<String>?
 
-    fun unify(
-        left: TcType,
-        right: TcType,
-    ): Substitution? {
+    fun unify(left: TcType, right: TcType): Substitution? {
         if (!unifyInternal(left.substitute(substitution), right.substitute(substitution))) {
             return null
         }
         return substitution
     }
 
-    private fun unifyInternal(
-        left: TcType,
-        right: TcType,
-    ): Boolean {
+    private fun unifyInternal(left: TcType, right: TcType): Boolean {
         if (left == right) {
             return true
         }
@@ -542,10 +538,7 @@ private class Unifier {
     private fun isBindable(variableId: String): Boolean =
         bindableVariableIds == null || variableId in bindableVariableIds
 
-    private fun bindVariable(
-        variable: TcType.Variable,
-        value: TcType,
-    ): Boolean {
+    private fun bindVariable(variable: TcType.Variable, value: TcType): Boolean {
         val normalizedValue =
             if (variable.isNullable) {
                 value.stripOuterNullability() ?: return false
@@ -555,10 +548,7 @@ private class Unifier {
         return bind(variable.id, normalizedValue)
     }
 
-    private fun bind(
-        variableId: String,
-        value: TcType,
-    ): Boolean {
+    private fun bind(variableId: String, value: TcType): Boolean {
         val existing = substitution.bindings[variableId]
         if (existing != null) {
             return unifyInternal(existing, value)
@@ -587,26 +577,30 @@ internal fun unifyTypes(
     bindableVariableIds: Set<String>? = null,
 ): Map<String, TcType>? = Unifier(bindableVariableIds).unify(left, right)?.bindings
 
-internal fun TcType.substituteType(bindings: Map<String, TcType>): TcType = substitute(Substitution(bindings))
+internal fun TcType.substituteType(bindings: Map<String, TcType>): TcType =
+    substitute(Substitution(bindings))
 
 private fun TcType.substitute(substitution: Substitution): TcType =
     substitute(substitution, linkedSetOf())
 
-private fun TcType.substitute(
-    substitution: Substitution,
-    visiting: MutableSet<String>,
-): TcType =
+private fun TcType.substitute(substitution: Substitution, visiting: MutableSet<String>): TcType =
     when (this) {
         TcType.StarProjection -> TcType.StarProjection
         is TcType.Projected -> TcType.Projected(variance, type.substitute(substitution, visiting))
-        is TcType.Constructor -> TcType.Constructor(classifierId, arguments.map { it.substitute(substitution, visiting) }, isNullable)
+        is TcType.Constructor ->
+            TcType.Constructor(
+                classifierId,
+                arguments.map { it.substitute(substitution, visiting) },
+                isNullable,
+            )
 
         is TcType.Variable -> {
             if (!visiting.add(id)) {
                 return this
             }
             try {
-                val substituted = substitution.bindings[id]?.substitute(substitution, visiting) ?: this
+                val substituted =
+                    substitution.bindings[id]?.substitute(substitution, visiting) ?: this
                 if (isNullable) {
                     substituted.makeNullable()
                 } else {

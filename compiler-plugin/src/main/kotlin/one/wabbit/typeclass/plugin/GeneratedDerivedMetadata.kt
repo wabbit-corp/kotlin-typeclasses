@@ -39,10 +39,8 @@ internal sealed interface GeneratedDerivedMetadata {
             }
     }
 
-    data class DeriveEquiv(
-        override val targetId: ClassId,
-        val otherClassId: ClassId,
-    ) : GeneratedDerivedMetadata {
+    data class DeriveEquiv(override val targetId: ClassId, val otherClassId: ClassId) :
+        GeneratedDerivedMetadata {
         override val typeclassId: ClassId = EQUIV_CLASS_ID
         override val kind: String = "derive-equiv"
 
@@ -60,13 +58,8 @@ internal sealed interface GeneratedDerivedMetadata {
     }
 }
 
-internal data class GeneratedDeriveViaPathSegment(
-    val kind: Kind,
-    val classId: ClassId,
-) {
-    internal enum class Kind(
-        val tag: Char,
-    ) {
+internal data class GeneratedDeriveViaPathSegment(val kind: Kind, val classId: ClassId) {
+    internal enum class Kind(val tag: Char) {
         WAYPOINT('W'),
         PINNED_ISO('I'),
     }
@@ -154,19 +147,24 @@ private fun decodeGeneratedDeriveViaPath(payload: String): List<GeneratedDeriveV
     if (payload.isEmpty()) {
         return null
     }
-    return payload.split('|').mapNotNull { encodedSegment ->
-        if (encodedSegment.length < 3 || encodedSegment[1] != ':') {
-            return null
-        }
-        val kind =
-            when (encodedSegment[0]) {
-                GeneratedDeriveViaPathSegment.Kind.WAYPOINT.tag -> GeneratedDeriveViaPathSegment.Kind.WAYPOINT
-                GeneratedDeriveViaPathSegment.Kind.PINNED_ISO.tag -> GeneratedDeriveViaPathSegment.Kind.PINNED_ISO
-                else -> return null
+    return payload
+        .split('|')
+        .mapNotNull { encodedSegment ->
+            if (encodedSegment.length < 3 || encodedSegment[1] != ':') {
+                return null
             }
-        val classId = decodeClassId(encodedSegment.substring(2)) ?: return null
-        GeneratedDeriveViaPathSegment(kind = kind, classId = classId)
-    }.takeIf { it.isNotEmpty() }
+            val kind =
+                when (encodedSegment[0]) {
+                    GeneratedDeriveViaPathSegment.Kind.WAYPOINT.tag ->
+                        GeneratedDeriveViaPathSegment.Kind.WAYPOINT
+                    GeneratedDeriveViaPathSegment.Kind.PINNED_ISO.tag ->
+                        GeneratedDeriveViaPathSegment.Kind.PINNED_ISO
+                    else -> return null
+                }
+            val classId = decodeClassId(encodedSegment.substring(2)) ?: return null
+            GeneratedDeriveViaPathSegment(kind = kind, classId = classId)
+        }
+        .takeIf { it.isNotEmpty() }
 }
 
 private fun decodeClassId(encoded: String): ClassId? =

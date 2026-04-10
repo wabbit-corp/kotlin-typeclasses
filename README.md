@@ -15,7 +15,7 @@ Kotlin context parameters give the language a useful capability-passing syntax, 
 
 `kotlin-typeclasses` adds the missing pieces:
 
-- implicit evidence search for interfaces marked with `@Typeclass`
+- implicit evidence search for supported heads marked with `@Typeclass`
 - rule-style instance declarations with `@Instance`
 - companion-based associated lookup
 - derived instances for products, sums, enums, and equivalence-based shapes
@@ -48,9 +48,9 @@ This project is trying to be powerful without becoming mystical.
 | Module | Gradle project | Purpose |
 | --- | --- | --- |
 | [`library/`](./library/) | `:kotlin-typeclasses` | Public runtime API: `@Typeclass`, `@Instance`, `@Derive`, `summon()`, derivation metadata, and builtin proof types |
-| [`compiler-plugin/`](./compiler-plugin/) | `:compiler-plugin` | K2 compiler plugin: discovery, resolution planning, FIR validation/refinement, and IR rewriting/codegen |
-| [`gradle-plugin/`](./gradle-plugin/) | `:gradle-plugin` | Gradle integration for `one.wabbit.typeclass` |
-| [`ij-plugin/`](./ij-plugin/) | `:ij-plugin` | IntelliJ IDEA integration for loading the compiler plugin into IDE analysis |
+| [`compiler-plugin/`](./compiler-plugin/) | `:kotlin-typeclasses-plugin` | K2 compiler plugin: discovery, resolution planning, FIR validation/refinement, and IR rewriting/codegen |
+| [`gradle-plugin/`](./gradle-plugin/) | `:kotlin-typeclasses-gradle-plugin` | Gradle integration for `one.wabbit.typeclass` |
+| [`ij-plugin/`](./ij-plugin/) | `:kotlin-typeclasses-ij-plugin` | IntelliJ IDEA integration for loading the compiler plugin into IDE analysis |
 
 ## Published Modules
 
@@ -58,44 +58,59 @@ Most consumers need the runtime library and the Gradle plugin ID.
 
 | Module | Coordinates or ID | Role |
 | --- | --- | --- |
-| Runtime library | `one.wabbit:kotlin-typeclasses:<version>` | Annotations, `summon()`, derivation metadata, and proof APIs |
+| Runtime library | `one.wabbit:kotlin-typeclasses:0.0.1` | Annotations, `summon()`, derivation metadata, and proof APIs |
 | Gradle plugin | plugin id `one.wabbit.typeclass` | Kotlin build integration and compiler-plugin wiring |
-| Gradle plugin artifact | `one.wabbit:kotlin-typeclasses-gradle-plugin:<version>` | Published Gradle plugin implementation artifact |
-| Compiler plugin | `one.wabbit:kotlin-typeclasses-plugin:<baseVersion>-kotlin-<kotlinVersion>` | Kotlin-line-specific K2 compiler plugin |
-| IntelliJ plugin | `one.wabbit:kotlin-typeclasses-ij-plugin:<version>` | IDE helper plugin for external compiler-plugin loading |
+| Gradle plugin artifact | `one.wabbit:kotlin-typeclasses-gradle-plugin:0.0.1` | Published Gradle plugin implementation artifact |
+| Compiler plugin | `one.wabbit:kotlin-typeclasses-plugin:0.0.1-kotlin-2.3.10` and `one.wabbit:kotlin-typeclasses-plugin:0.0.1-kotlin-2.4.0-Beta1` | Kotlin-line-specific K2 compiler plugin |
+| IntelliJ plugin | `one.wabbit:kotlin-typeclasses-ij-plugin:0.0.1` | IDE helper plugin for external compiler-plugin loading |
 
 ## Quick Start
 
-If you want the normal Gradle integration path, add `mavenCentral()` to `pluginManagement` as well as normal dependency repositories:
+This is a complete JVM application for the current documented release line.
 
 ```kotlin
 // settings.gradle.kts
 pluginManagement {
     repositories {
-        mavenCentral()
         gradlePluginPortal()
+        mavenCentral()
     }
 }
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        mavenCentral()
+    }
+}
+
+rootProject.name = "typeclass-quickstart"
 ```
 
 ```kotlin
 // build.gradle.kts
 plugins {
     kotlin("jvm") version "2.3.10"
-    id("one.wabbit.typeclass") version "<version>"
-}
-
-repositories {
-    mavenCentral()
+    application
+    id("one.wabbit.typeclass") version "0.0.1"
 }
 
 dependencies {
-    implementation("one.wabbit:kotlin-typeclasses:<version>")
+    implementation("one.wabbit:kotlin-typeclasses:0.0.1")
+}
+
+kotlin {
+    jvmToolchain(21)
+}
+
+application {
+    mainClass = "demo.MainKt"
 }
 ```
 
-Then define typeclasses with `@Typeclass`, provide evidence with `@Instance`, and consume it through context parameters or `summon()`:
+Then add `src/main/kotlin/demo/Main.kt`:
 
+<!-- quickstart-source:start -->
 ```kotlin
 package demo
 
@@ -128,6 +143,19 @@ fun main() {
     println(render(1 to 2))
 }
 ```
+<!-- quickstart-source:end -->
+
+Run it:
+
+```bash
+./gradlew run
+```
+
+Expected output:
+
+```text
+(1, 2)
+```
 
 If you want to load the compiler plugin manually instead of using Gradle, add both `-Xcontext-parameters` and the compiler plugin artifact `one.wabbit:kotlin-typeclasses-plugin:<baseVersion>-kotlin-<kotlinVersion>`.
 
@@ -136,14 +164,15 @@ If you want to load the compiler plugin manually instead of using Gradle, add bo
 Out of the box:
 
 - the Gradle plugin wires in the compiler plugin and enables `-Xcontext-parameters`
-- typeclass resolution only applies to interfaces annotated with `@Typeclass`
+- typeclass resolution applies only to supported heads annotated with `@Typeclass`
+- ordinary user-defined typeclasses should be interfaces; subclassable class heads are limited to advanced/compiler-owned surfaces
 - directly available contextual evidence is preferred before global rule search
 - synthetic `KClass<T>` and `KSerializer<T>` evidence stay disabled unless you opt in through compiler-plugin options
 - resolution tracing stays disabled unless you opt in globally or by source annotation
 
 ## What The Plugin Adds
 
-- Implicit resolution for `context(...)` parameters whose type is annotated with `@Typeclass`
+- Implicit resolution for `context(...)` parameters whose head is annotated with `@Typeclass`
 - Instance search through top-level `@Instance` declarations and associated companions
 - Derived instances via `@Derive`, `@DeriveVia`, and `@DeriveEquiv`
 - Builtin proof materialization for APIs such as `Same`, `Subtype`, `KnownType`, and `TypeId`
@@ -153,7 +182,8 @@ Out of the box:
 
 The important resolution rules are:
 
-- Only `@Typeclass` interfaces participate in implicit typeclass resolution.
+- Only supported `@Typeclass` heads participate in implicit typeclass resolution.
+- Ordinary application/library typeclasses should be interfaces. Abstract/open class heads are an advanced path used by compiler-owned surfaces such as `Equiv` and by `@DeriveVia` only when the head is subclassable and has an accessible zero-argument constructor.
 - Directly available contextual evidence is considered before global rule search.
 - Global rules come from top-level `@Instance` objects, functions, and immutable properties, plus associated companions.
 - Top-level `@Instance` declarations are restricted by file ownership: they must live with the typeclass head or one of the concrete provided classifiers in the target.
@@ -219,6 +249,7 @@ For the current property-read limitation, see [`compiler-plugin/ISSUE_PROPERTIES
 
 ## Documentation Map
 
+- Published API docs: `https://wabbit-corp.github.io/kotlin-typeclasses/`
 - [User Guide](./docs/user-guide.md): setup, authoring typeclasses, derivation, builtin proofs, and tracing
 - [Typeclass Model](./docs/typeclass-model.md): what counts as a typeclass, where evidence lives, typeclass scope, and resolution precedence
 - [Instance Authoring](./docs/instance-authoring.md): placement strategy, top-level ownership rules, and ambiguity avoidance
@@ -226,6 +257,8 @@ For the current property-read limitation, see [`compiler-plugin/ISSUE_PROPERTIES
 - [Proofs And Builtins](./docs/proofs-and-builtins.md): all builtin proof types plus `KClass<T>` / `KSerializer<T>` summoning
 - [Troubleshooting](./docs/troubleshooting.md): common diagnostics, tracing workflow, and builtin/debugging failure patterns
 - [Multi-Module Behavior](./docs/multi-module.md): visibility, exported evidence, and dependency-boundary semantics
+- [API Reference](./docs/api-reference.md): generated Dokka reference commands and intended reference surfaces
+- [Migration](./docs/migration.md): release-line compatibility, breaking-change policy, and upgrade checklist
 - [Architecture](./docs/architecture.md): how the runtime, compiler plugin, Gradle plugin, and IntelliJ plugin fit together
 - [Development](./docs/development.md): local build, test, versioning, publishing, and release workflow notes
 - [Runtime Library README](./library/README.md): public runtime API surface and artifact role
@@ -242,9 +275,9 @@ Common commands from the repo root:
 ```bash
 ./gradlew build
 ./gradlew :kotlin-typeclasses:jvmTest
-./gradlew :compiler-plugin:test
-./gradlew :gradle-plugin:test
-./gradlew :ij-plugin:test
+./gradlew :kotlin-typeclasses-plugin:test
+./gradlew :kotlin-typeclasses-gradle-plugin:test
+./gradlew :kotlin-typeclasses-ij-plugin:test
 ```
 
 The runtime project name is `:kotlin-typeclasses`, not `:library`.
@@ -252,9 +285,9 @@ The runtime project name is `:kotlin-typeclasses`, not `:library`.
 ## Contributing And Licensing
 
 - License: [`LICENSE.md`](./LICENSE.md)
-- Code of conduct: [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md)
-- CLA: [`CLA.md`](./CLA.md)
-- Contributor privacy notice: [`CONTRIBUTOR_PRIVACY.md`](./CONTRIBUTOR_PRIVACY.md)
+- Code of conduct: [`legal/code-of-conduct/v1.0.0/CODE_OF_CONDUCT.md`](./legal/code-of-conduct/v1.0.0/CODE_OF_CONDUCT.md)
+- CLA: [`legal/cla/v1.0.0/CLA.md`](./legal/cla/v1.0.0/CLA.md)
+- Contributor privacy notice: [`legal/contributor-privacy/v1.0.0/CONTRIBUTOR_PRIVACY.md`](./legal/contributor-privacy/v1.0.0/CONTRIBUTOR_PRIVACY.md)
 
 ## Suggested Reading Order
 
@@ -268,8 +301,10 @@ If you are new to the repository, this order works well:
 6. [docs/proofs-and-builtins.md](./docs/proofs-and-builtins.md)
 7. [docs/troubleshooting.md](./docs/troubleshooting.md)
 8. [docs/multi-module.md](./docs/multi-module.md)
-9. [library/README.md](./library/README.md)
-10. [docs/architecture.md](./docs/architecture.md)
-11. [compiler-plugin/README.md](./compiler-plugin/README.md)
-12. [compiler-plugin/PLAN.md](./compiler-plugin/PLAN.md)
-13. [compiler-plugin/LEARNINGS.md](./compiler-plugin/LEARNINGS.md)
+9. [docs/api-reference.md](./docs/api-reference.md)
+10. [docs/migration.md](./docs/migration.md)
+11. [library/README.md](./library/README.md)
+12. [docs/architecture.md](./docs/architecture.md)
+13. [compiler-plugin/README.md](./compiler-plugin/README.md)
+14. [compiler-plugin/PLAN.md](./compiler-plugin/PLAN.md)
+15. [compiler-plugin/LEARNINGS.md](./compiler-plugin/LEARNINGS.md)

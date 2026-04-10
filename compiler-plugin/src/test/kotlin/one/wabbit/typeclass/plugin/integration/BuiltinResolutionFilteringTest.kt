@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
@@ -39,12 +39,10 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(render())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int")
     }
 
     @Test
@@ -83,12 +81,10 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(render())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int")
     }
 
     @Test
@@ -125,12 +121,10 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(render())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int")
     }
 
     @Test
@@ -147,7 +141,8 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun impossible(): String = "impossible"
 
             fun test(): String = impossible() // E:TC_NO_CONTEXT_ARGUMENT Iterable<String> is not Iterable<Int>
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -172,7 +167,8 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(choose("not-a-number"))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -200,12 +196,10 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(choose<Animal, Dog>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "context",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "context")
     }
 
     @Test
@@ -224,12 +218,10 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(choose<String>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "not-nullable",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "not-nullable")
     }
 
     @Test
@@ -248,12 +240,10 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(choose<String>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "nullable",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "nullable")
     }
 
     @Test
@@ -286,7 +276,8 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(choose<String>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -331,12 +322,10 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(render())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int")
     }
 
     @Test
@@ -355,7 +344,8 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(choose("not-a-number"))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -397,12 +387,10 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(render())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "exact:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "exact:1")
     }
 
     @Test
@@ -421,7 +409,8 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(choose<List<Int>>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -458,12 +447,10 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(render())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "derived:2",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "derived:2")
     }
 
     @Test
@@ -501,7 +488,8 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(render())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -527,12 +515,10 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(choose())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "plain",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "plain")
     }
 
     @Test
@@ -551,12 +537,10 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(choose())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "plain",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "plain")
     }
 
     @Test
@@ -575,12 +559,10 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(choose())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "plain",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "plain")
     }
 
     @Test
@@ -599,12 +581,10 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(choose())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "plain",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "plain")
     }
 
     @Test
@@ -623,7 +603,8 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(choose())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -648,7 +629,8 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(choose())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -673,7 +655,8 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(choose())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -699,7 +682,8 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(choose())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -743,7 +727,8 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
             fun main() {
                 println(render())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,

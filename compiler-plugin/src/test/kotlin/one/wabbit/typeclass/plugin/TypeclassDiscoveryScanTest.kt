@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin
 
-import org.jetbrains.kotlin.name.FqName
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import org.jetbrains.kotlin.name.FqName
 
 class TypeclassDiscoveryScanTest {
     @Test

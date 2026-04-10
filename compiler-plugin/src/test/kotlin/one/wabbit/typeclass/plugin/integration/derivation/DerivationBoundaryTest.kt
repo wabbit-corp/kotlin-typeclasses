@@ -1,17 +1,17 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.derivation
 
+import kotlin.test.Test
+import kotlin.test.assertEquals
 import one.wabbit.typeclass.plugin.BinaryGeneratedDerivedMetadataLoader
 import one.wabbit.typeclass.plugin.GeneratedDerivedMetadata
 import one.wabbit.typeclass.plugin.cannotDeriveOnlyUnaryTypeclasses
+import one.wabbit.typeclass.plugin.integration.DiagnosticPhase
 import one.wabbit.typeclass.plugin.integration.HarnessDependency
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
-import one.wabbit.typeclass.plugin.integration.DiagnosticPhase
 import org.jetbrains.kotlin.cli.common.ExitCode
 import org.jetbrains.kotlin.name.ClassId
-import kotlin.test.Test
-import kotlin.test.assertEquals
 
 class DerivationBoundaryTest : IntegrationTestSupport() {
     @Test
@@ -35,7 +35,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
             fun main() {
                 println(render(ShownString("dep")))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -58,19 +59,22 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                     @Derive(Show::class)
                     sealed interface Token
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "shared/Word.kt" to
                     """
                     package shared
 
                     data class Word(val value: ShownString) : Token
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "shared/End.kt" to
                     """
                     package shared
 
                     object End : Token
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -87,7 +91,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                         println(render(word))
                         println(render(end))
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertCompilesAndRuns(
@@ -96,7 +101,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 """
                 Word(value=hi)
                 End()
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             mainClass = "demo.MainKt",
         )
     }
@@ -115,19 +121,22 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                     @Derive(Show::class)
                     sealed class Envelope<out A>
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "shared/Value.kt" to
                     """
                     package shared
 
                     data class Value<A>(val value: A) : Envelope<A>()
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "shared/Missing.kt" to
                     """
                     package shared
 
                     object Missing : Envelope<Nothing>()
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -144,7 +153,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                         println(render(value))
                         println(render(missing))
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertCompilesAndRuns(
@@ -153,7 +163,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 """
                 Value(value=1)
                 Missing()
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             mainClass = "demo.MainKt",
         )
     }
@@ -172,7 +183,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                     @Derive(Show::class)
                     data class Secret internal constructor(internal val value: ShownString)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -184,7 +196,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     fun main() {
                         println(render(Secret(ShownString("ok"))))
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertCompilesAndRuns(
@@ -208,19 +221,22 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                     @Derive(Show::class)
                     sealed interface Token
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "shared/Word.kt" to
                     """
                     package shared
 
                     internal data class Word internal constructor(internal val value: ShownString) : Token
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "shared/End.kt" to
                     """
                     package shared
 
                     internal object End : Token
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -237,7 +253,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                         println(render(word))
                         println(render(end))
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertCompilesAndRuns(
@@ -246,7 +263,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 """
                 Word(value=ok)
                 End()
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             mainClass = "demo.MainKt",
         )
     }
@@ -266,7 +284,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     enum class Token {
                         A,
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -282,15 +301,13 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     fun main() {
                         println(render(Token.A))
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
             sources = sources,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("override deriveEnum"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("override deriveEnum")),
             unexpectedMessages = listOf("overload resolution ambiguity"),
         )
     }
@@ -305,7 +322,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     package shared
 
                     data class Missing(val value: String)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "shared/Box.kt" to
                     """
                     package shared
@@ -316,7 +334,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     object Box {
                         val value: Missing = Missing("hidden")
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -329,7 +348,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     fun main() {
                         println(render(Box))
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertCompilesAndRuns(
@@ -352,7 +372,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
             @Derive(Plain::class, Other::class) // E:TC_CANNOT_DERIVE invalid non-typeclass derive targets must be diagnosed explicitly
             data class User(val value: String)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -393,13 +414,17 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
             @Derive(Decoder::class, Plain::class) // E:TC_CANNOT_DERIVE multiple invalid derive targets should each be diagnosed
             data class Box(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
-                    expectedTypeclassDiagnostic(cannotDeriveOnlyUnaryTypeclasses(), phase = DiagnosticPhase.IR),
+                    expectedTypeclassDiagnostic(
+                        cannotDeriveOnlyUnaryTypeclasses(),
+                        phase = DiagnosticPhase.IR,
+                    ),
                     expectedCannotDerive("plain", "@typeclass"),
                 ),
             unexpectedMessages = listOf("internal compiler error"),
@@ -420,13 +445,15 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                     @Derive(Show::class)
                     data class Leaf(val value: ShownString)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "shared/Wrapper.kt" to
                     """
                     package shared
 
                     data class Wrapper<A>(val value: A)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -439,12 +466,14 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     fun main() {
                         println(render(Wrapper(Leaf(ShownString("ok"))))) // E:TC_NO_CONTEXT_ARGUMENT a derived Leaf must not authorize Show<Wrapper<Leaf>>
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
             sources = sources,
-            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.FIR)),
+            expectedDiagnostics =
+                listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.FIR)),
             unexpectedMessages = listOf("internal compiler error", "overload resolution ambiguity"),
         )
     }
@@ -463,7 +492,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                     @Derive(Show::class)
                     sealed interface Token
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "shared/Word.kt" to
                     """
                     package shared
@@ -472,13 +502,15 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                     @Derive(Show::class)
                     data class Word(val value: ShownString) : Token
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "shared/End.kt" to
                     """
                     package shared
 
                     object End : Token
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -490,7 +522,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     fun main() {
                         println(render(Word(ShownString("ok"))))
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertCompilesAndRuns(
@@ -547,7 +580,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 println(useParent())
                 println(useChild())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.COMPILATION_ERROR, result.exitCode, result.stdout)
@@ -574,7 +608,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     class Stats(count: ShownInt) {
                         val total: ShownInt = count
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -586,7 +621,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     fun main() {
                         println(render(Stats(ShownInt(1)))) // E:TC_NO_CONTEXT_ARGUMENT invalid product derivation must not hide missing Show<Stats>
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
@@ -616,13 +652,15 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                     @Derive(Show::class) // E:TC_CANNOT_DERIVE
                     sealed interface Expr
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "shared/Lit.kt" to
                     """
                     package shared
 
                     data class Lit<T>(val value: T) : Expr
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -635,7 +673,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                         val expr: Expr = Lit(1)
                         println(render(expr)) // E:TC_NO_CONTEXT_ARGUMENT unrecoverable sealed cases must not look derivable in FIR
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
@@ -666,19 +705,22 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                             @Derive(Show::class)
                             sealed interface Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "dep/Word.kt" to
                             """
                             package dep
 
                             data class Word(val value: ShownString) : Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "dep/End.kt" to
                             """
                             package dep
 
                             object End : Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
             )
         val source =
@@ -697,7 +739,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 println(render(word))
                 println(render(end))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -705,7 +748,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 """
                 Word(value=dep)
                 End()
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             dependencies = listOf(dependency),
         )
     }
@@ -727,19 +771,22 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                             @Derive(Show::class)
                             sealed interface Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "dep/Word.kt" to
                             """
                             package dep
 
                             data class Word(val value: ShownString) : Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "dep/End.kt" to
                             """
                             package dep
 
                             object End : Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
             )
         val source =
@@ -755,7 +802,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 println(render(Word(ShownString("leaf"))))
                 println(render(End))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -763,7 +811,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 """
                 Word(value=leaf)
                 End()
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             dependencies = listOf(dependency),
         )
     }
@@ -803,10 +852,12 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
             data class Word(val value: Int) : Token
 
             object End : Token
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source = source)
-        val loader = BinaryGeneratedDerivedMetadataLoader(listOf(result.artifacts.outputDir.toFile()))
+        val loader =
+            BinaryGeneratedDerivedMetadataLoader(listOf(result.artifacts.outputDir.toFile()))
         val tokenId = ClassId.fromString("demo/Token")
         val wordId = ClassId.fromString("demo/Word")
         val endId = ClassId.fromString("demo/End")
@@ -816,7 +867,7 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     typeclassId = ClassId.fromString("demo/Show"),
                     targetId = tokenId,
                     validatedReturnTypeclass = true,
-                ),
+                )
             )
 
         assertEquals(expectedRootMetadata, loader.generatedMetadataFor(tokenId))
@@ -856,10 +907,12 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
             @Derive(Child::class)
             data class Box(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source = source)
-        val loader = BinaryGeneratedDerivedMetadataLoader(listOf(result.artifacts.outputDir.toFile()))
+        val loader =
+            BinaryGeneratedDerivedMetadataLoader(listOf(result.artifacts.outputDir.toFile()))
         val boxId = ClassId.fromString("demo/Box")
 
         assertEquals(
@@ -868,7 +921,7 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     typeclassId = ClassId.fromString("demo/Child"),
                     targetId = boxId,
                     validatedReturnTypeclass = true,
-                ),
+                )
             ),
             loader.generatedMetadataFor(boxId),
         )
@@ -890,7 +943,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                             @Derive(Show::class)
                             data class Box<A>(val value: A)
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
             )
         val source =
@@ -910,7 +964,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
             fun main() {
                 println(choose(Box(Missing("nope"))))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -936,19 +991,22 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                             @Derive(Show::class)
                             sealed class Envelope<out A>
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "dep/Value.kt" to
                             """
                             package dep
 
                             data class Value<A>(val value: A) : Envelope<A>()
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "dep/Missing.kt" to
                             """
                             package dep
 
                             object Missing : Envelope<Nothing>()
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
             )
         val source =
@@ -967,7 +1025,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 println(render(value))
                 println(render(missing))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -975,7 +1034,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 """
                 Value(value=2)
                 Missing()
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             dependencies = listOf(dependency),
         )
     }
@@ -985,10 +1045,7 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
         val typeclassDependency =
             HarnessDependency(
                 name = "dep-shared-show",
-                sources =
-                    mapOf(
-                        "dep/Show.kt" to showTypeclassSource(packageName = "dep"),
-                    ),
+                sources = mapOf("dep/Show.kt" to showTypeclassSource(packageName = "dep")),
             )
         val modelDependency =
             HarnessDependency(
@@ -1012,7 +1069,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                                         }
                                 }
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "model/Token.kt" to
                             """
                             package model
@@ -1022,19 +1080,22 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                             @Derive(Show::class)
                             sealed interface Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "model/Word.kt" to
                             """
                             package model
 
                             data class Word(val value: ShownString) : Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "model/End.kt" to
                             """
                             package model
 
                             object End : Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
             )
         val source =
@@ -1053,7 +1114,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 println(render(word))
                 println(render(end))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1061,7 +1123,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 """
                 Word(value=split)
                 End()
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             dependencies = listOf(modelDependency),
         )
     }
@@ -1084,7 +1147,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                             package model
 
                             data class NoShow(val value: String)
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "model/Token.kt" to
                             """
                             package model
@@ -1094,19 +1158,22 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                             @Derive(Show::class)
                             sealed interface Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "model/Word.kt" to
                             """
                             package model
 
                             data class Word(val value: NoShow) : Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "model/End.kt" to
                             """
                             package model
 
                             object End : Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
             )
         val source =
@@ -1122,11 +1189,13 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 val token: Token = Word(NoShow("missing"))
                 println(render(token)) // E:TC_NO_CONTEXT_ARGUMENT missing dependency field evidence
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.FIR)),
+            expectedDiagnostics =
+                listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.FIR)),
             dependencies = listOf(modelDependency),
             unexpectedMessages = listOf("internal compiler error"),
         )
@@ -1142,7 +1211,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     package shared
 
                     data class NoShow(val value: String)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "shared/Token.kt" to
                     """
                     package shared
@@ -1151,19 +1221,22 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                     @Derive(Show::class)
                     sealed interface Token
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "shared/Word.kt" to
                     """
                     package shared
 
                     data class Word(val value: NoShow) : Token
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "shared/End.kt" to
                     """
                     package shared
 
                     object End : Token
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -1176,12 +1249,14 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                         val token: Token = End
                         println(render(token)) // E:TC_NO_CONTEXT_ARGUMENT incomplete sealed hierarchy in another file blocks Show<Token> export
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
             sources = sources,
-            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.FIR)),
+            expectedDiagnostics =
+                listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.FIR)),
             unexpectedMessages = listOf("internal compiler error"),
         )
     }
@@ -1204,7 +1279,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                             package model
 
                             data class NoShow(val value: String)
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "model/Token.kt" to
                             """
                             package model
@@ -1214,19 +1290,22 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                             @Derive(Show::class)
                             sealed interface Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "model/Word.kt" to
                             """
                             package model
 
                             data class Word(val value: NoShow) : Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "model/End.kt" to
                             """
                             package model
 
                             object End : Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
             )
         val source =
@@ -1241,11 +1320,13 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 val token: Token = End
                 println(render(token)) // E:TC_NO_CONTEXT_ARGUMENT unsupported dependency case must prevent Show<Token> export
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.FIR)),
+            expectedDiagnostics =
+                listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.FIR)),
             dependencies = listOf(modelDependency),
             unexpectedMessages = listOf("internal compiler error"),
         )
@@ -1264,7 +1345,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                             object TokenShow : Show<Token> {
                                 override fun show(value: Token): String = "manual"
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
                 "shared/ShownString.kt" to shownStringSource("shared"),
                 "shared/Token.kt" to
@@ -1275,19 +1357,22 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                     @Derive(Show::class)
                     sealed interface Token
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "shared/Word.kt" to
                     """
                     package shared
 
                     data class Word(val value: ShownString) : Token
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "shared/End.kt" to
                     """
                     package shared
 
                     object End : Token
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -1301,7 +1386,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                         val token: Token = Word(ShownString("clash"))
                         println(render(token)) // E:TC_AMBIGUOUS_INSTANCE legal manual instance in another file conflicts with derived Show<Token>
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
@@ -1334,7 +1420,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                                 }
                         }
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -1350,7 +1437,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     fun main() {
                         println(render(Box(ShownString("clash")))) // E:TC_AMBIGUOUS_INSTANCE manual and derived Show<Box> must already be ambiguous in FIR refinement
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
@@ -1392,19 +1480,22 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                                         }
                                 }
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "model/Word.kt" to
                             """
                             package model
 
                             data class Word(val value: ShownString) : Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "model/End.kt" to
                             """
                             package model
 
                             object End : Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
             )
         val source =
@@ -1420,7 +1511,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 val token: Token = Word(ShownString("clash"))
                 println(render(token)) // E:TC_AMBIGUOUS_INSTANCE dependency exports both manual and derived Show<Token>
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1448,7 +1540,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 println(render(word))
                 println(render(End))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1456,7 +1549,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 """
                 Word(value=ok)
                 End()
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             dependencies = dependencies,
         )
     }
@@ -1477,11 +1571,13 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 val word: Token = Word(ShownString("ok"))
                 println(same(word, word)) // E:TC_NO_CONTEXT_ARGUMENT missing second derived head
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedNoContextArgument("eq", phase = DiagnosticPhase.FIR)),
+            expectedDiagnostics =
+                listOf(expectedNoContextArgument("eq", phase = DiagnosticPhase.FIR)),
             dependencies = dependencies,
             unexpectedMessages = listOf("internal compiler error"),
         )
@@ -1492,27 +1588,31 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
         val sources = localMultiHeadDerivationSources()
 
         assertCompilesAndRuns(
-            sources = sources + ("demo/Main.kt" to
-                """
-                package demo
+            sources =
+                sources +
+                    ("demo/Main.kt" to
+                        """
+                        package demo
 
-                import shared.End
-                import shared.ShownString
-                import shared.Token
-                import shared.Word
-                import shared.render
+                        import shared.End
+                        import shared.ShownString
+                        import shared.Token
+                        import shared.Word
+                        import shared.render
 
-                fun main() {
-                    val word: Token = Word(ShownString("ok"))
-                    println(render(word))
-                    println(render(End))
-                }
-                """.trimIndent()),
+                        fun main() {
+                            val word: Token = Word(ShownString("ok"))
+                            println(render(word))
+                            println(render(End))
+                        }
+                        """
+                            .trimIndent()),
             expectedStdout =
                 """
                 Word(value=ok)
                 End()
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             mainClass = "demo.MainKt",
         )
     }
@@ -1522,21 +1622,25 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
         val sources = localMultiHeadDerivationSources()
 
         assertDoesNotCompile(
-            sources = sources + ("demo/Main.kt" to
-                """
-                package demo
+            sources =
+                sources +
+                    ("demo/Main.kt" to
+                        """
+                        package demo
 
-                import shared.ShownString
-                import shared.Token
-                import shared.Word
-                import shared.same
+                        import shared.ShownString
+                        import shared.Token
+                        import shared.Word
+                        import shared.same
 
-                fun main() {
-                    val word: Token = Word(ShownString("ok"))
-                    println(same(word, word)) // E:TC_NO_CONTEXT_ARGUMENT missing second derived head across files
-                }
-                """.trimIndent()),
-            expectedDiagnostics = listOf(expectedNoContextArgument("eq", phase = DiagnosticPhase.FIR)),
+                        fun main() {
+                            val word: Token = Word(ShownString("ok"))
+                            println(same(word, word)) // E:TC_NO_CONTEXT_ARGUMENT missing second derived head across files
+                        }
+                        """
+                            .trimIndent()),
+            expectedDiagnostics =
+                listOf(expectedNoContextArgument("eq", phase = DiagnosticPhase.FIR)),
             unexpectedMessages = listOf("internal compiler error"),
         )
     }
@@ -1556,7 +1660,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                     @Derive(Child::class)
                     data class Box<A>(val value: A)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -1572,7 +1677,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                         val parent = summon<Parent<List<Box<ShownInt>>>>()
                         println(parent.renderParent(listOf(Box(ShownInt(2)), Box(ShownInt(3)))))
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertCompilesAndRuns(
@@ -1581,7 +1687,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                 """
                 Box(value=1)
                 [Box(value=2), Box(value=3)]
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             mainClass = "demo.MainKt",
         )
     }
@@ -1601,7 +1708,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                     @Derive(Child::class)
                     data class Box<A>(val value: A)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -1616,12 +1724,14 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                     fun main() {
                         println(renderWrong(Box(ShownInt(1)))) // E:TC_NO_CONTEXT_ARGUMENT inherited Parent<List<A>> must not be treated as Parent<A>
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
             sources = sources,
-            expectedDiagnostics = listOf(expectedNoContextArgument("parent", phase = DiagnosticPhase.FIR)),
+            expectedDiagnostics =
+                listOf(expectedNoContextArgument("parent", phase = DiagnosticPhase.FIR)),
             unexpectedMessages = listOf("internal compiler error"),
         )
     }
@@ -1641,7 +1751,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                     @Derive(TaggedChild::class)
                     data class Box<A>(val value: A)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -1655,7 +1766,8 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
                         val tagged = summon<Tagged<String, List<Box<ShownInt>>>>()
                         println(tagged.render("ctx", listOf(Box(ShownInt(7)))))
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertCompilesAndRuns(
@@ -1692,19 +1804,22 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                             @Derive(Show::class, Eq::class)
                             sealed interface Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "model/Word.kt" to
                             """
                             package model
 
                             data class Word(val value: ShownString) : Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "model/End.kt" to
                             """
                             package model
 
                             object End : Token
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
             )
         return listOf(modelDependency)
@@ -1723,26 +1838,26 @@ class DerivationBoundaryTest : IntegrationTestSupport() {
 
                 @Derive(Show::class, Eq::class)
                 sealed interface Token
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             "shared/Word.kt" to
                 """
                 package shared
 
                 data class Word(val value: ShownString) : Token
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             "shared/End.kt" to
                 """
                 package shared
 
                 object End : Token
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
 }
 
-private fun showTypeclassSource(
-    packageName: String,
-    extraDeclarations: String = "",
-): String =
+private fun showTypeclassSource(packageName: String, extraDeclarations: String = ""): String =
     """
     package $packageName
 
@@ -1790,7 +1905,8 @@ private fun showTypeclassSource(
 
     context(show: Show<A>)
     fun <A> render(value: A): String = show.show(value)
-    """.trimIndent()
+    """
+        .trimIndent()
 
 private fun shownStringSource(packageName: String): String =
     """
@@ -1807,12 +1923,10 @@ private fun shownStringSource(packageName: String): String =
                 }
         }
     }
-    """.trimIndent()
+    """
+        .trimIndent()
 
-private fun shownStringSource(
-    packageName: String,
-    showPackage: String,
-): String =
+private fun shownStringSource(packageName: String, showPackage: String): String =
     """
     package $packageName
 
@@ -1827,7 +1941,8 @@ private fun shownStringSource(
                 }
         }
     }
-    """.trimIndent()
+    """
+        .trimIndent()
 
 private fun shownIntSource(packageName: String): String =
     """
@@ -1844,11 +1959,10 @@ private fun shownIntSource(packageName: String): String =
                 }
         }
     }
-    """.trimIndent()
+    """
+        .trimIndent()
 
-private fun eqTypeclassSource(
-    packageName: String,
-): String =
+private fun eqTypeclassSource(packageName: String): String =
     """
     package $packageName
 
@@ -1897,7 +2011,8 @@ private fun eqTypeclassSource(
 
     context(eq: Eq<A>)
     fun <A> same(left: A, right: A): Boolean = eq.equal(left, right)
-    """.trimIndent()
+    """
+        .trimIndent()
 
 private fun parentTypeclassSource(packageName: String): String =
     """
@@ -1943,7 +2058,8 @@ private fun parentTypeclassSource(packageName: String): String =
 
     context(parent: Parent<A>)
     fun <A> renderParent(value: A): String = parent.renderParent(value)
-    """.trimIndent()
+    """
+        .trimIndent()
 
 private fun childTypeclassSource(packageName: String): String =
     """
@@ -1999,7 +2115,8 @@ private fun childTypeclassSource(packageName: String): String =
 
     context(child: Child<A>)
     fun <A> renderChild(value: A): String = child.renderChild(value)
-    """.trimIndent()
+    """
+        .trimIndent()
 
 private fun childShownIntSource(packageName: String): String =
     """
@@ -2021,7 +2138,8 @@ private fun childShownIntSource(packageName: String): String =
                 }
         }
     }
-    """.trimIndent()
+    """
+        .trimIndent()
 
 private fun taggedTypeclassSource(packageName: String): String =
     """
@@ -2064,7 +2182,8 @@ private fun taggedTypeclassSource(packageName: String): String =
                 }
         }
     }
-    """.trimIndent()
+    """
+        .trimIndent()
 
 private fun taggedChildTypeclassSource(packageName: String): String =
     """
@@ -2117,7 +2236,8 @@ private fun taggedChildTypeclassSource(packageName: String): String =
                 }
         }
     }
-    """.trimIndent()
+    """
+        .trimIndent()
 
 private fun taggedChildShownIntSource(packageName: String): String =
     """
@@ -2139,4 +2259,5 @@ private fun taggedChildShownIntSource(packageName: String): String =
                 }
         }
     }
-    """.trimIndent()
+    """
+        .trimIndent()

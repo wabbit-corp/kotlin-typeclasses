@@ -1,9 +1,11 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 @file:OptIn(org.jetbrains.kotlin.fir.PrivateSessionConstructor::class)
 
 package one.wabbit.typeclass.plugin
 
+import kotlin.test.Test
+import kotlin.test.assertEquals
 import org.jetbrains.kotlin.fir.FirBinaryDependenciesModuleData
 import org.jetbrains.kotlin.fir.declarations.FirDeclaration
 import org.jetbrains.kotlin.fir.declarations.FirDeclarationOrigin
@@ -12,8 +14,6 @@ import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.types.Variance
-import kotlin.test.Test
-import kotlin.test.assertEquals
 
 class TypeclassFirTracingSupportTest {
     @Test
@@ -28,10 +28,7 @@ class TypeclassFirTracingSupportTest {
                 calleeTypeParameters = listOf(calleeTypeParameter),
             )
 
-        assertEquals(
-            listOf(classTypeParameter, calleeTypeParameter),
-            models.keys.toList(),
-        )
+        assertEquals(listOf(classTypeParameter, calleeTypeParameter), models.keys.toList())
     }
 }
 
@@ -49,7 +46,8 @@ private fun tracingTypeParameterSymbol(name: String): FirTypeParameterSymbol {
     return symbol
 }
 
-private val TRACING_TEST_MODULE_DATA = FirBinaryDependenciesModuleData(Name.special("<fir-tracing-support-test>"))
+private val TRACING_TEST_MODULE_DATA =
+    FirBinaryDependenciesModuleData(Name.special("<fir-tracing-support-test>"))
 
 private val TRACING_TEST_CONTAINING_DECLARATION_SYMBOL =
     object : FirBasedSymbol<FirDeclaration>() {}

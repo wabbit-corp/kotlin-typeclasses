@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 @file:OptIn(
     org.jetbrains.kotlin.ir.IrImplementationDetail::class,
@@ -7,6 +7,9 @@
 
 package one.wabbit.typeclass.plugin
 
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.descriptors.Modality
@@ -21,17 +24,14 @@ import org.jetbrains.kotlin.ir.declarations.impl.IrTypeParameterImpl
 import org.jetbrains.kotlin.ir.symbols.impl.DescriptorlessExternalPackageFragmentSymbol
 import org.jetbrains.kotlin.ir.symbols.impl.IrClassSymbolImpl
 import org.jetbrains.kotlin.ir.symbols.impl.IrTypeParameterSymbolImpl
-import org.jetbrains.kotlin.ir.types.IrTypeArgument
 import org.jetbrains.kotlin.ir.types.IrType
+import org.jetbrains.kotlin.ir.types.IrTypeArgument
 import org.jetbrains.kotlin.ir.types.defaultType
 import org.jetbrains.kotlin.ir.types.impl.IrSimpleTypeImpl
 import org.jetbrains.kotlin.ir.types.impl.makeTypeProjection
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.types.Variance
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 class ReceiverTypeArgumentBindingTest {
     @Test
@@ -41,11 +41,13 @@ class ReceiverTypeArgumentBindingTest {
         val list = irClass("List", packageFragment, listOf("E"))
         val string = irClass("String", packageFragment)
 
-        list.superTypes = listOf(simpleType(iterable, listOf(list.typeParameters.single().defaultType)))
+        list.superTypes =
+            listOf(simpleType(iterable, listOf(list.typeParameters.single().defaultType)))
 
         val projected =
             projectTypeToMatchingInferenceSupertype(
-                expectedType = simpleType(iterable, listOf(iterable.typeParameters.single().defaultType)),
+                expectedType =
+                    simpleType(iterable, listOf(iterable.typeParameters.single().defaultType)),
                 actualType = simpleType(list, listOf(simpleType(string))),
             )
 
@@ -86,12 +88,15 @@ class ReceiverTypeArgumentBindingTest {
         val list = irClass("List", packageFragment, listOf("E"))
         val string = irClass("String", packageFragment)
 
-        list.superTypes = listOf(simpleType(iterable, listOf(list.typeParameters.single().defaultType)))
+        list.superTypes =
+            listOf(simpleType(iterable, listOf(list.typeParameters.single().defaultType)))
 
         val projected =
             projectTypeToMatchingInferenceSupertype(
-                expectedType = simpleType(iterable, listOf(iterable.typeParameters.single().defaultType)),
-                actualType = simpleTypeWithArguments(list, listOf(outProjection(simpleType(string)))),
+                expectedType =
+                    simpleType(iterable, listOf(iterable.typeParameters.single().defaultType)),
+                actualType =
+                    simpleTypeWithArguments(list, listOf(outProjection(simpleType(string)))),
             )
 
         assertEquals(
@@ -108,11 +113,13 @@ class ReceiverTypeArgumentBindingTest {
         val list = irClass("List", packageFragment, listOf("E"))
         val string = irClass("String", packageFragment)
 
-        list.superTypes = listOf(simpleType(iterable, listOf(list.typeParameters.single().defaultType)))
+        list.superTypes =
+            listOf(simpleType(iterable, listOf(list.typeParameters.single().defaultType)))
 
         val projected =
             projectTypeToMatchingInferenceSupertype(
-                expectedType = simpleType(iterable, listOf(iterable.typeParameters.single().defaultType)),
+                expectedType =
+                    simpleType(iterable, listOf(iterable.typeParameters.single().defaultType)),
                 actualType = simpleType(list, listOf(simpleType(string)), nullable = true),
             )
 
@@ -136,7 +143,14 @@ class ReceiverTypeArgumentBindingTest {
         val bindings =
             receiverTypeArgumentBindings(
                 expectedType = simpleType(box, listOf(box.typeParameters.single().defaultType)),
-                actualType = simpleTypeWithArguments(weird, listOf(makeTypeProjection(simpleType(first), Variance.INVARIANT), outProjection(simpleType(second)))),
+                actualType =
+                    simpleTypeWithArguments(
+                        weird,
+                        listOf(
+                            makeTypeProjection(simpleType(first), Variance.INVARIANT),
+                            outProjection(simpleType(second)),
+                        ),
+                    ),
             )
 
         assertTrue(
@@ -191,18 +205,17 @@ private fun irClass(
     irClass.typeParameters =
         typeParameterNames.mapIndexed { index, typeParameterName ->
             IrTypeParameterImpl(
-                startOffset = UNDEFINED_OFFSET,
-                endOffset = UNDEFINED_OFFSET,
-                origin = IrDeclarationOrigin.DEFINED,
-                factory = IrFactoryImpl,
-                name = Name.identifier(typeParameterName),
-                symbol = IrTypeParameterSymbolImpl(),
-                variance = Variance.INVARIANT,
-                index = index,
-                isReified = false,
-            ).also { typeParameter ->
-                typeParameter.parent = irClass
-            }
+                    startOffset = UNDEFINED_OFFSET,
+                    endOffset = UNDEFINED_OFFSET,
+                    origin = IrDeclarationOrigin.DEFINED,
+                    factory = IrFactoryImpl,
+                    name = Name.identifier(typeParameterName),
+                    symbol = IrTypeParameterSymbolImpl(),
+                    variance = Variance.INVARIANT,
+                    index = index,
+                    isReified = false,
+                )
+                .also { typeParameter -> typeParameter.parent = irClass }
         }
     return irClass
 }

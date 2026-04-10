@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 @file:OptIn(
     org.jetbrains.kotlin.ir.IrImplementationDetail::class,
@@ -7,13 +7,17 @@
 
 package one.wabbit.typeclass.plugin
 
+import kotlin.test.Test
+import kotlin.test.assertEquals
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.descriptors.SourceElement
 import org.jetbrains.kotlin.ir.UNDEFINED_OFFSET
-import org.jetbrains.kotlin.ir.declarations.impl.IrFactoryImpl
+import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.declarations.impl.IrClassImpl
+import org.jetbrains.kotlin.ir.declarations.impl.IrExternalPackageFragmentImpl
+import org.jetbrains.kotlin.ir.declarations.impl.IrFactoryImpl
 import org.jetbrains.kotlin.ir.symbols.impl.DescriptorlessExternalPackageFragmentSymbol
 import org.jetbrains.kotlin.ir.symbols.impl.IrClassSymbolImpl
 import org.jetbrains.kotlin.ir.types.IrType
@@ -21,10 +25,6 @@ import org.jetbrains.kotlin.ir.types.impl.IrSimpleTypeImpl
 import org.jetbrains.kotlin.ir.util.SYNTHETIC_OFFSET
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.ir.declarations.impl.IrExternalPackageFragmentImpl
-import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
-import kotlin.test.Test
-import kotlin.test.assertEquals
 
 class TypeclassIrCallTypeArgumentMappingTest {
     @Test
@@ -40,13 +40,7 @@ class TypeclassIrCallTypeArgumentMappingTest {
                 originalTypeParameterNames = listOf("A", "Hidden", "B"),
             )
 
-        assertEquals(
-            linkedMapOf(
-                "A" to intType,
-                "B" to stringType,
-            ),
-            mapped,
-        )
+        assertEquals(linkedMapOf("A" to intType, "B" to stringType), mapped)
     }
 
     @Test
@@ -64,11 +58,7 @@ class TypeclassIrCallTypeArgumentMappingTest {
             )
 
         assertEquals(
-            linkedMapOf(
-                "A" to intType,
-                "Hidden" to booleanType,
-                "B" to stringType,
-            ),
+            linkedMapOf("A" to intType, "Hidden" to booleanType, "B" to stringType),
             mapped,
         )
     }
@@ -80,10 +70,7 @@ private fun testPackageFragment(): IrExternalPackageFragmentImpl =
         FqName("test.ir.call.mapping"),
     )
 
-private fun irClass(
-    name: String,
-    packageFragment: IrExternalPackageFragmentImpl,
-): IrClassImpl {
+private fun irClass(name: String, packageFragment: IrExternalPackageFragmentImpl): IrClassImpl {
     val irClass =
         IrClassImpl(
             startOffset = UNDEFINED_OFFSET,

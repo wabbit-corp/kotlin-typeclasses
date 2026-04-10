@@ -1,15 +1,16 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.proofs
 
+import kotlin.test.Test
 import one.wabbit.typeclass.plugin.integration.CompilerHarnessPlugin
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
-import kotlin.test.Test
 
 class TypeclassMetaProofTest : IntegrationTestSupport() {
     private val serializationPlugins = listOf(CompilerHarnessPlugin.Serialization)
 
-    @Test fun isTypeclassInstanceRejectsOrdinaryAppliedTypes() {
+    @Test
+    fun isTypeclassInstanceRejectsOrdinaryAppliedTypes() {
         val source =
             """
             package demo
@@ -22,15 +23,18 @@ class TypeclassMetaProofTest : IntegrationTestSupport() {
             fun main() {
                 println(proof<List<Int>>()) // E:TC_NO_CONTEXT_ARGUMENT List<Int> is not a typeclass application
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "istypeclassinstance")),
+            expectedDiagnostics =
+                listOf(expectedErrorContaining("no context argument", "istypeclassinstance")),
         )
     }
 
-    @Test fun isTypeclassInstanceRecognizesFlagBackedKSerializerTypeclasses() {
+    @Test
+    fun isTypeclassInstanceRecognizesFlagBackedKSerializerTypeclasses() {
         val source =
             """
             package demo
@@ -48,7 +52,8 @@ class TypeclassMetaProofTest : IntegrationTestSupport() {
             fun main() {
                 println(serializerProof())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -58,7 +63,8 @@ class TypeclassMetaProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun isTypeclassInstanceRecognizesFlagBackedKClassTypeclasses() {
+    @Test
+    fun isTypeclassInstanceRecognizesFlagBackedKClassTypeclasses() {
         val source =
             """
             package demo
@@ -72,7 +78,8 @@ class TypeclassMetaProofTest : IntegrationTestSupport() {
             fun main() {
                 println(kclassProof())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -81,7 +88,8 @@ class TypeclassMetaProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun isTypeclassInstanceProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
+    @Test
+    fun isTypeclassInstanceProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
         val source =
             """
             package demo
@@ -111,11 +119,9 @@ class TypeclassMetaProofTest : IntegrationTestSupport() {
             fun main() {
                 println(render<Show<Int>>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "typeclass-witness",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "typeclass-witness")
     }
 }

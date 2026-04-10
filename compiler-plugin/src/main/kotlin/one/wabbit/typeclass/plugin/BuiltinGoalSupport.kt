@@ -8,8 +8,8 @@ import one.wabbit.typeclass.plugin.model.TcType
 import one.wabbit.typeclass.plugin.model.TcTypeParameter
 import one.wabbit.typeclass.plugin.model.containsProjectionOrStar
 import one.wabbit.typeclass.plugin.model.containsStarProjection
-import one.wabbit.typeclass.plugin.model.isProvablyNullable
 import one.wabbit.typeclass.plugin.model.isProvablyNotNullable
+import one.wabbit.typeclass.plugin.model.isProvablyNullable
 import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.referencedVariableIds
 import one.wabbit.typeclass.plugin.model.substituteType
@@ -41,8 +41,7 @@ private enum class TypeRelationKnowledge {
 
 internal enum class BuiltinGoalAcceptance {
     PROVABLE_ONLY,
-    ALLOW_SPECULATIVE,
-    ;
+    ALLOW_SPECULATIVE;
 
     fun accepts(feasibility: BuiltinGoalFeasibility): Boolean =
         when (this) {
@@ -53,14 +52,12 @@ internal enum class BuiltinGoalAcceptance {
 
 internal data class FirBuiltinGoalExactContext(
     val session: FirSession,
-    val typeParameterModels: Map<FirTypeParameterSymbol, one.wabbit.typeclass.plugin.model.TcTypeParameter>,
+    val typeParameterModels:
+        Map<FirTypeParameterSymbol, one.wabbit.typeclass.plugin.model.TcTypeParameter>,
     val variableSymbolsById: Map<String, FirTypeParameterSymbol>,
 )
 
-internal fun builtinRuleCanMatchGoalHead(
-    ruleId: String,
-    goal: TcType,
-): Boolean {
+internal fun builtinRuleCanMatchGoalHead(ruleId: String, goal: TcType): Boolean {
     val goalConstructor = goal as? TcType.Constructor ?: return true
     val builtinHead =
         when (ruleId) {
@@ -93,7 +90,8 @@ internal fun supportsBuiltinKClassGoal(
         return true
     }
     val targetType = constructor.arguments.singleOrNull() ?: return false
-    return !targetType.isProvablyNullable() && supportsRuntimeTypeMaterialization(targetType, canMaterializeVariable)
+    return !targetType.isProvablyNullable() &&
+        supportsRuntimeTypeMaterialization(targetType, canMaterializeVariable)
 }
 
 internal fun supportsBuiltinNotSameGoal(goal: TcType): Boolean {
@@ -105,7 +103,8 @@ internal fun supportsBuiltinNotSameGoal(
     classInfoById: Map<String, VisibleClassHierarchyInfo>,
     exactContext: FirBuiltinGoalExactContext? = null,
 ): Boolean {
-    return builtinNotSameGoalFeasibility(goal, classInfoById, exactContext) != BuiltinGoalFeasibility.IMPOSSIBLE
+    return builtinNotSameGoalFeasibility(goal, classInfoById, exactContext) !=
+        BuiltinGoalFeasibility.IMPOSSIBLE
 }
 
 private fun builtinNotSameGoalFeasibility(
@@ -132,7 +131,8 @@ internal fun supportsBuiltinSubtypeGoal(
     classInfoById: Map<String, VisibleClassHierarchyInfo>,
     exactContext: FirBuiltinGoalExactContext? = null,
 ): Boolean {
-    return builtinSubtypeGoalFeasibility(goal, classInfoById, exactContext) != BuiltinGoalFeasibility.IMPOSSIBLE
+    return builtinSubtypeGoalFeasibility(goal, classInfoById, exactContext) !=
+        BuiltinGoalFeasibility.IMPOSSIBLE
 }
 
 internal fun supportsBuiltinStrictSubtypeGoal(
@@ -140,20 +140,25 @@ internal fun supportsBuiltinStrictSubtypeGoal(
     classInfoById: Map<String, VisibleClassHierarchyInfo>,
     exactContext: FirBuiltinGoalExactContext? = null,
 ): Boolean {
-    return builtinStrictSubtypeGoalFeasibility(goal, classInfoById, exactContext) != BuiltinGoalFeasibility.IMPOSSIBLE
+    return builtinStrictSubtypeGoalFeasibility(goal, classInfoById, exactContext) !=
+        BuiltinGoalFeasibility.IMPOSSIBLE
 }
 
 internal fun provablySupportsBuiltinSubtypeGoal(
     goal: TcType,
     classInfoById: Map<String, VisibleClassHierarchyInfo>,
     exactContext: FirBuiltinGoalExactContext? = null,
-): Boolean = builtinSubtypeGoalFeasibility(goal, classInfoById, exactContext) == BuiltinGoalFeasibility.PROVABLE
+): Boolean =
+    builtinSubtypeGoalFeasibility(goal, classInfoById, exactContext) ==
+        BuiltinGoalFeasibility.PROVABLE
 
 internal fun provablySupportsBuiltinStrictSubtypeGoal(
     goal: TcType,
     classInfoById: Map<String, VisibleClassHierarchyInfo>,
     exactContext: FirBuiltinGoalExactContext? = null,
-): Boolean = builtinStrictSubtypeGoalFeasibility(goal, classInfoById, exactContext) == BuiltinGoalFeasibility.PROVABLE
+): Boolean =
+    builtinStrictSubtypeGoalFeasibility(goal, classInfoById, exactContext) ==
+        BuiltinGoalFeasibility.PROVABLE
 
 internal fun supportsBuiltinNullableGoal(
     goal: TcType,
@@ -168,12 +173,14 @@ internal fun provablySupportsBuiltinNullableGoal(
 internal fun supportsBuiltinNotNullableGoal(
     goal: TcType,
     exactContext: FirBuiltinGoalExactContext? = null,
-): Boolean = builtinNotNullableGoalFeasibility(goal, exactContext) != BuiltinGoalFeasibility.IMPOSSIBLE
+): Boolean =
+    builtinNotNullableGoalFeasibility(goal, exactContext) != BuiltinGoalFeasibility.IMPOSSIBLE
 
 internal fun provablySupportsBuiltinNotNullableGoal(
     goal: TcType,
     exactContext: FirBuiltinGoalExactContext? = null,
-): Boolean = builtinNotNullableGoalFeasibility(goal, exactContext) == BuiltinGoalFeasibility.PROVABLE
+): Boolean =
+    builtinNotNullableGoalFeasibility(goal, exactContext) == BuiltinGoalFeasibility.PROVABLE
 
 private fun builtinSubtypeGoalFeasibility(
     goal: TcType,
@@ -222,7 +229,9 @@ private fun builtinNullableGoalFeasibility(
         return BuiltinGoalFeasibility.PROVABLE
     }
     val target = constructor.arguments.singleOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
-    exactContext?.exactNullableFeasibility(target)?.let { return it }
+    exactContext?.exactNullableFeasibility(target)?.let {
+        return it
+    }
     return if (target.isProvablyNullable()) {
         BuiltinGoalFeasibility.PROVABLE
     } else {
@@ -239,7 +248,9 @@ private fun builtinNotNullableGoalFeasibility(
         return BuiltinGoalFeasibility.PROVABLE
     }
     val target = constructor.arguments.singleOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
-    exactContext?.exactNotNullableFeasibility(target)?.let { return it }
+    exactContext?.exactNotNullableFeasibility(target)?.let {
+        return it
+    }
     return if (target.isProvablyNotNullable()) {
         BuiltinGoalFeasibility.PROVABLE
     } else {
@@ -262,7 +273,8 @@ internal fun supportsBuiltinIsTypeclassInstanceGoal(
     isTypeclassClassifier: (String) -> Boolean,
     exactContext: FirBuiltinGoalExactContext? = null,
 ): Boolean {
-    return builtinIsTypeclassInstanceGoalFeasibility(goal, isTypeclassClassifier, exactContext) != BuiltinGoalFeasibility.IMPOSSIBLE
+    return builtinIsTypeclassInstanceGoalFeasibility(goal, isTypeclassClassifier, exactContext) !=
+        BuiltinGoalFeasibility.IMPOSSIBLE
 }
 
 internal fun provablySupportsBuiltinIsTypeclassInstanceGoal(
@@ -270,7 +282,8 @@ internal fun provablySupportsBuiltinIsTypeclassInstanceGoal(
     isTypeclassClassifier: (String) -> Boolean,
     exactContext: FirBuiltinGoalExactContext? = null,
 ): Boolean =
-    builtinIsTypeclassInstanceGoalFeasibility(goal, isTypeclassClassifier, exactContext) == BuiltinGoalFeasibility.PROVABLE
+    builtinIsTypeclassInstanceGoalFeasibility(goal, isTypeclassClassifier, exactContext) ==
+        BuiltinGoalFeasibility.PROVABLE
 
 internal fun supportsBuiltinKnownTypeGoal(goal: TcType): Boolean {
     return supportsBuiltinKnownTypeGoal(goal) { true }
@@ -324,7 +337,7 @@ internal fun supportsBuiltinKSerializerShape(
 }
 
 private fun TcType.isPotentialTypeclassApplication(
-    isTypeclassClassifier: (String) -> Boolean,
+    isTypeclassClassifier: (String) -> Boolean
 ): BuiltinGoalFeasibility =
     when (this) {
         TcType.StarProjection -> BuiltinGoalFeasibility.IMPOSSIBLE
@@ -356,17 +369,24 @@ private fun supportsRuntimeTypeMaterialization(
     when (type) {
         TcType.StarProjection -> !isTopLevel
         is TcType.Projected ->
-            !isTopLevel && supportsRuntimeTypeMaterialization(type.type, canMaterializeVariable, isTopLevel = false)
+            !isTopLevel &&
+                supportsRuntimeTypeMaterialization(
+                    type.type,
+                    canMaterializeVariable,
+                    isTopLevel = false,
+                )
         is TcType.Variable -> canMaterializeVariable(type.id)
-        is TcType.Constructor -> type.arguments.all { argument ->
-            supportsRuntimeTypeMaterialization(argument, canMaterializeVariable, isTopLevel = false)
-        }
+        is TcType.Constructor ->
+            type.arguments.all { argument ->
+                supportsRuntimeTypeMaterialization(
+                    argument,
+                    canMaterializeVariable,
+                    isTopLevel = false,
+                )
+            }
     }
 
-internal fun canProveNotSame(
-    left: TcType,
-    right: TcType,
-): Boolean {
+internal fun canProveNotSame(left: TcType, right: TcType): Boolean {
     if (left.normalizedKey() == right.normalizedKey()) {
         return false
     }
@@ -394,7 +414,9 @@ private fun subtypeFeasibility(
     classInfoById: Map<String, VisibleClassHierarchyInfo>,
     exactContext: FirBuiltinGoalExactContext?,
 ): BuiltinGoalFeasibility {
-    exactContext?.exactSubtypeFeasibility(sub, sup, classInfoById)?.let { return it }
+    exactContext?.exactSubtypeFeasibility(sub, sup, classInfoById)?.let {
+        return it
+    }
     if (sub.normalizedKey() == sup.normalizedKey()) {
         return BuiltinGoalFeasibility.PROVABLE
     }
@@ -402,7 +424,8 @@ private fun subtypeFeasibility(
         return BuiltinGoalFeasibility.SPECULATIVE
     }
     return when {
-        sub === TcType.StarProjection || sup === TcType.StarProjection -> BuiltinGoalFeasibility.SPECULATIVE
+        sub === TcType.StarProjection || sup === TcType.StarProjection ->
+            BuiltinGoalFeasibility.SPECULATIVE
         sub is TcType.Projected || sup is TcType.Projected -> BuiltinGoalFeasibility.SPECULATIVE
         sub is TcType.Constructor && sup is TcType.Constructor ->
             constructorSubtypeFeasibility(sub, sup, classInfoById, exactContext)
@@ -421,9 +444,16 @@ private fun constructorSubtypeFeasibility(
         return BuiltinGoalFeasibility.IMPOSSIBLE
     }
     if (sub.classifierId == sup.classifierId) {
-        return sameClassifierSubtypeFeasibility(sub, sup, classInfoById[sub.classifierId], classInfoById, exactContext)
+        return sameClassifierSubtypeFeasibility(
+            sub,
+            sup,
+            classInfoById[sub.classifierId],
+            classInfoById,
+            exactContext,
+        )
     }
-    val pathFeasibility = hasSupertypePathFeasibility(sub.classifierId, sup.classifierId, classInfoById)
+    val pathFeasibility =
+        hasSupertypePathFeasibility(sub.classifierId, sup.classifierId, classInfoById)
     if (sub.arguments.isNotEmpty() || sup.arguments.isNotEmpty()) {
         return projectedSupertypeSubtypeFeasibility(
             sub = sub,
@@ -455,10 +485,11 @@ private fun projectedSupertypeSubtypeFeasibility(
     }
 
     val bindings =
-        classInfo.typeParameters.mapIndexed { index, parameter ->
-            parameter.id to sub.arguments[index]
-        }.toMap()
-    val modeledSuperClassifiers = classInfo.directSuperTypes.mapTo(linkedSetOf()) { superType -> superType.classifierId }
+        classInfo.typeParameters
+            .mapIndexed { index, parameter -> parameter.id to sub.arguments[index] }
+            .toMap()
+    val modeledSuperClassifiers =
+        classInfo.directSuperTypes.mapTo(linkedSetOf()) { superType -> superType.classifierId }
     var sawSpeculative = !modeledSuperClassifiers.containsAll(classInfo.superClassifiers)
     classInfo.directSuperTypes.forEach { directSuperType ->
         val appliedSuperType = directSuperType.substituteType(bindings) as? TcType.Constructor
@@ -472,7 +503,8 @@ private fun projectedSupertypeSubtypeFeasibility(
             BuiltinGoalFeasibility.IMPOSSIBLE -> Unit
         }
     }
-    return if (sawSpeculative) BuiltinGoalFeasibility.SPECULATIVE else BuiltinGoalFeasibility.IMPOSSIBLE
+    return if (sawSpeculative) BuiltinGoalFeasibility.SPECULATIVE
+    else BuiltinGoalFeasibility.IMPOSSIBLE
 }
 
 private fun sameClassifierSubtypeFeasibility(
@@ -502,9 +534,12 @@ private fun sameClassifierSubtypeFeasibility(
         val variance = variances.getOrNull(index) ?: Variance.INVARIANT
         val argumentFeasibility =
             when {
-                subArgument is TcType.Projected || superArgument is TcType.Projected -> BuiltinGoalFeasibility.SPECULATIVE
-                variance == Variance.OUT_VARIANCE -> subtypeFeasibility(subArgument, superArgument, classInfoById, exactContext)
-                variance == Variance.IN_VARIANCE -> subtypeFeasibility(superArgument, subArgument, classInfoById, exactContext)
+                subArgument is TcType.Projected || superArgument is TcType.Projected ->
+                    BuiltinGoalFeasibility.SPECULATIVE
+                variance == Variance.OUT_VARIANCE ->
+                    subtypeFeasibility(subArgument, superArgument, classInfoById, exactContext)
+                variance == Variance.IN_VARIANCE ->
+                    subtypeFeasibility(superArgument, subArgument, classInfoById, exactContext)
                 else ->
                     if (subArgument.normalizedKey() == superArgument.normalizedKey()) {
                         BuiltinGoalFeasibility.PROVABLE
@@ -518,7 +553,8 @@ private fun sameClassifierSubtypeFeasibility(
             BuiltinGoalFeasibility.IMPOSSIBLE -> return BuiltinGoalFeasibility.IMPOSSIBLE
         }
     }
-    return if (sawSpeculative) BuiltinGoalFeasibility.SPECULATIVE else BuiltinGoalFeasibility.PROVABLE
+    return if (sawSpeculative) BuiltinGoalFeasibility.SPECULATIVE
+    else BuiltinGoalFeasibility.PROVABLE
 }
 
 private fun hasSupertypePathFeasibility(
@@ -596,7 +632,12 @@ private fun FirBuiltinGoalExactContext.exactSubtypeFeasibility(
             if (bounds.isEmpty()) {
                 return BuiltinGoalFeasibility.IMPOSSIBLE
             }
-            return if (bounds.any { bound -> exactSubtypeFeasibility(bound, sup, classInfoById, visiting) == BuiltinGoalFeasibility.PROVABLE }) {
+            return if (
+                bounds.any { bound ->
+                    exactSubtypeFeasibility(bound, sup, classInfoById, visiting) ==
+                        BuiltinGoalFeasibility.PROVABLE
+                }
+            ) {
                 BuiltinGoalFeasibility.PROVABLE
             } else {
                 BuiltinGoalFeasibility.IMPOSSIBLE
@@ -610,12 +651,15 @@ private fun FirBuiltinGoalExactContext.exactSubtypeFeasibility(
     }
     if (sub is TcType.Constructor && sup is TcType.Constructor) {
         if (sub.classifierId != sup.classifierId) {
-            exactDeclaredSupertypeSubtypeFeasibility(sub, sup, classInfoById, visiting)?.let { return it }
+            exactDeclaredSupertypeSubtypeFeasibility(sub, sup, classInfoById, visiting)?.let {
+                return it
+            }
         }
         return constructorSubtypeFeasibility(sub, sup, classInfoById, this)
     }
     return when {
-        sub === TcType.StarProjection || sup === TcType.StarProjection -> BuiltinGoalFeasibility.IMPOSSIBLE
+        sub === TcType.StarProjection || sup === TcType.StarProjection ->
+            BuiltinGoalFeasibility.IMPOSSIBLE
         sub is TcType.Projected || sup is TcType.Projected -> BuiltinGoalFeasibility.IMPOSSIBLE
         else -> BuiltinGoalFeasibility.IMPOSSIBLE
     }
@@ -647,11 +691,13 @@ private fun FirBuiltinGoalExactContext.exactDeclaredSupertypeSubtypeFeasibility(
                     }
             when (exactSubtypeFeasibility(superModel, sup, classInfoById, visiting)) {
                 BuiltinGoalFeasibility.PROVABLE -> return BuiltinGoalFeasibility.PROVABLE
-                BuiltinGoalFeasibility.SPECULATIVE, null -> sawSpeculative = true
+                BuiltinGoalFeasibility.SPECULATIVE,
+                null -> sawSpeculative = true
                 BuiltinGoalFeasibility.IMPOSSIBLE -> Unit
             }
         }
-        return if (sawSpeculative) BuiltinGoalFeasibility.SPECULATIVE else BuiltinGoalFeasibility.IMPOSSIBLE
+        return if (sawSpeculative) BuiltinGoalFeasibility.SPECULATIVE
+        else BuiltinGoalFeasibility.IMPOSSIBLE
     } finally {
         visiting.remove(visitKey)
     }
@@ -665,25 +711,24 @@ private fun FirBuiltinGoalExactContext.exactDeclaredSupertypeModel(
     val classTypeParameters =
         classSymbol.fir.typeParameters.mapIndexed { index, typeParameter ->
             typeParameter.symbol to
-                (
-                    typeParameterModels[typeParameter.symbol]
-                        ?: TcTypeParameter(
-                            id = "${classSymbol.classId.asString()}#$index",
-                            displayName = typeParameter.symbol.name.asString(),
-                        )
-                )
+                (typeParameterModels[typeParameter.symbol]
+                    ?: TcTypeParameter(
+                        id = "${classSymbol.classId.asString()}#$index",
+                        displayName = typeParameter.symbol.name.asString(),
+                    ))
         }
     if (classTypeParameters.size != sub.arguments.size) {
         return null
     }
-    val superModel = coneTypeToModel(superType, typeParameterModels + classTypeParameters) ?: return null
+    val superModel =
+        coneTypeToModel(superType, typeParameterModels + classTypeParameters) ?: return null
     if (classTypeParameters.isEmpty()) {
         return superModel
     }
     val bindings =
-        classTypeParameters.mapIndexed { index, (_, parameter) ->
-            parameter.id to sub.arguments[index]
-        }.toMap()
+        classTypeParameters
+            .mapIndexed { index, (_, parameter) -> parameter.id to sub.arguments[index] }
+            .toMap()
     return superModel.substituteType(bindings)
 }
 
@@ -702,7 +747,7 @@ private fun FirBuiltinGoalExactContext.exactNotSameFeasibility(
     val rightSubtypeLeft = exactSubtypeKnowledge(right, left, classInfoById)
     return if (
         leftSubtypeRight == TypeRelationKnowledge.DISPROVABLE ||
-        rightSubtypeLeft == TypeRelationKnowledge.DISPROVABLE
+            rightSubtypeLeft == TypeRelationKnowledge.DISPROVABLE
     ) {
         BuiltinGoalFeasibility.PROVABLE
     } else {
@@ -720,7 +765,9 @@ private fun FirBuiltinGoalExactContext.exactSubtypeKnowledge(
         return TypeRelationKnowledge.PROVABLE
     }
     if (sub.containsProjectionOrStar() || sup.containsProjectionOrStar()) {
-        exactMaterializedSubtypeKnowledge(sub, sup)?.let { return it }
+        exactMaterializedSubtypeKnowledge(sub, sup)?.let {
+            return it
+        }
     }
     when (sub) {
         TcType.StarProjection -> return TypeRelationKnowledge.UNKNOWN
@@ -736,7 +783,12 @@ private fun FirBuiltinGoalExactContext.exactSubtypeKnowledge(
                     symbol.resolvedBounds.mapNotNull { boundTypeRef ->
                         coneTypeToModel(boundTypeRef.coneType, typeParameterModels)
                     }
-                if (bounds.any { bound -> exactSubtypeKnowledge(bound, sup, classInfoById, visiting) == TypeRelationKnowledge.PROVABLE }) {
+                if (
+                    bounds.any { bound ->
+                        exactSubtypeKnowledge(bound, sup, classInfoById, visiting) ==
+                            TypeRelationKnowledge.PROVABLE
+                    }
+                ) {
                     return TypeRelationKnowledge.PROVABLE
                 }
                 return TypeRelationKnowledge.UNKNOWN
@@ -766,7 +818,10 @@ private fun FirBuiltinGoalExactContext.exactSubtypeKnowledge(
                     return TypeRelationKnowledge.UNKNOWN
                 }
                 bounds.forEach { bound ->
-                    if (exactSubtypeKnowledge(sub, bound, classInfoById, visiting) == TypeRelationKnowledge.DISPROVABLE) {
+                    if (
+                        exactSubtypeKnowledge(sub, bound, classInfoById, visiting) ==
+                            TypeRelationKnowledge.DISPROVABLE
+                    ) {
                         return TypeRelationKnowledge.DISPROVABLE
                     }
                 }
@@ -785,22 +840,36 @@ private fun FirBuiltinGoalExactContext.exactSubtypeKnowledge(
         return TypeRelationKnowledge.DISPROVABLE
     }
     if (subConstructor.classifierId == supConstructor.classifierId) {
-        return exactSameClassifierSubtypeKnowledge(subConstructor, supConstructor, classInfoById, visiting)
+        return exactSameClassifierSubtypeKnowledge(
+            subConstructor,
+            supConstructor,
+            classInfoById,
+            visiting,
+        )
     }
     val declaredKnowledge =
-        exactDeclaredSupertypeSubtypeKnowledge(subConstructor, supConstructor, classInfoById, visiting)
-            ?: TypeRelationKnowledge.UNKNOWN
+        exactDeclaredSupertypeSubtypeKnowledge(
+            subConstructor,
+            supConstructor,
+            classInfoById,
+            visiting,
+        ) ?: TypeRelationKnowledge.UNKNOWN
     if (declaredKnowledge == TypeRelationKnowledge.PROVABLE) {
         return TypeRelationKnowledge.PROVABLE
     }
     if (subConstructor.arguments.isNotEmpty() || supConstructor.arguments.isNotEmpty()) {
         return declaredKnowledge
     }
-    val pathKnowledge = hasSupertypePathKnowledge(subConstructor.classifierId, supConstructor.classifierId, classInfoById)
+    val pathKnowledge =
+        hasSupertypePathKnowledge(
+            subConstructor.classifierId,
+            supConstructor.classifierId,
+            classInfoById,
+        )
     return when {
         pathKnowledge == TypeRelationKnowledge.PROVABLE -> TypeRelationKnowledge.PROVABLE
-        declaredKnowledge == TypeRelationKnowledge.UNKNOWN || pathKnowledge == TypeRelationKnowledge.UNKNOWN ->
-            TypeRelationKnowledge.UNKNOWN
+        declaredKnowledge == TypeRelationKnowledge.UNKNOWN ||
+            pathKnowledge == TypeRelationKnowledge.UNKNOWN -> TypeRelationKnowledge.UNKNOWN
         else -> TypeRelationKnowledge.DISPROVABLE
     }
 }
@@ -830,9 +899,12 @@ private fun FirBuiltinGoalExactContext.exactSameClassifierSubtypeKnowledge(
         val variance = variances.getOrNull(index) ?: Variance.INVARIANT
         val argumentKnowledge =
             when {
-                subArgument is TcType.Projected || superArgument is TcType.Projected -> TypeRelationKnowledge.UNKNOWN
-                variance == Variance.OUT_VARIANCE -> exactSubtypeKnowledge(subArgument, superArgument, classInfoById, visiting)
-                variance == Variance.IN_VARIANCE -> exactSubtypeKnowledge(superArgument, subArgument, classInfoById, visiting)
+                subArgument is TcType.Projected || superArgument is TcType.Projected ->
+                    TypeRelationKnowledge.UNKNOWN
+                variance == Variance.OUT_VARIANCE ->
+                    exactSubtypeKnowledge(subArgument, superArgument, classInfoById, visiting)
+                variance == Variance.IN_VARIANCE ->
+                    exactSubtypeKnowledge(superArgument, subArgument, classInfoById, visiting)
                 else ->
                     if (subArgument.normalizedKey() == superArgument.normalizedKey()) {
                         TypeRelationKnowledge.PROVABLE
@@ -863,31 +935,30 @@ private fun FirBuiltinGoalExactContext.exactMaterializedSubtypeKnowledge(
 }
 
 private fun TcType.toConeKotlinType(
-    variableSymbolsById: Map<String, FirTypeParameterSymbol>,
+    variableSymbolsById: Map<String, FirTypeParameterSymbol>
 ): ConeKotlinType? =
     when (this) {
         TcType.StarProjection -> null
 
         is TcType.Projected -> null
 
-        is TcType.Variable ->
-            variableSymbolsById[id]?.constructType(isMarkedNullable = isNullable)
+        is TcType.Variable -> variableSymbolsById[id]?.constructType(isMarkedNullable = isNullable)
 
         is TcType.Constructor -> {
-            val classId = runCatching { ClassId.fromString(classifierId) }.getOrNull() ?: return null
+            val classId =
+                runCatching { ClassId.fromString(classifierId) }.getOrNull() ?: return null
             val arguments =
-                this.arguments.map { argument ->
-                    argument.toConeTypeProjection(variableSymbolsById) ?: return null
-                }.toTypedArray()
-            classId.constructClassLikeType(
-                typeArguments = arguments,
-                isMarkedNullable = isNullable,
-            )
+                this.arguments
+                    .map { argument ->
+                        argument.toConeTypeProjection(variableSymbolsById) ?: return null
+                    }
+                    .toTypedArray()
+            classId.constructClassLikeType(typeArguments = arguments, isMarkedNullable = isNullable)
         }
     }
 
 private fun TcType.toConeTypeProjection(
-    variableSymbolsById: Map<String, FirTypeParameterSymbol>,
+    variableSymbolsById: Map<String, FirTypeParameterSymbol>
 ): org.jetbrains.kotlin.fir.types.ConeTypeProjection? =
     when (this) {
         TcType.StarProjection -> ConeStarProjection
@@ -902,8 +973,7 @@ private fun TcType.toConeTypeProjection(
         }
 
         is TcType.Variable,
-        is TcType.Constructor,
-        -> toConeKotlinType(variableSymbolsById)
+        is TcType.Constructor -> toConeKotlinType(variableSymbolsById)
     }
 
 private fun FirBuiltinGoalExactContext.exactDeclaredSupertypeSubtypeKnowledge(
@@ -951,7 +1021,7 @@ private fun hasSupertypePathKnowledge(
     }
 
 private fun FirBuiltinGoalExactContext.exactNullableFeasibility(
-    target: TcType,
+    target: TcType
 ): BuiltinGoalFeasibility? =
     when (target) {
         TcType.StarProjection -> BuiltinGoalFeasibility.IMPOSSIBLE
@@ -994,12 +1064,18 @@ private fun FirBuiltinGoalExactContext.exactNotNullableFeasibility(
                 return BuiltinGoalFeasibility.IMPOSSIBLE
             }
             try {
-                val symbol = variableSymbolsById[target.id] ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+                val symbol =
+                    variableSymbolsById[target.id] ?: return BuiltinGoalFeasibility.IMPOSSIBLE
                 val bounds =
                     symbol.resolvedBounds.mapNotNull { boundTypeRef ->
                         coneTypeToModel(boundTypeRef.coneType, typeParameterModels)
                     }
-                if (bounds.any { bound -> exactNotNullableFeasibility(bound, visiting) == BuiltinGoalFeasibility.PROVABLE }) {
+                if (
+                    bounds.any { bound ->
+                        exactNotNullableFeasibility(bound, visiting) ==
+                            BuiltinGoalFeasibility.PROVABLE
+                    }
+                ) {
                     BuiltinGoalFeasibility.PROVABLE
                 } else {
                     BuiltinGoalFeasibility.IMPOSSIBLE

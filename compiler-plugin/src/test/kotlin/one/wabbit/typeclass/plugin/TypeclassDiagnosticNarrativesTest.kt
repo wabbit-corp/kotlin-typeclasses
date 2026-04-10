@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin
 
@@ -11,10 +11,16 @@ class TypeclassDiagnosticNarrativesTest {
     fun structuredNarrativesRoundTrip() {
         val narratives =
             listOf(
-                cannotDeriveDiagnostic("@Derive currently only supports typeclasses with exactly one type parameter"),
+                cannotDeriveDiagnostic(
+                    "@Derive currently only supports typeclasses with exactly one type parameter"
+                ),
                 invalidInstanceDiagnostic("extension instance functions are not allowed"),
-                invalidEquivDiagnostic("Equiv is compiler-owned; users must not subclass it directly"),
-                invalidBuiltinEvidenceDiagnostic("KSerializer evidence cannot be materialized for this goal"),
+                invalidEquivDiagnostic(
+                    "Equiv is compiler-owned; users must not subclass it directly"
+                ),
+                invalidBuiltinEvidenceDiagnostic(
+                    "KSerializer evidence cannot be materialized for this goal"
+                ),
             )
 
         narratives.forEach { narrative ->

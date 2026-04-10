@@ -1,14 +1,15 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.derivation
 
-import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import kotlin.test.Test
+import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 
 class DerivationSurfaceTest : IntegrationTestSupport() {
     // Root derivation contracts: the annotated sealed root must be sufficient
     // for the requested typeclass.
-    @Test fun rootOnlySealedDerivationResolvesBothRootAndNeededLeafRules() {
+    @Test
+    fun rootOnlySealedDerivationResolvesBothRootAndNeededLeafRules() {
         val source =
             """
             package demo
@@ -75,7 +76,8 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
                 println(render(Number(2)))
                 println(render(End))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -84,11 +86,13 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
                 Number(value=1)
                 Number(value=2)
                 End()
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun leafOnlyDerivationResolvesLeafButNotSealedRoot() {
+    @Test
+    fun leafOnlyDerivationResolvesLeafButNotSealedRoot() {
         val source =
             """
             package demo
@@ -154,7 +158,8 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
                 val root: Token = Number(1)
                 println(render(root)) // E:TC_NO_CONTEXT_ARGUMENT leaf-only derivation must not imply Show<Token>
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -162,7 +167,8 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun mixedRootAndLeafDerivationIsIdempotentNotAmbiguous() {
+    @Test
+    fun mixedRootAndLeafDerivationIsIdempotentNotAmbiguous() {
         val source =
             """
             package demo
@@ -231,7 +237,8 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
                 println(render(Number(2)))
                 println(render(End))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -240,11 +247,13 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
                 Number(value=1)
                 Number(value=2)
                 End()
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun derivesSealedInterfaces() {
+    @Test
+    fun derivesSealedInterfaces() {
         val source =
             """
             package demo
@@ -313,7 +322,8 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
                 println(render(present))
                 println(render(absent))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -321,11 +331,13 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
                 """
                 Present(value=1)
                 Absent()
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun handlesRecursiveDerivedAdtsWithoutCrashing() {
+    @Test
+    fun handlesRecursiveDerivedAdtsWithoutCrashing() {
         val source =
             """
             package demo
@@ -386,15 +398,14 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Branch(Leaf, Leaf)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "Branch(left=Leaf(), right=Leaf())",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "Branch(left=Leaf(), right=Leaf())")
     }
 
-    @Test fun derivesNestedGenericSealedHierarchies() {
+    @Test
+    fun derivesNestedGenericSealedHierarchies() {
         val source =
             """
             package demo
@@ -466,7 +477,8 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
                 println(render(value))
                 println(render(missing))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -474,11 +486,13 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
                 """
                 Value(value=1)
                 Missing()
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun derivesSealedHierarchiesWithDataObjects() {
+    @Test
+    fun derivesSealedHierarchiesWithDataObjects() {
         val source =
             """
             package demo
@@ -545,7 +559,8 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
                 println(render(Lit(1)))
                 println(render(End))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -553,11 +568,13 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
                 """
                 Lit(value=1)
                 End()
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun derivedInstancesCanUseContextualFieldInstances() {
+    @Test
+    fun derivedInstancesCanUseContextualFieldInstances() {
         val source =
             """
             package demo
@@ -626,15 +643,14 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
                 val wrapper: Wrapper<Int> = Wrapper(listOf(1, 2))
                 println(render(wrapper))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "Wrapper(values=[1, 2])",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "Wrapper(values=[1, 2])")
     }
 
-    @Test fun derivesEnumClasses() {
+    @Test
+    fun derivesEnumClasses() {
         val source =
             """
             package demo
@@ -680,15 +696,14 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Color.RED))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "RED",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "RED")
     }
 
-    @Test fun genericSealedSubclassesAreRejectedForNonGenericDerivedRoots() {
+    @Test
+    fun genericSealedSubclassesAreRejectedForNonGenericDerivedRoots() {
         val source =
             """
             package demo
@@ -724,7 +739,8 @@ class DerivationSurfaceTest : IntegrationTestSupport() {
             fun main() {
                 println("unreachable")
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,

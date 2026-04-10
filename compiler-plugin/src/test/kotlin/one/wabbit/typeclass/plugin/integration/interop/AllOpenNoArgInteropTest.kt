@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.interop
 
+import kotlin.test.Test
 import one.wabbit.typeclass.plugin.integration.CompilerHarnessPlugin
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
-import kotlin.test.Test
 
 class AllOpenNoArgInteropTest : IntegrationTestSupport() {
     @Test
@@ -41,17 +41,14 @@ class AllOpenNoArgInteropTest : IntegrationTestSupport() {
             fun main() {
                 println(render(FancyBox()))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "box:1",
             requiredPlugins =
-                listOf(
-                    CompilerHarnessPlugin.AllOpen(
-                        annotations = listOf("demo.OpenForFramework"),
-                    ),
-                ),
+                listOf(CompilerHarnessPlugin.AllOpen(annotations = listOf("demo.OpenForFramework"))),
         )
     }
 
@@ -118,17 +115,14 @@ class AllOpenNoArgInteropTest : IntegrationTestSupport() {
                 val reflected = User::class.java.getDeclaredConstructor().newInstance()
                 println(render(reflected))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
             expectedStdout = "User(id=0)",
             requiredPlugins =
-                listOf(
-                    CompilerHarnessPlugin.NoArg(
-                        annotations = listOf("demo.Entity"),
-                    ),
-                ),
+                listOf(CompilerHarnessPlugin.NoArg(annotations = listOf("demo.Entity"))),
         )
     }
 
@@ -168,7 +162,8 @@ class AllOpenNoArgInteropTest : IntegrationTestSupport() {
                 println(render(reflected))
                 println(render(FancyUser()))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -176,15 +171,12 @@ class AllOpenNoArgInteropTest : IntegrationTestSupport() {
                 """
                 user:0
                 user:7
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins =
                 listOf(
-                    CompilerHarnessPlugin.AllOpen(
-                        annotations = listOf("demo.OpenForFramework"),
-                    ),
-                    CompilerHarnessPlugin.NoArg(
-                        annotations = listOf("demo.Entity"),
-                    ),
+                    CompilerHarnessPlugin.AllOpen(annotations = listOf("demo.OpenForFramework")),
+                    CompilerHarnessPlugin.NoArg(annotations = listOf("demo.Entity")),
                 ),
         )
     }

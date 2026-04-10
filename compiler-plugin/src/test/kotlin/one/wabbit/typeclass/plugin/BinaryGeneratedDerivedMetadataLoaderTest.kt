@@ -1,11 +1,7 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin
 
-import org.jetbrains.kotlin.name.ClassId
-import org.jetbrains.org.objectweb.asm.ClassWriter
-import org.jetbrains.org.objectweb.asm.MethodVisitor
-import org.jetbrains.org.objectweb.asm.Opcodes
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -15,6 +11,10 @@ import java.util.jar.JarFile
 import java.util.jar.JarOutputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.org.objectweb.asm.ClassWriter
+import org.jetbrains.org.objectweb.asm.MethodVisitor
+import org.jetbrains.org.objectweb.asm.Opcodes
 
 class BinaryGeneratedDerivedMetadataLoaderTest {
     @Test
@@ -46,20 +46,14 @@ class BinaryGeneratedDerivedMetadataLoaderTest {
                 typeclassId = ClassId.fromString("demo/Eq"),
                 targetId = ownerB,
             )
-        val jarFile =
-            createMetadataJar(
-                ownerA to metadataA,
-                ownerB to metadataB,
-            )
+        val jarFile = createMetadataJar(ownerA to metadataA, ownerB to metadataB)
 
         val openCount = AtomicInteger(0)
         val closeCount = AtomicInteger(0)
         val root =
             JarBinaryGeneratedDerivedMetadataRoot(jarFile) { file ->
                 openCount.incrementAndGet()
-                CountingJarFile(file) {
-                    closeCount.incrementAndGet()
-                }
+                CountingJarFile(file) { closeCount.incrementAndGet() }
             }
 
         assertEquals(listOf(metadataA), root.generatedMetadataFor(ownerA).metadataForTest())
@@ -107,16 +101,20 @@ class BinaryGeneratedDerivedMetadataLoaderTest {
         val root =
             JarBinaryGeneratedDerivedMetadataRoot(jarFile) { file ->
                 openCount.incrementAndGet()
-                CountingJarFile(file) {
-                    closeCount.incrementAndGet()
-                }
+                CountingJarFile(file) { closeCount.incrementAndGet() }
             }
 
-        assertEquals(BinaryGeneratedDerivedMetadataLookupResult.NotFound, root.generatedMetadataFor(ownerB))
+        assertEquals(
+            BinaryGeneratedDerivedMetadataLookupResult.NotFound,
+            root.generatedMetadataFor(ownerB),
+        )
         assertEquals(1, openCount.get())
         assertEquals(1, closeCount.get())
 
-        assertEquals(BinaryGeneratedDerivedMetadataLookupResult.NotFound, root.generatedMetadataFor(ownerB))
+        assertEquals(
+            BinaryGeneratedDerivedMetadataLookupResult.NotFound,
+            root.generatedMetadataFor(ownerB),
+        )
         assertEquals(1, openCount.get())
         assertEquals(1, closeCount.get())
     }
@@ -133,7 +131,7 @@ class BinaryGeneratedDerivedMetadataLoaderTest {
                         GeneratedDeriveViaPathSegment(
                             kind = GeneratedDeriveViaPathSegment.Kind.WAYPOINT,
                             classId = ClassId.fromString("demo/WireUser"),
-                        ),
+                        )
                     ),
             )
         val jarFile = createMetadataJar(owner to metadata)
@@ -150,7 +148,8 @@ class BinaryGeneratedDerivedMetadataLoaderTest {
                 typeclassId = ClassId.fromString("demo/Show"),
                 targetId = owner,
             )
-        val corruptJar = Files.createTempFile("typeclass-generated-metadata-corrupt", ".jar").toFile()
+        val corruptJar =
+            Files.createTempFile("typeclass-generated-metadata-corrupt", ".jar").toFile()
         corruptJar.deleteOnExit()
         corruptJar.writeText("not a zip")
         val metadataJar = createMetadataJar(owner to metadata)
@@ -317,16 +316,14 @@ private fun ClassId.classFilePathForTest(): String {
     }
 }
 
-private fun BinaryGeneratedDerivedMetadataLookupResult.metadataForTest(): List<GeneratedDerivedMetadata> =
+private fun BinaryGeneratedDerivedMetadataLookupResult.metadataForTest():
+    List<GeneratedDerivedMetadata> =
     when (this) {
         BinaryGeneratedDerivedMetadataLookupResult.NotFound -> error("expected classfile hit")
         is BinaryGeneratedDerivedMetadataLookupResult.Found -> metadata
     }
 
-private class CountingJarFile(
-    file: File,
-    private val onClose: () -> Unit,
-) : JarFile(file) {
+private class CountingJarFile(file: File, private val onClose: () -> Unit) : JarFile(file) {
     override fun close() {
         try {
             super.close()

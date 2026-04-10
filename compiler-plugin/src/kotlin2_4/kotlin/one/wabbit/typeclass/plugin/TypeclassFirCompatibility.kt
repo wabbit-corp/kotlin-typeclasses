@@ -22,10 +22,8 @@ import org.jetbrains.kotlin.name.Name
 typealias FirTypeclassFunctionDeclaration = FirNamedFunction
 
 @Suppress("UNUSED_PARAMETER")
-internal fun FirAnnotation.typeclassGetStringArgument(
-    name: Name,
-    session: FirSession,
-): String? = getStringArgument(name)
+internal fun FirAnnotation.typeclassGetStringArgument(name: Name, session: FirSession): String? =
+    getStringArgument(name)
 
 @Suppress("UNUSED_PARAMETER")
 internal fun FirAnnotation.typeclassGetKClassArgument(
@@ -43,7 +41,7 @@ internal fun FirExpression.typeclassCollectionLiteralArgumentsOrNull(): Sequence
         ?.filterIsInstance<FirExpression>()
 
 internal fun DeclarationIrBuilder.buildTypeclassGeneratedAnnotation(
-    annotationConstructor: IrConstructor,
+    annotationConstructor: IrConstructor
 ): IrConstructorCall = irAnnotation(annotationConstructor.symbol, emptyList())
 
 internal fun IrClass.appendTypeclassGeneratedAnnotation(annotation: IrConstructorCall) {

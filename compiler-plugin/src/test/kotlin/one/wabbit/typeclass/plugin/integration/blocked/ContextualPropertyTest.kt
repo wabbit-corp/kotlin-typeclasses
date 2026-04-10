@@ -1,13 +1,15 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.blocked
 
-import org.junit.Ignore
-import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import kotlin.test.Test
+import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
+import org.junit.Ignore
 
 class ContextualPropertyTest : IntegrationTestSupport() {
-    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no property-access refinement hook for contextual getter resolution")
+    @Ignore(
+        "Blocked: Kotlin 2.3.10 FIR plugin API has no property-access refinement hook for contextual getter resolution"
+    )
     @Test
     fun resolvesContextualPropertyGetter() {
         val source =
@@ -34,15 +36,15 @@ class ContextualPropertyTest : IntegrationTestSupport() {
             fun main() {
                 println(intLabel)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1")
     }
 
-    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no property-access refinement hook for contextual getter resolution")
+    @Ignore(
+        "Blocked: Kotlin 2.3.10 FIR plugin API has no property-access refinement hook for contextual getter resolution"
+    )
     @Test
     fun resolvesContextualExtensionPropertyGetter() {
         val source =
@@ -69,15 +71,15 @@ class ContextualPropertyTest : IntegrationTestSupport() {
             fun main() {
                 println(1.rendered)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1")
     }
 
-    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no property-access refinement hook for contextual property-reference adaptation")
+    @Ignore(
+        "Blocked: Kotlin 2.3.10 FIR plugin API has no property-access refinement hook for contextual property-reference adaptation"
+    )
     @Test
     fun adaptsPropertyReferencesToContextualProperties() {
         val source =
@@ -105,11 +107,9 @@ class ContextualPropertyTest : IntegrationTestSupport() {
                 val getter = ::intLabel
                 println(getter.get())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1")
     }
 }

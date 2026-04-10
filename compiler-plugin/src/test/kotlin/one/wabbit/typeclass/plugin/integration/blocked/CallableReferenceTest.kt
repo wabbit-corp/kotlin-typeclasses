@@ -1,13 +1,15 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.blocked
 
-import org.junit.Ignore
-import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import kotlin.test.Test
+import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
+import org.junit.Ignore
 
 class CallableReferenceTest : IntegrationTestSupport() {
-    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no callable-reference refinement hook for contextual callable adaptation")
+    @Ignore(
+        "Blocked: Kotlin 2.3.10 FIR plugin API has no callable-reference refinement hook for contextual callable adaptation"
+    )
     @Test
     fun adaptsCallableReferencesToContextualTopLevelFunctions() {
         val source =
@@ -35,16 +37,16 @@ class CallableReferenceTest : IntegrationTestSupport() {
             fun main() {
                 println(consume(::renderInt))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1")
     }
 
     // NEW
-    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no callable-reference refinement hook for contextual callable adaptation")
+    @Ignore(
+        "Blocked: Kotlin 2.3.10 FIR plugin API has no callable-reference refinement hook for contextual callable adaptation"
+    )
     @Test
     fun adaptsBoundCallableReferencesToContextualMemberFunctions() {
         val source =
@@ -74,16 +76,16 @@ class CallableReferenceTest : IntegrationTestSupport() {
             fun main() {
                 println(consume(Items()::renderInt))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1")
     }
 
     // NEW
-    @Ignore("Blocked: Kotlin 2.3.10 FIR plugin API has no callable-reference refinement hook for contextual callable adaptation")
+    @Ignore(
+        "Blocked: Kotlin 2.3.10 FIR plugin API has no callable-reference refinement hook for contextual callable adaptation"
+    )
     @Test
     fun preservesExtensionFunctionReferenceInterchangeability() {
         val source =
@@ -114,7 +116,8 @@ class CallableReferenceTest : IntegrationTestSupport() {
                 println(consumeAsExtension(Int::rendered))
                 println(consumeAsPlain(Int::rendered))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -122,7 +125,8 @@ class CallableReferenceTest : IntegrationTestSupport() {
                 """
                 int:1!
                 int:1?
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 }

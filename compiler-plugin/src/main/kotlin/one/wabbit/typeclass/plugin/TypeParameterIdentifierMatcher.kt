@@ -16,9 +16,7 @@ internal fun String.containsStandaloneTypeParameterIdentifier(
 }
 
 private sealed interface KotlinIdentifierToken {
-    data class Identifier(
-        val text: String,
-    ) : KotlinIdentifierToken
+    data class Identifier(val text: String) : KotlinIdentifierToken
 
     data object Dot : KotlinIdentifierToken
 
@@ -82,6 +80,8 @@ private fun List<KotlinIdentifierToken>.isQualifiedIdentifier(index: Int): Boole
     return previous is KotlinIdentifierToken.Dot || next is KotlinIdentifierToken.Dot
 }
 
-private fun Char.isKotlinIdentifierStart(): Boolean = this == '_' || Character.isUnicodeIdentifierStart(this)
+private fun Char.isKotlinIdentifierStart(): Boolean =
+    this == '_' || Character.isUnicodeIdentifierStart(this)
 
-private fun Char.isKotlinIdentifierPart(): Boolean = this == '_' || Character.isUnicodeIdentifierPart(this)
+private fun Char.isKotlinIdentifierPart(): Boolean =
+    this == '_' || Character.isUnicodeIdentifierPart(this)

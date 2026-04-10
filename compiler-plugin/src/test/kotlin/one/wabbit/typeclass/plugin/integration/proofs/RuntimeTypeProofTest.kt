@@ -1,12 +1,13 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.proofs
 
-import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import kotlin.test.Test
+import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 
 class RuntimeTypeProofTest : IntegrationTestSupport() {
-    @Test fun knownTypeMatchesTypeOfInsideReifiedHelpers() {
+    @Test
+    fun knownTypeMatchesTypeOfInsideReifiedHelpers() {
         val source =
             """
             package demo
@@ -25,7 +26,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 println(sameType<List<String?>>())
                 println(sameType<Map<Int, List<String?>>?>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -33,11 +35,13 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun rejectsKnownTypeMaterializationForUnfixedGenericTypeParameters() {
+    @Test
+    fun rejectsKnownTypeMaterializationForUnfixedGenericTypeParameters() {
         val source =
             """
             package demo
@@ -47,7 +51,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
 
             fun <T> impossible(): KnownType<T> =
                 summon<KnownType<T>>() // E:TC_NO_CONTEXT_ARGUMENT the compiler does not know the exact KType for an unfixed T
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -56,7 +61,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun knownTypeProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
+    @Test
+    fun knownTypeProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
         val source =
             """
             package demo
@@ -86,15 +92,14 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
             fun main() {
                 println(render<List<String?>>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "list-of-string",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "list-of-string")
     }
 
-    @Test fun reifiedKnownTypeMatchesConcreteKnownType() {
+    @Test
+    fun reifiedKnownTypeMatchesConcreteKnownType() {
         val source =
             """
             package demo
@@ -111,15 +116,14 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
             fun main() {
                 println(sameAsConcrete<String>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun kClassErasesTypeArgumentsWhileKnownTypeDistinguishesThem() {
+    @Test
+    fun kClassErasesTypeArgumentsWhileKnownTypeDistinguishesThem() {
         val source =
             """
             package demo
@@ -137,7 +141,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 println(stringListClass == intListClass)
                 println(stringListType.sameAs(intListType))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -145,12 +150,14 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 """
                 true
                 false
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             pluginOptions = listOf("builtinKClassTypeclass=enabled"),
         )
     }
 
-    @Test fun typeIdTreatsAliasesAsSemanticallyEqual() {
+    @Test
+    fun typeIdTreatsAliasesAsSemanticallyEqual() {
         val source =
             """
             package demo
@@ -166,7 +173,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 println(intId.sameAs(ageId))
                 println(intId.stableHash == ageId.stableHash)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -174,11 +182,13 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun typeIdDistinguishesArgumentsAndNullability() {
+    @Test
+    fun typeIdDistinguishesArgumentsAndNullability() {
         val source =
             """
             package demo
@@ -190,7 +200,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 println(summon<TypeId<List<String>>>().sameAs(summon<TypeId<List<Int>>>()))
                 println(summon<TypeId<Int>>().sameAs(summon<TypeId<Int?>>()))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -198,11 +209,13 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 """
                 false
                 false
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun knownTypeAndTypeIdCanActAsPrerequisitesForOrdinaryRuleSearch() {
+    @Test
+    fun knownTypeAndTypeIdCanActAsPrerequisitesForOrdinaryRuleSearch() {
         val source =
             """
             package demo
@@ -231,7 +244,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
             fun main() {
                 println(render<List<String?>>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -239,7 +253,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun typeIdSupportsHashMapLookupAcrossRepeatedSummonsAndAliases() {
+    @Test
+    fun typeIdSupportsHashMapLookupAcrossRepeatedSummonsAndAliases() {
         val source =
             """
             package demo
@@ -256,7 +271,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 println(values[summon<TypeId<Age>>()])
                 println(values.size)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -265,11 +281,13 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 int
                 int
                 1
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun typeIdCompareProducesEqualityProofForSemanticAliases() {
+    @Test
+    fun typeIdCompareProducesEqualityProofForSemanticAliases() {
         val source =
             """
             package demo
@@ -291,15 +309,14 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                     is TypeIdComparison.Different -> println("different")
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "41",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "41")
     }
 
-    @Test fun typeIdCompareProducesInequalityForDistinctSemanticTypes() {
+    @Test
+    fun typeIdCompareProducesInequalityForDistinctSemanticTypes() {
         val source =
             """
             package demo
@@ -318,7 +335,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                     }
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -326,11 +344,13 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun typeIdDistinguishesStarProjectionsFromConcreteAndNullableArguments() {
+    @Test
+    fun typeIdDistinguishesStarProjectionsFromConcreteAndNullableArguments() {
         val source =
             """
             package demo
@@ -343,7 +363,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 println(summon<TypeId<List<*>>>().sameAs(summon<TypeId<List<Any?>>>()))
                 println(summon<TypeId<List<Int?>>>().sameAs(summon<TypeId<List<Int>>>()))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -352,11 +373,13 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 false
                 false
                 false
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun typeIdPreservesUseSiteVariance() {
+    @Test
+    fun typeIdPreservesUseSiteVariance() {
         val source =
             """
             package demo
@@ -368,7 +391,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 println(summon<TypeId<Array<Int>>>().sameAs(summon<TypeId<Array<out Int>>>()))
                 println(summon<TypeId<Array<in String>>>().sameAs(summon<TypeId<Array<Any?>>>()))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -376,11 +400,13 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 """
                 false
                 false
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun typeIdTreatsNestedAliasesAsSemanticallyEqualInsideGenericArguments() {
+    @Test
+    fun typeIdTreatsNestedAliasesAsSemanticallyEqualInsideGenericArguments() {
         val source =
             """
             package demo
@@ -398,7 +424,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 println(ages.sameAs(ints))
                 println(ages == ints)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -406,11 +433,13 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun typeIdDistinguishesValueClassesFromTheirUnderlyingTypes() {
+    @Test
+    fun typeIdDistinguishesValueClassesFromTheirUnderlyingTypes() {
         val source =
             """
             package demo
@@ -432,7 +461,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 println(values[intId])
                 println(values.size)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -442,11 +472,13 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 user-id
                 int
                 2
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun rejectsTypeIdMaterializationForUnfixedGenericTypeParameters() {
+    @Test
+    fun rejectsTypeIdMaterializationForUnfixedGenericTypeParameters() {
         val source =
             """
             package demo
@@ -456,7 +488,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
 
             fun <T> impossible(): TypeId<T> =
                 summon<TypeId<T>>() // E:TC_NO_CONTEXT_ARGUMENT TypeId requires an exact known semantic type
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -465,7 +498,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun reifiedTypeIdMatchesConcreteInstantiationAndAliases() {
+    @Test
+    fun reifiedTypeIdMatchesConcreteInstantiationAndAliases() {
         val source =
             """
             package demo
@@ -482,7 +516,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 println(sameAsConcreteInt<Int>())
                 println(sameAsConcreteInt<Age>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -490,11 +525,13 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun typeIdDistinguishesFunctionTypeArgumentsAndNullability() {
+    @Test
+    fun typeIdDistinguishesFunctionTypeArgumentsAndNullability() {
         val source =
             """
             package demo
@@ -509,7 +546,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 println(summon<TypeId<(Int) -> String>>().sameAs(summon<TypeId<(Int?) -> String>>()))
                 println(summon<TypeId<(Int) -> String>>().sameAs(summon<TypeId<(Int) -> String?>>()))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -518,7 +556,8 @@ class RuntimeTypeProofTest : IntegrationTestSupport() {
                 true
                 false
                 false
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 }

@@ -50,18 +50,13 @@ import org.jetbrains.kotlin.fir.types.resolvedType
 import org.jetbrains.kotlin.fir.types.type
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.name.SpecialNames
 
 internal sealed interface FirDeriveViaPathSegment {
     val classId: ClassId
 
-    data class Waypoint(
-        override val classId: ClassId,
-    ) : FirDeriveViaPathSegment
+    data class Waypoint(override val classId: ClassId) : FirDeriveViaPathSegment
 
-    data class PinnedIso(
-        override val classId: ClassId,
-    ) : FirDeriveViaPathSegment
+    data class PinnedIso(override val classId: ClassId) : FirDeriveViaPathSegment
 }
 
 internal data class FirDeriveViaRequest(
@@ -69,36 +64,26 @@ internal data class FirDeriveViaRequest(
     val path: List<FirDeriveViaPathSegment>,
 )
 
-internal data class FirDeriveEquivRequest(
-    val otherClassId: ClassId,
-)
+internal data class FirDeriveEquivRequest(val otherClassId: ClassId)
 
 internal sealed interface FirDeriveViaAnnotationParseResult {
     val annotation: FirAnnotation
 
-    data class Valid(
-        override val annotation: FirAnnotation,
-        val request: FirDeriveViaRequest,
-    ) : FirDeriveViaAnnotationParseResult
+    data class Valid(override val annotation: FirAnnotation, val request: FirDeriveViaRequest) :
+        FirDeriveViaAnnotationParseResult
 
-    data class Invalid(
-        override val annotation: FirAnnotation,
-        val message: String,
-    ) : FirDeriveViaAnnotationParseResult
+    data class Invalid(override val annotation: FirAnnotation, val message: String) :
+        FirDeriveViaAnnotationParseResult
 }
 
 internal sealed interface FirDeriveEquivAnnotationParseResult {
     val annotation: FirAnnotation
 
-    data class Valid(
-        override val annotation: FirAnnotation,
-        val request: FirDeriveEquivRequest,
-    ) : FirDeriveEquivAnnotationParseResult
+    data class Valid(override val annotation: FirAnnotation, val request: FirDeriveEquivRequest) :
+        FirDeriveEquivAnnotationParseResult
 
-    data class Invalid(
-        override val annotation: FirAnnotation,
-        val message: String,
-    ) : FirDeriveEquivAnnotationParseResult
+    data class Invalid(override val annotation: FirAnnotation, val message: String) :
+        FirDeriveEquivAnnotationParseResult
 }
 
 internal data class FirShapeDerivedGoalMatch(
@@ -106,19 +91,15 @@ internal data class FirShapeDerivedGoalMatch(
     val targetType: TcType.Constructor,
 )
 
-internal class FirDirectTransportPlanner(
-    private val session: FirSession,
-) {
-    fun planEquiv(
-        sourceType: TcType.Constructor,
-        targetType: TcType.Constructor,
-    ): Boolean = canTransport(sourceType, targetType, linkedSetOf()) && canTransport(targetType, sourceType, linkedSetOf())
+internal class FirDirectTransportPlanner(private val session: FirSession) {
+    fun planEquiv(sourceType: TcType.Constructor, targetType: TcType.Constructor): Boolean =
+        canTransport(sourceType, targetType, linkedSetOf()) &&
+            canTransport(targetType, sourceType, linkedSetOf())
 
     fun resolveViaPath(
         sourceType: TcType.Constructor,
         path: List<FirDeriveViaPathSegment>,
-    ): TcType.Constructor? =
-        resolveViaPathDetailed(sourceType, path).getOrNull()
+    ): TcType.Constructor? = resolveViaPathDetailed(sourceType, path).getOrNull()
 
     fun resolveViaPathDetailed(
         sourceType: TcType.Constructor,
@@ -135,21 +116,23 @@ internal class FirDirectTransportPlanner(
                     val waypointClass =
                         session.regularClassSymbolOrNull(segment.classId)?.fir
                             ?: return Result.failure(
-                                IllegalArgumentException("Could not resolve DeriveVia waypoint ${segment.classId.asString()}"),
+                                IllegalArgumentException(
+                                    "Could not resolve DeriveVia waypoint ${segment.classId.asString()}"
+                                )
                             )
                     if (waypointClass.typeParameters.isNotEmpty()) {
                         return Result.failure(
                             IllegalArgumentException(
-                                "Generic DeriveVia waypoints are not supported yet: ${segment.classId.asString()}",
-                            ),
+                                "Generic DeriveVia waypoints are not supported yet: ${segment.classId.asString()}"
+                            )
                         )
                     }
                     val waypointType = TcType.Constructor(segment.classId.asString(), emptyList())
                     if (!planEquiv(current, waypointType)) {
                         return Result.failure(
                             IllegalArgumentException(
-                                "Cannot derive via ${segment.classId.asString()} from ${current.render()}",
-                            ),
+                                "Cannot derive via ${segment.classId.asString()} from ${current.render()}"
+                            )
                         )
                     }
                     current = waypointType
@@ -159,19 +142,23 @@ internal class FirDirectTransportPlanner(
                     val isoClass =
                         session.regularClassSymbolOrNull(segment.classId)?.fir
                             ?: return Result.failure(
-                                IllegalArgumentException("Could not resolve pinned Iso ${segment.classId.asString()}"),
+                                IllegalArgumentException(
+                                    "Could not resolve pinned Iso ${segment.classId.asString()}"
+                                )
                             )
                     if (isoClass.classKind != ClassKind.OBJECT) {
                         return Result.failure(
-                            IllegalArgumentException("Pinned Iso path segments must name object singletons"),
+                            IllegalArgumentException(
+                                "Pinned Iso path segments must name object singletons"
+                            )
                         )
                     }
                     val endpoints =
                         isoClass.isoEndpoints(session)
                             ?: return Result.failure(
                                 IllegalArgumentException(
-                                    "Pinned Iso ${segment.classId.asString()} must define one exact Iso to/from override pair",
-                                ),
+                                    "Pinned Iso ${segment.classId.asString()} must define one exact Iso to/from override pair"
+                                )
                             )
                     val leftReachable = planEquiv(current, endpoints.first)
                     val rightReachable = planEquiv(current, endpoints.second)
@@ -180,8 +167,8 @@ internal class FirDirectTransportPlanner(
                             leftReachable && rightReachable ->
                                 return Result.failure(
                                     IllegalStateException(
-                                        "Pinned Iso ${segment.classId.asString()} is ambiguous because both endpoints are reachable from ${current.render()}",
-                                    ),
+                                        "Pinned Iso ${segment.classId.asString()} is ambiguous because both endpoints are reachable from ${current.render()}"
+                                    )
                                 )
 
                             leftReachable -> endpoints.second
@@ -189,8 +176,8 @@ internal class FirDirectTransportPlanner(
                             else ->
                                 return Result.failure(
                                     IllegalArgumentException(
-                                        "Pinned Iso ${segment.classId.asString()} is disconnected from ${current.render()}",
-                                    ),
+                                        "Pinned Iso ${segment.classId.asString()} is disconnected from ${current.render()}"
+                                    )
                                 )
                         }
                 }
@@ -223,10 +210,14 @@ internal class FirDirectTransportPlanner(
             if (sourceFunction == null || targetFunction == null) {
                 return false
             }
-            if (sourceFunction.kind != targetFunction.kind || sourceFunction.parameterTypes.size != targetFunction.parameterTypes.size) {
+            if (
+                sourceFunction.kind != targetFunction.kind ||
+                    sourceFunction.parameterTypes.size != targetFunction.parameterTypes.size
+            ) {
                 return false
             }
-            return sourceFunction.parameterTypes.zip(targetFunction.parameterTypes).all { (sourceParameter, targetParameter) ->
+            return sourceFunction.parameterTypes.zip(targetFunction.parameterTypes).all {
+                (sourceParameter, targetParameter) ->
                 canTransport(targetParameter, sourceParameter, visiting)
             } && canTransport(sourceFunction.returnType, targetFunction.returnType, visiting)
         }
@@ -238,30 +229,64 @@ internal class FirDirectTransportPlanner(
             return false
         }
         try {
-            val sourceClass = session.regularClassSymbolOrNull(sourceConstructor.classIdOrNull() ?: return false)?.fir ?: return false
-            val targetClass = session.regularClassSymbolOrNull(targetConstructor.classIdOrNull() ?: return false)?.fir ?: return false
+            val sourceClass =
+                session
+                    .regularClassSymbolOrNull(sourceConstructor.classIdOrNull() ?: return false)
+                    ?.fir ?: return false
+            val targetClass =
+                session
+                    .regularClassSymbolOrNull(targetConstructor.classIdOrNull() ?: return false)
+                    ?.fir ?: return false
 
-            sourceClass.transparentValueFieldType(
-                concreteType = sourceConstructor,
-                accessContext = sourceClass.transportAccessContext(session),
-                requireConstructorAccess = false,
-            )?.let { sourceFieldType ->
-                if (sourceFieldType.normalizedKey() != sourceConstructor.normalizedKey() && canTransport(sourceFieldType, targetConstructor, visiting)) {
-                    return true
+            sourceClass
+                .transparentValueFieldType(
+                    concreteType = sourceConstructor,
+                    accessContext = sourceClass.transportAccessContext(session),
+                    requireConstructorAccess = false,
+                )
+                ?.let { sourceFieldType ->
+                    if (
+                        sourceFieldType.normalizedKey() != sourceConstructor.normalizedKey() &&
+                            canTransport(sourceFieldType, targetConstructor, visiting)
+                    ) {
+                        return true
+                    }
                 }
-            }
-            targetClass.transparentValueFieldType(
-                concreteType = targetConstructor,
-                accessContext = targetClass.transportAccessContext(session),
-                requireConstructorAccess = true,
-            )?.let { targetFieldType ->
-                if (targetFieldType.normalizedKey() != targetConstructor.normalizedKey() && canTransport(sourceConstructor, targetFieldType, visiting)) {
-                    return true
+            targetClass
+                .transparentValueFieldType(
+                    concreteType = targetConstructor,
+                    accessContext = targetClass.transportAccessContext(session),
+                    requireConstructorAccess = true,
+                )
+                ?.let { targetFieldType ->
+                    if (
+                        targetFieldType.normalizedKey() != targetConstructor.normalizedKey() &&
+                            canTransport(sourceConstructor, targetFieldType, visiting)
+                    ) {
+                        return true
+                    }
                 }
-            }
 
-            canTransportProduct(sourceConstructor, targetConstructor, sourceClass, targetClass, visiting)?.let { return it }
-            canTransportSum(sourceConstructor, targetConstructor, sourceClass, targetClass, visiting)?.let { return it }
+            canTransportProduct(
+                    sourceConstructor,
+                    targetConstructor,
+                    sourceClass,
+                    targetClass,
+                    visiting,
+                )
+                ?.let {
+                    return it
+                }
+            canTransportSum(
+                    sourceConstructor,
+                    targetConstructor,
+                    sourceClass,
+                    targetClass,
+                    visiting,
+                )
+                ?.let {
+                    return it
+                }
             return false
         } finally {
             visiting.remove(visitKey)
@@ -315,11 +340,18 @@ internal class FirDirectTransportPlanner(
         targetClass: FirRegularClass,
         visiting: MutableSet<Pair<String, String>>,
     ): Boolean? {
-        if (sourceClass.status.modality != Modality.SEALED || targetClass.status.modality != Modality.SEALED) {
+        if (
+            sourceClass.status.modality != Modality.SEALED ||
+                targetClass.status.modality != Modality.SEALED
+        ) {
             return null
         }
-        val sourceCases = sourceClass.transparentSealedCases(session, sourceClass.transportAccessContext(session)) ?: return null
-        val targetCases = targetClass.transparentSealedCases(session, targetClass.transportAccessContext(session)) ?: return null
+        val sourceCases =
+            sourceClass.transparentSealedCases(session, sourceClass.transportAccessContext(session))
+                ?: return null
+        val targetCases =
+            targetClass.transparentSealedCases(session, targetClass.transportAccessContext(session))
+                ?: return null
         if (sourceCases.size != targetCases.size) {
             return false
         }
@@ -358,49 +390,63 @@ internal fun FirRegularClass.deriveViaRequests(session: FirSession): List<FirDer
                 )
             }
     } else {
-        deriveViaAnnotationParseResults(session)
-            .mapNotNull { result -> (result as? FirDeriveViaAnnotationParseResult.Valid)?.request }
+        deriveViaAnnotationParseResults(session).mapNotNull { result ->
+            (result as? FirDeriveViaAnnotationParseResult.Valid)?.request
+        }
     }
 
-internal fun FirRegularClass.deriveEquivRequestsValidated(session: FirSession): List<FirDeriveEquivRequest> =
+internal fun FirRegularClass.deriveEquivRequestsValidated(
+    session: FirSession
+): List<FirDeriveEquivRequest> =
     if (source == null) {
         generatedDerivedMetadata(session)
             .filterIsInstance<GeneratedDerivedMetadata.DeriveEquiv>()
             .map { metadata -> FirDeriveEquivRequest(metadata.otherClassId) }
     } else {
-        deriveEquivAnnotationParseResults(session)
-            .mapNotNull { result -> (result as? FirDeriveEquivAnnotationParseResult.Valid)?.request }
+        deriveEquivAnnotationParseResults(session).mapNotNull { result ->
+            (result as? FirDeriveEquivAnnotationParseResult.Valid)?.request
+        }
     }
 
-internal fun FirRegularClass.deriveViaAnnotationParseResults(session: FirSession): List<FirDeriveViaAnnotationParseResult> =
+internal fun FirRegularClass.deriveViaAnnotationParseResults(
+    session: FirSession
+): List<FirDeriveViaAnnotationParseResult> =
     if (source == null) {
         emptyList()
     } else {
         resolvedRepeatableAnnotationsByClassId(
-            annotationClassId = DERIVE_VIA_ANNOTATION_CLASS_ID,
-            containerClassId = DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID,
-            session = session,
-        ).map { annotation ->
-            annotation.parseDeriveViaAnnotation(owner = this, session = session)
-        }
+                annotationClassId = DERIVE_VIA_ANNOTATION_CLASS_ID,
+                containerClassId = DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID,
+                session = session,
+            )
+            .map { annotation ->
+                annotation.parseDeriveViaAnnotation(owner = this, session = session)
+            }
     }
 
-internal fun FirRegularClass.deriveEquivAnnotationParseResults(session: FirSession): List<FirDeriveEquivAnnotationParseResult> =
+internal fun FirRegularClass.deriveEquivAnnotationParseResults(
+    session: FirSession
+): List<FirDeriveEquivAnnotationParseResult> =
     if (source == null) {
         emptyList()
     } else {
         resolvedRepeatableAnnotationsByClassId(
-            annotationClassId = DERIVE_EQUIV_ANNOTATION_CLASS_ID,
-            containerClassId = DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID,
-            session = session,
-        ).map { annotation ->
-            annotation.parseDeriveEquivAnnotation(owner = this, session = session)
-        }
+                annotationClassId = DERIVE_EQUIV_ANNOTATION_CLASS_ID,
+                containerClassId = DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID,
+                session = session,
+            )
+            .map { annotation ->
+                annotation.parseDeriveEquivAnnotation(owner = this, session = session)
+            }
     }
 
 internal fun FirRegularClass.validateDeriveViaTransportability(session: FirSession): String? {
-    deriveViaSubclassabilityViolation(session)?.let { return it }
-    val transported = typeParameters.lastOrNull()?.symbol ?: return "DeriveVia requires a typeclass with a final transported type parameter"
+    deriveViaSubclassabilityViolation(session)?.let {
+        return it
+    }
+    val transported =
+        typeParameters.lastOrNull()?.symbol
+            ?: return "DeriveVia requires a typeclass with a final transported type parameter"
     val classParameters =
         typeParameters.mapIndexed { index, typeParameter ->
             TcTypeParameter(
@@ -408,12 +454,15 @@ internal fun FirRegularClass.validateDeriveViaTransportability(session: FirSessi
                 displayName = typeParameter.symbol.name.asString(),
             )
         }
-    val typeParameterBySymbol = typeParameters.zip(classParameters).associate { (typeParameter, parameter) ->
-        typeParameter.symbol to parameter
-    }
+    val typeParameterBySymbol =
+        typeParameters.zip(classParameters).associate { (typeParameter, parameter) ->
+            typeParameter.symbol to parameter
+        }
 
     val concreteType = defaultConcreteType()
-    val transportedId = typeParameterBySymbol[transported]?.id ?: return "DeriveVia requires a typeclass with a final transported type parameter"
+    val transportedId =
+        typeParameterBySymbol[transported]?.id
+            ?: return "DeriveVia requires a typeclass with a final transported type parameter"
     return validateInheritedForwardedTypeclassSurface(
         session = session,
         concreteType = concreteType,
@@ -434,16 +483,21 @@ private fun FirRegularClass.deriveViaSubclassabilityViolation(session: FirSessio
     val accessContext = transportAccessContext(session)
     val constructors = declarations.filterIsInstance<FirConstructor>()
     if (constructors.isEmpty()) {
-        return if (accessContext.allowsDeriveViaSuperclassConstructorVisibility(status.visibility.toTransportSyntheticVisibility())) {
+        return if (
+            accessContext.allowsDeriveViaSuperclassConstructorVisibility(
+                status.visibility.toTransportSyntheticVisibility()
+            )
+        ) {
             null
         } else {
             DERIVE_VIA_SUBCLASSABLE_TYPECLASS_HEAD_MESSAGE
         }
     }
-    if (constructors.any { constructor ->
+    if (
+        constructors.any { constructor ->
             constructor.valueParameters.isEmpty() &&
                 accessContext.allowsDeriveViaSuperclassConstructorVisibility(
-                    constructor.status.visibility.toTransportSyntheticVisibility(),
+                    constructor.status.visibility.toTransportSyntheticVisibility()
                 )
         }
     ) {
@@ -523,7 +577,8 @@ private fun FirRegularClass.validateInheritedForwardedTypeclassSurface(
             continue
         }
         val methodTypeParameters = function.typeParameters.toMethodTypeParameterModels(function)
-        if (function.typeParameters.any { typeParameter ->
+        if (
+            function.typeParameters.any { typeParameter ->
                 typeParameter.bounds.any { bound ->
                     bound.coneType.referencesTransportedTypeInOwnerContext(
                         owner = this,
@@ -550,13 +605,14 @@ private fun FirRegularClass.validateInheritedForwardedTypeclassSurface(
             }
         }
         for (parameter in function.contextParameters) {
-            if (parameter.valueParameterKind == FirValueParameterKind.ContextParameter &&
-                parameter.returnTypeRef.coneType.referencesTransportedTypeInOwnerContext(
-                    owner = this,
-                    concreteType = concreteType,
-                    transportedId = transportedId,
-                    additionalTypeParameters = methodTypeParameters,
-                )
+            if (
+                parameter.valueParameterKind == FirValueParameterKind.ContextParameter &&
+                    parameter.returnTypeRef.coneType.referencesTransportedTypeInOwnerContext(
+                        owner = this,
+                        concreteType = concreteType,
+                        transportedId = transportedId,
+                        additionalTypeParameters = methodTypeParameters,
+                    )
             ) {
                 return "DeriveVia does not support context parameters that mention the transported type parameter"
             }
@@ -588,7 +644,8 @@ private fun FirRegularClass.validateInheritedForwardedTypeclassSurface(
     }
 
     for (superType in declaredOrResolvedSuperTypes()) {
-        val superConcreteType = superType.toConcreteType(this, concreteType) as? TcType.Constructor ?: continue
+        val superConcreteType =
+            superType.toConcreteType(this, concreteType) as? TcType.Constructor ?: continue
         val superClassId = superConcreteType.classIdOrNull() ?: continue
         val superClass = session.regularClassSymbolOrNull(superClassId)?.fir ?: continue
         val message =
@@ -616,13 +673,12 @@ private fun FirProperty.signatureKey(
     owner: FirRegularClass,
     concreteType: TcType.Constructor,
     getter: org.jetbrains.kotlin.fir.declarations.FirPropertyAccessor,
-): String =
-    buildString {
-        append("property:")
-        append(name.asString())
-        append(":")
-        append(getter.returnTypeRef.coneType.signatureRenderInOwnerContext(owner, concreteType))
-    }
+): String = buildString {
+    append("property:")
+    append(name.asString())
+    append(":")
+    append(getter.returnTypeRef.coneType.signatureRenderInOwnerContext(owner, concreteType))
+}
 
 private fun FirTypeclassFunctionDeclaration.signatureKey(
     owner: FirRegularClass,
@@ -638,32 +694,34 @@ private fun FirTypeclassFunctionDeclaration.signatureKey(
         append(typeParameters.size)
         append(":ext=")
         append(
-            receiverParameter?.typeRef?.coneType?.signatureRenderInOwnerContext(
-                owner = owner,
-                concreteType = concreteType,
-                additionalTypeParameters = methodTypeParameters,
-            ) ?: "-",
+            receiverParameter
+                ?.typeRef
+                ?.coneType
+                ?.signatureRenderInOwnerContext(
+                    owner = owner,
+                    concreteType = concreteType,
+                    additionalTypeParameters = methodTypeParameters,
+                ) ?: "-"
         )
-        (contextParameters + valueParameters)
-            .forEach { parameter ->
-                append(":")
-                append(parameter.valueParameterKind.name)
-                append("=")
-                append(
-                    parameter.returnTypeRef.coneType.signatureRenderInOwnerContext(
-                        owner = owner,
-                        concreteType = concreteType,
-                        additionalTypeParameters = methodTypeParameters,
-                    ),
+        (contextParameters + valueParameters).forEach { parameter ->
+            append(":")
+            append(parameter.valueParameterKind.name)
+            append("=")
+            append(
+                parameter.returnTypeRef.coneType.signatureRenderInOwnerContext(
+                    owner = owner,
+                    concreteType = concreteType,
+                    additionalTypeParameters = methodTypeParameters,
                 )
-            }
+            )
+        }
         append(":ret=")
         append(
             returnTypeRef.coneType.signatureRenderInOwnerContext(
                 owner = owner,
                 concreteType = concreteType,
                 additionalTypeParameters = methodTypeParameters,
-            ),
+            )
         )
     }
 }
@@ -674,10 +732,11 @@ private fun ConeKotlinType.signatureRenderInOwnerContext(
     additionalTypeParameters: Map<FirTypeParameterSymbol, TcTypeParameter> = emptyMap(),
 ): String =
     toConcreteType(
-        owner = owner,
-        concreteType = concreteType,
-        additionalTypeParameters = additionalTypeParameters,
-    )?.render() ?: approximateIntegerLiteralType().lowerBoundIfFlexible().toString()
+            owner = owner,
+            concreteType = concreteType,
+            additionalTypeParameters = additionalTypeParameters,
+        )
+        ?.render() ?: approximateIntegerLiteralType().lowerBoundIfFlexible().toString()
 
 private fun ConeKotlinType.referencesTransportedTypeInOwnerContext(
     owner: FirRegularClass,
@@ -696,7 +755,8 @@ private fun ConeKotlinType.referencesTransportedTypeInOwnerContext(
                 concreteType = concreteType,
                 additionalTypeParameters = additionalTypeParameters,
             ),
-    ) !is FirOwnerContextTransportabilityStatus.NotTransportedReference
+    ) !is
+        FirOwnerContextTransportabilityStatus.NotTransportedReference
 
 private fun ConeKotlinType.transportabilityViolationInOwnerContext(
     owner: FirRegularClass,
@@ -730,13 +790,9 @@ private fun ConeKotlinType.transportabilityViolationInOwnerContext(
 internal sealed interface FirOwnerContextTransportabilityStatus {
     data object NotTransportedReference : FirOwnerContextTransportabilityStatus
 
-    data class Unsupported(
-        val message: String,
-    ) : FirOwnerContextTransportabilityStatus
+    data class Unsupported(val message: String) : FirOwnerContextTransportabilityStatus
 
-    data class Concrete(
-        val model: TcType,
-    ) : FirOwnerContextTransportabilityStatus
+    data class Concrete(val model: TcType) : FirOwnerContextTransportabilityStatus
 }
 
 internal fun ConeKotlinType.ownerContextTransportabilityStatus(
@@ -754,7 +810,8 @@ internal fun ConeKotlinType.ownerContextTransportabilityStatus(
     val lowered = approximateIntegerLiteralType().lowerBoundIfFlexible()
     val rendered = lowered.toString()
     val transportedSymbol =
-        owner.ownerContextTypeParameters(additionalTypeParameters)
+        owner
+            .ownerContextTypeParameters(additionalTypeParameters)
             .firstOrNull { (_, parameter) -> parameter.id == transportedId }
             ?.first
     return transportabilityStatusForTransportedType(
@@ -786,12 +843,12 @@ internal fun ConeKotlinType.transportabilityStatusForTransportedType(
     }
     if (rendered.contains("&")) {
         return FirOwnerContextTransportabilityStatus.Unsupported(
-            "DeriveVia does not support definitely-non-null or intersection member types",
+            "DeriveVia does not support definitely-non-null or intersection member types"
         )
     }
     if (concreteModel == null) {
         return FirOwnerContextTransportabilityStatus.Unsupported(
-            "DeriveVia does not support unsupported transported member type shape",
+            "DeriveVia does not support unsupported transported member type shape"
         )
     }
     return FirOwnerContextTransportabilityStatus.Concrete(concreteModel)
@@ -821,48 +878,64 @@ internal fun FirRegularClass.matchingShapeDerivedGoalMatches(
     }
     val requiredContract = requiredDeriveMethodContractForDeriveShape()
     return buildList {
-        directIds.forEach { directTypeclassId ->
-            val directClassId = runCatching { ClassId.fromString(directTypeclassId) }.getOrNull() ?: return@forEach
-            if (source != null && requiredContract != null && typeclassCompanionResolveDeriveMethod(directClassId, requiredContract, session) == null) {
-                return@forEach
-            }
-            val expansions = expandedDerivedTypeclassHeads(directTypeclassId, session, configuration)
-            val directTypeParameters = expansions.firstOrNull()?.directTypeParameters.orEmpty()
-            if (directTypeParameters.size != 1) {
-                return@forEach
-            }
-            val bindableIds = directTypeParameters.mapTo(linkedSetOf(), TcTypeParameter::id)
-            val transportedParameter = directTypeParameters.single()
-            expansions.forEach { expansion ->
-                if (expansion.head.classifierId != goal.classifierId) {
+            directIds.forEach { directTypeclassId ->
+                val directClassId =
+                    runCatching { ClassId.fromString(directTypeclassId) }.getOrNull()
+                        ?: return@forEach
+                if (
+                    source != null &&
+                        requiredContract != null &&
+                        typeclassCompanionResolveDeriveMethod(
+                            directClassId,
+                            requiredContract,
+                            session,
+                        ) == null
+                ) {
                     return@forEach
                 }
-                val bindings = unifyTypes(expansion.head, goal, bindableVariableIds = bindableIds) ?: return@forEach
-                val targetType = bindings[transportedParameter.id] as? TcType.Constructor ?: return@forEach
-                if (targetType.isNullable) {
+                val expansions =
+                    expandedDerivedTypeclassHeads(directTypeclassId, session, configuration)
+                val directTypeParameters = expansions.firstOrNull()?.directTypeParameters.orEmpty()
+                if (directTypeParameters.size != 1) {
                     return@forEach
                 }
-                add(
-                    FirShapeDerivedGoalMatch(
-                        directTypeclassId = directTypeclassId,
-                        targetType = targetType,
-                    ),
-                )
+                val bindableIds = directTypeParameters.mapTo(linkedSetOf(), TcTypeParameter::id)
+                val transportedParameter = directTypeParameters.single()
+                expansions.forEach { expansion ->
+                    if (expansion.head.classifierId != goal.classifierId) {
+                        return@forEach
+                    }
+                    val bindings =
+                        unifyTypes(expansion.head, goal, bindableVariableIds = bindableIds)
+                            ?: return@forEach
+                    val targetType =
+                        bindings[transportedParameter.id] as? TcType.Constructor ?: return@forEach
+                    if (targetType.isNullable) {
+                        return@forEach
+                    }
+                    add(
+                        FirShapeDerivedGoalMatch(
+                            directTypeclassId = directTypeclassId,
+                            targetType = targetType,
+                        )
+                    )
+                }
             }
         }
-    }.distinct()
+        .distinct()
 }
 
 private fun List<FirTypeParameter>.toMethodTypeParameterModels(
-    function: FirTypeclassFunctionDeclaration,
+    function: FirTypeclassFunctionDeclaration
 ): Map<FirTypeParameterSymbol, TcTypeParameter> =
     mapIndexed { index, typeParameter ->
-        typeParameter.symbol to
-            TcTypeParameter(
-                id = "${function.symbol.callableId}#$index",
-                displayName = typeParameter.symbol.name.asString(),
-            )
-    }.toMap()
+            typeParameter.symbol to
+                TcTypeParameter(
+                    id = "${function.symbol.callableId}#$index",
+                    displayName = typeParameter.symbol.name.asString(),
+                )
+        }
+        .toMap()
 
 private fun FirAnnotation.parseDeriveViaAnnotation(
     owner: FirRegularClass,
@@ -884,7 +957,8 @@ private fun FirAnnotation.parseDeriveViaAnnotation(
         session.regularClassSymbolOrNull(typeclassId)?.fir
             ?: return FirDeriveViaAnnotationParseResult.Invalid(
                 annotation = this,
-                message = "@DeriveVia typeclass argument must be a resolvable class literal: ${typeclassId.asString()}",
+                message =
+                    "@DeriveVia typeclass argument must be a resolvable class literal: ${typeclassId.asString()}",
             )
     if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)) {
         return FirDeriveViaAnnotationParseResult.Invalid(
@@ -905,7 +979,8 @@ private fun FirAnnotation.parseDeriveViaAnnotation(
             expression.asReferencedClassId()
                 ?: return FirDeriveViaAnnotationParseResult.Invalid(
                     annotation = this,
-                    message = "DeriveVia path elements must be class literals; the path contained an unparsable element",
+                    message =
+                        "DeriveVia path elements must be class literals; the path contained an unparsable element",
                 )
         val symbol = session.regularClassSymbolOrNull(classId)
         if (symbol?.implementsInterface(ISO_CLASS_ID, session, linkedSetOf()) == true) {
@@ -927,18 +1002,20 @@ private fun FirAnnotation.parseDeriveViaAnnotation(
         )
     }
     typeclassInterface.validateDeriveViaTransportability(session)?.let { message ->
-        return FirDeriveViaAnnotationParseResult.Invalid(
-            annotation = this,
-            message = message,
-        )
+        return FirDeriveViaAnnotationParseResult.Invalid(annotation = this, message = message)
     }
     FirDirectTransportPlanner(session)
         .resolveViaPathDetailed(
             sourceType = TcType.Constructor(owner.symbol.classId.asString(), emptyList()),
             path = path,
-        ).fold(
+        )
+        .fold(
             onSuccess = { resolvedType ->
-                if (resolvedType.normalizedKey() == TcType.Constructor(owner.symbol.classId.asString(), emptyList()).normalizedKey()) {
+                if (
+                    resolvedType.normalizedKey() ==
+                        TcType.Constructor(owner.symbol.classId.asString(), emptyList())
+                            .normalizedKey()
+                ) {
                     return FirDeriveViaAnnotationParseResult.Invalid(
                         annotation = this,
                         message = "DeriveVia path must not resolve back to the annotated class",
@@ -946,10 +1023,10 @@ private fun FirAnnotation.parseDeriveViaAnnotation(
                 }
             },
             onFailure = { error ->
-            return FirDeriveViaAnnotationParseResult.Invalid(
-                annotation = this,
-                message = error.message ?: "Failed to resolve DeriveVia path",
-            )
+                return FirDeriveViaAnnotationParseResult.Invalid(
+                    annotation = this,
+                    message = error.message ?: "Failed to resolve DeriveVia path",
+                )
             },
         )
     return FirDeriveViaAnnotationParseResult.Valid(
@@ -978,7 +1055,8 @@ private fun FirAnnotation.parseDeriveEquivAnnotation(
         session.regularClassSymbolOrNull(otherClassId)?.fir
             ?: return FirDeriveEquivAnnotationParseResult.Invalid(
                 annotation = this,
-                message = "@DeriveEquiv otherClass argument must be a resolvable class literal: ${otherClassId.asString()}",
+                message =
+                    "@DeriveEquiv otherClass argument must be a resolvable class literal: ${otherClassId.asString()}",
             )
     if (otherClass.typeParameters.isNotEmpty()) {
         return FirDeriveEquivAnnotationParseResult.Invalid(
@@ -991,7 +1069,8 @@ private fun FirAnnotation.parseDeriveEquivAnnotation(
     if (!FirDirectTransportPlanner(session).planEquiv(ownerType, otherType)) {
         return FirDeriveEquivAnnotationParseResult.Invalid(
             annotation = this,
-            message = "Cannot derive Equiv between ${owner.symbol.classId.asString()} and ${otherClassId.asString()}",
+            message =
+                "Cannot derive Equiv between ${owner.symbol.classId.asString()} and ${otherClassId.asString()}",
         )
     }
     return FirDeriveEquivAnnotationParseResult.Valid(
@@ -1000,12 +1079,9 @@ private fun FirAnnotation.parseDeriveEquivAnnotation(
     )
 }
 
-private fun FirAnnotation.getArgumentExpressions(
-    name: String,
-): List<FirExpression> {
+private fun FirAnnotation.getArgumentExpressions(name: String): List<FirExpression> {
     val argument = findArgumentByName(Name.identifier(name)) ?: return emptyList()
-    return argument.unwrapVarargValue()
-        .ifEmpty { listOf(argument) }
+    return argument.unwrapVarargValue().ifEmpty { listOf(argument) }
 }
 
 private fun FirExpression.asReferencedClassId(): ClassId? =
@@ -1013,7 +1089,8 @@ private fun FirExpression.asReferencedClassId(): ClassId? =
         is FirGetClassCall ->
             when (val classExpression = argument) {
                 is FirResolvedQualifier -> classExpression.classId
-                is FirClassReferenceExpression -> classExpression.classTypeRef.coneType.lowerBoundIfFlexible().classId
+                is FirClassReferenceExpression ->
+                    classExpression.classTypeRef.coneType.lowerBoundIfFlexible().classId
                 else -> null
             }
 
@@ -1022,7 +1099,9 @@ private fun FirExpression.asReferencedClassId(): ClassId? =
         else -> null
     }
 
-private fun FirRegularClass.isoEndpoints(session: FirSession): Pair<TcType.Constructor, TcType.Constructor>? {
+private fun FirRegularClass.isoEndpoints(
+    session: FirSession
+): Pair<TcType.Constructor, TcType.Constructor>? {
     val endpointPairs = linkedMapOf<String, Pair<TcType.Constructor, TcType.Constructor>>()
     val collected =
         collectIsoEndpointPairsInConcreteContext(
@@ -1046,10 +1125,13 @@ private fun FirRegularClass.collectIsoEndpointPairsInConcreteContext(
     }
 
     for (superType in declaredOrResolvedSuperTypes()) {
-        val superConcreteType = superType.toConcreteType(this, concreteType) as? TcType.Constructor ?: continue
+        val superConcreteType =
+            superType.toConcreteType(this, concreteType) as? TcType.Constructor ?: continue
         if (superConcreteType.classifierId == ISO_CLASS_ID.asString()) {
-            val leftType = superConcreteType.arguments.getOrNull(0) as? TcType.Constructor ?: return false
-            val rightType = superConcreteType.arguments.getOrNull(1) as? TcType.Constructor ?: return false
+            val leftType =
+                superConcreteType.arguments.getOrNull(0) as? TcType.Constructor ?: return false
+            val rightType =
+                superConcreteType.arguments.getOrNull(1) as? TcType.Constructor ?: return false
             endpointPairs.putIfAbsent(
                 "${leftType.normalizedKey()}->${rightType.normalizedKey()}",
                 leftType to rightType,
@@ -1058,12 +1140,14 @@ private fun FirRegularClass.collectIsoEndpointPairsInConcreteContext(
         }
         val superClassId = superConcreteType.classIdOrNull() ?: continue
         val superClass = session.regularClassSymbolOrNull(superClassId)?.fir ?: continue
-        if (!superClass.collectIsoEndpointPairsInConcreteContext(
-            session = session,
-            concreteType = superConcreteType,
-            visited = visited,
-            endpointPairs = endpointPairs,
-        )) {
+        if (
+            !superClass.collectIsoEndpointPairsInConcreteContext(
+                session = session,
+                concreteType = superConcreteType,
+                visited = visited,
+                endpointPairs = endpointPairs,
+            )
+        ) {
             return false
         }
     }
@@ -1089,7 +1173,9 @@ private fun ConeKotlinType.transportabilityViolation(
         return "DeriveVia only supports first-order, function, or structural product/sum member types"
     }
     return model.transportabilityViolation(
-        transportedId = typeParameterBySymbol[transported]?.id ?: return "DeriveVia requires a typeclass with a final transported type parameter",
+        transportedId =
+            typeParameterBySymbol[transported]?.id
+                ?: return "DeriveVia requires a typeclass with a final transported type parameter",
         session = session,
         visiting = visiting,
     )
@@ -1101,20 +1187,29 @@ private fun ConeKotlinType.mentionsTransportedType(
 ): Boolean {
     val lowered = approximateIntegerLiteralType().lowerBoundIfFlexible()
     return when (lowered) {
-        is ConeTypeParameterType -> lowered.lookupTag.typeParameterSymbol == transported && lowered.lookupTag.typeParameterSymbol !in opaqueParameters
+        is ConeTypeParameterType ->
+            lowered.lookupTag.typeParameterSymbol == transported &&
+                lowered.lookupTag.typeParameterSymbol !in opaqueParameters
         is ConeClassLikeType ->
             lowered.typeArguments.any { argument ->
                 argument.type?.mentionsTransportedType(transported, opaqueParameters) == true
             }
 
-        is ConeDefinitelyNotNullType -> lowered.original.mentionsTransportedType(transported, opaqueParameters)
-        is ConeIntersectionType -> lowered.intersectedTypes.any { intersected -> intersected.mentionsTransportedType(transported, opaqueParameters) }
+        is ConeDefinitelyNotNullType ->
+            lowered.original.mentionsTransportedType(transported, opaqueParameters)
+        is ConeIntersectionType ->
+            lowered.intersectedTypes.any { intersected ->
+                intersected.mentionsTransportedType(transported, opaqueParameters)
+            }
 
         else ->
-            lowered.toString().containsStandaloneTypeParameterIdentifier(
-                transportedName = transported.name.asString(),
-                opaqueNames = opaqueParameters.mapTo(linkedSetOf()) { symbol -> symbol.name.asString() },
-            )
+            lowered
+                .toString()
+                .containsStandaloneTypeParameterIdentifier(
+                    transportedName = transported.name.asString(),
+                    opaqueNames =
+                        opaqueParameters.mapTo(linkedSetOf()) { symbol -> symbol.name.asString() },
+                )
     }
 }
 
@@ -1136,41 +1231,60 @@ private fun TcType.transportabilityViolation(
             }
             firFunctionTypeInfoOrNull()?.let { functionInfo ->
                 functionInfo.parameterTypes.forEach { parameterType ->
-                    val message = parameterType.transportabilityViolation(transportedId, session, visiting)
+                    val message =
+                        parameterType.transportabilityViolation(transportedId, session, visiting)
                     if (message != null) {
                         return message
                     }
                 }
-                return functionInfo.returnType.transportabilityViolation(transportedId, session, visiting)
+                return functionInfo.returnType.transportabilityViolation(
+                    transportedId,
+                    session,
+                    visiting,
+                )
             }
-            val classId = classIdOrNull() ?: return "DeriveVia only supports structural class types in transported positions"
-            val klass = session.regularClassSymbolOrNull(classId)?.fir ?: return "DeriveVia only supports named structural class types in transported positions"
+            val classId =
+                classIdOrNull()
+                    ?: return "DeriveVia only supports structural class types in transported positions"
+            val klass =
+                session.regularClassSymbolOrNull(classId)?.fir
+                    ?: return "DeriveVia only supports named structural class types in transported positions"
             val visitKey = "${classId.asString()}:${render()}"
             if (!visiting.add(visitKey)) {
                 return "DeriveVia does not support recursive nominal transport shapes"
             }
             try {
-                klass.transparentValueFieldType(
-                    concreteType = this,
-                    accessContext = klass.transportAccessContext(session),
-                    requireConstructorAccess = true,
-                )?.let { fieldType ->
-                    return fieldType.transportabilityViolation(transportedId, session, visiting)
-                }
-                klass.transparentProductInfo(
-                    concreteType = this,
-                    accessContext = klass.transportAccessContext(session),
-                    requireConstructorAccess = true,
-                )?.let { productInfo ->
-                    productInfo.fields.forEach { field ->
-                        val message = field.type.transportabilityViolation(transportedId, session, visiting)
-                        if (message != null) {
-                            return message
-                        }
+                klass
+                    .transparentValueFieldType(
+                        concreteType = this,
+                        accessContext = klass.transportAccessContext(session),
+                        requireConstructorAccess = true,
+                    )
+                    ?.let { fieldType ->
+                        return fieldType.transportabilityViolation(transportedId, session, visiting)
                     }
-                    return null
-                }
-                val sealedCases = klass.transparentSealedCases(session, klass.transportAccessContext(session))
+                klass
+                    .transparentProductInfo(
+                        concreteType = this,
+                        accessContext = klass.transportAccessContext(session),
+                        requireConstructorAccess = true,
+                    )
+                    ?.let { productInfo ->
+                        productInfo.fields.forEach { field ->
+                            val message =
+                                field.type.transportabilityViolation(
+                                    transportedId,
+                                    session,
+                                    visiting,
+                                )
+                            if (message != null) {
+                                return message
+                            }
+                        }
+                        return null
+                    }
+                val sealedCases =
+                    klass.transparentSealedCases(session, klass.transportAccessContext(session))
                 if (sealedCases != null) {
                     sealedCases.forEach { case ->
                         val message =
@@ -1198,30 +1312,39 @@ private fun FirRegularClass.transparentValueFieldType(
     if (!isTransparentValueClass()) {
         return null
     }
-    if (!accessContext.allowsTransportVisibility(status.visibility.toTransportSyntheticVisibility())) {
+    if (
+        !accessContext.allowsTransportVisibility(status.visibility.toTransportSyntheticVisibility())
+    ) {
         return null
     }
     if (requireConstructorAccess) {
         val constructor =
-            declarations.filterIsInstance<FirConstructor>().singleOrNull { candidate -> candidate.isPrimary }
-                ?: declarations.filterIsInstance<FirConstructor>().singleOrNull()
-                ?: return null
-        if (!accessContext.allowsTransportVisibility(constructor.status.visibility.toTransportSyntheticVisibility())) {
+            declarations.filterIsInstance<FirConstructor>().singleOrNull { candidate ->
+                candidate.isPrimary
+            } ?: declarations.filterIsInstance<FirConstructor>().singleOrNull() ?: return null
+        if (
+            !accessContext.allowsTransportVisibility(
+                constructor.status.visibility.toTransportSyntheticVisibility()
+            )
+        ) {
             return null
         }
     }
     val property =
-        declarations
-            .filterIsInstance<FirProperty>()
-            .singleOrNull { candidate ->
-                candidate.backingField != null &&
-                    candidate.getter != null &&
-                    candidate.setter == null &&
-                    accessContext.allowsTransportVisibility(candidate.status.visibility.toTransportSyntheticVisibility()) &&
-                    accessContext.allowsTransportVisibility(
-                        (candidate.getter ?: return@singleOrNull false).status.visibility.toTransportSyntheticVisibility(),
-                    )
-            } ?: return null
+        declarations.filterIsInstance<FirProperty>().singleOrNull { candidate ->
+            candidate.backingField != null &&
+                candidate.getter != null &&
+                candidate.setter == null &&
+                accessContext.allowsTransportVisibility(
+                    candidate.status.visibility.toTransportSyntheticVisibility()
+                ) &&
+                accessContext.allowsTransportVisibility(
+                    (candidate.getter ?: return@singleOrNull false)
+                        .status
+                        .visibility
+                        .toTransportSyntheticVisibility()
+                )
+        } ?: return null
     val getter = property.getter ?: return null
     return getter.returnTypeRef.coneType.toConcreteType(this, concreteType)
 }
@@ -1231,7 +1354,9 @@ private fun FirRegularClass.transparentProductInfo(
     accessContext: TransportSyntheticAccessContext,
     requireConstructorAccess: Boolean,
 ): FirTransparentProductInfo? {
-    if (!accessContext.allowsTransportVisibility(status.visibility.toTransportSyntheticVisibility())) {
+    if (
+        !accessContext.allowsTransportVisibility(status.visibility.toTransportSyntheticVisibility())
+    ) {
         return null
     }
     if (classKind == ClassKind.OBJECT) {
@@ -1245,8 +1370,11 @@ private fun FirRegularClass.transparentProductInfo(
     if (constructors.size != 1) {
         return null
     }
-    if (requireConstructorAccess &&
-        !accessContext.allowsTransportVisibility(primary.status.visibility.toTransportSyntheticVisibility())
+    if (
+        requireConstructorAccess &&
+            !accessContext.allowsTransportVisibility(
+                primary.status.visibility.toTransportSyntheticVisibility()
+            )
     ) {
         return null
     }
@@ -1260,11 +1388,15 @@ private fun FirRegularClass.transparentProductInfo(
     if (storedProperties.any { property -> property.delegate != null }) {
         return null
     }
-    if (storedProperties.any { property ->
+    if (
+        storedProperties.any { property ->
             property.setter != null ||
-                !accessContext.allowsTransportVisibility(property.status.visibility.toTransportSyntheticVisibility()) ||
                 !accessContext.allowsTransportVisibility(
-                    (property.getter?.status?.visibility ?: return null).toTransportSyntheticVisibility(),
+                    property.status.visibility.toTransportSyntheticVisibility()
+                ) ||
+                !accessContext.allowsTransportVisibility(
+                    (property.getter?.status?.visibility ?: return null)
+                        .toTransportSyntheticVisibility()
                 )
         }
     ) {
@@ -1280,18 +1412,19 @@ private fun FirRegularClass.transparentProductInfo(
     }
     val fields =
         primary.valueParameters.map { parameter ->
-            val property = properties.singleOrNull { candidate -> candidate.name == parameter.name } ?: return null
-            val fieldType = property.getter?.returnTypeRef?.coneType?.toConcreteType(this, concreteType) ?: return null
+            val property =
+                properties.singleOrNull { candidate -> candidate.name == parameter.name }
+                    ?: return null
+            val fieldType =
+                property.getter?.returnTypeRef?.coneType?.toConcreteType(this, concreteType)
+                    ?: return null
             FirTransparentFieldInfo(
                 identity = parameter.name.asString(),
                 type = fieldType,
                 isUnitLike = fieldType.isUnitLike(),
             )
         }
-    return FirTransparentProductInfo(
-        isObjectLike = false,
-        fields = fields,
-    )
+    return FirTransparentProductInfo(isObjectLike = false, fields = fields)
 }
 
 internal fun FirRegularClass.hasNonPropertyBackingFields(): Boolean =
@@ -1304,21 +1437,27 @@ private fun FirRegularClass.transparentSealedCases(
     if (status.modality != Modality.SEALED || typeParameters.isNotEmpty()) {
         return null
     }
-    if (!accessContext.allowsTransportVisibility(status.visibility.toTransportSyntheticVisibility())) {
+    if (
+        !accessContext.allowsTransportVisibility(status.visibility.toTransportSyntheticVisibility())
+    ) {
         return null
     }
     val subclasses =
-        getSealedClassInheritors(session)
-            .mapNotNull { classId -> session.regularClassSymbolOrNull(classId) }
+        getSealedClassInheritors(session).mapNotNull { classId ->
+            session.regularClassSymbolOrNull(classId)
+        }
     if (subclasses.isEmpty()) {
         return null
     }
     return subclasses.takeIf { cases ->
         cases.all { case ->
-            accessContext.allowsTransportVisibility(case.fir.status.visibility.toTransportSyntheticVisibility()) &&
+            accessContext.allowsTransportVisibility(
+                case.fir.status.visibility.toTransportSyntheticVisibility()
+            ) &&
                 (case.fir.classKind == ClassKind.OBJECT ||
-                (case.fir.status.isData && case.fir.typeParameters.isEmpty() && !case.fir.hasAnonymousInitializer())
-                )
+                    (case.fir.status.isData &&
+                        case.fir.typeParameters.isEmpty() &&
+                        !case.fir.hasAnonymousInitializer()))
         }
     }
 }
@@ -1329,10 +1468,16 @@ private fun FirRegularClass.isTransparentValueClass(): Boolean =
         !hasAnonymousInitializer() &&
         declarations.filterIsInstance<FirConstructor>().all(FirConstructor::isPrimary)
 
-private fun FirRegularClass.transportAccessContext(session: FirSession): TransportSyntheticAccessContext =
+private fun FirRegularClass.transportAccessContext(
+    session: FirSession
+): TransportSyntheticAccessContext =
     if (
-        runCatching { session.firProvider.symbolProvider.getClassLikeSymbolByClassId(symbol.classId) }.getOrNull() != null ||
-        runCatching { session.firProvider.getFirClassifierContainerFileIfAny(symbol.classId) }.getOrNull() != null
+        runCatching {
+                session.firProvider.symbolProvider.getClassLikeSymbolByClassId(symbol.classId)
+            }
+            .getOrNull() != null ||
+            runCatching { session.firProvider.getFirClassifierContainerFileIfAny(symbol.classId) }
+                .getOrNull() != null
     ) {
         TransportSyntheticAccessContext.SAME_MODULE_SOURCE
     } else {
@@ -1356,15 +1501,17 @@ private fun ConeKotlinType.toConcreteType(
     }
     val parameterModels = typeParameters.toMap()
     val bindings =
-        owner.typeParameters.mapIndexed { index, typeParameter ->
-            val parameter = parameterModels[typeParameter.symbol] ?: return null
-            parameter.id to concreteType.arguments[index]
-        }.toMap()
+        owner.typeParameters
+            .mapIndexed { index, typeParameter ->
+                val parameter = parameterModels[typeParameter.symbol] ?: return null
+                parameter.id to concreteType.arguments[index]
+            }
+            .toMap()
     return coneTypeToModel(this, parameterModels)?.substituteType(bindings)
 }
 
 private fun FirRegularClass.ownerContextTypeParameters(
-    additionalTypeParameters: Map<FirTypeParameterSymbol, TcTypeParameter>,
+    additionalTypeParameters: Map<FirTypeParameterSymbol, TcTypeParameter>
 ): List<Pair<FirTypeParameterSymbol, TcTypeParameter>> =
     typeParameters.mapIndexed { index, typeParameter ->
         typeParameter.symbol to
@@ -1412,7 +1559,8 @@ private fun TcType.firFunctionTypeInfoOrNull(): FirFunctionTypeInfo? {
 
 private fun TcType.isUnitLike(): Boolean =
     this is TcType.Constructor &&
-        classifierId == ClassId.topLevel(org.jetbrains.kotlin.name.FqName("kotlin.Unit")).asString() &&
+        classifierId ==
+            ClassId.topLevel(org.jetbrains.kotlin.name.FqName("kotlin.Unit")).asString() &&
         !isNullable
 
 private fun TcType.classIdOrNull(): ClassId? =
@@ -1423,7 +1571,8 @@ private fun TcType.classIdOrNull(): ClassId? =
 private fun TcType.withoutNullability(): TcType? =
     when (this) {
         TcType.StarProjection -> null
-        is TcType.Projected -> type.withoutNullability()?.let { inner -> TcType.Projected(variance, inner) }
+        is TcType.Projected ->
+            type.withoutNullability()?.let { inner -> TcType.Projected(variance, inner) }
         is TcType.Variable -> if (isNullable) copy(isNullable = false) else null
         is TcType.Constructor -> if (isNullable) copy(isNullable = false) else null
     }

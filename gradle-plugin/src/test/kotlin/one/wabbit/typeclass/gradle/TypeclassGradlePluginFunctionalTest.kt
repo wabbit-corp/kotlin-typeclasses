@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.gradle
 
@@ -17,14 +17,21 @@ class TypeclassGradlePluginFunctionalTest {
     fun compilesContextTypeclassCodeThroughGradlePlugin() {
         withManagedTestTempDirectory("typeclass-gradle-plugin-test") { projectDir ->
             val sourceDir = projectDir.resolve("src/main/kotlin/demo").createDirectories()
-            val moduleRoot = java.nio.file.Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize()
+            val moduleRoot =
+                java.nio.file.Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize()
             val repoRoot = moduleRoot.parent
             val kotlinVersion = currentKotlinGradlePluginVersion()
             publishToMavenLocal(repoRoot, ":kotlin-typeclasses:publishToMavenLocal", kotlinVersion)
-            publishToMavenLocal(repoRoot, ":kotlin-typeclasses-plugin:publishToMavenLocal", kotlinVersion)
+            publishToMavenLocal(
+                repoRoot,
+                ":kotlin-typeclasses-plugin:publishToMavenLocal",
+                kotlinVersion,
+            )
 
-            projectDir.resolve("settings.gradle.kts").writeText(
-                """
+            projectDir
+                .resolve("settings.gradle.kts")
+                .writeText(
+                    """
                 rootProject.name = "typeclass-gradle-plugin-smoke"
 
                 pluginManagement {
@@ -41,11 +48,14 @@ class TypeclassGradlePluginFunctionalTest {
                         mavenCentral()
                     }
                 }
-                """.trimIndent(),
-            )
-
-            projectDir.resolve("build.gradle.kts").writeText(
                 """
+                        .trimIndent()
+                )
+
+            projectDir
+                .resolve("build.gradle.kts")
+                .writeText(
+                    """
                 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
                 plugins {
@@ -80,71 +90,75 @@ class TypeclassGradlePluginFunctionalTest {
                         println("TYPECLASS_ARGS_END")
                     }
                 }
-                """.trimIndent(),
-            )
-
-            sourceDir.resolve("Main.kt").writeText(
                 """
-                package demo
+                        .trimIndent()
+                )
 
-                import one.wabbit.typeclass.Instance
-                import one.wabbit.typeclass.Typeclass
+            sourceDir
+                .resolve("Main.kt")
+                .writeText(
+                    """
+                    package demo
 
-                @Typeclass
-                interface Eq<A> {
-                    fun eq(left: A, right: A): Boolean
-                }
+                    import one.wabbit.typeclass.Instance
+                    import one.wabbit.typeclass.Typeclass
 
-                @Instance
-                object IntEq : Eq<Int> {
-                    override fun eq(left: Int, right: Int): Boolean = left == right
-                }
-
-                @Instance
-                context(_: Eq<A>, _: Eq<B>)
-                fun <A, B> pairEq(): Eq<Pair<A, B>> =
-                    object : Eq<Pair<A, B>> {
-                        override fun eq(left: Pair<A, B>, right: Pair<A, B>): Boolean =
-                            left.first == right.first && left.second == right.second
+                    @Typeclass
+                    interface Eq<A> {
+                        fun eq(left: A, right: A): Boolean
                     }
 
-                @Typeclass
-                interface Monoid<A> {
-                    fun combine(left: A, right: A): A
-                }
-
-                @Instance
-                object IntMonoid : Monoid<Int> {
-                    override fun combine(left: Int, right: Int): Int = left + right
-                }
-
-                data class Box<A>(val value: A) {
-                    companion object {
-                        @Instance
-                        context(monoid: Monoid<A>)
-                        fun <A> boxMonoid(): Monoid<Box<A>> =
-                            object : Monoid<Box<A>> {
-                                override fun combine(left: Box<A>, right: Box<A>): Box<A> =
-                                    Box(monoid.combine(left.value, right.value))
-                            }
+                    @Instance
+                    object IntEq : Eq<Int> {
+                        override fun eq(left: Int, right: Int): Boolean = left == right
                     }
-                }
 
-                context(_: Eq<A>)
-                fun <A> foo(a: A): Boolean = true
+                    @Instance
+                    context(_: Eq<A>, _: Eq<B>)
+                    fun <A, B> pairEq(): Eq<Pair<A, B>> =
+                        object : Eq<Pair<A, B>> {
+                            override fun eq(left: Pair<A, B>, right: Pair<A, B>): Boolean =
+                                left.first == right.first && left.second == right.second
+                        }
 
-                context(_: Eq<A>)
-                fun <A> bar(a: A): Boolean = foo<Pair<A, A>>(a to a)
+                    @Typeclass
+                    interface Monoid<A> {
+                        fun combine(left: A, right: A): A
+                    }
 
-                context(monoid: Monoid<A>)
-                operator fun <A> A.plus(other: A): A = monoid.combine(this, other)
+                    @Instance
+                    object IntMonoid : Monoid<Int> {
+                        override fun combine(left: Int, right: Int): Int = left + right
+                    }
 
-                fun main() {
-                    println(bar(1))
-                    println((Box(1) + Box(2)).value)
-                }
-                """.trimIndent(),
-            )
+                    data class Box<A>(val value: A) {
+                        companion object {
+                            @Instance
+                            context(monoid: Monoid<A>)
+                            fun <A> boxMonoid(): Monoid<Box<A>> =
+                                object : Monoid<Box<A>> {
+                                    override fun combine(left: Box<A>, right: Box<A>): Box<A> =
+                                        Box(monoid.combine(left.value, right.value))
+                                }
+                        }
+                    }
+
+                    context(_: Eq<A>)
+                    fun <A> foo(a: A): Boolean = true
+
+                    context(_: Eq<A>)
+                    fun <A> bar(a: A): Boolean = foo<Pair<A, A>>(a to a)
+
+                    context(monoid: Monoid<A>)
+                    operator fun <A> A.plus(other: A): A = monoid.combine(this, other)
+
+                    fun main() {
+                        println(bar(1))
+                        println((Box(1) + Box(2)).value)
+                    }
+                    """
+                        .trimIndent()
+                )
 
             val result =
                 GradleRunner.create()
@@ -163,7 +177,8 @@ class TypeclassGradlePluginFunctionalTest {
         }
     }
 
-    private fun normalizePath(path: java.nio.file.Path): String = path.toString().replace("\\", "\\\\")
+    private fun normalizePath(path: java.nio.file.Path): String =
+        path.toString().replace("\\", "\\\\")
 
     private inline fun <T> withManagedTestTempDirectory(
         prefix: String,
@@ -183,20 +198,16 @@ class TypeclassGradlePluginFunctionalTest {
     }
 
     private fun keepTestTempDirectories(): Boolean =
-        System.getenv("TYPECLASS_KEEP_TEST_TEMP")
-            ?.trim()
-            ?.lowercase()
-            ?.let { value -> value.isNotEmpty() && value != "0" && value != "false" && value != "no" }
-            ?: false
+        System.getenv("TYPECLASS_KEEP_TEST_TEMP")?.trim()?.lowercase()?.let { value ->
+            value.isNotEmpty() && value != "0" && value != "false" && value != "no"
+        } ?: false
 
     private fun deleteRecursivelyOrThrow(path: java.nio.file.Path) {
         val file = path.toFile()
         if (!file.exists()) {
             return
         }
-        check(file.deleteRecursively()) {
-            "Failed to delete temporary test directory $path"
-        }
+        check(file.deleteRecursively()) { "Failed to delete temporary test directory $path" }
     }
 
     private fun publishToMavenLocal(
@@ -205,16 +216,15 @@ class TypeclassGradlePluginFunctionalTest {
         kotlinVersion: String,
     ) {
         val wrapper = moduleRoot.resolve("gradlew")
-        require(wrapper.exists()) {
-            "Missing Gradle wrapper at $wrapper"
-        }
+        require(wrapper.exists()) { "Missing Gradle wrapper at $wrapper" }
         val process =
             ProcessBuilder(
-                wrapper.toAbsolutePath().toString(),
-                "--no-daemon",
-                "-PkotlinVersion=$kotlinVersion",
-                task,
-            ).directory(moduleRoot.toFile())
+                    wrapper.toAbsolutePath().toString(),
+                    "--no-daemon",
+                    "-PkotlinVersion=$kotlinVersion",
+                    task,
+                )
+                .directory(moduleRoot.toFile())
                 .redirectErrorStream(true)
                 .start()
         val output = process.inputStream.readAllBytes().toString(Charsets.UTF_8)

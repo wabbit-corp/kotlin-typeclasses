@@ -102,19 +102,22 @@ If module `B` declares:
 data class B(val value: Int)
 ```
 
-then downstream code can directly summon `Equiv<B, A>` once it opts into the internal-support API:
+then downstream code can directly summon either orientation once it opts into the internal-support API:
 
 ```kotlin
 @OptIn(InternalTypeclassApi::class)
 val equiv = summon<Equiv<B, A>>()
+
+@OptIn(InternalTypeclassApi::class)
+val reverse = summon<Equiv<A, B>>()
 ```
 
 Important boundary:
 
-- only the requested target pair is exported
+- only that equivalence pair is exported, though both orientations are available
 - unrelated targets do not become derivable just because some other `@DeriveEquiv` exists nearby
 
-As with other derivation surfaces, the exported shape is metadata-driven. Downstream compilers reconstruct the `Equiv<B, A>` rule from dependency metadata rather than importing an ordinary user-authored declaration with that type.
+As with other derivation surfaces, the exported shape is metadata-driven. Downstream compilers reconstruct the equivalence rules from dependency metadata rather than importing ordinary user-authored declarations with those types.
 
 ## Consumer-Side Compiler Configuration
 

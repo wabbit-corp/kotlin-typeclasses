@@ -1,14 +1,15 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
-import org.junit.Ignore
 import kotlin.test.Test
+import org.junit.Ignore
 
 @Ignore("REVIEWED: don't add, future features - some require magical non-existent syntax")
 class FutureFeatureTest : IntegrationTestSupport() {
     // REVIEWED : won't add, too dangerous
-    @Test fun capturesLexicallyScopedLocalInstanceDeclarations() {
+    @Test
+    fun capturesLexicallyScopedLocalInstanceDeclarations() {
         val source =
             """
             package demo
@@ -34,16 +35,15 @@ class FutureFeatureTest : IntegrationTestSupport() {
                 val renderLater = { render(1) }
                 println(renderLater())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "local:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "local:1")
     }
 
     // REVIEWED : desirable, could use `val foo by lazy { ... }`? Or not...
-    @Test fun supportsLazyRecursiveLocalInstances() {
+    @Test
+    fun supportsLazyRecursiveLocalInstances() {
         val source =
             """
             package demo
@@ -72,16 +72,15 @@ class FutureFeatureTest : IntegrationTestSupport() {
 
                 println(render(Box(Box(null))))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "Box(Box(end))",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "Box(Box(end))")
     }
 
     // REVIEWED : need to understand the rationale
-    @Test fun supportsFunctionalDependencyStyleImprovement() {
+    @Test
+    fun supportsFunctionalDependencyStyleImprovement() {
         val source =
             """
             package demo
@@ -103,16 +102,15 @@ class FutureFeatureTest : IntegrationTestSupport() {
             fun main() {
                 println(onlyInput(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "ok:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "ok:1")
     }
 
     // REVIEWED : won't add
-    @Test fun normalizesAssociatedTypesDuringInstanceSearch() {
+    @Test
+    fun normalizesAssociatedTypesDuringInstanceSearch() {
         val source =
             """
             package demo
@@ -149,16 +147,15 @@ class FutureFeatureTest : IntegrationTestSupport() {
             fun main() {
                 println(label<List<String>>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "ok",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "ok")
     }
 
     // REVIEWED : won't add
-    @Test fun supportsQuantifiedConstraintLikeEvidence() {
+    @Test
+    fun supportsQuantifiedConstraintLikeEvidence() {
         val source =
             """
             package demo
@@ -179,15 +176,14 @@ class FutureFeatureTest : IntegrationTestSupport() {
             fun main() {
                 println(lifted())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "lifted",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "lifted")
     }
 
-    @Test fun supportsHigherKindedTypeclasses() {
+    @Test
+    fun supportsHigherKindedTypeclasses() {
         val source =
             """
             package demo
@@ -213,15 +209,14 @@ class FutureFeatureTest : IntegrationTestSupport() {
             fun main() {
                 println(liftMap<List, Int, String>(listOf(1, 2)) { "${'$'}it!" })
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "[1!, 2!]",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "[1!, 2!]")
     }
 
-    @Test fun supportsTypeLevelNaturalsAndKnownNatStyleEvidence() {
+    @Test
+    fun supportsTypeLevelNaturalsAndKnownNatStyleEvidence() {
         val source =
             """
             package demo
@@ -244,16 +239,15 @@ class FutureFeatureTest : IntegrationTestSupport() {
             fun main() {
                 println(size<3>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "3",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "3")
     }
 
     // REVIEWED : maybe
-    @Test fun supportsDecidableEqualityProofSearch() {
+    @Test
+    fun supportsDecidableEqualityProofSearch() {
         val source =
             """
             package demo
@@ -268,7 +262,8 @@ class FutureFeatureTest : IntegrationTestSupport() {
                 println(decideSame<Int, Int>().isYes)
                 println(decideSame<Int, String>().isNo)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -276,12 +271,14 @@ class FutureFeatureTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
     // REVIEWED : would be lovely
-    @Test fun supportsRowPolymorphicFieldEvidence() {
+    @Test
+    fun supportsRowPolymorphicFieldEvidence() {
         val source =
             """
             package demo
@@ -303,16 +300,15 @@ class FutureFeatureTest : IntegrationTestSupport() {
             fun main() {
                 println(renderName(User(1, "Ada")))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "Ada",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "Ada")
     }
 
     // REVIEWED : would be lovely
-    @Test fun supportsTransportAcrossEqualityProofs() {
+    @Test
+    fun supportsTransportAcrossEqualityProofs() {
         val source =
             """
             package demo
@@ -328,11 +324,9 @@ class FutureFeatureTest : IntegrationTestSupport() {
             fun main() {
                 println(cast<Int, Int>(Box(1)).value)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "1")
     }
 }

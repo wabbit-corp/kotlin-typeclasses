@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.interop
 
+import kotlin.test.Test
 import one.wabbit.typeclass.plugin.integration.CompilerHarnessPlugin
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
-import kotlin.test.Test
 
 /**
  * AtomicFU compatibility design tests.
@@ -44,7 +44,8 @@ class AtomicFuInteropTest : IntegrationTestSupport() {
             fun main() {
                 println(Counter().render())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -88,7 +89,8 @@ class AtomicFuInteropTest : IntegrationTestSupport() {
             fun main() {
                 println(Counter().bump())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -127,7 +129,8 @@ class AtomicFuInteropTest : IntegrationTestSupport() {
             fun main() {
                 println(CounterState(1).render())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,

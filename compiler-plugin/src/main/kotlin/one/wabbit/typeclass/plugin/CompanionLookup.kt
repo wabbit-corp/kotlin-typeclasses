@@ -8,8 +8,8 @@ import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 import org.jetbrains.kotlin.fir.declarations.utils.isCompanion
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
-import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.ir.declarations.IrClass
+import org.jetbrains.kotlin.name.ClassId
 
 internal fun <T> directOrNestedCompanion(
     owner: ClassId,
@@ -19,7 +19,8 @@ internal fun <T> directOrNestedCompanion(
 
 internal fun FirRegularClass.isTypeclassCompanionDeclaration(): Boolean = isCompanion
 
-internal fun FirRegularClassSymbol.isTypeclassCompanionDeclaration(): Boolean = fir.isTypeclassCompanionDeclaration()
+internal fun FirRegularClassSymbol.isTypeclassCompanionDeclaration(): Boolean =
+    fir.isTypeclassCompanionDeclaration()
 
 internal fun IrClass.isTypeclassCompanionDeclaration(): Boolean = isCompanion
 

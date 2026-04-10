@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
@@ -32,7 +32,8 @@ class RuntimeTypeBuiltinMaterializationTest : IntegrationTestSupport() {
 
             fun <T> generic(): String =
                 render<T>() // E:TC_NO_CONTEXT_ARGUMENT KnownType<List<T>> is not materializable for a non-reified T
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -71,12 +72,10 @@ class RuntimeTypeBuiltinMaterializationTest : IntegrationTestSupport() {
             fun main() {
                 println(generic<Int>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "known",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "known")
     }
 
     @Test
@@ -106,7 +105,8 @@ class RuntimeTypeBuiltinMaterializationTest : IntegrationTestSupport() {
 
             fun <T> generic(): String =
                 render<T>() // E:TC_NO_CONTEXT_ARGUMENT TypeId<List<T>> is not materializable for a non-reified T
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -145,12 +145,10 @@ class RuntimeTypeBuiltinMaterializationTest : IntegrationTestSupport() {
             fun main() {
                 println(generic<Int>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "typeid",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "typeid")
     }
 
     @Test
@@ -180,7 +178,8 @@ class RuntimeTypeBuiltinMaterializationTest : IntegrationTestSupport() {
 
             fun <T> generic(): String =
                 render<T>() // E:TC_NO_CONTEXT_ARGUMENT KSerializer<List<T>> is not materializable for a non-reified T
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -220,7 +219,8 @@ class RuntimeTypeBuiltinMaterializationTest : IntegrationTestSupport() {
                 render<T>() // E:TC_NO_CONTEXT_ARGUMENT KSerializer<List<T>> is not provably available for arbitrary reified T
 
             fun main() = println("unused")
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,

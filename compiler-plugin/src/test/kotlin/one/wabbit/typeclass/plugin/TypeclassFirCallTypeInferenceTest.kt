@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 @file:OptIn(
     org.jetbrains.kotlin.fir.PrivateSessionConstructor::class,
@@ -9,6 +9,9 @@
 
 package one.wabbit.typeclass.plugin
 
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.fir.FirBinaryDependenciesModuleData
 import org.jetbrains.kotlin.fir.FirSession
@@ -25,13 +28,12 @@ import org.jetbrains.kotlin.fir.scopes.FirScope
 import org.jetbrains.kotlin.fir.scopes.FirScopeProvider
 import org.jetbrains.kotlin.fir.scopes.FirTypeScope
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirClassLikeSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirNamedFunctionSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirPropertySymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
-import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
-import org.jetbrains.kotlin.fir.symbols.impl.FirVariableSymbol
 import org.jetbrains.kotlin.fir.types.ConeAttributes
 import org.jetbrains.kotlin.fir.types.ConeKotlinTypeProjectionOut
 import org.jetbrains.kotlin.fir.types.coneType
@@ -41,15 +43,9 @@ import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.types.Variance
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 class TypeclassFirCallTypeInferenceTest {
-    private data class FakeParameter(
-        val name: String,
-        val isVararg: Boolean = false,
-    )
+    private data class FakeParameter(val name: String, val isVararg: Boolean = false)
 
     @Test
     fun `fallback mapping keeps assigning repeated positional arguments to vararg parameters`() {
@@ -91,28 +87,21 @@ class TypeclassFirCallTypeInferenceTest {
 
         val mapping =
             buildNamedAndPositionalArgumentMapping(
-                arguments =
-                    listOf(
-                        null to "first",
-                        null to "second",
-                        null to "third",
-                    ),
+                arguments = listOf(null to "first", null to "second", null to "third"),
                 parameters = parameters,
                 parameterName = FakeParameter::name,
                 isVararg = FakeParameter::isVararg,
             )
 
-        assertEquals(
-            listOf("head", "values", "tail"),
-            mapping.values.map(FakeParameter::name),
-        )
+        assertEquals(listOf("head", "values", "tail"), mapping.values.map(FakeParameter::name))
     }
 
     @Test
     fun `return inference can bind type parameters from the explicit receiver alone`() {
         val session = object : FirSession(FirSession.Kind.Library) {}
         val typeParameter = boundTypeParameterSymbol("A")
-        val receiverType = ConeTypeParameterTypeImpl(typeParameter.toLookupTag(), false, ConeAttributes.Empty)
+        val receiverType =
+            ConeTypeParameterTypeImpl(typeParameter.toLookupTag(), false, ConeAttributes.Empty)
         val intType = session.builtinTypes.intType.coneType
 
         val inferred =
@@ -137,21 +126,27 @@ class TypeclassFirCallTypeInferenceTest {
         )
         val typeParameter = boundTypeParameterSymbol("A")
         val receiverType =
-            ClassId.topLevel(FqName("test.receiver.Box")).constructClassLikeType(
-                typeArguments =
-                    arrayOf(
-                        ConeTypeParameterTypeImpl(typeParameter.toLookupTag(), false, ConeAttributes.Empty),
-                    ),
-                isMarkedNullable = false,
-            )
+            ClassId.topLevel(FqName("test.receiver.Box"))
+                .constructClassLikeType(
+                    typeArguments =
+                        arrayOf(
+                            ConeTypeParameterTypeImpl(
+                                typeParameter.toLookupTag(),
+                                false,
+                                ConeAttributes.Empty,
+                            )
+                        ),
+                    isMarkedNullable = false,
+                )
         val projectedReceiverType =
-            ClassId.topLevel(FqName("test.receiver.Box")).constructClassLikeType(
-                typeArguments =
-                    arrayOf(
-                        ConeKotlinTypeProjectionOut(session.builtinTypes.stringType.coneType),
-                    ),
-                isMarkedNullable = false,
-            )
+            ClassId.topLevel(FqName("test.receiver.Box"))
+                .constructClassLikeType(
+                    typeArguments =
+                        arrayOf(
+                            ConeKotlinTypeProjectionOut(session.builtinTypes.stringType.coneType)
+                        ),
+                    isMarkedNullable = false,
+                )
 
         val inferred =
             inferTypeArgumentsFromCallSiteTypes(
@@ -172,7 +167,8 @@ class TypeclassFirCallTypeInferenceTest {
     fun `return inference can bind type parameters from local context constraints alone`() {
         val session = object : FirSession(FirSession.Kind.Library) {}
         val typeParameter = boundTypeParameterSymbol("A")
-        val contextParameterType = ConeTypeParameterTypeImpl(typeParameter.toLookupTag(), false, ConeAttributes.Empty)
+        val contextParameterType =
+            ConeTypeParameterTypeImpl(typeParameter.toLookupTag(), false, ConeAttributes.Empty)
         val stringType = session.builtinTypes.stringType.coneType
 
         val inferred =
@@ -200,10 +196,7 @@ class TypeclassFirCallTypeInferenceTest {
                 containingClassTypeParameters = listOf(classTypeParameter),
             )
 
-        assertEquals(
-            listOf(classTypeParameter, functionTypeParameter),
-            models.keys.toList(),
-        )
+        assertEquals(listOf(classTypeParameter, functionTypeParameter), models.keys.toList())
     }
 }
 
@@ -221,16 +214,12 @@ private fun boundTypeParameterSymbol(name: String): FirTypeParameterSymbol {
     return symbol
 }
 
-private val TEST_MODULE_DATA = FirBinaryDependenciesModuleData(Name.special("<fir-type-inference-test>"))
+private val TEST_MODULE_DATA =
+    FirBinaryDependenciesModuleData(Name.special("<fir-type-inference-test>"))
 
-private val TEST_CONTAINING_DECLARATION_SYMBOL =
-    object : FirBasedSymbol<FirDeclaration>() {}
+private val TEST_CONTAINING_DECLARATION_SYMBOL = object : FirBasedSymbol<FirDeclaration>() {}
 
-private fun registerLibraryClass(
-    session: FirSession,
-    classId: ClassId,
-    variances: List<Variance>,
-) {
+private fun registerLibraryClass(session: FirSession, classId: ClassId, variances: List<Variance>) {
     val symbol = FirRegularClassSymbol(classId)
     val typeParameters =
         variances.mapIndexed { index, variance ->
@@ -270,9 +259,13 @@ private object TestFirScopeProvider : FirScopeProvider() {
         typeAlias: org.jetbrains.kotlin.fir.declarations.FirTypeAlias,
         useSiteSession: FirSession,
         scopeSession: ScopeSession,
-    ): FirScope = object : FirScope() {
-        override fun withReplacedSessionOrNull(newSession: FirSession, newScopeSession: ScopeSession): FirScope? = null
-    }
+    ): FirScope =
+        object : FirScope() {
+            override fun withReplacedSessionOrNull(
+                newSession: FirSession,
+                newScopeSession: ScopeSession,
+            ): FirScope? = null
+        }
 
     override fun getStaticCallableMemberScope(
         klass: org.jetbrains.kotlin.fir.declarations.FirClass,

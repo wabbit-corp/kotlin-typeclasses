@@ -1,0 +1,49 @@
+/.intellijPlatform/
+/ij-plugin/.intellijPlatform/
+
+check:ignore E_NO_NEWLINE /.intellijPlatform/
+check:ignore E_NO_NEWLINE /ij-plugin/.intellijPlatform/
+
+# Managed/repeated repo metadata in generated module scaffolding.
+check:ignore E_DUPLICATE_DIRECTORY_TREE /gradle-plugin/.github
+check:ignore E_DUPLICATE_FILE /compiler-plugin/.gitignore
+
+# Module READMEs intentionally defer badges/banners/legal/contribution links to the root README.
+check:ignore E_README_NO_BANNER /compiler-plugin/README.md
+check:ignore E_README_NO_BADGES /compiler-plugin/README.md
+check:ignore E_README_NO_INSTALL /compiler-plugin/README.md
+check:ignore E_README_NO_USAGE /compiler-plugin/README.md
+check:ignore E_README_NO_LICENSE /compiler-plugin/README.md
+check:ignore E_README_NO_CONTRIBUTING /compiler-plugin/README.md
+check:ignore E_README_NO_BANNER /gradle-plugin/README.md
+check:ignore E_README_NO_BADGES /gradle-plugin/README.md
+check:ignore E_README_NO_INSTALL /gradle-plugin/README.md
+check:ignore E_README_NO_USAGE /gradle-plugin/README.md
+check:ignore E_README_NO_LICENSE /gradle-plugin/README.md
+check:ignore E_README_NO_CONTRIBUTING /gradle-plugin/README.md
+check:ignore E_README_NO_BANNER /library/README.md
+check:ignore E_README_NO_BADGES /library/README.md
+check:ignore E_README_NO_INSTALL /library/README.md
+check:ignore E_README_NO_USAGE /library/README.md
+check:ignore E_README_NO_LICENSE /library/README.md
+check:ignore E_README_NO_CONTRIBUTING /library/README.md
+check:ignore E_README_NO_BANNER /ij-plugin/README.md
+check:ignore E_README_NO_BADGES /ij-plugin/README.md
+check:ignore E_README_NO_INSTALL /ij-plugin/README.md
+check:ignore E_README_NO_USAGE /ij-plugin/README.md
+check:ignore E_README_NO_LICENSE /ij-plugin/README.md
+check:ignore E_README_NO_CONTRIBUTING /ij-plugin/README.md
+
+# Intentional examples/diagnostic strings that trip generic repository checks.
+check:ignore E_HIGH_ENTROPY_STRING /compiler-plugin/ISSUE_PROPERTIES.md
+check:ignore E_HIGH_ENTROPY_STRING /compiler-plugin/src/test/kotlin/one/wabbit/typeclass/plugin/integration/derivation/DerivationCapabilityTest.kt
+check:ignore E_HIGH_ENTROPY_STRING /compiler-plugin/src/test/kotlin/one/wabbit/typeclass/plugin/integration/proofs/EqualityProofTest.kt
+check:ignore E_LINE_TOO_LONG /compiler-plugin/src/test/kotlin/one/wabbit/typeclass/plugin/GeneratedIrRuntimeFailuresTest.kt
+check:ignore E_LINE_TOO_LONG /compiler-plugin/src/test/kotlin/one/wabbit/typeclass/plugin/integration/derivation/DerivationCapabilityTest.kt
+check:ignore E_LINE_TOO_LONG /compiler-plugin/src/main/kotlin/one/wabbit/typeclass/plugin/TypeclassPluginSharedState.kt
+check:ignore E_LINE_TOO_LONG /compiler-plugin/src/main/kotlin/one/wabbit/typeclass/plugin/TypeclassIrGenerationExtension.kt
+
+# Project-level accepted naming/API constraints.
+check:ignore E_KMP_AMBIGUOUS_NATIVE_NAME /library
+check:ignore E_KMP_REDUNDANT_TARGET_ALIAS /library
+check:ignore E_HARDCODED_URL /ij-plugin/src/main/resources/META-INF/plugin.xml url_found=https://wabbit.one

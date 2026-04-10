@@ -45,7 +45,7 @@ pluginManagement {
 // build.gradle.kts
 plugins {
     kotlin("jvm") version "2.3.10"
-    id("one.wabbit.typeclass") version "<version>"
+    id("one.wabbit.typeclass") version "0.0.1"
 }
 
 repositories {
@@ -53,7 +53,7 @@ repositories {
 }
 
 dependencies {
-    implementation("one.wabbit:kotlin-typeclasses:<version>")
+    implementation("one.wabbit:kotlin-typeclasses:0.0.1")
 }
 ```
 
@@ -63,7 +63,8 @@ The Gradle plugin selects the compiler-plugin artifact variant that matches the 
 
 By default:
 
-- typeclass resolution only applies to `@Typeclass` interfaces
+- typeclass resolution applies only to supported heads annotated with `@Typeclass`
+- ordinary user-defined typeclasses should be interfaces; subclassable class heads are limited to advanced/compiler-owned surfaces
 - direct local context is preferred before global rule search
 - `KClass<T>` and `KSerializer<T>` synthetic evidence are disabled
 - tracing is disabled
@@ -72,7 +73,7 @@ By default:
 
 If you are not using the Gradle plugin, you need:
 
-- the runtime dependency `one.wabbit:kotlin-typeclasses:<version>`
+- the runtime dependency `one.wabbit:kotlin-typeclasses:0.0.1`
 - the compiler plugin artifact `one.wabbit:kotlin-typeclasses-plugin:<baseVersion>-kotlin-<kotlinVersion>`
 - the compiler flag `-Xcontext-parameters`
 
@@ -89,7 +90,7 @@ interface Eq<A> {
 }
 ```
 
-Only `@Typeclass` interfaces participate in implicit resolution.
+Ordinary application and library typeclasses should be interfaces. The compiler also has a narrow advanced path for subclassable class heads with accessible zero-argument constructors, mainly for compiler-owned surfaces such as `Equiv` and `@DeriveVia` adapter generation.
 
 For the full scope and search model, see [Typeclass Model](./typeclass-model.md).
 
@@ -220,28 +221,14 @@ To make `@Derive` work, the typeclass companion implements one of the derivation
 - `ProductTypeclassDeriver` for product-only derivation
 - `TypeclassDeriver` for product, sealed-sum, and enum derivation
 
-Conceptually:
+The typeclass companion implements the derivation hooks, then annotated products, sealed sums, and enums can publish derived evidence:
 
 ```kotlin
-@Typeclass
-interface Show<A> {
-    fun show(value: A): String
-
-    companion object : TypeclassDeriver {
-        override fun deriveProduct(metadata: ProductTypeclassMetadata): Any = TODO()
-        override fun deriveSum(metadata: SumTypeclassMetadata): Any = TODO()
-        override fun deriveEnum(metadata: EnumTypeclassMetadata): Any = TODO()
-    }
-}
-
 @Derive(Show::class)
 data class Box<A>(val value: A)
-
-@Derive(Show::class)
-sealed interface Token
 ```
 
-The compiler plugin synthesizes the metadata and generated instances needed to call those derivation hooks.
+The compiler plugin synthesizes the metadata and generated instances needed to call the companion hooks. A complete runnable `Show` deriver is in the [Derivation guide](./derivation.md#deriver-contracts).
 
 For concrete end-to-end derivation examples, see:
 
@@ -341,7 +328,7 @@ Important current boundaries:
 Examples of things the project is not trying to do:
 
 - infer a hidden precedence order among overlapping global rules
-- treat every interface as a typeclass based on structural shape alone
+- treat every interface or class as a typeclass based on structural shape alone
 - turn the IntelliJ plugin into a second independent analysis engine
 
 For the contextual-property limitation, see [`compiler-plugin/ISSUE_PROPERTIES.md`](../compiler-plugin/ISSUE_PROPERTIES.md).
@@ -356,5 +343,7 @@ For the contextual-property limitation, see [`compiler-plugin/ISSUE_PROPERTIES.m
 - Proofs and optional builtins: [`proofs-and-builtins.md`](./proofs-and-builtins.md)
 - Diagnostics and debugging: [`troubleshooting.md`](./troubleshooting.md)
 - Dependency and publishing behavior: [`multi-module.md`](./multi-module.md)
+- Generated API reference: [`api-reference.md`](./api-reference.md)
+- Migration and versioning: [`migration.md`](./migration.md)
 - Internal architecture: [`architecture.md`](./architecture.md)
 - Local development and release model: [`development.md`](./development.md)

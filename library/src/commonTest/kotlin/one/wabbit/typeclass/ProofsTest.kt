@@ -1,13 +1,13 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass
 
+import kotlin.reflect.typeOf
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlin.reflect.typeOf
 
 @OptIn(InternalTypeclassApi::class)
 class ProofsTest {
@@ -37,25 +37,15 @@ class ProofsTest {
         val composed: SameTypeConstructor<List<Int>, List<Double>> =
             outer.andThen(sameTypeConstructor<List<String>, List<Double>>())
 
-        assertFailsWith<IllegalStateException> {
-            flipped.contradicts(impossibleSame())
-        }
+        assertFailsWith<IllegalStateException> { flipped.contradicts(impossibleSame()) }
         assertEquals("x", widened)
-        assertFailsWith<IllegalStateException> {
-            apart.contradicts(impossibleSame())
-        }
+        assertFailsWith<IllegalStateException> { apart.contradicts(impossibleSame()) }
         assertEquals(composed::class, composed.flip().flip()::class)
-        assertFailsWith<IllegalStateException> {
-            notSame.contradicts(impossibleSame())
-        }
-        assertFailsWith<IllegalStateException> {
-            strict.contradicts(impossibleSubtype())
-        }
+        assertFailsWith<IllegalStateException> { notSame.contradicts(impossibleSame()) }
+        assertFailsWith<IllegalStateException> { strict.contradicts(impossibleSubtype()) }
         assertFailsWith<IllegalStateException> {
             NotSame.irreflexive(
-                NotSame.fromContradiction<Int, Int> {
-                    throw IllegalStateException("irreflexive")
-                },
+                NotSame.fromContradiction<Int, Int> { throw IllegalStateException("irreflexive") }
             )
         }
     }
@@ -74,9 +64,7 @@ class ProofsTest {
         assertTrue(sameTransported.contradictsCatches(notNullable<String?>()))
         assertTrue(widenedTransported.contradictsCatches(notNullable<Any?>()))
         assertTrue(narrowedNotNull.contradictsCatches(nullable<String>()))
-        assertFailsWith<IllegalStateException> {
-            nullable.contradicts(notNullable<String?>())
-        }
+        assertFailsWith<IllegalStateException> { nullable.contradicts(notNullable<String?>()) }
     }
 
     @OptIn(ExperimentalStdlibApi::class)
@@ -124,7 +112,8 @@ class ProofsTest {
     private fun <A, B> impossibleSame(): Same<A, B> = UnsafeAssertSame as Same<A, B>
 
     @Suppress("UNCHECKED_CAST")
-    private fun <Sub, Super> impossibleSubtype(): Subtype<Sub, Super> = UnsafeAssertSubtype as Subtype<Sub, Super>
+    private fun <Sub, Super> impossibleSubtype(): Subtype<Sub, Super> =
+        UnsafeAssertSubtype as Subtype<Sub, Super>
 
     @Suppress("UNCHECKED_CAST")
     private fun <Sub, Super> strictSubtype(): StrictSubtype<Sub, Super> =

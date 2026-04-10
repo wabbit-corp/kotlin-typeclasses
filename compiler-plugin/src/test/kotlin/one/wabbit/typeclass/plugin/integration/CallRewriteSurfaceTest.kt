@@ -1,12 +1,13 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
-import org.junit.Ignore
 import kotlin.test.Test
+import org.junit.Ignore
 
 class CallRewriteSurfaceTest : IntegrationTestSupport() {
-    @Test fun resolvesSuspendContextualFunctions() {
+    @Test
+    fun resolvesSuspendContextualFunctions() {
         val source =
             """
             package demo
@@ -33,7 +34,8 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                     println(renderInt(2))
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -41,11 +43,13 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                 """
                 int:1
                 int:2
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun resolvesContextualCallsInsideSuspendLambdas() {
+    @Test
+    fun resolvesContextualCallsInsideSuspendLambdas() {
         val source =
             """
             package demo
@@ -71,15 +75,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
             suspend fun main() {
                 println(consume { renderInt(1) })
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1")
     }
 
-    @Test fun supportsBuilderInferenceAroundContextualCalls() {
+    @Test
+    fun supportsBuilderInferenceAroundContextualCalls() {
         val source =
             """
             package demo
@@ -107,15 +110,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                 }
                 println(rendered.joinToString())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1, int:2",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1, int:2")
     }
 
-    @Test fun supportsFunInterfacesAsTypeclassesAndLambdaInstances() {
+    @Test
+    fun supportsFunInterfacesAsTypeclassesAndLambdaInstances() {
         val source =
             """
             package demo
@@ -137,15 +139,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
             fun main() {
                 println(same(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun resolvesLocalContextualFunctions() {
+    @Test
+    fun resolvesLocalContextualFunctions() {
         val source =
             """
             package demo
@@ -169,15 +170,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
 
                 println(renderLocal(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1")
     }
 
-    @Test fun resolvesContextualCallsInsideLocalDelegatedProperties() {
+    @Test
+    fun resolvesContextualCallsInsideLocalDelegatedProperties() {
         val source =
             """
             package demo
@@ -202,15 +202,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                 val rendered by lazy { renderInt(1) }
                 println(rendered)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1")
     }
 
-    @Test fun rewritesContextualCallsInsideDefaultValueExpressions() {
+    @Test
+    fun rewritesContextualCallsInsideDefaultValueExpressions() {
         val source =
             """
             package demo
@@ -237,15 +236,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
             fun main() {
                 println(outer())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1!",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1!")
     }
 
-    @Test fun rewritesContextualCallsInsideConstructorDelegation() {
+    @Test
+    fun rewritesContextualCallsInsideConstructorDelegation() {
         val source =
             """
             package demo
@@ -273,15 +271,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
 
                 println(Derived().rendered)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1")
     }
 
-    @Test fun rewritesContextualCallsInsideInterfaceDelegation() {
+    @Test
+    fun rewritesContextualCallsInsideInterfaceDelegation() {
         val source =
             """
             package demo
@@ -314,15 +311,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
 
                 println(Derived().render())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1")
     }
 
-    @Test fun rewritesVarargCallsWithTrailingLambdas() {
+    @Test
+    fun rewritesVarargCallsWithTrailingLambdas() {
         val source =
             """
             package demo
@@ -352,15 +348,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
             fun main() {
                 println(Logger().collect(1, 2, 3) { rendered -> "[${'$'}rendered]" })
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "[int:1|int:2|int:3]",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "[int:1|int:2|int:3]")
     }
 
-    @Test fun resolvesContextualCallsThroughInterfaceOverrides() {
+    @Test
+    fun resolvesContextualCallsThroughInterfaceOverrides() {
         val source =
             """
             package demo
@@ -393,15 +388,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
             fun main() {
                 println(use(Impl()))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1")
     }
 
-    @Test fun rewritesContextualCallsInClassPropertyInitializers() {
+    @Test
+    fun rewritesContextualCallsInClassPropertyInitializers() {
         val source =
             """
             package demo
@@ -429,15 +423,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
             fun main() {
                 println(Holder().rendered)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1")
     }
 
-    @Test fun rewritesContextualCallsInsideSecondaryConstructorDelegation() {
+    @Test
+    fun rewritesContextualCallsInsideSecondaryConstructorDelegation() {
         val source =
             """
             package demo
@@ -465,15 +458,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
             fun main() {
                 println(Holder().rendered)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1")
     }
 
-    @Test fun rewritesContextualCallsInsideSafeCallLet() {
+    @Test
+    fun rewritesContextualCallsInsideSafeCallLet() {
         val source =
             """
             package demo
@@ -509,15 +501,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                     println(Items().getComponent<Curse>(ItemStack()) == null)
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun infersOuterContextInsideSafeCallLetWithoutExplicitTypeArguments() {
+    @Test
+    fun infersOuterContextInsideSafeCallLetWithoutExplicitTypeArguments() {
         val source =
             """
             package demo
@@ -556,15 +547,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                     println(Items().use(ItemStack()))
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun infersOuterContextAcrossSameNameOverloadsInsideSafeCallLet() {
+    @Test
+    fun infersOuterContextAcrossSameNameOverloadsInsideSafeCallLet() {
         val source =
             """
             package demo
@@ -600,15 +590,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                     println(Items().getComponent(ItemStack()) == null)
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun infersOuterContextAcrossPlatformSafeCallLetInsideSameNameOverload() {
+    @Test
+    fun infersOuterContextAcrossPlatformSafeCallLetInsideSameNameOverload() {
         val sources =
             mapOf(
                 "demo/Items.kt" to
@@ -635,7 +624,8 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                         context(type: ItemComponentType<Type>)
                         fun <Type> getComponent(item: ItemMeta): Type? = null
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -655,17 +645,15 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                             println(Items().getComponent(ItemStack()) == null)
                         }
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
-        assertCompilesAndRuns(
-            sources = sources,
-            expectedStdout = "true",
-            mainClass = "demo.MainKt",
-        )
+        assertCompilesAndRuns(sources = sources, expectedStdout = "true", mainClass = "demo.MainKt")
     }
 
-    @Test fun rewritesContextualCallsInsideHigherOrderArguments() {
+    @Test
+    fun rewritesContextualCallsInsideHigherOrderArguments() {
         val source =
             """
             package demo
@@ -702,15 +690,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                     println(Items().updateComponent(ItemMeta()) { Curse(true) }.soulbound)
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun resolvesAssociatedContextualOverloadInsidePredicateLambda() {
+    @Test
+    fun resolvesAssociatedContextualOverloadInsidePredicateLambda() {
         val source =
             """
             package demo
@@ -751,15 +738,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                 val drops = DropList(mutableListOf(ItemStack()))
                 println(drops.removeIf { item -> Items().hasComponent<Curse>(item) })
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun rewritesNamedAndDefaultArgumentsOnContextualCalls() {
+    @Test
+    fun rewritesNamedAndDefaultArgumentsOnContextualCalls() {
         val source =
             """
             package demo
@@ -796,15 +782,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                     println(Items().call<Curse>(ItemMeta()))
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "curse:2",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "curse:2")
     }
 
-    @Test fun rewritesContextualExtensionsWithDefaultsAndOverloads() {
+    @Test
+    fun rewritesContextualExtensionsWithDefaultsAndOverloads() {
         val source =
             """
             package demo
@@ -840,12 +825,10 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                     println(Items().call(Curse(true)))
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "curse:Curse(soulbound=true)",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "curse:Curse(soulbound=true)")
     }
 
     @Test
@@ -944,7 +927,8 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                 println(second.values.joinToString())
                 println(stack.values.joinToString())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -953,7 +937,8 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                 mechanic:Mechanic(id=1)
                 mechanic:Mechanic(id=2), mechanic:Mechanic(id=3)
                 mechanic:Mechanic(id=4), mechanic:Mechanic(id=5)
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -1046,7 +1031,8 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                 println(meta.values.joinToString())
                 println(stack.values.joinToString())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1054,7 +1040,8 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                 """
                 mechanic:Mechanic(id=1), mechanic:Mechanic(id=1)
                 mechanic:Mechanic(id=1), mechanic:Mechanic(id=1)
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -1091,7 +1078,8 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                     println(render<Int>()) // E:TC_NO_CONTEXT_ARGUMENT explicit type arguments must not let the wrong explicit context be rebound
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1132,15 +1120,15 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
                     println(render<Int?>(1))
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "nullable:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "nullable:1")
     }
 
-    @Ignore("Blocked by broader explicit context-argument frontend support; keep as a focused substitution regression once that path is active")
+    @Ignore(
+        "Blocked by broader explicit context-argument frontend support; keep as a focused substitution regression once that path is active"
+    )
     @Test
     fun explicitContextArgumentsRespectGenericSupertypeSubstitution() {
         val source =
@@ -1174,15 +1162,14 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
             fun main() {
                 println(render(IntBoxShow, Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "box:int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "box:int:1")
     }
 
-    @Test fun ignoresInheritedDefaultMethodFakeOverridesDuringProjectedContextRewrites() {
+    @Test
+    fun ignoresInheritedDefaultMethodFakeOverridesDuringProjectedContextRewrites() {
         val source =
             """
             package demo
@@ -1240,12 +1227,9 @@ class CallRewriteSurfaceTest : IntegrationTestSupport() {
 
                 println(stack.values.joinToString())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "mechanic:Mechanic(id=1)",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "mechanic:Mechanic(id=1)")
     }
-
 }

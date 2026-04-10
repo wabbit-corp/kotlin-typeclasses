@@ -1,30 +1,35 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin
 
-import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
-import org.jetbrains.kotlin.descriptors.DeclarationDescriptorWithVisibility
-import org.jetbrains.kotlin.descriptors.DescriptorVisibility
-import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
-import org.jetbrains.kotlin.descriptors.Visibility
-import org.jetbrains.kotlin.load.java.JavaDescriptorVisibilities
-import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
+import org.jetbrains.kotlin.descriptors.DeclarationDescriptorWithVisibility
+import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
+import org.jetbrains.kotlin.descriptors.DescriptorVisibility
+import org.jetbrains.kotlin.descriptors.Visibility
+import org.jetbrains.kotlin.load.java.JavaDescriptorVisibilities
+import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue
 
 class TransportAccessibilityTest {
     @Test
     fun `java package private visibility is not treated as internal`() {
-        val packagePrivate = JavaDescriptorVisibilities.PACKAGE_VISIBILITY.toTransportSyntheticVisibility()
+        val packagePrivate =
+            JavaDescriptorVisibilities.PACKAGE_VISIBILITY.toTransportSyntheticVisibility()
 
         assertEquals(TransportSyntheticVisibility.INACCESSIBLE, packagePrivate)
         assertFalse(
-            TransportSyntheticAccessContext.SAME_MODULE_SOURCE.allowsTransportVisibility(packagePrivate),
+            TransportSyntheticAccessContext.SAME_MODULE_SOURCE.allowsTransportVisibility(
+                packagePrivate
+            )
         )
         assertFalse(
-            TransportSyntheticAccessContext.DEPENDENCY_BINARY.allowsTransportVisibility(packagePrivate),
+            TransportSyntheticAccessContext.DEPENDENCY_BINARY.allowsTransportVisibility(
+                packagePrivate
+            )
         )
     }
 
@@ -34,10 +39,10 @@ class TransportAccessibilityTest {
 
         assertEquals(TransportSyntheticVisibility.INTERNAL, internal)
         assertTrue(
-            TransportSyntheticAccessContext.SAME_MODULE_SOURCE.allowsTransportVisibility(internal),
+            TransportSyntheticAccessContext.SAME_MODULE_SOURCE.allowsTransportVisibility(internal)
         )
         assertFalse(
-            TransportSyntheticAccessContext.DEPENDENCY_BINARY.allowsTransportVisibility(internal),
+            TransportSyntheticAccessContext.DEPENDENCY_BINARY.allowsTransportVisibility(internal)
         )
     }
 
@@ -66,7 +71,10 @@ class TransportAccessibilityTest {
                 override fun normalize(): DescriptorVisibility = this
             }
 
-        assertEquals(TransportSyntheticVisibility.INACCESSIBLE, fakePublic.toTransportSyntheticVisibility())
+        assertEquals(
+            TransportSyntheticVisibility.INACCESSIBLE,
+            fakePublic.toTransportSyntheticVisibility(),
+        )
     }
 
     @Test
@@ -79,6 +87,9 @@ class TransportAccessibilityTest {
                     get() = "public"
             }
 
-        assertEquals(TransportSyntheticVisibility.INACCESSIBLE, fakePublic.toTransportSyntheticVisibility())
+        assertEquals(
+            TransportSyntheticVisibility.INACCESSIBLE,
+            fakePublic.toTransportSyntheticVisibility(),
+        )
     }
 }

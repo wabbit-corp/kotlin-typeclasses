@@ -1,6 +1,6 @@
 # kotlin-typeclasses runtime library
 
-`kotlin-typeclasses` is the published runtime library for the `one.wabbit.typeclass` compiler-plugin family.
+`kotlin-typeclasses` is the published runtime library for the `one.wabbit.typeclass` compiler-plugin family. Use it when you want Kotlin context parameters to behave like explicit, compile-time-checked typeclass evidence instead of manually threading dictionaries through every call.
 
 It contains the public source and runtime surface used by normal Kotlin code:
 
@@ -24,17 +24,25 @@ Most consumers need this library together with the Gradle plugin.
 
 The runtime library keeps the base project version, while the compiler plugin is published as a Kotlin-specific variant such as `one.wabbit:kotlin-typeclasses-plugin:0.0.1-kotlin-2.3.10`.
 
-## Artifact
+## Status
 
-- coordinates: `one.wabbit:kotlin-typeclasses:<version>`
+This module is experimental and pre-1.0. Annotation names, generated metadata contracts, and proof APIs may still change between minor releases; source-level breaks are called out in the migration guide with mechanical upgrade notes.
+
+## Installation
+
+- coordinates: `one.wabbit:kotlin-typeclasses:0.0.1`
+
+Most applications should add this dependency and apply the Gradle plugin from [`../gradle-plugin/README.md`](../gradle-plugin/README.md). The runtime alone does not enable compiler-plugin resolution.
 
 ## Public Surface
 
 ### `@Typeclass`
 
-Marks an interface as participating in typeclass resolution.
+Marks a supported typeclass head as participating in typeclass resolution.
 
-Only interfaces annotated with `@Typeclass` are part of implicit typeclass search.
+Ordinary user-defined typeclasses should be interfaces annotated with `@Typeclass`.
+
+There is also a narrow advanced path for subclassable abstract/open class heads with accessible zero-argument constructors. This exists mainly for compiler-owned surfaces such as `Equiv` and generated `@DeriveVia` adapter code; it is not the recommended shape for ordinary application typeclasses.
 
 ### `@Instance`
 
@@ -114,7 +122,7 @@ That split reflects their roles:
 - binary-retained annotations define semantic structure the compiler plugin needs to see across boundaries
 - source-retained tracing annotations are compile-time controls, not part of runtime behavior
 
-## Typical Usage
+## Quick Start
 
 With the companion Gradle plugin:
 
@@ -125,7 +133,7 @@ plugins {
 }
 
 dependencies {
-    implementation("one.wabbit:kotlin-typeclasses:<version>")
+    implementation("one.wabbit:kotlin-typeclasses:0.0.1")
 }
 ```
 
@@ -136,12 +144,21 @@ Then write source code using:
 - `@Derive` and related annotations to opt types into derivation
 - `summon()` or explicit context parameters to consume evidence
 
-For detailed semantics of scope, derivation, proofs, and optional builtins, use the dedicated guides in [`../docs/`](../docs/).
+For detailed semantics of scope, derivation, proofs, and optional builtins, use the dedicated guides in [`../docs/`](../docs/). Recommended order for new users: root quick start, user guide, typeclass model, derivation guide, then proof/builtin details.
+
+## Changelog
+
+Breaking changes and mechanical upgrade notes live in [`../docs/migration.md`](../docs/migration.md). Release publishing is managed from the repository root.
+
+## Support
+
+Use [`../docs/troubleshooting.md`](../docs/troubleshooting.md) first for diagnostics, tracing, and known limits. Report bugs through the repository issue tracker, and use [`../docs/development.md`](../docs/development.md) plus the legal docs under [`../legal/`](../legal/) for contribution workflow.
 
 ## Related Docs
 
 - [`../README.md`](../README.md) for the project overview
 - [`../docs/user-guide.md`](../docs/user-guide.md) for user-facing setup and semantics
+- [`../docs/api-reference.md`](../docs/api-reference.md) for generated API reference commands and reference-surface policy
 - [`../docs/typeclass-model.md`](../docs/typeclass-model.md) for typeclass scope and resolution
 - [`../docs/instance-authoring.md`](../docs/instance-authoring.md) for instance placement, ownership rules, and ambiguity avoidance
 - [`../docs/derivation.md`](../docs/derivation.md) for `@Derive`, `@DeriveVia`, and `@DeriveEquiv`

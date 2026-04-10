@@ -32,7 +32,8 @@ internal class TypeclassCommandLineProcessor : CommandLineProcessor {
     private val traceModeOption =
         CliOption(
             optionName = "typeclassTraceMode",
-            valueDescription = "<inherit|disabled|failures|failures-and-alternatives|all|all-and-alternatives>",
+            valueDescription =
+                "<inherit|disabled|failures|failures-and-alternatives|all|all-and-alternatives>",
             description = "Controls scoped typeclass-resolution tracing.",
             required = false,
             allowMultipleOccurrences = false,
@@ -41,11 +42,7 @@ internal class TypeclassCommandLineProcessor : CommandLineProcessor {
     override val pluginId: String = TYPECLASS_PLUGIN_ID
 
     override val pluginOptions: Collection<AbstractCliOption> =
-        listOf(
-            builtinKClassTypeclassOption,
-            builtinKSerializerTypeclassOption,
-            traceModeOption,
-        )
+        listOf(builtinKClassTypeclassOption, builtinKSerializerTypeclassOption, traceModeOption)
 
     override fun processOption(
         option: AbstractCliOption,
@@ -54,7 +51,10 @@ internal class TypeclassCommandLineProcessor : CommandLineProcessor {
     ) {
         when (option.optionName) {
             builtinKClassTypeclassOption.optionName -> {
-                rejectDuplicateOption(option.optionName, configuration.get(TypeclassConfigurationKeys.BUILTIN_KCLASS_TYPECLASS))
+                rejectDuplicateOption(
+                    option.optionName,
+                    configuration.get(TypeclassConfigurationKeys.BUILTIN_KCLASS_TYPECLASS),
+                )
                 configuration.put(
                     TypeclassConfigurationKeys.BUILTIN_KCLASS_TYPECLASS,
                     parseBuiltinMode(option.optionName, value),
@@ -62,7 +62,10 @@ internal class TypeclassCommandLineProcessor : CommandLineProcessor {
             }
 
             builtinKSerializerTypeclassOption.optionName -> {
-                rejectDuplicateOption(option.optionName, configuration.get(TypeclassConfigurationKeys.BUILTIN_KSERIALIZER_TYPECLASS))
+                rejectDuplicateOption(
+                    option.optionName,
+                    configuration.get(TypeclassConfigurationKeys.BUILTIN_KSERIALIZER_TYPECLASS),
+                )
                 configuration.put(
                     TypeclassConfigurationKeys.BUILTIN_KSERIALIZER_TYPECLASS,
                     parseBuiltinMode(option.optionName, value),
@@ -70,7 +73,10 @@ internal class TypeclassCommandLineProcessor : CommandLineProcessor {
             }
 
             traceModeOption.optionName -> {
-                rejectDuplicateOption(option.optionName, configuration.get(TypeclassConfigurationKeys.TRACE_MODE))
+                rejectDuplicateOption(
+                    option.optionName,
+                    configuration.get(TypeclassConfigurationKeys.TRACE_MODE),
+                )
                 configuration.put(
                     TypeclassConfigurationKeys.TRACE_MODE,
                     parseTraceMode(option.optionName, value),
@@ -81,32 +87,29 @@ internal class TypeclassCommandLineProcessor : CommandLineProcessor {
         }
     }
 
-    private fun rejectDuplicateOption(
-        optionName: String,
-        existingValue: Any?,
-    ) {
+    private fun rejectDuplicateOption(optionName: String, existingValue: Any?) {
         if (existingValue != null) {
-            throw CliOptionProcessingException("Option '$optionName' may be specified at most once.")
+            throw CliOptionProcessingException(
+                "Option '$optionName' may be specified at most once."
+            )
         }
     }
 
-    private fun parseBuiltinMode(
-        optionName: String,
-        value: String,
-    ): TypeclassBuiltinMode =
+    private fun parseBuiltinMode(optionName: String, value: String): TypeclassBuiltinMode =
         try {
             TypeclassBuiltinMode.parse(optionName, value)
         } catch (error: IllegalArgumentException) {
-            throw CliOptionProcessingException(error.message ?: "Invalid value '$value' for option '$optionName'")
+            throw CliOptionProcessingException(
+                error.message ?: "Invalid value '$value' for option '$optionName'"
+            )
         }
 
-    private fun parseTraceMode(
-        optionName: String,
-        value: String,
-    ): TypeclassTraceMode =
+    private fun parseTraceMode(optionName: String, value: String): TypeclassTraceMode =
         try {
             TypeclassTraceMode.parse(optionName, value)
         } catch (error: IllegalArgumentException) {
-            throw CliOptionProcessingException(error.message ?: "Invalid value '$value' for option '$optionName'")
+            throw CliOptionProcessingException(
+                error.message ?: "Invalid value '$value' for option '$optionName'"
+            )
         }
 }

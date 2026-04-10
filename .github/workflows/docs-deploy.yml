@@ -1,0 +1,128 @@
+name: Docs Deploy
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: corretto
+          java-version: "21"
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Ensure Gradle wrapper is executable
+        run: chmod +x ./gradlew
+
+      - name: Build Dokka documentation
+        run: ./gradlew --no-daemon :kotlin-typeclasses:dokkaGeneratePublicationHtml :kotlin-typeclasses-plugin:dokkaGeneratePublicationHtml :kotlin-typeclasses-gradle-plugin:dokkaGeneratePublicationHtml :kotlin-typeclasses-ij-plugin:dokkaGeneratePublicationHtml
+
+      - name: Assemble Pages site
+        run: |
+          SITE_DIR="$RUNNER_TEMP/pages-site"
+          mkdir -p "$SITE_DIR/kotlin-typeclasses" "$SITE_DIR/kotlin-typeclasses-plugin" "$SITE_DIR/kotlin-typeclasses-gradle-plugin" "$SITE_DIR/kotlin-typeclasses-ij-plugin"
+
+          cp -R library/build/dokka/html/. "$SITE_DIR/kotlin-typeclasses/"
+          cp -R compiler-plugin/build/dokka/html/. "$SITE_DIR/kotlin-typeclasses-plugin/"
+          cp -R gradle-plugin/build/dokka/html/. "$SITE_DIR/kotlin-typeclasses-gradle-plugin/"
+          cp -R ij-plugin/build/dokka/html/. "$SITE_DIR/kotlin-typeclasses-ij-plugin/"
+
+          cat > "$SITE_DIR/index.html" <<'HTML'
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>kotlin-typeclasses docs</title>
+            <style>
+              body {
+                margin: 0;
+                font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                background: #f4f0e8;
+                color: #1c1b18;
+              }
+              main {
+                max-width: 860px;
+                margin: 0 auto;
+                padding: 48px 24px 72px;
+              }
+              h1 {
+                font-size: 2.5rem;
+                margin-bottom: 0.5rem;
+              }
+              p {
+                line-height: 1.6;
+              }
+              ul {
+                padding-left: 1.25rem;
+              }
+              li {
+                margin: 0.6rem 0;
+              }
+              a {
+                color: #7b1f1f;
+              }
+              code {
+                background: rgba(0, 0, 0, 0.05);
+                padding: 0.12rem 0.3rem;
+                border-radius: 4px;
+              }
+            </style>
+          </head>
+          <body>
+            <main>
+              <h1>kotlin-typeclasses</h1>
+              <p>
+                API docs and module reference for the <code>kotlin-typeclasses</code> project family.
+              </p>
+              <ul>
+                <li><a href="./kotlin-typeclasses/">kotlin-typeclasses</a>: runtime annotations, helpers, derivation metadata, and proof APIs</li>
+                <li><a href="./kotlin-typeclasses-plugin/">kotlin-typeclasses-plugin</a>: compiler plugin</li>
+                <li><a href="./kotlin-typeclasses-gradle-plugin/">kotlin-typeclasses-gradle-plugin</a>: Gradle integration</li>
+                <li><a href="./kotlin-typeclasses-ij-plugin/">kotlin-typeclasses-ij-plugin</a>: IntelliJ helper plugin</li>
+                <li><a href="https://github.com/wabbit-corp/kotlin-typeclasses">Repository</a></li>
+              </ul>
+            </main>
+          </body>
+          </html>
+          HTML
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ${{ runner.temp }}/pages-site
+
+  deploy-docs:
+    needs: build-docs
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

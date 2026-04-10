@@ -1,11 +1,12 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
 import kotlin.test.Test
 
 class KClassBuiltinTest : IntegrationTestSupport() {
-    @Test fun doesNotTreatKClassAsBuiltinTypeclassWhenFlagDisabled() {
+    @Test
+    fun doesNotTreatKClassAsBuiltinTypeclassWhenFlagDisabled() {
         val source =
             """
             package demo
@@ -16,20 +17,18 @@ class KClassBuiltinTest : IntegrationTestSupport() {
             fun main() {
                 println(summon<KClass<Int>>()) // E KClass should not be treated as a builtin typeclass when the flag is disabled
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    ExpectedDiagnostic.Error(
-                        messageRegex = "(?i)no context argument",
-                    ),
-                ),
+                listOf(ExpectedDiagnostic.Error(messageRegex = "(?i)no context argument")),
         )
     }
 
-    @Test fun treatsKClassAsBuiltinTypeclassWhenFlagEnabled() {
+    @Test
+    fun treatsKClassAsBuiltinTypeclassWhenFlagEnabled() {
         val source =
             """
             package demo
@@ -42,7 +41,8 @@ class KClassBuiltinTest : IntegrationTestSupport() {
             fun main() {
                 println(matches<Int>(Int::class))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -51,7 +51,8 @@ class KClassBuiltinTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun doesNotRecognizeKClassAsTypeclassForIsTypeclassInstanceWhenFlagDisabled() {
+    @Test
+    fun doesNotRecognizeKClassAsTypeclassForIsTypeclassInstanceWhenFlagDisabled() {
         val source =
             """
             package demo
@@ -65,20 +66,22 @@ class KClassBuiltinTest : IntegrationTestSupport() {
             fun main() {
                 println(proof()) // E KClass should not be recognized as a typeclass for IsTypeclassInstance when the flag is disabled
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
-                        messageRegex = "(?i)(typeclass application|no context argument)",
-                    ),
+                        messageRegex = "(?i)(typeclass application|no context argument)"
+                    )
                 ),
         )
     }
 
-    @Test fun reifiedSyntheticKClassMatchesClassLiteral() {
+    @Test
+    fun reifiedSyntheticKClassMatchesClassLiteral() {
         val source =
             """
             package demo
@@ -93,7 +96,8 @@ class KClassBuiltinTest : IntegrationTestSupport() {
                 println(sameKClass<Int>())
                 println(sameKClass<String>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -101,12 +105,14 @@ class KClassBuiltinTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             pluginOptions = listOf("builtinKClassTypeclass=enabled"),
         )
     }
 
-    @Test fun reifiedHelpersCanSummonSyntheticKClasses() {
+    @Test
+    fun reifiedHelpersCanSummonSyntheticKClasses() {
         val source =
             """
             package demo
@@ -123,7 +129,8 @@ class KClassBuiltinTest : IntegrationTestSupport() {
                 println(contextualClass<Int>() == Int::class)
                 println(reifiedClass<String>() == String::class)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -131,12 +138,14 @@ class KClassBuiltinTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             pluginOptions = listOf("builtinKClassTypeclass=enabled"),
         )
     }
 
-    @Test fun explicitLocalKClassEvidenceShadowsSyntheticBuiltin() {
+    @Test
+    fun explicitLocalKClassEvidenceShadowsSyntheticBuiltin() {
         val source =
             """
             package demo
@@ -156,7 +165,8 @@ class KClassBuiltinTest : IntegrationTestSupport() {
                     println(chosenSimpleName())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -165,7 +175,8 @@ class KClassBuiltinTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun rejectsNonReifiedGenericKClassMaterializationWithoutExplicitEvidence() {
+    @Test
+    fun rejectsNonReifiedGenericKClassMaterializationWithoutExplicitEvidence() {
         val source =
             """
             package demo
@@ -175,21 +186,23 @@ class KClassBuiltinTest : IntegrationTestSupport() {
 
             fun <T : Any> impossible(): KClass<T> =
                 summon<KClass<T>>() // E:TC_NO_CONTEXT_ARGUMENT generic T has no concrete KClass proof here
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     ExpectedDiagnostic.Error(
-                        messageRegex = "(?i)(kclass|no context argument|reified|runtime)",
-                    ),
+                        messageRegex = "(?i)(kclass|no context argument|reified|runtime)"
+                    )
                 ),
             pluginOptions = listOf("builtinKClassTypeclass=enabled"),
         )
     }
 
-    @Test fun rejectsNullableKClassMaterializationEvenInsideReifiedHelpers() {
+    @Test
+    fun rejectsNullableKClassMaterializationEvenInsideReifiedHelpers() {
         val source =
             """
             package demo
@@ -203,15 +216,14 @@ class KClassBuiltinTest : IntegrationTestSupport() {
             fun main() {
                 println(impossible<String?>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
-                    ExpectedDiagnostic.Error(
-                        messageRegex = "(?i)(kclass|non-null|upper bound|any)",
-                    ),
+                    ExpectedDiagnostic.Error(messageRegex = "(?i)(kclass|non-null|upper bound|any)")
                 ),
             pluginOptions = listOf("builtinKClassTypeclass=enabled"),
         )

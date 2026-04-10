@@ -21,20 +21,15 @@ import org.jetbrains.kotlin.ir.types.IrTypeProjection
 import org.jetbrains.kotlin.ir.types.classOrNull
 import org.jetbrains.kotlin.ir.util.classId
 import org.jetbrains.kotlin.ir.util.hasAnnotation
-import org.jetbrains.kotlin.ir.util.isObject
 import org.jetbrains.kotlin.ir.util.parentAsClass
 import org.jetbrains.kotlin.name.ClassId
 
 internal sealed interface DeriveViaPathSegment {
     val classId: ClassId
 
-    data class Waypoint(
-        override val classId: ClassId,
-    ) : DeriveViaPathSegment
+    data class Waypoint(override val classId: ClassId) : DeriveViaPathSegment
 
-    data class PinnedIso(
-        override val classId: ClassId,
-    ) : DeriveViaPathSegment
+    data class PinnedIso(override val classId: ClassId) : DeriveViaPathSegment
 }
 
 internal data class DeriveViaRequest(
@@ -43,10 +38,7 @@ internal data class DeriveViaRequest(
     val annotation: IrConstructorCall,
 )
 
-internal data class DeriveEquivRequest(
-    val otherClassId: ClassId,
-    val annotation: IrConstructorCall,
-)
+internal data class DeriveEquivRequest(val otherClassId: ClassId, val annotation: IrConstructorCall)
 
 internal data class ResolvedIsoMethods(
     val leftType: IrType,
@@ -58,15 +50,19 @@ internal data class ResolvedIsoMethods(
 @OptIn(org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI::class)
 internal fun IrClass.deriveViaRequests(pluginContext: IrPluginContext): List<DeriveViaRequest> =
     annotations
-        .flatMap { annotation -> annotation.flattenRepeatableAnnotations(DERIVE_VIA_ANNOTATION_CLASS_ID, DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID) }
+        .flatMap { annotation ->
+            annotation.flattenRepeatableAnnotations(
+                DERIVE_VIA_ANNOTATION_CLASS_ID,
+                DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID,
+            )
+        }
         .mapNotNull { annotation ->
             val typeclassId =
                 (annotation.getValueArgument(0) as? IrClassReference)
                     ?.classType
                     ?.classOrNull
                     ?.owner
-                    ?.classId
-                    ?: return@mapNotNull null
+                    ?.classId ?: return@mapNotNull null
             val pathVararg = annotation.getValueArgument(1) as? IrVararg ?: return@mapNotNull null
             val path =
                 pathVararg.elements.mapNotNull { element ->
@@ -77,11 +73,7 @@ internal fun IrClass.deriveViaRequests(pluginContext: IrPluginContext): List<Der
                             else -> null
                         } ?: return@mapNotNull null
                     val classId =
-                        (expression as? IrClassReference)
-                            ?.classType
-                            ?.classOrNull
-                            ?.owner
-                            ?.classId
+                        (expression as? IrClassReference)?.classType?.classOrNull?.owner?.classId
                             ?: return@mapNotNull null
                     val klass = pluginContext.referenceClass(classId)?.owner
                     if (klass != null && klass.implementsInterface(ISO_CLASS_ID, linkedSetOf())) {
@@ -96,15 +88,19 @@ internal fun IrClass.deriveViaRequests(pluginContext: IrPluginContext): List<Der
 @OptIn(org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI::class)
 internal fun IrClass.deriveEquivRequests(): List<DeriveEquivRequest> =
     annotations
-        .flatMap { annotation -> annotation.flattenRepeatableAnnotations(DERIVE_EQUIV_ANNOTATION_CLASS_ID, DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID) }
+        .flatMap { annotation ->
+            annotation.flattenRepeatableAnnotations(
+                DERIVE_EQUIV_ANNOTATION_CLASS_ID,
+                DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID,
+            )
+        }
         .mapNotNull { annotation ->
             val otherClassId =
                 (annotation.getValueArgument(0) as? IrClassReference)
                     ?.classType
                     ?.classOrNull
                     ?.owner
-                    ?.classId
-                    ?: return@mapNotNull null
+                    ?.classId ?: return@mapNotNull null
             DeriveEquivRequest(otherClassId, annotation)
         }
 
@@ -115,14 +111,13 @@ private fun IrConstructorCall.flattenRepeatableAnnotations(
     when (symbol.owner.parentAsClass.classId) {
         annotationClassId -> listOf(this)
         containerClassId ->
-            ((getValueArgument(0) as? IrVararg)?.elements.orEmpty())
-                .mapNotNull { element ->
-                    when (element) {
-                        is IrSpreadElement -> element.expression as? IrConstructorCall
-                        is IrExpression -> element as? IrConstructorCall
-                        else -> null
-                    }
+            ((getValueArgument(0) as? IrVararg)?.elements.orEmpty()).mapNotNull { element ->
+                when (element) {
+                    is IrSpreadElement -> element.expression as? IrConstructorCall
+                    is IrExpression -> element as? IrConstructorCall
+                    else -> null
                 }
+            }
 
         else -> emptyList()
     }
@@ -139,23 +134,19 @@ internal fun IrClass.findIsoMethods(): ResolvedIsoMethods? {
 
     val declaredEndpoints = declaredIsoEndpoints() ?: return null
     val toMethod =
-        declarations
-            .filterIsInstance<IrSimpleFunction>()
-            .singleOrNull { function ->
-                function.name.asString() == "to" &&
-                    function.valueParameters.size == 1 &&
-                    function.valueParameters.single().type.sameTypeShape(declaredEndpoints.first) &&
-                    function.returnType.sameTypeShape(declaredEndpoints.second)
-            } ?: return null
+        declarations.filterIsInstance<IrSimpleFunction>().singleOrNull { function ->
+            function.name.asString() == "to" &&
+                function.valueParameters.size == 1 &&
+                function.valueParameters.single().type.sameTypeShape(declaredEndpoints.first) &&
+                function.returnType.sameTypeShape(declaredEndpoints.second)
+        } ?: return null
     val fromMethod =
-        declarations
-            .filterIsInstance<IrSimpleFunction>()
-            .singleOrNull { function ->
-                function.name.asString() == "from" &&
-                    function.valueParameters.size == 1 &&
-                    function.valueParameters.single().type.sameTypeShape(declaredEndpoints.second) &&
-                    function.returnType.sameTypeShape(declaredEndpoints.first)
-            } ?: return null
+        declarations.filterIsInstance<IrSimpleFunction>().singleOrNull { function ->
+            function.name.asString() == "from" &&
+                function.valueParameters.size == 1 &&
+                function.valueParameters.single().type.sameTypeShape(declaredEndpoints.second) &&
+                function.returnType.sameTypeShape(declaredEndpoints.first)
+        } ?: return null
     return ResolvedIsoMethods(
         leftType = declaredEndpoints.first,
         rightType = declaredEndpoints.second,
@@ -166,43 +157,48 @@ internal fun IrClass.findIsoMethods(): ResolvedIsoMethods? {
 
 private fun IrClass.findIsoMethodsByOverrides(): ResolvedIsoMethods? {
     val toMethods =
-        declarations
-            .filterIsInstance<IrSimpleFunction>()
-            .filter { function ->
-                function.valueParameters.size == 1 &&
-                    function.overriddenSymbols.any { overridden ->
-                        overridden.owner.name.asString() == "to" &&
-                            overridden.owner.parentAsClass.implementsInterface(ISO_CLASS_ID, linkedSetOf())
-                    }
-            }
-    val fromMethods =
-        declarations
-            .filterIsInstance<IrSimpleFunction>()
-            .filter { function ->
-                function.valueParameters.size == 1 &&
-                    function.overriddenSymbols.any { overridden ->
-                        overridden.owner.name.asString() == "from" &&
-                            overridden.owner.parentAsClass.implementsInterface(ISO_CLASS_ID, linkedSetOf())
-                    }
-            }
-    val candidates =
-        toMethods.mapNotNull { toMethod ->
-            val leftType = toMethod.valueParameters.single().type
-            val rightType = toMethod.returnType
-            val fromMethod =
-                fromMethods.singleOrNull { candidate ->
-                    candidate.valueParameters.single().type.sameTypeShape(rightType) &&
-                        candidate.returnType.sameTypeShape(leftType)
-                } ?: return@mapNotNull null
-            ResolvedIsoMethods(
-                leftType = leftType,
-                rightType = rightType,
-                toMethod = toMethod,
-                fromMethod = fromMethod,
-            )
-        }.distinctBy { methods ->
-            methods.leftType.transportTypeShapeKey() to methods.rightType.transportTypeShapeKey()
+        declarations.filterIsInstance<IrSimpleFunction>().filter { function ->
+            function.valueParameters.size == 1 &&
+                function.overriddenSymbols.any { overridden ->
+                    overridden.owner.name.asString() == "to" &&
+                        overridden.owner.parentAsClass.implementsInterface(
+                            ISO_CLASS_ID,
+                            linkedSetOf(),
+                        )
+                }
         }
+    val fromMethods =
+        declarations.filterIsInstance<IrSimpleFunction>().filter { function ->
+            function.valueParameters.size == 1 &&
+                function.overriddenSymbols.any { overridden ->
+                    overridden.owner.name.asString() == "from" &&
+                        overridden.owner.parentAsClass.implementsInterface(
+                            ISO_CLASS_ID,
+                            linkedSetOf(),
+                        )
+                }
+        }
+    val candidates =
+        toMethods
+            .mapNotNull { toMethod ->
+                val leftType = toMethod.valueParameters.single().type
+                val rightType = toMethod.returnType
+                val fromMethod =
+                    fromMethods.singleOrNull { candidate ->
+                        candidate.valueParameters.single().type.sameTypeShape(rightType) &&
+                            candidate.returnType.sameTypeShape(leftType)
+                    } ?: return@mapNotNull null
+                ResolvedIsoMethods(
+                    leftType = leftType,
+                    rightType = rightType,
+                    toMethod = toMethod,
+                    fromMethod = fromMethod,
+                )
+            }
+            .distinctBy { methods ->
+                methods.leftType.transportTypeShapeKey() to
+                    methods.rightType.transportTypeShapeKey()
+            }
     return candidates.singleOrNull()
 }
 
@@ -214,8 +210,10 @@ private fun IrClass.declaredIsoEndpoints(): Pair<IrType, IrType>? =
             if (superClassId != ISO_CLASS_ID) {
                 return@mapNotNull null
             }
-            val leftType = superType.arguments.getOrNull(0).asIrTypeOrNull() ?: return@mapNotNull null
-            val rightType = superType.arguments.getOrNull(1).asIrTypeOrNull() ?: return@mapNotNull null
+            val leftType =
+                superType.arguments.getOrNull(0).asIrTypeOrNull() ?: return@mapNotNull null
+            val rightType =
+                superType.arguments.getOrNull(1).asIrTypeOrNull() ?: return@mapNotNull null
             leftType to rightType
         }
         .distinctBy { (leftType, rightType) ->

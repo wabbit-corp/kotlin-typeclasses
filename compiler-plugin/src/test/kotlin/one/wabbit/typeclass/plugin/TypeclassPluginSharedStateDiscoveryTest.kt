@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 @file:OptIn(
     org.jetbrains.kotlin.fir.PrivateSessionConstructor::class,
@@ -10,14 +10,14 @@
 
 package one.wabbit.typeclass.plugin
 
+import java.lang.reflect.InvocationTargetException
+import kotlin.test.Test
+import kotlin.test.assertTrue
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.fir.FirBinaryDependenciesModuleData
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.FirClassLikeDeclaration
-import org.jetbrains.kotlin.fir.declarations.FirDeclaration
 import org.jetbrains.kotlin.fir.declarations.FirFile
-import org.jetbrains.kotlin.fir.declarations.FirRegularClass
-import org.jetbrains.kotlin.fir.declarations.FirScript
 import org.jetbrains.kotlin.fir.declarations.builder.buildRegularClass
 import org.jetbrains.kotlin.fir.declarations.impl.FirResolvedDeclarationStatusImpl
 import org.jetbrains.kotlin.fir.resolve.ScopeSession
@@ -40,9 +40,6 @@ import org.jetbrains.kotlin.fir.symbols.impl.FirScriptSymbol
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
-import java.lang.reflect.InvocationTargetException
-import kotlin.test.Test
-import kotlin.test.assertTrue
 
 class TypeclassPluginSharedStateDiscoveryTest {
     @Test
@@ -72,7 +69,8 @@ private fun invokeBuildDiscoveryIndexes(
     session: FirSession,
 ): Any =
     try {
-        TypeclassPluginSharedState::class.java
+        TypeclassPluginSharedState::class
+            .java
             .getDeclaredMethod("buildDiscoveryIndexes", FirSession::class.java)
             .apply { isAccessible = true }
             .invoke(state, session)
@@ -82,10 +80,8 @@ private fun invokeBuildDiscoveryIndexes(
 
 @Suppress("UNCHECKED_CAST")
 private fun extractClassInfoById(index: Any): Map<String, Any> =
-    index.javaClass
-        .getDeclaredField("classInfoById")
-        .apply { isAccessible = true }
-        .get(index) as Map<String, Any>
+    index.javaClass.getDeclaredField("classInfoById").apply { isAccessible = true }.get(index)
+        as Map<String, Any>
 
 private fun buildTopLevelRegularClass(
     session: FirSession,
@@ -122,9 +118,13 @@ private object DiscoveryTestFirScopeProvider : FirScopeProvider() {
         typeAlias: org.jetbrains.kotlin.fir.declarations.FirTypeAlias,
         useSiteSession: FirSession,
         scopeSession: ScopeSession,
-    ): FirScope = object : FirScope() {
-        override fun withReplacedSessionOrNull(newSession: FirSession, newScopeSession: ScopeSession): FirScope? = null
-    }
+    ): FirScope =
+        object : FirScope() {
+            override fun withReplacedSessionOrNull(
+                newSession: FirSession,
+                newScopeSession: ScopeSession,
+            ): FirScope? = null
+        }
 
     override fun getStaticCallableMemberScope(
         klass: org.jetbrains.kotlin.fir.declarations.FirClass,
@@ -151,9 +151,11 @@ private class SingleTopLevelClassSymbolProvider(
 ) : FirSymbolProvider(session) {
     override val symbolNamesProvider: FirSymbolNamesProvider =
         object : FirSymbolNamesProvider() {
-            override fun getPackageNames(): Set<String> = setOf(classSymbol.classId.packageFqName.asString())
+            override fun getPackageNames(): Set<String> =
+                setOf(classSymbol.classId.packageFqName.asString())
 
-            override val hasSpecificClassifierPackageNamesComputation: Boolean get() = true
+            override val hasSpecificClassifierPackageNamesComputation: Boolean
+                get() = true
 
             override fun getPackageNamesWithTopLevelClassifiers(): Set<String> =
                 setOf(classSymbol.classId.packageFqName.asString())
@@ -165,11 +167,13 @@ private class SingleTopLevelClassSymbolProvider(
                     emptySet()
                 }
 
-            override val hasSpecificCallablePackageNamesComputation: Boolean get() = true
+            override val hasSpecificCallablePackageNamesComputation: Boolean
+                get() = true
 
             override fun getPackageNamesWithTopLevelCallables(): Set<String> = emptySet()
 
-            override fun getTopLevelCallableNamesInPackage(packageFqName: FqName): Set<Name> = emptySet()
+            override fun getTopLevelCallableNamesInPackage(packageFqName: FqName): Set<Name> =
+                emptySet()
         }
 
     override fun getClassLikeSymbolByClassId(classId: ClassId): FirClassLikeSymbol<*>? =
@@ -196,9 +200,7 @@ private class SingleTopLevelClassSymbolProvider(
     override fun hasPackage(fqName: FqName): Boolean = fqName == classSymbol.classId.packageFqName
 }
 
-private class EmptySymbolProvider(
-    session: FirSession,
-) : FirSymbolProvider(session) {
+private class EmptySymbolProvider(session: FirSession) : FirSymbolProvider(session) {
     override val symbolNamesProvider = FirEmptySymbolNamesProvider
 
     override fun getClassLikeSymbolByClassId(classId: ClassId): FirClassLikeSymbol<*>? = null
@@ -224,9 +226,8 @@ private class EmptySymbolProvider(
     override fun hasPackage(fqName: FqName): Boolean = false
 }
 
-private class SingleSymbolFirProvider(
-    override val symbolProvider: FirSymbolProvider,
-) : FirProvider() {
+private class SingleSymbolFirProvider(override val symbolProvider: FirSymbolProvider) :
+    FirProvider() {
     override fun getFirClassifierByFqName(classId: ClassId): FirClassLikeDeclaration? =
         symbolProvider.getClassLikeSymbolByClassId(classId)?.fir
 

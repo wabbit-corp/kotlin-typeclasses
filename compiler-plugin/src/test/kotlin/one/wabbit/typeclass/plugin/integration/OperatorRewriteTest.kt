@@ -1,12 +1,13 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
-import org.junit.Ignore
 import kotlin.test.Test
+import org.junit.Ignore
 
 class OperatorRewriteTest : IntegrationTestSupport() {
-    @Test fun rewritesContextualGetOperatorCalls() {
+    @Test
+    fun rewritesContextualGetOperatorCalls() {
         val source =
             """
             package demo
@@ -32,15 +33,14 @@ class OperatorRewriteTest : IntegrationTestSupport() {
             fun main() {
                 println(Bag()[1])
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "slot:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "slot:1")
     }
 
-    @Test fun rewritesContextualGetOperatorCallsInsideMemberDispatchScope() {
+    @Test
+    fun rewritesContextualGetOperatorCallsInsideMemberDispatchScope() {
         val source =
             """
             package demo
@@ -73,15 +73,14 @@ class OperatorRewriteTest : IntegrationTestSupport() {
                     println(Bag()[1])
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "slot:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "slot:1")
     }
 
-    @Test fun rewritesContextualSetOperatorCalls() {
+    @Test
+    fun rewritesContextualSetOperatorCalls() {
         val source =
             """
             package demo
@@ -115,15 +114,14 @@ class OperatorRewriteTest : IntegrationTestSupport() {
                 bag[2] = "written"
                 println(bag.entries[2])
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "written",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "written")
     }
 
-    @Test fun rewritesContextualContainsOperatorCalls() {
+    @Test
+    fun rewritesContextualContainsOperatorCalls() {
         val source =
             """
             package demo
@@ -151,15 +149,14 @@ class OperatorRewriteTest : IntegrationTestSupport() {
             fun main() {
                 println("green" in Tags(setOf("green", "blue")))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun rewritesContextualIteratorOperatorCalls() {
+    @Test
+    fun rewritesContextualIteratorOperatorCalls() {
         val source =
             """
             package demo
@@ -191,15 +188,14 @@ class OperatorRewriteTest : IntegrationTestSupport() {
                 }
                 println(rendered)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "abc",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "abc")
     }
 
-    @Test fun rewritesContextualComponentOperatorCalls() {
+    @Test
+    fun rewritesContextualComponentOperatorCalls() {
         val source =
             """
             package demo
@@ -231,15 +227,14 @@ class OperatorRewriteTest : IntegrationTestSupport() {
                 val (left, right) = PairBox("L", "R")
                 println("${'$'}left/${'$'}right")
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "L/R",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "L/R")
     }
 
-    @Test fun rewritesContextualCompareToOperatorCalls() {
+    @Test
+    fun rewritesContextualCompareToOperatorCalls() {
         val source =
             """
             package demo
@@ -264,7 +259,8 @@ class OperatorRewriteTest : IntegrationTestSupport() {
                 println(1 < 2)
                 println(2 > 1)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -272,11 +268,13 @@ class OperatorRewriteTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun delegatedPropertyOperatorsRemainBlockedByKotlinContextParameterSupport() {
+    @Test
+    fun delegatedPropertyOperatorsRemainBlockedByKotlinContextParameterSupport() {
         val source =
             """
             package demo
@@ -353,7 +351,8 @@ class OperatorRewriteTest : IntegrationTestSupport() {
                 form.name = "ada"
                 println(form.name)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -378,7 +377,8 @@ class OperatorRewriteTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun rewritesContextualUnaryOperatorCalls() {
+    @Test
+    fun rewritesContextualUnaryOperatorCalls() {
         val source =
             """
             package demo
@@ -448,7 +448,8 @@ class OperatorRewriteTest : IntegrationTestSupport() {
                 counter--
                 println(counter.value)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -458,11 +459,13 @@ class OperatorRewriteTest : IntegrationTestSupport() {
                 true
                 4
                 3
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun rewritesContextualPlusAssignOperatorCalls() {
+    @Test
+    fun rewritesContextualPlusAssignOperatorCalls() {
         val source =
             """
             package demo
@@ -494,15 +497,14 @@ class OperatorRewriteTest : IntegrationTestSupport() {
                 counter += 7
                 println(counter.total)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "12",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "12")
     }
 
-    @Test fun rewritesPlusAssignFallbackToContextualPlusOperatorCalls() {
+    @Test
+    fun rewritesPlusAssignFallbackToContextualPlusOperatorCalls() {
         val source =
             """
             package demo
@@ -530,16 +532,17 @@ class OperatorRewriteTest : IntegrationTestSupport() {
                 counter += 7
                 println(counter.total)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "12",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "12")
     }
 
-    @Ignore("Explicit-argument invoke currently misrewrites receiver ordering; keep as a pending regression.")
-    @Test fun rewritesContextualInvokeOperatorCallsWithDefaultAndNamedArguments() {
+    @Ignore(
+        "Explicit-argument invoke currently misrewrites receiver ordering; keep as a pending regression."
+    )
+    @Test
+    fun rewritesContextualInvokeOperatorCallsWithDefaultAndNamedArguments() {
         val source =
             """
             package demo
@@ -569,7 +572,8 @@ class OperatorRewriteTest : IntegrationTestSupport() {
                 println(greeter())
                 println(greeter(times = 2, suffix = "?"))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -577,12 +581,16 @@ class OperatorRewriteTest : IntegrationTestSupport() {
                 """
                 go!
                 gogo?
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Ignore("Explicit-argument invoke currently misrewrites receiver ordering; keep as a pending regression.")
-    @Test fun rewritesContextualInvokeOperatorCallsWithTrailingLambdas() {
+    @Ignore(
+        "Explicit-argument invoke currently misrewrites receiver ordering; keep as a pending regression."
+    )
+    @Test
+    fun rewritesContextualInvokeOperatorCallsWithTrailingLambdas() {
         val source =
             """
             package demo
@@ -611,11 +619,9 @@ class OperatorRewriteTest : IntegrationTestSupport() {
                 val greeter = Greeter("hi")
                 println(greeter(2) { text -> text.uppercase() })
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "HIHI",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "HIHI")
     }
 }

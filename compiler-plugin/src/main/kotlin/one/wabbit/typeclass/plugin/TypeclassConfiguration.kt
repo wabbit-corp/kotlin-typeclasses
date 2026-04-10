@@ -6,27 +6,20 @@ import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.CompilerConfigurationKey
 import org.jetbrains.kotlin.name.ClassId
 
-internal enum class TypeclassBuiltinMode(
-    val cliValue: String,
-) {
+internal enum class TypeclassBuiltinMode(val cliValue: String) {
     DISABLED("disabled"),
     ENABLED("enabled");
 
     companion object {
-        fun parse(
-            optionName: String,
-            value: String,
-        ): TypeclassBuiltinMode =
+        fun parse(optionName: String, value: String): TypeclassBuiltinMode =
             entries.firstOrNull { mode -> mode.cliValue == value.lowercase() }
                 ?: throw IllegalArgumentException(
-                    "Unknown value '$value' for option '$optionName'. Expected one of: ${entries.joinToString { it.cliValue }}",
+                    "Unknown value '$value' for option '$optionName'. Expected one of: ${entries.joinToString { it.cliValue }}"
                 )
     }
 }
 
-internal enum class TypeclassTraceMode(
-    val cliValue: String,
-) {
+internal enum class TypeclassTraceMode(val cliValue: String) {
     INHERIT("inherit"),
     DISABLED("disabled"),
     FAILURES("failures"),
@@ -41,13 +34,10 @@ internal enum class TypeclassTraceMode(
         get() = this == FAILURES_AND_ALTERNATIVES || this == ALL_AND_ALTERNATIVES
 
     companion object {
-        fun parse(
-            optionName: String,
-            value: String,
-        ): TypeclassTraceMode =
+        fun parse(optionName: String, value: String): TypeclassTraceMode =
             entries.firstOrNull { mode -> mode.cliValue == value.lowercase() }
                 ?: throw IllegalArgumentException(
-                    "Unknown value '$value' for option '$optionName'. Expected one of: ${entries.joinToString { it.cliValue }}",
+                    "Unknown value '$value' for option '$optionName'. Expected one of: ${entries.joinToString { it.cliValue }}"
                 )
     }
 }
@@ -82,7 +72,5 @@ internal fun CompilerConfiguration.toTypeclassConfiguration(): TypeclassConfigur
         builtinKSerializerTypeclass =
             get(TypeclassConfigurationKeys.BUILTIN_KSERIALIZER_TYPECLASS)
                 ?: TypeclassConfiguration().builtinKSerializerTypeclass,
-        traceMode =
-            get(TypeclassConfigurationKeys.TRACE_MODE)
-                ?: TypeclassConfiguration().traceMode,
+        traceMode = get(TypeclassConfigurationKeys.TRACE_MODE) ?: TypeclassConfiguration().traceMode,
     )

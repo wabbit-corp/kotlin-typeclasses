@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin
 
@@ -10,10 +10,7 @@ class GeneratedIrRuntimeFailuresTest {
     @Test
     fun `product constructor arity message points at stale metadata or invalid callers`() {
         val message =
-            productConstructorArityRuntimeMessage(
-                className = "demo.Box",
-                expectedArguments = 2,
-            )
+            productConstructorArityRuntimeMessage(className = "demo.Box", expectedArguments = 2)
 
         assertEquals(
             "Internal typeclass derivation error: generated product constructor for demo.Box expected 2 arguments. This usually means stale generated metadata or an invalid runtime caller.",

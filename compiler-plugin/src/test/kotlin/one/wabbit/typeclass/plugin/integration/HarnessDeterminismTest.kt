@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
@@ -24,7 +24,8 @@ class HarnessDeterminismTest : IntegrationTestSupport() {
             fun main() {
                 println(render(1)) // E:TC_NO_CONTEXT_ARGUMENT first compile should fail without leaking into the next one
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = failingSource,
@@ -54,12 +55,10 @@ class HarnessDeterminismTest : IntegrationTestSupport() {
             fun main() {
                 println(render(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = succeedingSource,
-            expectedStdout = "ok:1",
-        )
+        assertCompilesAndRuns(source = succeedingSource, expectedStdout = "ok:1")
     }
 
     @Test
@@ -87,12 +86,10 @@ class HarnessDeterminismTest : IntegrationTestSupport() {
             fun main() {
                 println(render(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = successfulSource,
-            expectedStdout = "first:1",
-        )
+        assertCompilesAndRuns(source = successfulSource, expectedStdout = "first:1")
 
         val laterSource =
             """
@@ -111,7 +108,8 @@ class HarnessDeterminismTest : IntegrationTestSupport() {
             fun main() {
                 println(render(1)) // E:TC_NO_CONTEXT_ARGUMENT earlier instances must not leak into this compilation
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = laterSource,
@@ -144,16 +142,11 @@ class HarnessDeterminismTest : IntegrationTestSupport() {
             fun main() {
                 println(render(7))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "repeat:7",
-        )
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "repeat:7",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "repeat:7")
+        assertCompilesAndRuns(source = source, expectedStdout = "repeat:7")
     }
 
     @Test
@@ -179,7 +172,8 @@ class HarnessDeterminismTest : IntegrationTestSupport() {
 
                     context(show: Show<A>)
                     fun <A> render(value: A): String = show.show(value)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -187,7 +181,8 @@ class HarnessDeterminismTest : IntegrationTestSupport() {
                     fun main() {
                         println(render(9))
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
         val sourcesB =
             linkedMapOf(
@@ -238,7 +233,8 @@ class HarnessDeterminismTest : IntegrationTestSupport() {
 
                             context(show: Show<A>)
                             fun <A> render(value: A): String = show.show(value)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val consumerSource =
@@ -251,7 +247,8 @@ class HarnessDeterminismTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Token(11))) // E
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = consumerSource,
@@ -263,10 +260,30 @@ class HarnessDeterminismTest : IntegrationTestSupport() {
             source = consumerSource,
             expectedDiagnostics =
                 listOf(
-                    expectedErrorContaining("unresolved reference", "dep", file = "Sample.kt", line = 3),
-                    expectedErrorContaining("unresolved reference", "dep", file = "Sample.kt", line = 4),
-                    expectedErrorContaining("unresolved reference", "render", file = "Sample.kt", line = 7),
-                    expectedErrorContaining("unresolved reference", "token", file = "Sample.kt", line = 7),
+                    expectedErrorContaining(
+                        "unresolved reference",
+                        "dep",
+                        file = "Sample.kt",
+                        line = 3,
+                    ),
+                    expectedErrorContaining(
+                        "unresolved reference",
+                        "dep",
+                        file = "Sample.kt",
+                        line = 4,
+                    ),
+                    expectedErrorContaining(
+                        "unresolved reference",
+                        "render",
+                        file = "Sample.kt",
+                        line = 7,
+                    ),
+                    expectedErrorContaining(
+                        "unresolved reference",
+                        "token",
+                        file = "Sample.kt",
+                        line = 7,
+                    ),
                 ),
             dependencies = emptyList(),
         )

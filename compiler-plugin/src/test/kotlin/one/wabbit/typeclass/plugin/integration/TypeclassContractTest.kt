@@ -1,14 +1,15 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
-import org.jetbrains.kotlin.cli.common.ExitCode
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import org.jetbrains.kotlin.cli.common.ExitCode
 
 class TypeclassContractTest : IntegrationTestSupport() {
 
-    @Test fun resolvesAssociatedInstancesThroughTypeArguments() {
+    @Test
+    fun resolvesAssociatedInstancesThroughTypeArguments() {
         val source =
             """
             package demo
@@ -39,15 +40,14 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun main() {
                 println(render(listOf(Curse(true), Curse(false))))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "[bound, free]",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "[bound, free]")
     }
 
-    @Test fun ignoresInapplicableAssociatedSealedSupertypeCandidatesWhenResolvingSubtypeSpecificInstances() {
+    @Test
+    fun ignoresInapplicableAssociatedSealedSupertypeCandidatesWhenResolvingSubtypeSpecificInstances() {
         val source =
             """
             package demo
@@ -90,15 +90,14 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun main() {
                 println(which<Animal.Dog>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "dog",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "dog")
     }
 
-    @Test fun resolvesAnonymousObjectsAndFunctionsThatCaptureLocalEvidence() {
+    @Test
+    fun resolvesAnonymousObjectsAndFunctionsThatCaptureLocalEvidence() {
         val source =
             """
             package demo
@@ -131,7 +130,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
                 println(first)
                 println(second)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -139,11 +139,13 @@ class TypeclassContractTest : IntegrationTestSupport() {
                 """
                 int:1
                 int:2
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun exposesMultipleTypeclassInstancesFromOneObject() {
+    @Test
+    fun exposesMultipleTypeclassInstancesFromOneObject() {
         val source =
             """
             package demo
@@ -179,7 +181,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
                 println(render(1))
                 println(same(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -187,11 +190,13 @@ class TypeclassContractTest : IntegrationTestSupport() {
                 """
                 int:1
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun mixesPreservedAndSynthesizedTypeclassArgumentsOnOneCall() {
+    @Test
+    fun mixesPreservedAndSynthesizedTypeclassArgumentsOnOneCall() {
         val source =
             """
             package demo
@@ -235,15 +240,14 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     println(use())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true:stable",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true:stable")
     }
 
-    @Test fun doesNotLeakPrivateCompanionInstancesAcrossFiles() {
+    @Test
+    fun doesNotLeakPrivateCompanionInstancesAcrossFiles() {
         val sources =
             mapOf(
                 "Box.kt" to
@@ -269,7 +273,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
                     context(show: Show<A>)
                     fun <A> render(value: A): String = show.show(value)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "Main.kt" to
                     """
                     package demo
@@ -277,7 +282,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     fun main() {
                         println(render(Box(1))) // E:TC_NO_CONTEXT_ARGUMENT private companion @Instance declarations should not leak across files
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
@@ -286,7 +292,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun reportsAmbiguityForNullableSpecificAndGenericNullEvidence() {
+    @Test
+    fun reportsAmbiguityForNullableSpecificAndGenericNullEvidence() {
         val source =
             """
             package demo
@@ -322,7 +329,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun main() {
                 println(render<String?>(null)) // E:TC_AMBIGUOUS_INSTANCE ambiguous Show<String?> resolution
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -330,7 +338,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun reportsNonTypeclassIntermediateSupertypesWhenOnlyInvalidExpandedHeadsRemain() {
+    @Test
+    fun reportsNonTypeclassIntermediateSupertypesWhenOnlyInvalidExpandedHeadsRemain() {
         val source =
             """
             package demo
@@ -349,20 +358,23 @@ class TypeclassContractTest : IntegrationTestSupport() {
             object IntShow : IntShowBase() { // E:TC_INVALID_INSTANCE_DECL no valid @Typeclass head is provided here
                 override fun show(value: Int): String = "int:${'$'}value"
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
                     expectedExactInvalidInstanceDecl(
-                        why = "non-@Typeclass intermediate supertypes cannot provide inherited typeclass instances.",
-                    ),
+                        why =
+                            "non-@Typeclass intermediate supertypes cannot provide inherited typeclass instances."
+                    )
                 ),
         )
     }
 
-    @Test fun allowsIntermediateTypeclassSupertypesThatExtendTypeclasses() {
+    @Test
+    fun allowsIntermediateTypeclassSupertypesThatExtendTypeclasses() {
         val source =
             """
             package demo
@@ -389,15 +401,14 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun main() {
                 println(render(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1")
     }
 
-    @Test fun resolvesIntermediateTypeclassHierarchiesFromGroupInstances() {
+    @Test
+    fun resolvesIntermediateTypeclassHierarchiesFromGroupInstances() {
         val source =
             """
             package demo
@@ -448,7 +459,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     println(localSemigroupDouble(6))
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -457,11 +469,13 @@ class TypeclassContractTest : IntegrationTestSupport() {
                 4
                 5
                 12
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun reportsAmbiguousInheritedIntermediateTypeclassInstances() {
+    @Test
+    fun reportsAmbiguousInheritedIntermediateTypeclassInstances() {
         val source =
             """
             package demo
@@ -506,7 +520,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun main() {
                 println(use()) // E ambiguous inherited intermediate typeclass instances should stay visible here
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -514,7 +529,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun propagatesSuperclassStyleEvidenceFromOrdToEq() {
+    @Test
+    fun propagatesSuperclassStyleEvidenceFromOrdToEq() {
         val source =
             """
             package demo
@@ -556,7 +572,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     println(same(2))
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -564,11 +581,13 @@ class TypeclassContractTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun rejectsInstanceRulesWithTypeParametersOnlyInPrerequisites() {
+    @Test
+    fun rejectsInstanceRulesWithTypeParametersOnlyInPrerequisites() {
         val source =
             """
             package demo
@@ -587,7 +606,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
                 object : Show<List<A>> {
                     override fun show(value: List<A>): String = value.toString()
                 }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -595,7 +615,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun rejectsDirectSelfRecursiveInstanceRulesAtDeclarationSite() {
+    @Test
+    fun rejectsDirectSelfRecursiveInstanceRulesAtDeclarationSite() {
         val source =
             """
             package demo
@@ -616,7 +637,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
                 object : Show<Box<A>> {
                     override fun label(): String = "recursive"
                 }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -624,7 +646,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun localExactEvidenceOverridesDerivedGlobalEvidence() {
+    @Test
+    fun localExactEvidenceOverridesDerivedGlobalEvidence() {
         val source =
             """
             package demo
@@ -663,15 +686,14 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     println(which<String?>())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "local-nullable",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "local-nullable")
     }
 
-    @Test fun supportsNullaryTypeclasses() {
+    @Test
+    fun supportsNullaryTypeclasses() {
         val source =
             """
             package demo
@@ -695,15 +717,14 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun main() {
                 println(check())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun rejectsDuplicateNullaryTypeclassInstancesAcrossUnrelatedFiles() {
+    @Test
+    fun rejectsDuplicateNullaryTypeclassInstancesAcrossUnrelatedFiles() {
         val sources =
             mapOf(
                 "Flag.kt" to
@@ -725,7 +746,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
                     context(flag: FeatureFlag)
                     fun check(): Boolean = flag.enabled()
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "Other.kt" to
                     """
                     package demo
@@ -736,7 +758,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     object AnotherEnabledFlag : FeatureFlag { // E:TC_INVALID_INSTANCE_DECL unrelated-file duplicate nullary instance should be rejected
                         override fun enabled(): Boolean = false
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "Main.kt" to
                     """
                     package demo
@@ -744,7 +767,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     fun main() {
                         println(check())
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
@@ -753,7 +777,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun supportsTypeclassMethodsWithAdditionalContext() {
+    @Test
+    fun supportsTypeclassMethodsWithAdditionalContext() {
         val source =
             """
             package demo
@@ -780,15 +805,14 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun main() {
                 println(summon<Debug<Int>>().debug(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "debug:int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "debug:int:1")
     }
 
-    @Test fun reportsAmbiguousEvidenceInsideDefaultTypeclassMethods() {
+    @Test
+    fun reportsAmbiguousEvidenceInsideDefaultTypeclassMethods() {
         val source =
             """
             package demo
@@ -824,7 +848,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun main() {
                 println(summon<Debug<Int>>().debug(1)) // E:TC_NO_CONTEXT_ARGUMENT ambiguous Show<Int> inside default method body
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -832,7 +857,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun rejectsAdditionalUnrelatedOrphanFilesInsteadOfChangingResolutionOutcome() {
+    @Test
+    fun rejectsAdditionalUnrelatedOrphanFilesInsteadOfChangingResolutionOutcome() {
         val stableSources =
             mapOf(
                 "Main.kt" to
@@ -858,26 +884,26 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     fun main() {
                         println(render(1))
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent()
             )
         val stableResult = compileSourceInternal(stableSources)
         assertEquals(ExitCode.OK, stableResult.exitCode, stableResult.stdout)
 
         val unstableSources =
             stableSources +
-                (
-                    "Orphan.kt" to
-                        """
-                        package demo
+                ("Orphan.kt" to
+                    """
+                    package demo
 
-                        import one.wabbit.typeclass.Instance
+                    import one.wabbit.typeclass.Instance
 
-                        @Instance
-                        object OtherIntShow : Show<Int> { // E:TC_INVALID_INSTANCE_DECL unrelated orphan file must not affect stable resolution
-                            override fun show(value: Int): String = "other:${'$'}value"
-                        }
-                        """.trimIndent()
-                    )
+                    @Instance
+                    object OtherIntShow : Show<Int> { // E:TC_INVALID_INSTANCE_DECL unrelated orphan file must not affect stable resolution
+                        override fun show(value: Int): String = "other:${'$'}value"
+                    }
+                    """
+                        .trimIndent())
 
         assertDoesNotCompile(
             sources = unstableSources,
@@ -885,7 +911,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun reportsOverlapBetweenAliasSpecificAndGenericSpecializedInstances() {
+    @Test
+    fun reportsOverlapBetweenAliasSpecificAndGenericSpecializedInstances() {
         val source =
             """
             package demo
@@ -924,7 +951,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun main() {
                 println(which<UserIds>()) // E:TC_AMBIGUOUS_INSTANCE alias-specific and generic list instances both satisfy Show<UserIds>
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -932,7 +960,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun superclassEntailmentRespectsDirectLocalShadowing() {
+    @Test
+    fun superclassEntailmentRespectsDirectLocalShadowing() {
         val source =
             """
             package demo
@@ -972,7 +1001,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     println(which<Int>())
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -980,11 +1010,13 @@ class TypeclassContractTest : IntegrationTestSupport() {
                 """
                 ord
                 local-eq
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun oneObjectCanProvideMultipleHeadsAndSuperclassEvidence() {
+    @Test
+    fun oneObjectCanProvideMultipleHeadsAndSuperclassEvidence() {
         val source =
             """
             package demo
@@ -1022,15 +1054,14 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun main() {
                 println(summary(7))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "ord:hash:7",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "ord:hash:7")
     }
 
-    @Test fun doesNotImplicitlyResolveNonTypeclassContexts() {
+    @Test
+    fun doesNotImplicitlyResolveNonTypeclassContexts() {
         val source =
             """
             package demo
@@ -1049,7 +1080,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun main() {
                 println(same(1)) // E non-typeclass contexts should not be resolved implicitly
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1057,7 +1089,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun reportsMissingCompanionInstanceAnnotationWithoutCrashing() {
+    @Test
+    fun reportsMissingCompanionInstanceAnnotationWithoutCrashing() {
         val source =
             """
             package demo
@@ -1084,15 +1117,18 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun main() {
                 println(SomeItemComponent(Curse(true))) // E missing companion @Instance should surface as an unresolved context
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "itemcomponenttype")),
+            expectedDiagnostics =
+                listOf(expectedErrorContaining("no context argument", "itemcomponenttype")),
         )
     }
 
-    @Test fun rejectsTopLevelDuplicateInstancesAcrossUnrelatedFiles() {
+    @Test
+    fun rejectsTopLevelDuplicateInstancesAcrossUnrelatedFiles() {
         val sources =
             mapOf(
                 "demo/InstancesOne.kt" to
@@ -1111,7 +1147,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     object IntShowOne : Show<Int> { // ambiguous instance declaration
                         override fun show(): String = "one"
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/InstancesTwo.kt" to
                     """
                     package demo
@@ -1122,7 +1159,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     object IntShowTwo : Show<Int> { // E:TC_INVALID_INSTANCE_DECL unrelated-file duplicate instance should be rejected at declaration site
                         override fun show(): String = "two"
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "demo/Main.kt" to
                     """
                     package demo
@@ -1133,7 +1171,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     fun main() {
                         println(render<Int>())
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
@@ -1142,7 +1181,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun rejectsLocalInstanceFunctionDeclarationsEvenWhenSameFileHostingWouldOtherwiseAllowTopLevelPlacement() {
+    @Test
+    fun rejectsLocalInstanceFunctionDeclarationsEvenWhenSameFileHostingWouldOtherwiseAllowTopLevelPlacement() {
         val source =
             """
             package demo
@@ -1169,7 +1209,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
                 println(render(Box(1))) // E:TC_NO_CONTEXT_ARGUMENT local @Instance declarations should not be auto-discovered
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1181,7 +1222,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun doesNotDiscoverLocalInstanceDeclarationsGlobally() {
+    @Test
+    fun doesNotDiscoverLocalInstanceDeclarationsGlobally() {
         val source =
             """
             package demo
@@ -1206,7 +1248,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
                 println(render(1)) // E:TC_NO_CONTEXT_ARGUMENT local @Instance declarations should not be auto-discovered
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1218,7 +1261,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun doesNotLeakPrivateTopLevelInstancesAcrossFiles() {
+    @Test
+    fun doesNotLeakPrivateTopLevelInstancesAcrossFiles() {
         val sources =
             mapOf(
                 "Hidden.kt" to
@@ -1241,7 +1285,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
 
                     context(_: Show<A>)
                     fun <A> render(): String = summon<Show<A>>().show()
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "Main.kt" to
                     """
                     package demo
@@ -1249,7 +1294,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     fun main() {
                         println(render<Int>()) // E:TC_NO_CONTEXT_ARGUMENT private @Instance declarations should not leak across files
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
@@ -1288,7 +1334,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun main() {
                 println(render()) // E ambiguous implicit contexts should remain visible to the frontend
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1335,7 +1382,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
             fun main() {
                 println(use()) // E recursive implicit contexts should remain visible to the frontend
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1400,7 +1448,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
                     println(codec.encode(updated))
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1408,8 +1457,8 @@ class TypeclassContractTest : IntegrationTestSupport() {
                 """
                 1.5
                 1.5
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
-
 }

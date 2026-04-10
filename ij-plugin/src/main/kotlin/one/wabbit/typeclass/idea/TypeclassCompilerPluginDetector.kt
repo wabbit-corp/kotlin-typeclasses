@@ -41,28 +41,25 @@ internal data class TypeclassCompilerPluginScan(
 internal object TypeclassCompilerPluginDetector {
     fun scan(project: Project): TypeclassCompilerPluginScan {
         val gradleBuildFiles =
-            project.basePath?.let { basePath ->
-                matchingGradleBuildFiles(Path.of(basePath))
-            }.orEmpty()
+            project.basePath
+                ?.let { basePath -> matchingGradleBuildFiles(Path.of(basePath)) }
+                .orEmpty()
         val projectClasspaths =
             matchingClasspaths(
                 KotlinCommonCompilerArgumentsHolder.getInstance(project)
                     .settings
                     .pluginClasspaths
                     .orEmpty()
-                    .asList(),
+                    .asList()
             )
         val projectMatch =
-            projectClasspaths.takeIf { it.isNotEmpty() }?.let { classpaths ->
-                TypeclassCompilerPluginMatch(
-                    ownerName = project.name,
-                    classpaths = classpaths,
-                )
-            }
+            projectClasspaths
+                .takeIf { it.isNotEmpty() }
+                ?.let { classpaths ->
+                    TypeclassCompilerPluginMatch(ownerName = project.name, classpaths = classpaths)
+                }
         val moduleMatches =
-            ModuleManager.getInstance(project).modules.mapNotNull { module ->
-                scanModule(module)
-            }
+            ModuleManager.getInstance(project).modules.mapNotNull { module -> scanModule(module) }
         return TypeclassCompilerPluginScan(
             projectLevelMatch = projectMatch,
             moduleMatches = moduleMatches,
@@ -71,9 +68,7 @@ internal object TypeclassCompilerPluginDetector {
     }
 
     fun matchingClasspaths(classpaths: Iterable<String>): List<String> =
-        classpaths
-            .filter(::isTypeclassesCompilerPluginPath)
-            .distinct()
+        classpaths.filter(::isTypeclassesCompilerPluginPath).distinct()
 
     fun isTypeclassesCompilerPluginPath(classpath: String): Boolean {
         val normalized = classpath.replace('\\', '/').lowercase()
@@ -91,13 +86,14 @@ internal object TypeclassCompilerPluginDetector {
                 .map { path -> projectRoot.relativize(path).normalize() }
                 .filter { relativePath ->
                     runCatching {
-                        isTypeclassesGradlePluginReference(
-                            Files.readString(projectRoot.resolve(relativePath)),
-                        )
-                    }.getOrDefault(false)
-                }.map { relativePath ->
-                    relativePath.toString().replace('\\', '/')
-                }.distinct()
+                            isTypeclassesGradlePluginReference(
+                                Files.readString(projectRoot.resolve(relativePath))
+                            )
+                        }
+                        .getOrDefault(false)
+                }
+                .map { relativePath -> relativePath.toString().replace('\\', '/') }
+                .distinct()
                 .sorted()
                 .collect(Collectors.toList())
         }
@@ -113,23 +109,20 @@ internal object TypeclassCompilerPluginDetector {
         val facet = KotlinFacet.Companion.get(module) ?: return null
         val classpaths =
             matchingClasspaths(
-                facet.configuration.settings
-                    .mergedCompilerArguments
+                facet.configuration.settings.mergedCompilerArguments
                     ?.pluginClasspaths
                     .orEmpty()
-                    .asList(),
+                    .asList()
             )
         if (classpaths.isEmpty()) {
             return null
         }
-        return TypeclassCompilerPluginMatch(
-            ownerName = module.name,
-            classpaths = classpaths,
-        )
+        return TypeclassCompilerPluginMatch(ownerName = module.name, classpaths = classpaths)
     }
 
     private fun isGradleBuildFileCandidate(path: Path): Boolean {
-        if (path.any { segment ->
+        if (
+            path.any { segment ->
                 segment.toString() in setOf(".git", ".gradle", ".idea", "build", "out")
             }
         ) {

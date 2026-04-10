@@ -1,18 +1,18 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.derivation
 
-import one.wabbit.typeclass.plugin.cannotDeriveMissingEnumOverride
-import one.wabbit.typeclass.plugin.cannotDeriveOnlyUnaryTypeclasses
+import kotlin.test.Test
 import one.wabbit.typeclass.plugin.cannotDeriveConstructiveProductStoredPropertyMismatch
-import one.wabbit.typeclass.plugin.cannotDeriveRequiresPrimaryConstructor
+import one.wabbit.typeclass.plugin.cannotDeriveMissingEnumOverride
 import one.wabbit.typeclass.plugin.cannotDeriveMissingRequiredDeriver
+import one.wabbit.typeclass.plugin.cannotDeriveOnlyUnaryTypeclasses
+import one.wabbit.typeclass.plugin.cannotDeriveRequiresPrimaryConstructor
 import one.wabbit.typeclass.plugin.cannotDeriveUnsupportedShape
 import one.wabbit.typeclass.plugin.cannotDeriveWrongDeriverReturnType
-import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import one.wabbit.typeclass.plugin.integration.DiagnosticPhase
 import one.wabbit.typeclass.plugin.integration.HarnessDependency
-import kotlin.test.Test
+import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 
 class DerivationCapabilityTest : IntegrationTestSupport() {
     @Test
@@ -27,10 +27,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                 mainBody = """println(render(User("ada")))""",
             )
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "User",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "User")
     }
 
     @Test
@@ -42,7 +39,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
         context(_: Eq<User>)
         fun requiresEq(): String = "eq"
         """,
-                mainBody = """println(requiresEq()) // E:TC_NO_CONTEXT_ARGUMENT only Show<User> is derived here, not Eq<User>""",
+                mainBody =
+                    """println(requiresEq()) // E:TC_NO_CONTEXT_ARGUMENT only Show<User> is derived here, not Eq<User>""",
             )
 
         assertDoesNotCompile(
@@ -60,12 +58,14 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
         context(show: Show<A>)
         fun <A> render(value: A): String = show.show(value)
         """,
-                mainBody = """println(render<User?>(null)) // E:TC_NO_CONTEXT_ARGUMENT @Derive(Show::class) for User does not imply Show<User?>""",
+                mainBody =
+                    """println(render<User?>(null)) // E:TC_NO_CONTEXT_ARGUMENT @Derive(Show::class) for User does not imply Show<User?>""",
             )
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.IR)),
+            expectedDiagnostics =
+                listOf(expectedNoContextArgument("show", phase = DiagnosticPhase.IR)),
         )
     }
 
@@ -95,14 +95,13 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
             @Derive(Decoder::class) // E:TC_CANNOT_DERIVE non-unary typeclasses are not derivable with @Derive
             data class Box(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedTypeclassDiagnostic(cannotDeriveOnlyUnaryTypeclasses()),
-                ),
+                listOf(expectedTypeclassDiagnostic(cannotDeriveOnlyUnaryTypeclasses())),
         )
     }
 
@@ -136,7 +135,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                 println(renderInt())
                 println(Show.deriveProduct("ok"))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -144,7 +144,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                 """
                 int:1
                 debug:ok
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -189,7 +190,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                 println(render(Box(1)))
                 println(Show.deriveProduct("ok"))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -197,7 +199,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                 """
                 demo.Box
                 debug:ok
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -241,12 +244,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "demo.Box",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "demo.Box")
     }
 
     @Test
@@ -287,12 +288,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "demo.Box",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "demo.Box")
     }
 
     @Test
@@ -354,7 +353,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                 println(render(Count(1) as Token))
                 println(render(End as Token))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -362,7 +362,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                 """
                 demo.Count
                 demo.End
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -415,12 +416,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Priority.LOW))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "demo.Priority",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "demo.Priority")
     }
 
     @Test
@@ -459,14 +458,13 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                 ON,
                 OFF,
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedTypeclassDiagnostic(cannotDeriveMissingEnumOverride("Show")),
-                ),
+                listOf(expectedTypeclassDiagnostic(cannotDeriveMissingEnumOverride("Show"))),
         )
     }
 
@@ -501,7 +499,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
             @Derive(Show::class)
             data class Box(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -510,7 +509,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                     expectedTypeclassDiagnostic(
                         cannotDeriveWrongDeriverReturnType("deriveProduct", "Show", "Eq"),
                         phase = null,
-                    ),
+                    )
                 ),
         )
     }
@@ -537,13 +536,16 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
             @Derive(Show::class)
             data class Box(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
-                    expectedTypeclassDiagnostic(cannotDeriveWrongDeriverReturnType("deriveProduct", "Show")),
+                    expectedTypeclassDiagnostic(
+                        cannotDeriveWrongDeriverReturnType("deriveProduct", "Show")
+                    )
                 ),
         )
     }
@@ -570,13 +572,16 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
             @Derive(Show::class)
             data class Box(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
-                    expectedTypeclassDiagnostic(cannotDeriveWrongDeriverReturnType("deriveProduct", "Show")),
+                    expectedTypeclassDiagnostic(
+                        cannotDeriveWrongDeriverReturnType("deriveProduct", "Show")
+                    )
                 ),
         )
     }
@@ -598,7 +603,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                             interface Eq<A> {
                                 fun eqv(left: A, right: A): Boolean
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -626,7 +632,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
             @Derive(Show::class)
             data class Box(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -636,7 +643,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                     expectedTypeclassDiagnostic(
                         cannotDeriveWrongDeriverReturnType("deriveProduct", "Show", "Eq"),
                         phase = null,
-                    ),
+                    )
                 ),
         )
     }
@@ -681,12 +688,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "shared",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "shared")
     }
 
     @Test
@@ -728,12 +733,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "existing",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "existing")
     }
 
     @Test
@@ -776,12 +779,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "demo.Box",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "demo.Box")
     }
 
     @Test
@@ -825,12 +826,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "local",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "local")
     }
 
     @Test
@@ -874,12 +873,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "demo.Box",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "demo.Box")
     }
 
     @Test
@@ -923,12 +920,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "top:demo.Box",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "top:demo.Box")
     }
 
     @Test
@@ -973,12 +968,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "getter",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "getter")
     }
 
     @Test
@@ -1025,12 +1018,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "if-then",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "if-then")
     }
 
     @Test
@@ -1079,12 +1070,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "when-box",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "when-box")
     }
 
     @Test
@@ -1131,12 +1120,10 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "try-body",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "try-body")
     }
 
     @Test
@@ -1179,7 +1166,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
             data class Word(val value: String) : Token
             object End : Token
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1188,7 +1176,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                     expectedTypeclassDiagnostic(
                         cannotDeriveWrongDeriverReturnType("deriveSum", "Show", "Eq"),
                         phase = null,
-                    ),
+                    )
                 ),
         )
     }
@@ -1224,13 +1212,16 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
             data class Word(val value: String) : Token
             object End : Token
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
-                    expectedTypeclassDiagnostic(cannotDeriveWrongDeriverReturnType("deriveSum", "Show")),
+                    expectedTypeclassDiagnostic(
+                        cannotDeriveWrongDeriverReturnType("deriveSum", "Show")
+                    )
                 ),
         )
     }
@@ -1266,13 +1257,16 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
             data class Word(val value: String) : Token
             object End : Token
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
-                    expectedTypeclassDiagnostic(cannotDeriveWrongDeriverReturnType("deriveSum", "Show")),
+                    expectedTypeclassDiagnostic(
+                        cannotDeriveWrongDeriverReturnType("deriveSum", "Show")
+                    )
                 ),
         )
     }
@@ -1322,7 +1316,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                 LOW,
                 HIGH,
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1331,7 +1326,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                     expectedTypeclassDiagnostic(
                         cannotDeriveWrongDeriverReturnType("deriveEnum", "Show", "Eq"),
                         phase = null,
-                    ),
+                    )
                 ),
         )
     }
@@ -1373,13 +1368,16 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                 LOW,
                 HIGH,
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
-                    expectedTypeclassDiagnostic(cannotDeriveWrongDeriverReturnType("deriveEnum", "Show")),
+                    expectedTypeclassDiagnostic(
+                        cannotDeriveWrongDeriverReturnType("deriveEnum", "Show")
+                    )
                 ),
         )
     }
@@ -1421,13 +1419,16 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                 LOW,
                 HIGH,
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
-                    expectedTypeclassDiagnostic(cannotDeriveWrongDeriverReturnType("deriveEnum", "Show")),
+                    expectedTypeclassDiagnostic(
+                        cannotDeriveWrongDeriverReturnType("deriveEnum", "Show")
+                    )
                 ),
         )
     }
@@ -1467,7 +1468,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                     override fun deriveEnum(metadata: EnumTypeclassMetadata): Any = 42 // enum@E:TC_CANNOT_DERIVE
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1513,13 +1515,17 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                 LOW,
                 HIGH,
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
-                    expectedTypeclassDiagnostic(cannotDeriveMissingEnumOverride("Show"), phase = null),
+                    expectedTypeclassDiagnostic(
+                        cannotDeriveMissingEnumOverride("Show"),
+                        phase = null,
+                    )
                 ),
         )
     }
@@ -1552,7 +1558,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
             data class Word(val value: String) : Token
             object End : Token
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1562,10 +1569,11 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                         cannotDeriveMissingRequiredDeriver(
                             typeclassName = "Show",
                             requiredName = "TypeclassDeriver",
-                            detail = "ProductTypeclassDeriver only supports products, not sealed sums",
+                            detail =
+                                "ProductTypeclassDeriver only supports products, not sealed sums",
                         ),
                         phase = null,
-                    ),
+                    )
                 ),
         )
     }
@@ -1595,14 +1603,13 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
             @Derive(Show::class) // E:TC_CANNOT_DERIVE
             open class Box(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedTypeclassDiagnostic(cannotDeriveUnsupportedShape(), phase = null),
-                ),
+                listOf(expectedTypeclassDiagnostic(cannotDeriveUnsupportedShape(), phase = null)),
         )
     }
 
@@ -1633,7 +1640,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             class Stats(count: Int) {
                 val total: Int = count
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1642,7 +1650,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                     expectedTypeclassDiagnostic(
                         cannotDeriveConstructiveProductStoredPropertyMismatch("demo.Stats"),
                         phase = null,
-                    ),
+                    )
                 ),
         )
     }
@@ -1678,13 +1686,17 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                     this.total = total
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
-                    expectedTypeclassDiagnostic(cannotDeriveRequiresPrimaryConstructor(), phase = null),
+                    expectedTypeclassDiagnostic(
+                        cannotDeriveRequiresPrimaryConstructor(),
+                        phase = null,
+                    )
                 ),
         )
     }
@@ -1714,7 +1726,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
             @Derive(Show::class) // E:TC_CANNOT_DERIVE
             data class Secret(private val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1723,7 +1736,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                     expectedExactCannotDerive(
                         "constructive product derivation requires public or internal stored properties; demo.Secret.value is not public or internal.",
                         phase = null,
-                    ),
+                    )
                 ),
         )
     }
@@ -1753,7 +1766,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
 
             @Derive(Show::class) // E:TC_CANNOT_DERIVE
             data class Secret private constructor(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1762,7 +1776,7 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                     expectedExactCannotDerive(
                         "constructive product derivation requires a public or internal primary constructor for demo.Secret.",
                         phase = null,
-                    ),
+                    )
                 ),
         )
     }
@@ -1802,7 +1816,8 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
             data class Public(val value: Int) : Token
 
             data class Secret private constructor(val value: Int) : Token
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1811,15 +1826,12 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
                     expectedExactCannotDerive(
                         "Cannot derive demo.Token because sealed subclass demo.Secret is not itself derivable: constructive product derivation requires a public or internal primary constructor for demo.Secret.",
                         phase = null,
-                    ),
+                    )
                 ),
         )
     }
 
-    private fun requestedHeadOnlySource(
-        extraDeclarations: String,
-        mainBody: String,
-    ): String =
+    private fun requestedHeadOnlySource(extraDeclarations: String, mainBody: String): String =
         """
         package demo
 
@@ -1865,5 +1877,6 @@ class DerivationCapabilityTest : IntegrationTestSupport() {
         fun main() {
             $mainBody
         }
-        """.trimIndent()
+        """
+            .trimIndent()
 }

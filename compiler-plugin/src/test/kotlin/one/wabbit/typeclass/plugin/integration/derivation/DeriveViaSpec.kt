@@ -1,18 +1,19 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.derivation
 
-import one.wabbit.typeclass.plugin.invalidEquivSubclassing
+import kotlin.test.Test
 import one.wabbit.typeclass.plugin.integration.CompilerHarnessPlugin
 import one.wabbit.typeclass.plugin.integration.HarnessDependency
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
-import kotlin.test.Test
+import one.wabbit.typeclass.plugin.invalidEquivSubclassing
 
 class DeriveViaSpec : IntegrationTestSupport() {
     private val coroutinesRuntime = listOf(CompilerHarnessPlugin.CoroutinesRuntime)
     private val serializationRuntime = listOf(CompilerHarnessPlugin.SerializationRuntime)
 
-    @Test fun rejectsUnresolvedDeriveViaTypeclassArgumentInsteadOfIgnoringAnnotation() {
+    @Test
+    fun rejectsUnresolvedDeriveViaTypeclassArgumentInsteadOfIgnoringAnnotation() {
         val source =
             """
             package demo
@@ -31,18 +32,25 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(MissingShow::class, Foo::class) // E
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive("@DeriveVia", "typeclass", "resolvable class literal", phase = null),
+                    expectedCannotDerive(
+                        "@DeriveVia",
+                        "typeclass",
+                        "resolvable class literal",
+                        phase = null,
+                    )
                 ),
         )
     }
 
-    @Test fun rejectsUnresolvedDeriveEquivOtherClassArgumentInsteadOfIgnoringAnnotation() {
+    @Test
+    fun rejectsUnresolvedDeriveEquivOtherClassArgumentInsteadOfIgnoringAnnotation() {
         val source =
             """
             package demo
@@ -52,27 +60,37 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             @DeriveEquiv(MissingWire::class) // E
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
                 listOf(
-                    expectedCannotDerive("@DeriveEquiv", "otherClass", "resolvable class literal", phase = null),
+                    expectedCannotDerive(
+                        "@DeriveEquiv",
+                        "otherClass",
+                        "resolvable class literal",
+                        phase = null,
+                    )
                 ),
         )
     }
 
     // Exact intended semantics:
     // - Equiv<A, B> is compiler-owned canonical evidence the compiler can solve and compose.
-    // - Users must not author @Instance values of Equiv<A, B>, subclass it directly, or manually construct it;
+    // - Users must not author @Instance values of Equiv<A, B>, subclass it directly, or manually
+    // construct it;
     //   explicit user-authored reversible conversions belong in Iso<A, B> instead.
     // - This is enforced by the plugin with a dedicated diagnostic, e.g. TC_INVALID_EQUIV_DECL;
     //   the library class shape alone is not treated as sufficient enforcement.
     // - @DeriveEquiv(B::class) exports a globally visible, summonable Equiv<Annotated, B>.
-    // - During explicit derivation annotations only, the compiler may also synthesize transient local Equiv edges/chains
-    //   between any whitelist-admissible pair of types if that is needed to complete the requested derivation.
-    // - Those transient Equivs are not published to ordinary typeclass search and cannot later be summoned as standalone
+    // - During explicit derivation annotations only, the compiler may also synthesize transient
+    // local Equiv edges/chains
+    //   between any whitelist-admissible pair of types if that is needed to complete the requested
+    // derivation.
+    // - Those transient Equivs are not published to ordinary typeclass search and cannot later be
+    // summoned as standalone
     //   evidence; only @DeriveEquiv exports regular resolution-visible Equiv instances.
     //
     // abstract class Equiv<A, B> @InternalTypeclassApi protected constructor() {
@@ -86,14 +104,18 @@ class DeriveViaSpec : IntegrationTestSupport() {
     //
     // - The solver may freely reorient solved Equiv<A, B> evidence as Equiv<B, A>.
     // - Canonical means Equiv search is normalized by endpoint pair, not by proof tree.
-    // - Distinct direct/composed/internal proof trees that establish the same Equiv<X, Y> do not count as ambiguity
-    //   by themselves, whether those trees use exported DeriveEquiv evidence or transient DeriveVia-local synthesis.
+    // - Distinct direct/composed/internal proof trees that establish the same Equiv<X, Y> do not
+    // count as ambiguity
+    //   by themselves, whether those trees use exported DeriveEquiv evidence or transient
+    // DeriveVia-local synthesis.
     // - Ambiguity is reserved for user-visible choices, especially:
     //   * different pinned Iso objects
     //   * different pinned-Iso attachments/orientations
     //   * different terminal typeclass instances reached by DeriveVia
-    // - Compiler-synthesized Equiv is only sound for a conservative syntactic whitelist of transparent total shapes.
-    // - The checker should reject anything outside that whitelist rather than trying to prove semantic transparency.
+    // - Compiler-synthesized Equiv is only sound for a conservative syntactic whitelist of
+    // transparent total shapes.
+    // - The checker should reject anything outside that whitelist rather than trying to prove
+    // semantic transparency.
     // - For value classes, the whitelist is:
     //   * one public primary-constructor property
     //   * no `init` blocks
@@ -108,9 +130,11 @@ class DeriveViaSpec : IntegrationTestSupport() {
     //   * no extra backing fields or delegated properties with stored state
     // - For structural DeriveEquiv sums, the whitelist is:
     //   * sealed hierarchies only
-    //   * cases must be transparent `data class` / `data object` declarations that satisfy the same whitelist
+    //   * cases must be transparent `data class` / `data object` declarations that satisfy the same
+    // whitelist
 
-    // - Iso<A, B> is an explicit value, not a typeclass; DeriveVia may pin exact Iso objects in its path.
+    // - Iso<A, B> is an explicit value, not a typeclass; DeriveVia may pin exact Iso objects in its
+    // path.
     //
     // interface Iso<A, B> {     // NOT A TYPECLASS
     //     fun to(value: A): B
@@ -129,62 +153,88 @@ class DeriveViaSpec : IntegrationTestSupport() {
     //     val typeclass: KClass<*>,
     //     vararg val path: KClass<*>, // via types or pinned Iso objects
     // )
-    // - Empty paths are rejected at compile time; DeriveVia must name at least one waypoint or pinned Iso segment.
+    // - Empty paths are rejected at compile time; DeriveVia must name at least one waypoint or
+    // pinned Iso segment.
     // - For now, DeriveVia transports only the last type parameter of the requested typeclass.
-    // - Multi-parameter typeclasses therefore participate only when their transported slot is the final one.
+    // - Multi-parameter typeclasses therefore participate only when their transported slot is the
+    // final one.
     // - More general parameter-selection rules would need an explicit future design.
     //
     // Path semantics:
     // - a type waypoint Foo::class means "solve Equiv<Current, Foo>"
     // - a pinned Iso object FooIso::class means "use exactly that Iso singleton for one segment"
-    // - compiler-solved Equiv glue may be inserted before or after a pinned Iso segment as needed, but only when
+    // - compiler-solved Equiv glue may be inserted before or after a pinned Iso segment as needed,
+    // but only when
     //   exactly one endpoint of that pinned Iso is reachable from the current state
     // - only the Iso object itself is pinned; the surrounding Equiv path remains solver-driven
-    // - if both endpoints of a pinned Iso are reachable from the current state, derivation must fail as ambiguous
+    // - if both endpoints of a pinned Iso are reachable from the current state, derivation must
+    // fail as ambiguous
     //   immediately rather than picking an attachment/orientation
     //
     // Transport boundary:
     // - let F(A) be the smallest class of transportable shapes such that:
     //   * A itself is in F(A)
     //   * any type not mentioning A is in F(A)
-    //   * if X and Y are in F(A), then ordinary, suspend, and extension-function shapes built from X and Y are in F(A)
-    //   * contextual function shapes are in F(A) when their context parameter types do not mention A
+    //   * if X and Y are in F(A), then ordinary, suspend, and extension-function shapes built from
+    // X and Y are in F(A)
+    //   * contextual function shapes are in F(A) when their context parameter types do not mention
+    // A
     //   * nullable A? is in F(A) whenever A is in F(A)
     //   * type aliases are transparent; Alias<A> is in F(A) exactly when its expansion is
-    //   * star projections are allowed in type positions when the resulting type still satisfies the structural whitelist
-    //   * generic methods with additional unconstrained type parameters are allowed when, in the schematic member
-    //     signature, those extra parameters are treated as rigid opaque variables and every A-occurrence remains
+    //   * star projections are allowed in type positions when the resulting type still satisfies
+    // the structural whitelist
+    //   * generic methods with additional unconstrained type parameters are allowed when, in the
+    // schematic member
+    //     signature, those extra parameters are treated as rigid opaque variables and every
+    // A-occurrence remains
     //     inside F(A)
-    //   * admissible nominal shapes in F(A) are limited to whitelist-approved, compiler-inspectable structural
-    //     product/sum types whose stored fields are themselves in F(A), including covariant, contravariant,
+    //   * admissible nominal shapes in F(A) are limited to whitelist-approved, compiler-inspectable
+    // structural
+    //     product/sum types whose stored fields are themselves in F(A), including covariant,
+    // contravariant,
     //     invariant, and phantom occurrences of A
     //   * admissible structural shapes must expose only read-only stored state:
     //     constructor properties participating in structural transport must be `val`, not `var`,
     //     and there must be no additional mutable backing state
-    // - DeriveVia should transport a typeclass exactly when every appearance of the distinguished type parameter
+    // - DeriveVia should transport a typeclass exactly when every appearance of the distinguished
+    // type parameter
     //   in all members lies inside F(A)
-    // - if any member mentions A outside this closure, derivation should fail at compile time rather than guessing
-    // - the real boundary is "compiler-inspectable structural representation" versus "opaque / behavioral nominal type"
-    // - named generic types are not excluded merely for being nominal; they are excluded when the compiler does not
+    // - if any member mentions A outside this closure, derivation should fail at compile time
+    // rather than guessing
+    // - the real boundary is "compiler-inspectable structural representation" versus "opaque /
+    // behavioral nominal type"
+    // - named generic types are not excluded merely for being nominal; they are excluded when the
+    // compiler does not
     //   treat them as decomposable structural shapes under the whitelist above
-    // - ordinary nominal containers are therefore not assumed transportable just because they look "functor-ish";
-    //   List<A>, Map<String, A>, Comparator<A>, KClass<A>, Result<A>, and custom nominal classes with their own
+    // - ordinary nominal containers are therefore not assumed transportable just because they look
+    // "functor-ish";
+    //   List<A>, Map<String, A>, Comparator<A>, KClass<A>, Result<A>, and custom nominal classes
+    // with their own
     //   behavior are out unless the compiler grows an explicit structural rule for them
-    // - a product like Pair<A, String> is only in scope if the compiler explicitly chooses to decompose it as a
-    //   structural two-field product under the same whitelist; otherwise it remains out with the other opaque nominal types
-    // - recursive nominal shapes are out by default; the closure only admits finite non-recursive structural shapes
-    // - mutable structural shapes are out by default because transport must preserve aliasing and mutation semantics
+    // - a product like Pair<A, String> is only in scope if the compiler explicitly chooses to
+    // decompose it as a
+    //   structural two-field product under the same whitelist; otherwise it remains out with the
+    // other opaque nominal types
+    // - recursive nominal shapes are out by default; the closure only admits finite non-recursive
+    // structural shapes
+    // - mutable structural shapes are out by default because transport must preserve aliasing and
+    // mutation semantics
     // - method type-parameter bounds mentioning A are out for now
     // - definitely-non-null / intersection shapes like A & Any are out for now
-    // - inherited default methods on the typeclass interface participate like ordinary methods and are expected to
+    // - inherited default methods on the typeclass interface participate like ordinary methods and
+    // are expected to
     //   observe the same transport rules as explicit members
-    // - DeriveVia preserves extensional behavior only; it does not guarantee referential identity (`===`),
-    //   allocation patterns, wrapper reuse, object identity, or stable `==` / `hashCode()` / `toString()` behavior
-    //   for transported higher-order structural wrappers that may need freshly allocated adapter functions
+    // - DeriveVia preserves extensional behavior only; it does not guarantee referential identity
+    // (`===`),
+    //   allocation patterns, wrapper reuse, object identity, or stable `==` / `hashCode()` /
+    // `toString()` behavior
+    //   for transported higher-order structural wrappers that may need freshly allocated adapter
+    // functions
 
     // - For transport, the compiler should materialize the adapter from method signatures directly;
     //   no typeclass companion hook like deriveVia(...) should be required.
-    @Test fun supportsDerivingViaThroughEquivTypes() {
+    @Test
+    fun supportsDerivingViaThroughEquivTypes() {
         val source =
             """
             package demo
@@ -225,15 +275,14 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(combineTwice(UserId(5)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "UserId(value=10)",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "UserId(value=10)")
     }
 
-    @Test fun deriveViaNullableReturnTransportEvaluatesUnderlyingMethodOnlyOnce() {
+    @Test
+    fun deriveViaNullableReturnTransportEvaluatesUnderlyingMethodOnlyOnce() {
         val source =
             """
             package demo
@@ -271,7 +320,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 println(current<UserId>())
                 println(ViaMaybeValue.calls)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -279,11 +329,13 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 """
                 UserId(value=7)
                 1
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun deriveViaSumReturnTransportEvaluatesUnderlyingMethodOnlyOnce() {
+    @Test
+    fun deriveViaSumReturnTransportEvaluatesUnderlyingMethodOnlyOnce() {
         val source =
             """
             package demo
@@ -325,7 +377,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 println(pick<User>())
                 println(ViaPicker.calls)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -333,7 +386,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 """
                 Num(value=5)
                 1
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -341,7 +395,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
     // - DeriveVia must not accept an empty path
     // - the annotation must name at least one via-type waypoint or pinned Iso segment
     // - otherwise the feature degenerates into unconstrained "search some equivalent type" behavior
-    @Test fun rejectsEmptyDeriveViaPaths() {
+    @Test
+    fun rejectsEmptyDeriveViaPaths() {
         val source =
             """
             package demo
@@ -357,18 +412,17 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(Show::class) // E:TC_CANNOT_DERIVE empty DeriveVia paths must be rejected
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("empty path"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("empty path")),
         )
     }
 
-    @Test fun validatesRepeatableEmptyDeriveViaPathsInFirAndKeepsThemOutOfRefinement() {
+    @Test
+    fun validatesRepeatableEmptyDeriveViaPathsInFirAndKeepsThemOutOfRefinement() {
         val source =
             """
             package demo
@@ -394,24 +448,23 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(UserId(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics = listOf(expectedCannotDerive("empty path")),
             unexpectedMessages =
-                listOf(
-                    "no context argument",
-                    "required instance",
-                    "overload resolution ambiguity",
-                ),
+                listOf("no context argument", "required instance", "overload resolution ambiguity"),
         )
     }
 
     // Exact intended semantics:
     // - DeriveVia must not accept a path that resolves straight back to the annotated class
-    // - that would only publish a useless direct-recursive rule with identical prerequisite and provided goals
-    @Test fun rejectsIdentityDeriveViaPathsThatResolveBackToTheAnnotatedClass() {
+    // - that would only publish a useless direct-recursive rule with identical prerequisite and
+    // provided goals
+    @Test
+    fun rejectsIdentityDeriveViaPathsThatResolveBackToTheAnnotatedClass() {
         val source =
             """
             package demo
@@ -427,18 +480,17 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(Show::class, UserId::class) // E:TC_CANNOT_DERIVE self/identity DeriveVia paths must be rejected
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("resolve back", "annotated class"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("resolve back", "annotated class")),
         )
     }
 
-    @Test fun deriveViaRejectsNonTypeclassTargetsInFir() {
+    @Test
+    fun deriveViaRejectsNonTypeclassTargetsInFir() {
         val source =
             """
             package demo
@@ -451,25 +503,24 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
             @DeriveVia(Plain::class, Wire::class) // E:TC_CANNOT_DERIVE non-typeclass DeriveVia targets must be diagnosed explicitly
             data class UserId(val value: String)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics = listOf(expectedCannotDerive("plain", "@typeclass")),
-            unexpectedMessages =
-                listOf(
-                    "no context argument",
-                    "overload resolution ambiguity",
-                ),
+            unexpectedMessages = listOf("no context argument", "overload resolution ambiguity"),
         )
     }
 
     // Exact intended semantics:
     // - Equiv search is canonical by endpoint pair, not by proof tree
-    // - if multiple direct/composed Equiv derivations all establish the same endpoint pair, they do not by themselves
+    // - if multiple direct/composed Equiv derivations all establish the same endpoint pair, they do
+    // not by themselves
     //   create ambiguity for DeriveVia
     // - ambiguity is only about user-visible path choices or distinct terminal typeclass instances
-    @Test fun treatsMultipleEquivProofTreesForTheSameEndpointPairAsOneCanonicalEquiv() {
+    @Test
+    fun treatsMultipleEquivProofTreesForTheSameEndpointPairAsOneCanonicalEquiv() {
         val source =
             """
             package demo
@@ -516,18 +567,19 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(TaggedUserId(3)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "b:3",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "b:3")
     }
 
     // Exact intended semantics:
-    // - DeriveVia may synthesize transient local Equiv chains while deriving one requested typeclass
-    // - those transient Equivs are NOT exported to ordinary search and cannot be summoned later as standalone proofs
-    @Test fun deriveViaLocalEquivSynthesisIsNotPublishedToOrdinaryResolution() {
+    // - DeriveVia may synthesize transient local Equiv chains while deriving one requested
+    // typeclass
+    // - those transient Equivs are NOT exported to ordinary search and cannot be summoned later as
+    // standalone proofs
+    @Test
+    fun deriveViaLocalEquivSynthesisIsNotPublishedToOrdinaryResolution() {
         val source =
             """
             package demo
@@ -558,7 +610,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(summon<Equiv<TaggedUserId, ViaB>>()) // E:TC_NO_CONTEXT_ARGUMENT TaggedUserId does not export Equiv without @DeriveEquiv
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -567,9 +620,12 @@ class DeriveViaSpec : IntegrationTestSupport() {
     }
 
     // Exact intended semantics:
-    // - @DeriveVia may be compiled in one dependency module while the typeclass and via waypoint live in an upstream module.
-    // - The deriving module itself must be able to use that derived instance while compiling against the upstream module.
-    @Test fun dependencyModuleCanCompileDeriveViaWhenViaWaypointLivesInUpstreamModule() {
+    // - @DeriveVia may be compiled in one dependency module while the typeclass and via waypoint
+    // live in an upstream module.
+    // - The deriving module itself must be able to use that derived instance while compiling
+    // against the upstream module.
+    @Test
+    fun dependencyModuleCanCompileDeriveViaWhenViaWaypointLivesInUpstreamModule() {
         val moduleA =
             HarnessDependency(
                 name = "derivevia-upstream-waypoint-a",
@@ -592,7 +648,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                                         }
                                 }
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
             )
         val moduleB =
@@ -615,7 +672,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                             value class UserId(val value: Int)
 
                             fun renderUserId(): String = render(UserId(5))
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -627,7 +685,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(renderUserId())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -637,11 +696,14 @@ class DeriveViaSpec : IntegrationTestSupport() {
     }
 
     // Exact intended semantics:
-    // - once a dependency module exports a class annotated with @DeriveVia, downstream consumer modules
+    // - once a dependency module exports a class annotated with @DeriveVia, downstream consumer
+    // modules
     //   must be able to use the resulting derived typeclass instance directly.
-    // - this exercises binary/cross-module DeriveVia reconstruction at the actual consumer request site,
+    // - this exercises binary/cross-module DeriveVia reconstruction at the actual consumer request
+    // site,
     //   not just inside the module that authored the annotation.
-    @Test fun consumerModuleCanUseDependencyDeriveViaAcrossDependencyModules() {
+    @Test
+    fun consumerModuleCanUseDependencyDeriveViaAcrossDependencyModules() {
         val moduleA =
             HarnessDependency(
                 name = "derivevia-consumer-boundary-a",
@@ -664,7 +726,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                                         }
                                 }
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
             )
         val moduleB =
@@ -684,7 +747,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                             @JvmInline
                             @DeriveVia(Show::class, Foo::class)
                             value class UserId(val value: Int)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -697,7 +761,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(UserId(12)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -706,7 +771,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
-    @Test fun supportsDerivingViaThroughSameModuleInternalValueMembers() {
+    @Test
+    fun supportsDerivingViaThroughSameModuleInternalValueMembers() {
         val source =
             """
             package demo
@@ -738,15 +804,14 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(UserId(7)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "via:7",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "via:7")
     }
 
-    @Test fun privateValueConstructorsAreRejectedWithoutCreatingOverloadAmbiguity() {
+    @Test
+    fun privateValueConstructorsAreRejectedWithoutCreatingOverloadAmbiguity() {
         val source =
             """
             package demo
@@ -784,20 +849,18 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(UserId(7)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics = listOf(expectedCannotDerive("derive via", "via", "userid")),
-            unexpectedMessages =
-                listOf(
-                    "overload resolution ambiguity",
-                    "no context argument",
-                ),
+            unexpectedMessages = listOf("overload resolution ambiguity", "no context argument"),
         )
     }
 
-    @Test fun dependencyInternalValueMembersAreRejectedAtTheAnnotationSite() {
+    @Test
+    fun dependencyInternalValueMembersAreRejectedAtTheAnnotationSite() {
         val moduleA =
             HarnessDependency(
                 name = "derivevia-internal-value-upstream",
@@ -817,7 +880,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                             object ViaShow : Show<Via> {
                                 override fun show(value: Via): String = "via:${'$'}{value.value}"
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
             )
         val moduleB =
@@ -844,7 +908,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                             fun render(value: UserId): String = "plain:${'$'}{value.value}"
 
                             fun renderUserId(): String = render(UserId(7))
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         assertDoesNotCompile(
@@ -854,7 +919,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
-    @Test fun supportsDerivingViaThroughSameModuleInternalProductMembers() {
+    @Test
+    fun supportsDerivingViaThroughSameModuleInternalProductMembers() {
         val source =
             """
             package demo
@@ -884,15 +950,14 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(UserId(7)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "via:7",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "via:7")
     }
 
-    @Test fun dependencyInternalProductMembersAreRejectedAtTheAnnotationSite() {
+    @Test
+    fun dependencyInternalProductMembersAreRejectedAtTheAnnotationSite() {
         val moduleA =
             HarnessDependency(
                 name = "derivevia-internal-product-upstream",
@@ -911,7 +976,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                             object ViaShow : Show<Via> {
                                 override fun show(value: Via): String = "via:${'$'}{value.value}"
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
             )
         val moduleB =
@@ -937,7 +1003,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                             fun render(value: UserId): String = "plain:${'$'}{value.value}"
 
                             fun renderUserId(): String = render(UserId(7))
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         assertDoesNotCompile(
@@ -947,7 +1014,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
-    @Test fun supportsDerivingViaThroughSameModuleInternalSealedCases() {
+    @Test
+    fun supportsDerivingViaThroughSameModuleInternalSealedCases() {
         val source =
             """
             package demo
@@ -989,7 +1057,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 println(render<User>(User.Empty))
                 println(render<User>(User.Box(7)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -997,11 +1066,13 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 """
                 empty
                 box:7
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun dependencyInternalSealedCasesAreRejectedAtTheAnnotationSite() {
+    @Test
+    fun dependencyInternalSealedCasesAreRejectedAtTheAnnotationSite() {
         val moduleA =
             HarnessDependency(
                 name = "derivevia-internal-sealed-upstream",
@@ -1028,7 +1099,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                                         is ViaBox -> "box:${'$'}{value.value}"
                                     }
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
             )
         assertDoesNotCompile(
@@ -1054,23 +1126,22 @@ class DeriveViaSpec : IntegrationTestSupport() {
                         fun render(value: User): String = "plain"
 
                         fun renderUser(): String = render(User.Empty)
-                        """.trimIndent(),
+                        """
+                            .trimIndent()
                 ),
             expectedDiagnostics = listOf(expectedCannotDerive("derive via", "via", "user")),
-            unexpectedMessages =
-                listOf(
-                    "overload resolution ambiguity",
-                    "no context argument",
-                ),
+            unexpectedMessages = listOf("overload resolution ambiguity", "no context argument"),
             dependencies = listOf(moduleA),
         )
     }
 
     // Exact intended semantics:
     // - pinned Iso path segments may live in an upstream dependency module.
-    // - The deriving module may still rely on transient local Equiv glue to reach the pinned segment
+    // - The deriving module may still rely on transient local Equiv glue to reach the pinned
+    // segment
     //   while compiling against that upstream module.
-    @Test fun dependencyModuleCanCompileDeriveViaWhenPinnedIsoLivesInUpstreamModule() {
+    @Test
+    fun dependencyModuleCanCompileDeriveViaWhenPinnedIsoLivesInUpstreamModule() {
         val moduleA =
             HarnessDependency(
                 name = "derivevia-upstream-iso-a",
@@ -1093,13 +1164,15 @@ class DeriveViaSpec : IntegrationTestSupport() {
                                         }
                                 }
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "depa/Token.kt" to
                             """
                             package depa
 
                             data class Token(val raw: Int)
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "depa/TokenFooIso.kt" to
                             """
                             package depa
@@ -1111,7 +1184,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
                                 override fun from(value: Foo): Token = Token(value.value)
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
             )
         val moduleB =
@@ -1135,7 +1209,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                             value class UserId(val value: Token)
 
                             fun renderUserId(): String = render(UserId(Token(9)))
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -1147,7 +1222,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(renderUserId())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1157,10 +1233,13 @@ class DeriveViaSpec : IntegrationTestSupport() {
     }
 
     // Exact intended semantics:
-    // - downstream consumer modules must also be able to use dependency-exported DeriveVia instances whose
+    // - downstream consumer modules must also be able to use dependency-exported DeriveVia
+    // instances whose
     //   path includes a pinned upstream Iso object.
-    // - this exercises binary DeriveVia reconstruction for the less trivial pinned-Iso boundary shape.
-    @Test fun consumerModuleCanUseDependencyDeriveViaWithPinnedIsoAcrossDependencyModules() {
+    // - this exercises binary DeriveVia reconstruction for the less trivial pinned-Iso boundary
+    // shape.
+    @Test
+    fun consumerModuleCanUseDependencyDeriveViaWithPinnedIsoAcrossDependencyModules() {
         val moduleA =
             HarnessDependency(
                 name = "derivevia-consumer-pinned-a",
@@ -1183,13 +1262,15 @@ class DeriveViaSpec : IntegrationTestSupport() {
                                         }
                                 }
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "depa/Token.kt" to
                             """
                             package depa
 
                             data class Token(val raw: Int)
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "depa/TokenFooIso.kt" to
                             """
                             package depa
@@ -1201,7 +1282,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
                                 override fun from(value: Foo): Token = Token(value.value)
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
             )
         val moduleB =
@@ -1222,7 +1304,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                             @JvmInline
                             @DeriveVia(Show::class, TokenFooIso::class)
                             value class UserId(val value: Token)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -1236,7 +1319,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(UserId(Token(21))))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1246,8 +1330,10 @@ class DeriveViaSpec : IntegrationTestSupport() {
     }
 
     // Exact intended semantics:
-    // - @DeriveEquiv(A::class) should make both Equiv<B, A> and Equiv<A, B> summonable in the same source module.
-    @Test fun deriveEquivPublishesBothOrientationsInSameModule() {
+    // - @DeriveEquiv(A::class) should make both Equiv<B, A> and Equiv<A, B> summonable in the same
+    // source module.
+    @Test
+    fun deriveEquivPublishesBothOrientationsInSameModule() {
         val source =
             """
             package demo
@@ -1269,7 +1355,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 println(forward.to(B(7)))
                 println(reverse.to(A(8)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1277,14 +1364,16 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 """
                 A(value=7)
                 B(value=8)
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
     // Exact intended semantics:
     // - @DeriveEquiv(A::class) compiled in module B should export a summonable Equiv<B, A>,
     //   and the reverse Equiv<A, B>, even when A itself is declared in a different upstream module.
-    @Test fun consumerModuleCanSummonDependencyDeriveEquivAcrossDependencyModules() {
+    @Test
+    fun consumerModuleCanSummonDependencyDeriveEquivAcrossDependencyModules() {
         val moduleA =
             HarnessDependency(
                 name = "deriveequiv-upstream-a",
@@ -1295,7 +1384,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                             package depa
 
                             data class A(val value: Int)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val moduleB =
@@ -1313,7 +1403,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
                             @DeriveEquiv(A::class)
                             data class B(val value: Int)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -1333,7 +1424,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 println(forward.to(B(7)))
                 println(reverse.to(A(8)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1341,12 +1433,14 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 """
                 A(value=7)
                 B(value=8)
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             dependencies = listOf(moduleB),
         )
     }
 
-    @Test fun dependencyDeriveEquivDoesNotMakeUnrelatedTargetsLookDerivable() {
+    @Test
+    fun dependencyDeriveEquivDoesNotMakeUnrelatedTargetsLookDerivable() {
         val moduleA =
             HarnessDependency(
                 name = "deriveequiv-target-precision-a",
@@ -1357,13 +1451,15 @@ class DeriveViaSpec : IntegrationTestSupport() {
                             package depa
 
                             data class A(val value: Int)
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "depa/C.kt" to
                             """
                             package depa
 
                             data class C(val value: Int)
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                     ),
             )
         val moduleB =
@@ -1381,7 +1477,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
                             @DeriveEquiv(A::class)
                             data class B(val value: Int)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -1402,7 +1499,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(choose(B(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1411,7 +1509,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
-    @Test fun deriveViaMissingViaInstanceDoesNotHidePlainOverload() {
+    @Test
+    fun deriveViaMissingViaInstanceDoesNotHidePlainOverload() {
         val source =
             """
             package demo
@@ -1436,15 +1535,14 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(choose(UserId(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "plain",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "plain")
     }
 
-    @Test fun disconnectedDeriveViaPathDoesNotHidePlainOverload() {
+    @Test
+    fun disconnectedDeriveViaPathDoesNotHidePlainOverload() {
         val source =
             """
             package demo
@@ -1469,18 +1567,18 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(choose(UserId(2)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("derive via", "kotlin/string", "userid"),
-                ),
+                listOf(expectedCannotDerive("derive via", "kotlin/string", "userid")),
         )
     }
 
-    @Test fun importedDeriveViaRulesMustStillSolveConcretePrerequisitesInFir() {
+    @Test
+    fun importedDeriveViaRulesMustStillSolveConcretePrerequisitesInFir() {
         val dependency =
             HarnessDependency(
                 name = "dep-imported-derive-via-hidden-prereq",
@@ -1509,7 +1607,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                             @JvmInline
                             @DeriveVia(Show::class, Hidden::class)
                             value class Token(val value: Hidden)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -1527,7 +1626,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(choose(Token(dep.Hidden("nope"))))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1536,7 +1636,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
-    @Test fun infeasibleDeriveEquivDoesNotHidePlainOverload() {
+    @Test
+    fun infeasibleDeriveEquivDoesNotHidePlainOverload() {
         val source =
             """
             package demo
@@ -1563,18 +1664,17 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(choose(PositiveBox(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("equiv", "positivebox", "plainbox"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("equiv", "positivebox", "plainbox")),
         )
     }
 
-    @Test fun deriveEquivRejectsRepeatedSiblingTransportPairsAsAmbiguous() {
+    @Test
+    fun deriveEquivRejectsRepeatedSiblingTransportPairsAsAmbiguous() {
         val source =
             """
             package demo
@@ -1591,18 +1691,17 @@ class DeriveViaSpec : IntegrationTestSupport() {
             data class Left(val first: A, val second: A)
 
             data class Right(val first: B, val second: B)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("equiv", "left", "right"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("equiv", "left", "right")),
         )
     }
 
-    @Test fun deriveViaSupportsRepeatedSiblingStructuralTransportShapes() {
+    @Test
+    fun deriveViaSupportsRepeatedSiblingStructuralTransportShapes() {
         val source =
             """
             package demo
@@ -1641,15 +1740,18 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(adjust(Nest(Box(UserId(1)), Box(UserId(2)))))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
-            expectedStdout = "Nest(left=Box(value=UserId(value=2)), right=Box(value=UserId(value=3)))",
+            expectedStdout =
+                "Nest(left=Box(value=UserId(value=2)), right=Box(value=UserId(value=3)))",
         )
     }
 
-    @Test fun deriveViaPreservesNullableTerminalViaTypes() {
+    @Test
+    fun deriveViaPreservesNullableTerminalViaTypes() {
         val source =
             """
             package demo
@@ -1686,7 +1788,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 println(render(UserId(7)))
                 println(render(UserId(-1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1694,11 +1797,13 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 """
                 7
                 <null>
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun deriveViaPreservesParameterizedTerminalViaTypes() {
+    @Test
+    fun deriveViaPreservesParameterizedTerminalViaTypes() {
         val source =
             """
             package demo
@@ -1734,15 +1839,14 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(UserId(4)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "4|5",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "4|5")
     }
 
-    @Test fun deriveViaImplementsInheritedAbstractMembers() {
+    @Test
+    fun deriveViaImplementsInheritedAbstractMembers() {
         val source =
             """
             package demo
@@ -1781,15 +1885,14 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(describe(UserId(9)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "render:9|pretty:9",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "render:9|pretty:9")
     }
 
-    @Test fun deriveViaSupportsAbstractClassTypeclasses() {
+    @Test
+    fun deriveViaSupportsAbstractClassTypeclasses() {
         val source =
             """
             package demo
@@ -1823,15 +1926,14 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(describe(UserId(9)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "pretty:9|[pretty:9]",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "pretty:9|[pretty:9]")
     }
 
-    @Test fun deriveViaSupportsAbstractMutableProperties() {
+    @Test
+    fun deriveViaSupportsAbstractMutableProperties() {
         val source =
             """
             package demo
@@ -1868,7 +1970,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 println(rewrite(UserId(7)))
                 println(FooSlot.current)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1876,11 +1979,13 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 """
                 UserId(value=1) -> UserId(value=7)
                 Foo(value=7)
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun deriveViaExpandsInheritedTypeclassHeadsForResolution() {
+    @Test
+    fun deriveViaExpandsInheritedTypeclassHeadsForResolution() {
         val source =
             """
             package demo
@@ -1919,15 +2024,14 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(UserId(7)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "foo:7",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "foo:7")
     }
 
-    @Test fun deriveViaRejectsUnsupportedInheritedAbstractMembers() {
+    @Test
+    fun deriveViaRejectsUnsupportedInheritedAbstractMembers() {
         val source =
             """
             package demo
@@ -1961,15 +2065,18 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(Pretty::class, Foo::class) // E:TC_CANNOT_DERIVE inherited abstract members must participate in DeriveVia validation
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedCannotDerive("opaque or mutable nominal containers")),
+            expectedDiagnostics =
+                listOf(expectedCannotDerive("opaque or mutable nominal containers")),
         )
     }
 
-    @Test fun deriveViaRejectsUnsupportedTransitivelyInheritedAbstractMembers() {
+    @Test
+    fun deriveViaRejectsUnsupportedTransitivelyInheritedAbstractMembers() {
         val source =
             """
             package demo
@@ -2006,15 +2113,18 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(Pretty::class, Foo::class) // E:TC_CANNOT_DERIVE transitively inherited abstract members must participate in DeriveVia validation
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedCannotDerive("opaque or mutable nominal containers")),
+            expectedDiagnostics =
+                listOf(expectedCannotDerive("opaque or mutable nominal containers")),
         )
     }
 
-    @Test fun deriveViaAdaptsInheritedAbstractMembersAcrossInterfaceChains() {
+    @Test
+    fun deriveViaAdaptsInheritedAbstractMembersAcrossInterfaceChains() {
         val source =
             """
             package demo
@@ -2056,7 +2166,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 println(pretty.render(UserId(7)))
                 println(pretty.pretty(UserId(7)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -2064,11 +2175,13 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 """
                 render:7
                 pretty:7
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun deriveViaAdaptsPurelyInheritedAbstractTypeclassSurfaces() {
+    @Test
+    fun deriveViaAdaptsPurelyInheritedAbstractTypeclassSurfaces() {
         val source =
             """
             package demo
@@ -2102,15 +2215,14 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 val pretty = summon<Pretty<UserId>>()
                 println(pretty.render(UserId(9)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "render:9",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "render:9")
     }
 
-    @Test fun deriveViaAdaptsInheritedAbstractProperties() {
+    @Test
+    fun deriveViaAdaptsInheritedAbstractProperties() {
         val source =
             """
             package demo
@@ -2144,15 +2256,14 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 val pretty = summon<Pretty<UserId>>()
                 println(pretty.zero.value)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "11",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "11")
     }
 
-    @Test fun genericDeriveEquivTargetsAreRejectedAtTheAnnotationSite() {
+    @Test
+    fun genericDeriveEquivTargetsAreRejectedAtTheAnnotationSite() {
         val source =
             """
             package demo
@@ -2163,7 +2274,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
             @DeriveEquiv(PlainIntBox::class) // E:TC_CANNOT_DERIVE generic DeriveEquiv targets are not supported yet
             data class GenericBox<A>(val value: A)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -2171,7 +2283,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
-    @Test fun validatesRepeatableDeriveEquivAnnotationsInFir() {
+    @Test
+    fun validatesRepeatableDeriveEquivAnnotationsInFir() {
         val source =
             """
             package demo
@@ -2183,7 +2296,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @DeriveEquiv(GenericBox::class) // E:TC_CANNOT_DERIVE repeatable generic DeriveEquiv targets must be rejected in FIR
             @DeriveEquiv(GenericBox::class) // E:TC_CANNOT_DERIVE repeatable generic DeriveEquiv targets must be rejected in FIR
             data class PlainIntBox(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -2191,7 +2305,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
-    @Test fun validatesRepeatableDisconnectedDeriveViaPathsInFir() {
+    @Test
+    fun validatesRepeatableDisconnectedDeriveViaPathsInFir() {
         val source =
             """
             package demo
@@ -2208,15 +2323,18 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @DeriveVia(Show::class, String::class) // E:TC_CANNOT_DERIVE repeatable disconnected DeriveVia paths must be rejected in FIR
             @DeriveVia(Show::class, String::class) // E:TC_CANNOT_DERIVE repeatable disconnected DeriveVia paths must be rejected in FIR
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedCannotDerive("derive via", "kotlin/string", "userid")),
+            expectedDiagnostics =
+                listOf(expectedCannotDerive("derive via", "kotlin/string", "userid")),
         )
     }
 
-    @Test fun validatesRepeatableInfeasibleDeriveEquivAnnotationsInFir() {
+    @Test
+    fun validatesRepeatableInfeasibleDeriveEquivAnnotationsInFir() {
         val source =
             """
             package demo
@@ -2232,7 +2350,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                     require(value > 0)
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -2240,7 +2359,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
-    @Test fun genericDeriveViaTargetsAreRejectedAtTheAnnotationSite() {
+    @Test
+    fun genericDeriveViaTargetsAreRejectedAtTheAnnotationSite() {
         val source =
             """
             package demo
@@ -2264,7 +2384,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
             @DeriveVia(Show::class, Foo::class) // E:TC_CANNOT_DERIVE generic DeriveVia targets are not supported yet
             data class GenericBox<A>(val value: A)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -2273,10 +2394,13 @@ class DeriveViaSpec : IntegrationTestSupport() {
     }
 
     // Exact intended semantics:
-    // - if the same declaration requests the same typeclass through multiple viable DeriveVia paths,
-    //   those are user-visible terminal choices rather than harmless internal Equiv proof-tree differences
+    // - if the same declaration requests the same typeclass through multiple viable DeriveVia
+    // paths,
+    //   those are user-visible terminal choices rather than harmless internal Equiv proof-tree
+    // differences
     // - the resulting derived instances must therefore be treated as ambiguous
-    @Test fun rejectsMultipleViableDeriveViaAnnotationsForTheSameTypeclass() {
+    @Test
+    fun rejectsMultipleViableDeriveViaAnnotationsForTheSameTypeclass() {
         val source =
             """
             package demo
@@ -2317,7 +2441,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(UserId(3))) // E:TC_AMBIGUOUS_INSTANCE two viable DeriveVia paths produce ambiguous Show<UserId>
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -2328,7 +2453,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
     // Exact intended semantics:
     // - duplicate identical DeriveVia annotations are redundant declarations of the same route
     // - they must not create extra refinement rules or make a single contextual call ambiguous
-    @Test fun duplicateIdenticalDeriveViaAnnotationsDoNotCreateExtraRefinementCandidates() {
+    @Test
+    fun duplicateIdenticalDeriveViaAnnotationsDoNotCreateExtraRefinementCandidates() {
         val source =
             """
             package demo
@@ -2361,15 +2487,14 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(UserId(7)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "via:7",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "via:7")
     }
 
-    @Test fun failedSiblingDeriveViaBranchesMustNotLeakRecursiveFeasibilityState() {
+    @Test
+    fun failedSiblingDeriveViaBranchesMustNotLeakRecursiveFeasibilityState() {
         val source =
             """
             package demo
@@ -2402,15 +2527,14 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(UserId(7)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "plain:7",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "plain:7")
     }
 
-    @Test fun deriveViaCyclesMustNotCountAsSatisfiedRecursiveEvidence() {
+    @Test
+    fun deriveViaCyclesMustNotCountAsSatisfiedRecursiveEvidence() {
         val source =
             """
             package demo
@@ -2443,18 +2567,17 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(UserId(7)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "plain:7",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "plain:7")
     }
 
     // Exact intended semantics:
     // - for multi-parameter typeclasses, DeriveVia transports only the last type parameter
     // - so Decoder<E, A> should support deriving Decoder<String, UserId> from Decoder<String, Foo>
-    @Test fun supportsDerivingViaForMultiParameterTypeclassesWhenTheLastSlotIsTransported() {
+    @Test
+    fun supportsDerivingViaForMultiParameterTypeclassesWhenTheLastSlotIsTransported() {
         val source =
             """
             package demo
@@ -2486,18 +2609,19 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(decode<String, UserId>("41"))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "UserId(value=41)",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "UserId(value=41)")
     }
 
     // Exact intended semantics:
-    // - if the annotated type appears in a non-final typeclass slot, DeriveVia does not transport it
-    // - so annotating UserId for Encoder<A, E> must not synthesize Encoder<UserId, String> from Encoder<Foo, String>
-    @Test fun rejectsAssumingDeriveViaTransportsNonFinalTypeParameters() {
+    // - if the annotated type appears in a non-final typeclass slot, DeriveVia does not transport
+    // it
+    // - so annotating UserId for Encoder<A, E> must not synthesize Encoder<UserId, String> from
+    // Encoder<Foo, String>
+    @Test
+    fun rejectsAssumingDeriveViaTransportsNonFinalTypeParameters() {
         val source =
             """
             package demo
@@ -2527,22 +2651,22 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 val encoder = one.wabbit.typeclass.summon<Encoder<UserId, String>>() // E:TC_NO_CONTEXT_ARGUMENT DeriveVia only transports the final typeclass slot
                 println(encoder.encode(UserId(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedNoContextArgument(),
-                ),
+            expectedDiagnostics = listOf(expectedNoContextArgument()),
         )
     }
 
     // Exact intended semantics:
     // - automatic Equiv synthesis for value classes is only valid for transparent total wrappers
-    // - a validating wrapper like PositiveInt is not transparently equivalent to Int, because Int -> PositiveInt is partial
+    // - a validating wrapper like PositiveInt is not transparently equivalent to Int, because Int
+    // -> PositiveInt is partial
     // - therefore DeriveVia(Show::class, Int::class) must fail here
-    @Test fun rejectsAutomaticEquivForValidatedValueClasses() {
+    @Test
+    fun rejectsAutomaticEquivForValidatedValueClasses() {
         val source =
             """
             package demo
@@ -2568,21 +2692,22 @@ class DeriveViaSpec : IntegrationTestSupport() {
                     require(value > 0)
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("derive via", "positiveint"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("derive via", "positiveint")),
         )
     }
 
     // Exact intended semantics:
-    // - transparent-looking structural products must still be rejected when they carry extra backing state
-    // - extra non-constructor fields invalidate structural Equiv synthesis even if the primary-constructor shape matches
-    @Test fun rejectsStructuralDeriveEquivForProductsWithExtraBackingFields() {
+    // - transparent-looking structural products must still be rejected when they carry extra
+    // backing state
+    // - extra non-constructor fields invalidate structural Equiv synthesis even if the
+    // primary-constructor shape matches
+    @Test
+    fun rejectsStructuralDeriveEquivForProductsWithExtraBackingFields() {
         val source =
             """
             package demo
@@ -2595,18 +2720,17 @@ class DeriveViaSpec : IntegrationTestSupport() {
             data class StatefulBox(val value: Int) {
                 private var cached: Int? = null
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("equiv", "statefulbox", "plainbox"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("equiv", "statefulbox", "plainbox")),
         )
     }
 
-    @Test fun rejectsStructuralDeriveEquivForLocalProductsWithCapturedState() {
+    @Test
+    fun rejectsStructuralDeriveEquivForLocalProductsWithCapturedState() {
         val source =
             """
             package demo
@@ -2623,21 +2747,20 @@ class DeriveViaSpec : IntegrationTestSupport() {
                     fun reveal(): Int = hidden
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("equiv", "statefulbox", "plainbox"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("equiv", "statefulbox", "plainbox")),
         )
     }
 
     // Exact intended semantics:
     // - delegated stored properties add hidden state and are outside the transparency whitelist
     // - a would-be transparent product using property delegation must therefore be rejected
-    @Test fun rejectsStructuralDeriveEquivForProductsWithDelegatedStoredProperties() {
+    @Test
+    fun rejectsStructuralDeriveEquivForProductsWithDelegatedStoredProperties() {
         val source =
             """
             package demo
@@ -2650,21 +2773,22 @@ class DeriveViaSpec : IntegrationTestSupport() {
             data class DelegatedBox(val value: Int) {
                 val cached: Int by lazy { value }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("equiv", "delegatedbox", "plainbox"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("equiv", "delegatedbox", "plainbox")),
         )
     }
 
     // Exact intended semantics:
-    // - secondary constructors introduce additional construction paths and therefore violate the transparency whitelist
-    // - structural DeriveEquiv must reject products that would otherwise match but define such constructors
-    @Test fun rejectsStructuralDeriveEquivForProductsWithSecondaryConstructors() {
+    // - secondary constructors introduce additional construction paths and therefore violate the
+    // transparency whitelist
+    // - structural DeriveEquiv must reject products that would otherwise match but define such
+    // constructors
+    @Test
+    fun rejectsStructuralDeriveEquivForProductsWithSecondaryConstructors() {
         val source =
             """
             package demo
@@ -2677,21 +2801,21 @@ class DeriveViaSpec : IntegrationTestSupport() {
             data class SecondaryBox(val value: Int) {
                 constructor(text: String) : this(text.length)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("equiv", "secondarybox", "plainbox"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("equiv", "secondarybox", "plainbox")),
         )
     }
 
     // Exact intended semantics:
-    // - direct A values and ordinary function positions should transport independently of the rest of the `Fancy<A>`
+    // - direct A values and ordinary function positions should transport independently of the rest
+    // of the `Fancy<A>`
     //   surface
-    @Test fun supportsTransportAcrossDirectValuesAndOrdinaryFunctionPositions() {
+    @Test
+    fun supportsTransportAcrossDirectValuesAndOrdinaryFunctionPositions() {
         val source =
             """
             package demo
@@ -2740,20 +2864,21 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(probe(UserId(7)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "foo:7|false|true|UserId(value=0)",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "foo:7|false|true|UserId(value=0)")
     }
 
     // Exact intended semantics:
-    // - transparent structural wrappers with covariant, contravariant, invariant, and phantom A-occurrences should
+    // - transparent structural wrappers with covariant, contravariant, invariant, and phantom
+    // A-occurrences should
     //   transport independently of suspend/extension/context machinery
-    // - the contract here is extensional only: repeated calls may allocate fresh wrappers, so `===` and allocation
+    // - the contract here is extensional only: repeated calls may allocate fresh wrappers, so `===`
+    // and allocation
     //   patterns are not part of the promised semantics
-    @Test fun supportsTransportAcrossStructuralProductWrappers() {
+    @Test
+    fun supportsTransportAcrossStructuralProductWrappers() {
         val source =
             """
             package demo
@@ -2812,7 +2937,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(probe(UserId(7)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -2821,9 +2947,11 @@ class DeriveViaSpec : IntegrationTestSupport() {
     }
 
     // Exact intended semantics:
-    // - suspend members and extension receivers should transport independently of structural wrappers or context
+    // - suspend members and extension receivers should transport independently of structural
+    // wrappers or context
     //   receivers
-    @Test fun supportsTransportAcrossSuspendFunctionsAndExtensionReceivers() {
+    @Test
+    fun supportsTransportAcrossSuspendFunctionsAndExtensionReceivers() {
         val source =
             """
             package demo
@@ -2862,7 +2990,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(probe(UserId(7)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -2873,7 +3002,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
     // Exact intended semantics:
     // - context receivers whose context does not mention A should transport independently
-    @Test fun supportsTransportAcrossContextIndependentContextReceivers() {
+    @Test
+    fun supportsTransportAcrossContextIndependentContextReceivers() {
         val source =
             """
             package demo
@@ -2910,23 +3040,26 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(probe(UserId(7)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "ctx:7",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "ctx:7")
     }
 
     // Exact intended semantics:
-    // - the transport closure F(A) should cover direct values, higher-order functions, suspend functions,
-    //   extension receivers, context-independent contextual methods, and simple non-recursive ADTs that mention A
+    // - the transport closure F(A) should cover direct values, higher-order functions, suspend
+    // functions,
+    //   extension receivers, context-independent contextual methods, and simple non-recursive ADTs
+    // that mention A
     //   in covariant, contravariant, invariant, or phantom positions
     // - the interface below intentionally mixes those shapes as a broad integration specimen
-    // - DeriveVia(Fancy::class, Foo::class) should succeed because every appearance of A lies inside F(A)
-    // - the contract here is extensional only: repeated calls may allocate fresh wrappers, so `===` and allocation
+    // - DeriveVia(Fancy::class, Foo::class) should succeed because every appearance of A lies
+    // inside F(A)
+    // - the contract here is extensional only: repeated calls may allocate fresh wrappers, so `===`
+    // and allocation
     //   patterns are not part of the promised semantics
-    @Test fun supportsTransportAcrossStructuredHigherOrderAndContextIndependentShapes() {
+    @Test
+    fun supportsTransportAcrossStructuredHigherOrderAndContextIndependentShapes() {
         val source =
             """
             package demo
@@ -3021,7 +3154,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(probe(UserId(7)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -3032,9 +3166,11 @@ class DeriveViaSpec : IntegrationTestSupport() {
     }
 
     // Exact intended semantics:
-    // - nullability, type aliases, star projections, inherited default methods, and unconstrained extra type
+    // - nullability, type aliases, star projections, inherited default methods, and unconstrained
+    // extra type
     //   parameters are all allowed when their A-occurrences remain inside F(A)
-    @Test fun supportsTransportAcrossNullabilityAliasesGenericMethodsStarProjectionsAndInheritedDefaults() {
+    @Test
+    fun supportsTransportAcrossNullabilityAliasesGenericMethodsStarProjectionsAndInheritedDefaults() {
         val source =
             """
             package demo
@@ -3086,7 +3222,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(probe(UserId(3)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -3095,7 +3232,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
         )
     }
 
-    @Test fun deriveViaForwardsConcreteOverridesOfDefaultMembers() {
+    @Test
+    fun deriveViaForwardsConcreteOverridesOfDefaultMembers() {
         val source =
             """
             package demo
@@ -3131,18 +3269,18 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(describe(UserId(9)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "pretty:9|<9>",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "pretty:9|<9>")
     }
 
     // Exact intended semantics:
     // - DeriveVia validation must cover every member generation may forward
-    // - otherwise generation can silently skip a concrete member override and fall back to inherited behavior
-    @Test fun rejectsConcreteForwardedMembersThatCannotBeTransported() {
+    // - otherwise generation can silently skip a concrete member override and fall back to
+    // inherited behavior
+    @Test
+    fun rejectsConcreteForwardedMembersThatCannotBeTransported() {
         val source =
             """
             package demo
@@ -3171,18 +3309,18 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE concrete forwarded members must be transportable
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("opaque or mutable nominal containers"),
-                ),
+                listOf(expectedCannotDerive("opaque or mutable nominal containers")),
         )
     }
 
-    @Test fun rejectsConcreteForwardedContextMembersWhenValidatingFirTransportability() {
+    @Test
+    fun rejectsConcreteForwardedContextMembersWhenValidatingFirTransportability() {
         val source =
             """
             package demo
@@ -3210,23 +3348,24 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE concrete forwarded context members must be transportable
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("context parameters", "transported type parameter"),
-                ),
+                listOf(expectedCannotDerive("context parameters", "transported type parameter")),
         )
     }
 
     // Exact intended semantics:
     // - the transport closure F(A) does not automatically admit arbitrary nominal containers
-    // - nominal types like List<A> or Comparator<A> are outside the structural subset unless the compiler grows
+    // - nominal types like List<A> or Comparator<A> are outside the structural subset unless the
+    // compiler grows
     //   an explicit rule for them
     // - therefore DeriveVia should reject a typeclass whose only A-occurrence is inside List<A>
-    @Test fun rejectsTransportAcrossUnspecifiedNominalContainers() {
+    @Test
+    fun rejectsTransportAcrossUnspecifiedNominalContainers() {
         val source =
             """
             package demo
@@ -3251,22 +3390,23 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE List<A> is an opaque nominal container here
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("opaque or mutable nominal containers"),
-                ),
+                listOf(expectedCannotDerive("opaque or mutable nominal containers")),
         )
     }
 
     // Exact intended semantics:
     // - structural nominal shapes in F(A) must expose only read-only stored state
-    // - mutable `var` fields are outside the allowed closure, because a transport adapter would copy the box and
+    // - mutable `var` fields are outside the allowed closure, because a transport adapter would
+    // copy the box and
     //   lose aliasing/mutation behavior
-    @Test fun rejectsTransportAcrossMutableStructuralShapes() {
+    @Test
+    fun rejectsTransportAcrossMutableStructuralShapes() {
         val source =
             """
             package demo
@@ -3293,21 +3433,22 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE mutable structural boxes are outside the transport closure
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("opaque or mutable nominal containers"),
-                ),
+                listOf(expectedCannotDerive("opaque or mutable nominal containers")),
         )
     }
 
     // Exact intended semantics:
-    // - contextual method shapes are only in F(A) when their context parameter types do not mention A
+    // - contextual method shapes are only in F(A) when their context parameter types do not mention
+    // A
     // - a member whose context parameter depends on A is outside the allowed transport closure
-    @Test fun rejectsTransportWhenContextParametersDependOnA() {
+    @Test
+    fun rejectsTransportWhenContextParametersDependOnA() {
         val source =
             """
             package demo
@@ -3339,22 +3480,24 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE context parameters must not mention the transported type parameter
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("context parameters", "transported type parameter"),
-                ),
+                listOf(expectedCannotDerive("context parameters", "transported type parameter")),
         )
     }
 
     // Exact intended semantics:
     // - additional method type parameters are rigid opaque variables
-    // - transportability must therefore inspect the actual type structure rather than text-rendered names
-    // - unrelated definitely-non-null uses like method-local `A & Any` must not be mistaken for the transported class-level `A`
-    @Test fun allowsOpaqueMethodTypeParametersInsideUnrelatedDefinitelyNonNullTypes() {
+    // - transportability must therefore inspect the actual type structure rather than text-rendered
+    // names
+    // - unrelated definitely-non-null uses like method-local `A & Any` must not be mistaken for the
+    // transported class-level `A`
+    @Test
+    fun allowsOpaqueMethodTypeParametersInsideUnrelatedDefinitelyNonNullTypes() {
         val source =
             """
             package demo
@@ -3386,18 +3529,18 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "age",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "age")
     }
 
     // Exact intended semantics:
     // - additional method type parameters are allowed only when their bounds do not mention A
-    // - a method like fun <T : A> narrow(value: T): A is therefore outside the supported transport boundary
-    @Test fun rejectsTransportAcrossGenericMethodBoundsMentioningA() {
+    // - a method like fun <T : A> narrow(value: T): A is therefore outside the supported transport
+    // boundary
+    @Test
+    fun rejectsTransportAcrossGenericMethodBoundsMentioningA() {
         val source =
             """
             package demo
@@ -3422,22 +3565,24 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE method bounds mentioning the transported type parameter are unsupported
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("type-parameter bounds", "transported type parameter"),
-                ),
+                listOf(expectedCannotDerive("type-parameter bounds", "transported type parameter")),
         )
     }
 
     // Exact intended semantics:
     // - inherited abstract members are part of the transported typeclass surface
-    // - DeriveVia must therefore validate inherited method bounds the same way it validates direct members
-    // - the inherited invalid member must be rejected during FIR validation rather than being discovered only later
-    @Test fun rejectsTransportAcrossInheritedGenericMethodBoundsMentioningA() {
+    // - DeriveVia must therefore validate inherited method bounds the same way it validates direct
+    // members
+    // - the inherited invalid member must be rejected during FIR validation rather than being
+    // discovered only later
+    @Test
+    fun rejectsTransportAcrossInheritedGenericMethodBoundsMentioningA() {
         val source =
             """
             package demo
@@ -3465,26 +3610,23 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE inherited method bounds mentioning the transported type parameter are unsupported
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("type-parameter bounds", "transported type parameter"),
-                ),
+                listOf(expectedCannotDerive("type-parameter bounds", "transported type parameter")),
             unexpectedMessages =
-                listOf(
-                    "no context argument",
-                    "required instance",
-                    "overload resolution ambiguity",
-                ),
+                listOf("no context argument", "required instance", "overload resolution ambiguity"),
         )
     }
 
     // Exact intended semantics:
-    // - definitely-non-null / intersection forms like A & Any are outside the supported transport boundary for now
-    @Test fun rejectsTransportAcrossDefinitelyNonNullIntersectionShapes() {
+    // - definitely-non-null / intersection forms like A & Any are outside the supported transport
+    // boundary for now
+    @Test
+    fun rejectsTransportAcrossDefinitelyNonNullIntersectionShapes() {
         val source =
             """
             package demo
@@ -3509,21 +3651,22 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE definitely-non-null and intersection member types are unsupported
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("definitely-non-null", "intersection member types"),
-                ),
+                listOf(expectedCannotDerive("definitely-non-null", "intersection member types")),
         )
     }
 
     // Exact intended semantics:
     // - recursive nominal shapes are outside F(A) by default
-    // - even when their fields are otherwise transparent, the transport closure only admits finite non-recursive shapes
-    @Test fun rejectsTransportAcrossRecursiveNominalShapes() {
+    // - even when their fields are otherwise transparent, the transport closure only admits finite
+    // non-recursive shapes
+    @Test
+    fun rejectsTransportAcrossRecursiveNominalShapes() {
         val source =
             """
             package demo
@@ -3550,22 +3693,22 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE recursive nominal transport shapes are unsupported
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("recursive nominal transport shapes"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("recursive nominal transport shapes")),
         )
     }
 
     // Exact intended semantics:
-    // - Unit fields are zero-information positions and may be inserted/elided during structural Equiv synthesis
+    // - Unit fields are zero-information positions and may be inserted/elided during structural
+    // Equiv synthesis
     // - ambiguity checking for sums must happen after that Unit-normalization, not before
     // - therefore a nullary case and a unary Unit case collide and must make DeriveEquiv fail
-    @Test fun rejectsStructuralDeriveEquivWhenUnitNormalizationMakesSumCasesAmbiguous() {
+    @Test
+    fun rejectsStructuralDeriveEquivWhenUnitNormalizationMakesSumCasesAmbiguous() {
         val source =
             """
             package demo
@@ -3585,14 +3728,12 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 data object Empty : LeftShape
                 data class UnitBox(val unit: Unit) : LeftShape
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("equiv", "leftshape", "rightshape"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("equiv", "leftshape", "rightshape")),
         )
     }
 
@@ -3600,7 +3741,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
     // - product permutation is only allowed when it is unambiguous
     // - repeated field types can make multiple permutations equally valid
     // - in that case DeriveEquiv must fail rather than guessing a field alignment
-    @Test fun rejectsStructuralDeriveEquivWhenProductPermutationIsAmbiguous() {
+    @Test
+    fun rejectsStructuralDeriveEquivWhenProductPermutationIsAmbiguous() {
         val source =
             """
             package demo
@@ -3611,14 +3753,12 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
             @DeriveEquiv(RightShape::class) // E:TC_CANNOT_DERIVE repeated field types make the product permutation ambiguous
             data class LeftShape(val a: String, val b: Int, val c: String)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("equiv", "leftshape", "rightshape"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("equiv", "leftshape", "rightshape")),
         )
     }
 
@@ -3626,7 +3766,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
     // - product transport requires one unique global field bijection
     // - repeated field types remain ambiguous even when declaration order happens to line up
     // - positional alignment is an implementation detail, not a semantic tie-breaker
-    @Test fun rejectsStructuralDeriveEquivWhenPositionalProductMatchIsStillAmbiguous() {
+    @Test
+    fun rejectsStructuralDeriveEquivWhenPositionalProductMatchIsStillAmbiguous() {
         val source =
             """
             package demo
@@ -3654,23 +3795,23 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
             context(show: Show<A>)
             fun <A> render(value: A): String = show.show(value)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("equiv", "leftshape", "rightshape"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("equiv", "leftshape", "rightshape")),
         )
     }
 
     // Exact intended semantics:
     // - because Equiv is compiler-owned canonical evidence, users must not be allowed to declare
     //   ordinary @Instance values for Equiv<A, B>
-    // - the explicit, user-authored escape hatch is Iso<A, B>, referenced by pinned DeriveVia path segments
+    // - the explicit, user-authored escape hatch is Iso<A, B>, referenced by pinned DeriveVia path
+    // segments
     // - attempting to publish a user @Instance Equiv should fail at compile time
-    @Test fun rejectsUserAuthoredEquivInstances() {
+    @Test
+    fun rejectsUserAuthoredEquivInstances() {
         val source =
             """
             package demo
@@ -3686,22 +3827,23 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 override fun to(value: UserId): Int = value.value
                 override fun from(value: Int): UserId = UserId(value)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                mapOf(
-                    "err" to invalidEquivSubclassing(),
-                ),
+            expectedDiagnostics = mapOf("err" to invalidEquivSubclassing()),
         )
     }
 
     // Exact intended semantics:
     // - "compiler-owned" is stronger than "not an @Instance"
-    // - users must not subclass or manually construct library Equiv values even if they never enter instance search
-    // - the escape hatch for explicit user conversions remains Iso<A, B>, not hand-made Equiv objects
-    @Test fun rejectsManualUserSubclassingOfEquiv() {
+    // - users must not subclass or manually construct library Equiv values even if they never enter
+    // instance search
+    // - the escape hatch for explicit user conversions remains Iso<A, B>, not hand-made Equiv
+    // objects
+    @Test
+    fun rejectsManualUserSubclassingOfEquiv() {
         val source =
             """
             package demo
@@ -3715,26 +3857,28 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 override fun to(value: UserId): Int = value.value
                 override fun from(value: Int): UserId = UserId(value)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                mapOf(
-                    "err" to invalidEquivSubclassing(),
-                ),
+            expectedDiagnostics = mapOf("err" to invalidEquivSubclassing()),
         )
     }
 
     // Exact intended semantics:
     // - DeriveVia may pin explicit Iso objects in the path.
-    // - Each pinned Iso object contributes one exact conversion segment; the compiler must not search for
+    // - Each pinned Iso object contributes one exact conversion segment; the compiler must not
+    // search for
     //   alternative Iso values for that segment.
-    // - Compiler-solved Equiv glue may still be inserted before or after that pinned segment, but only if exactly
+    // - Compiler-solved Equiv glue may still be inserted before or after that pinned segment, but
+    // only if exactly
     //   one endpoint is reachable from the current state.
     // - Path orientation is inferred from that uniquely reachable endpoint.
-    // - The final via type must have the requested typeclass instance, which is then transported back to the target type.
-    @Test fun supportsDerivingViaPinnedIsoObjectChains() {
+    // - The final via type must have the requested typeclass instance, which is then transported
+    // back to the target type.
+    @Test
+    fun supportsDerivingViaPinnedIsoObjectChains() {
         val source =
             """
             package demo
@@ -3794,7 +3938,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(combineTwice(DerivedUserId(UserId(7))))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -3804,8 +3949,10 @@ class DeriveViaSpec : IntegrationTestSupport() {
 
     // Exact intended semantics:
     // - a pinned path segment must name an object singleton implementing Iso
-    // - naming an ordinary class that implements Iso is invalid because it does not identify one exact edge value
-    @Test fun rejectsPinnedIsoSegmentsThatAreNotObjects() {
+    // - naming an ordinary class that implements Iso is invalid because it does not identify one
+    // exact edge value
+    @Test
+    fun rejectsPinnedIsoSegmentsThatAreNotObjects() {
         val source =
             """
             package demo
@@ -3836,21 +3983,21 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(Show::class, BadIso::class) // E:TC_CANNOT_DERIVE pinned Iso segments must name object singletons
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("pinned iso", "object singleton"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("pinned iso", "object singleton")),
         )
     }
 
     // Exact intended semantics:
-    // - a pinned Iso object is identified by the actual Iso override pair, not by name-plus-arity alone
+    // - a pinned Iso object is identified by the actual Iso override pair, not by name-plus-arity
+    // alone
     // - extra one-argument helper overloads must not make a valid pinned segment fail validation
-    @Test fun supportsPinnedIsoObjectsEvenWhenTheyDeclareExtraOneArgHelpers() {
+    @Test
+    fun supportsPinnedIsoObjectsEvenWhenTheyDeclareExtraOneArgHelpers() {
         val source =
             """
             package demo
@@ -3895,18 +4042,18 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(UserId(Token(9))))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "foo:9",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "foo:9")
     }
 
     // Exact intended semantics:
     // - FIR and IR should agree on pinned Iso endpoint discovery
-    // - an object that inherits Iso through an intermediate interface is still one exact pinned Iso edge
-    @Test fun supportsPinnedIsoObjectsThatInheritIsoThroughIntermediateInterfaces() {
+    // - an object that inherits Iso through an intermediate interface is still one exact pinned Iso
+    // edge
+    @Test
+    fun supportsPinnedIsoObjectsThatInheritIsoThroughIntermediateInterfaces() {
         val source =
             """
             package demo
@@ -3949,19 +4096,19 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(UserId(Token(9))))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "foo:9",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "foo:9")
     }
 
     // Exact intended semantics:
     // - pinned Iso segments may use inserted Equiv glue around them
-    // - but if no Equiv-augmented attachment can connect the current type to either endpoint, the path is disconnected
+    // - but if no Equiv-augmented attachment can connect the current type to either endpoint, the
+    // path is disconnected
     // - a disconnected pinned path must fail rather than being ignored
-    @Test fun rejectsDisconnectedPinnedIsoPathsEvenWithAllowedEquivGlue() {
+    @Test
+    fun rejectsDisconnectedPinnedIsoPathsEvenWithAllowedEquivGlue() {
         val source =
             """
             package demo
@@ -3995,21 +4142,21 @@ class DeriveViaSpec : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(Show::class, MidFooIso::class) // E:TC_CANNOT_DERIVE disconnected pinned Iso paths must fail
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("disconnected", "midfooiso"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("disconnected", "midfooiso")),
         )
     }
 
     // Exact intended semantics:
-    // - if the current type is Equiv-reachable to both endpoints of a pinned Iso, the attachment is already ambiguous
+    // - if the current type is Equiv-reachable to both endpoints of a pinned Iso, the attachment is
+    // already ambiguous
     // - DeriveVia must fail immediately rather than trying both orientations
-    @Test fun rejectsPinnedIsoPathsWhenMultipleOrientationsRemainViable() {
+    @Test
+    fun rejectsPinnedIsoPathsWhenMultipleOrientationsRemainViable() {
         val source =
             """
             package demo
@@ -4055,21 +4202,22 @@ class DeriveViaSpec : IntegrationTestSupport() {
             //   UserId --Equiv--> LeftVia --BridgeIso--> ...
             //   UserId --Equiv--> RightVia --BridgeIso.inverse--> ...
             // - DeriveVia must therefore fail immediately rather than trying to continue either path
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("ambiguous", "bridgeiso", "both endpoints"),
-                ),
+                listOf(expectedCannotDerive("ambiguous", "bridgeiso", "both endpoints")),
         )
     }
 
     // Exact intended semantics:
     // - DeriveEquiv(otherClass) should synthesize a total Equiv<AnnotatedClass, otherClass>.
-    // - Because the annotation is placed on the annotated class, that class is always one endpoint of the proof.
-    // - This is only valid for the conservative structural whitelist above; anything outside it is rejected.
+    // - Because the annotation is placed on the annotated class, that class is always one endpoint
+    // of the proof.
+    // - This is only valid for the conservative structural whitelist above; anything outside it is
+    // rejected.
     //
     // @Target(AnnotationTarget.CLASS)
     // @Repeatable
@@ -4078,7 +4226,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
     // )
 
     // - unambiguous product permutation should be sufficient for structural DeriveEquiv on products
-    @Test fun supportsStructuralDeriveEquivForUnambiguousProductPermutation() {
+    @Test
+    fun supportsStructuralDeriveEquivForUnambiguousProductPermutation() {
         val source =
             """
             package demo
@@ -4110,16 +4259,15 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(B("x", 1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "1|x",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "1|x")
     }
 
     // - unambiguous sum-case matching should be sufficient for structural DeriveEquiv on sums
-    @Test fun supportsStructuralDeriveEquivForUnambiguousSumMatching() {
+    @Test
+    fun supportsStructuralDeriveEquivForUnambiguousSumMatching() {
         val source =
             """
             package demo
@@ -4164,7 +4312,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 println(render(empty))
                 println(render(nonEmpty))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -4172,12 +4321,15 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 """
                 empty
                 1|x
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    // - Unit fields may be ignored/inserted as zero-information positions when the product match remains unambiguous
-    @Test fun supportsStructuralDeriveEquivForUnitElision() {
+    // - Unit fields may be ignored/inserted as zero-information positions when the product match
+    // remains unambiguous
+    @Test
+    fun supportsStructuralDeriveEquivForUnitElision() {
         val source =
             """
             package demo
@@ -4209,21 +4361,23 @@ class DeriveViaSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(B(1, "x", Unit)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "1|x",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "1|x")
     }
 
-    // - Product constructors are matched positionally, or by an unambiguous permutation if the field types force it.
+    // - Product constructors are matched positionally, or by an unambiguous permutation if the
+    // field types force it.
     // - Unit fields may be ignored/inserted as zero-information positions.
     // - Sum cases must match without ambiguity in both directions.
-    // - Once these equivalences exist, DeriveVia(JsonCodec::class, B::class) should only need Equiv<C, B> plus JsonCodec<B>.
-    // - This broader case remains useful as an integration specimen, but it is no longer the only place proving
+    // - Once these equivalences exist, DeriveVia(JsonCodec::class, B::class) should only need
+    // Equiv<C, B> plus JsonCodec<B>.
+    // - This broader case remains useful as an integration specimen, but it is no longer the only
+    // place proving
     //   product permutation, sum matching, Unit elision, and via reuse.
-    @Test fun supportsStructuralDeriveEquivForSumsOfProductsAndViaReuse() {
+    @Test
+    fun supportsStructuralDeriveEquivForSumsOfProductsAndViaReuse() {
         val source =
             """
             package demo
@@ -4317,7 +4471,8 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 println(codec.encode(C.Bar))
                 println(codec.encode(C.Foo("x", 1, Unit)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -4325,15 +4480,18 @@ class DeriveViaSpec : IntegrationTestSupport() {
                 """
                 ""
                 "\"x\"|1"
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins = serializationRuntime,
         )
     }
 
     // Exact intended semantics:
     // - structural DeriveEquiv is only sound for transparent products
-    // - if one side validates or normalizes in its constructor, the compiler must reject the derived Equiv
-    @Test fun rejectsStructuralDeriveEquivForValidatedProducts() {
+    // - if one side validates or normalizes in its constructor, the compiler must reject the
+    // derived Equiv
+    @Test
+    fun rejectsStructuralDeriveEquivForValidatedProducts() {
         val source =
             """
             package demo
@@ -4348,14 +4506,12 @@ class DeriveViaSpec : IntegrationTestSupport() {
                     require(value > 0)
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("equiv", "positivebox", "plainbox"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("equiv", "positivebox", "plainbox")),
         )
     }
 }
@@ -4373,4 +4529,5 @@ private fun showTypeclassSource(packageName: String): String =
 
     context(show: Show<A>)
     fun <A> render(value: A): String = show.show(value)
-    """.trimIndent()
+    """
+        .trimIndent()

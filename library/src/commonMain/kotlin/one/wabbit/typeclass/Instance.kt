@@ -10,14 +10,10 @@ package one.wabbit.typeclass
  * - parameterless functions whose context parameters describe prerequisites
  * - immutable properties
  *
- * The compiler plugin indexes these declarations and treats them as candidates
- * during typeclass resolution. Binary retention is required so those candidates
- * remain visible across module boundaries.
+ * The compiler plugin indexes these declarations and treats them as candidates during typeclass
+ * resolution. Binary retention is required so those candidates remain visible across module
+ * boundaries.
  */
-@Target(
-    AnnotationTarget.CLASS,
-    AnnotationTarget.FUNCTION,
-    AnnotationTarget.PROPERTY,
-)
+@Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION, AnnotationTarget.PROPERTY)
 @Retention(AnnotationRetention.BINARY)
 public annotation class Instance

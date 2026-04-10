@@ -1,11 +1,11 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.interop
 
+import kotlin.test.Test
 import one.wabbit.typeclass.plugin.integration.CompilerHarnessPlugin
 import one.wabbit.typeclass.plugin.integration.ExpectedDiagnostic
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
-import kotlin.test.Test
 
 /**
  * Compose compiler compatibility design tests.
@@ -44,12 +44,10 @@ class ComposeInteropTest : IntegrationTestSupport() {
                 val rendered = renderInt(1)
                 check(rendered == "int:1")
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompiles(
-            source = source,
-            requiredPlugins = composePlugins,
-        )
+        assertCompiles(source = source, requiredPlugins = composePlugins)
     }
 
     @Test
@@ -87,12 +85,10 @@ class ComposeInteropTest : IntegrationTestSupport() {
                     check(rendered == "int:1")
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompiles(
-            source = source,
-            requiredPlugins = composePlugins,
-        )
+        assertCompiles(source = source, requiredPlugins = composePlugins)
     }
 
     @Test
@@ -123,12 +119,10 @@ class ComposeInteropTest : IntegrationTestSupport() {
                 val rendered = renderInt()
                 check(rendered == "value=int:1")
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompiles(
-            source = source,
-            requiredPlugins = composePlugins,
-        )
+        assertCompiles(source = source, requiredPlugins = composePlugins)
     }
 
     @Test
@@ -163,12 +157,10 @@ class ComposeInteropTest : IntegrationTestSupport() {
             fun Screen() {
                 Label()
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompiles(
-            source = source,
-            requiredPlugins = composePlugins,
-        )
+        assertCompiles(source = source, requiredPlugins = composePlugins)
     }
 
     @Test
@@ -200,12 +192,10 @@ class ComposeInteropTest : IntegrationTestSupport() {
                 val rendered = remember { renderInt(1) }
                 check(rendered == "int:1")
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompiles(
-            source = source,
-            requiredPlugins = composePlugins,
-        )
+        assertCompiles(source = source, requiredPlugins = composePlugins)
     }
 
     @Test
@@ -237,12 +227,10 @@ class ComposeInteropTest : IntegrationTestSupport() {
                 val formatter = remember(1) { { value: Int -> renderInt(value) } }
                 check(formatter(2) == "int:2")
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompiles(
-            source = source,
-            requiredPlugins = composePlugins,
-        )
+        assertCompiles(source = source, requiredPlugins = composePlugins)
     }
 
     @Test
@@ -288,12 +276,10 @@ class ComposeInteropTest : IntegrationTestSupport() {
                     check(renderInt(4) == "int:4")
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompiles(
-            source = source,
-            requiredPlugins = composePlugins,
-        )
+        assertCompiles(source = source, requiredPlugins = composePlugins)
     }
 
     @Test
@@ -326,12 +312,10 @@ class ComposeInteropTest : IntegrationTestSupport() {
                     check(rendered == "int:1")
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompiles(
-            source = source,
-            requiredPlugins = composePlugins,
-        )
+        assertCompiles(source = source, requiredPlugins = composePlugins)
     }
 
     @Test
@@ -365,12 +349,10 @@ class ComposeInteropTest : IntegrationTestSupport() {
             fun Screen() {
                 1.Render()
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompiles(
-            source = source,
-            requiredPlugins = composePlugins,
-        )
+        assertCompiles(source = source, requiredPlugins = composePlugins)
     }
 
     @Test
@@ -394,7 +376,8 @@ class ComposeInteropTest : IntegrationTestSupport() {
             fun Screen() {
                 renderInt(1) // E:TC_NO_CONTEXT_ARGUMENT missing Show<Int> should be reported normally inside composable bodies
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -404,7 +387,7 @@ class ComposeInteropTest : IntegrationTestSupport() {
                         file = "Sample.kt",
                         line = 16,
                         messageRegex = "(?i)no context argument.*show: Show<Int>.*found",
-                    ),
+                    )
                 ),
             requiredPlugins = composePlugins,
         )

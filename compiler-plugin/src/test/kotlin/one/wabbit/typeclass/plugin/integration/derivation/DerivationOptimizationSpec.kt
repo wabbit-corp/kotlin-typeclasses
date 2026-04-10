@@ -1,55 +1,49 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.derivation
 
+import kotlin.test.Ignore
+import kotlin.test.Test
 import one.wabbit.typeclass.plugin.integration.CompilerHarnessPlugin
 import one.wabbit.typeclass.plugin.integration.HarnessDependency
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
-import kotlin.test.Ignore
-import kotlin.test.Test
 
 /**
  * Specification for a future derivation-optimization pass.
  *
  * Goal:
  * - Keep the current derivation contract and observable semantics.
- * - Replace metadata-interpreter hot paths with code that is as close as possible to what a
- *   careful human would have handwritten for the same ADT.
- * - Treat `@Derive(JsonCodec::class)` as an opportunity to emit direct encode/decode logic for
- *   the concrete derived target, not merely a generic metadata-driven interpreter object.
+ * - Replace metadata-interpreter hot paths with code that is as close as possible to what a careful
+ *   human would have handwritten for the same ADT.
+ * - Treat `@Derive(JsonCodec::class)` as an opportunity to emit direct encode/decode logic for the
+ *   concrete derived target, not merely a generic metadata-driven interpreter object.
  * - Treat `@DeriveVia(JsonCodec::class, Foo::class)` as an opportunity to keep only the minimal
  *   direct transport composition on the hot path.
  *
  * Current architecture:
- * - Derivation today is intentionally generic. The plugin emits metadata plus prerequisite
- *   instance slots, and the typeclass companion's `deriveProduct` / `deriveSum` / `deriveEnum`
- *   methods construct the runtime instance from that metadata.
- * - That design is flexible and semantically correct, but it leaves an optimization gap:
- *   many hot-path operations still iterate metadata, read field descriptors indirectly, scan
- *   sum cases linearly, or bounce through transport adapters whose structure is statically
- *   known at the derivation site.
+ * - Derivation today is intentionally generic. The plugin emits metadata plus prerequisite instance
+ *   slots, and the typeclass companion's `deriveProduct` / `deriveSum` / `deriveEnum` methods
+ *   construct the runtime instance from that metadata.
+ * - That design is flexible and semantically correct, but it leaves an optimization gap: many
+ *   hot-path operations still iterate metadata, read field descriptors indirectly, scan sum cases
+ *   linearly, or bounce through transport adapters whose structure is statically known at the
+ *   derivation site.
  *
  * Desired end state:
  * - For local product derivation, the generated codec should look morally like:
  *
- *   `object : JsonCodec<Person> {`
- *   `  override fun encode(value: Person): JsonElement = buildJsonObject { ... direct field calls ... }`
- *   `  override fun decode(json: JsonElement): Person = Person(name = ..., age = ...)`
- *   `}`
- *
+ *   `object : JsonCodec<Person> {` ` override fun encode(value: Person): JsonElement =
+ *   buildJsonObject { ... direct field calls ... }` ` override fun decode(json: JsonElement):
+ *   Person = Person(name = ..., age = ...)` `}`
  * - For local sealed sums, the generated codec should look morally like:
  *
- *   `override fun encode(value: Expr): JsonElement = when (value) {`
- *   `  is Lit -> ...`
- *   `  is Add -> ...`
- *   `  End -> ...`
- *   `}`
+ *   `override fun encode(value: Expr): JsonElement = when (value) {` ` is Lit -> ...` ` is Add ->
+ *   ...` ` End -> ...` `}`
  *
  *   and `decode` should dispatch directly on the discriminator rather than scanning candidate
  *   metadata records.
- *
- * - For `@DeriveVia(JsonCodec::class, Foo::class)` or pinned-Iso paths, the generated codec
- *   should look morally like:
+ * - For `@DeriveVia(JsonCodec::class, Foo::class)` or pinned-Iso paths, the generated codec should
+ *   look morally like:
  *
  *   `override fun encode(value: UserId): JsonElement = fooCodec.encode(userIdToFoo(value))`
  *   `override fun decode(json: JsonElement): UserId = fooToUserId(fooCodec.decode(json))`
@@ -60,36 +54,35 @@ import kotlin.test.Test
  * - The current backend already resolves the transport path at compile time and emits a bespoke
  *   adapter object; it is not doing runtime path search on every call.
  * - The remaining `DeriveVia` optimization target is therefore narrower than the plain `@Derive`
- *   target:
- *   remove unnecessary adapter allocation where possible, collapse identity transports, fuse
- *   local transport chains, and eliminate dead unwrap/rewrap pairs.
+ *   target: remove unnecessary adapter allocation where possible, collapse identity transports,
+ *   fuse local transport chains, and eliminate dead unwrap/rewrap pairs.
  *
  * Optimization scope:
  * - The pass should specialize plugin-generated derivation scaffolding.
  * - It may partially evaluate plugin-generated metadata access, field/case selection, direct
  *   constructor reconstruction, discriminator constants, enum-entry tables, and transport-plan
  *   composition.
- * - It should not attempt arbitrary global purity inference or arbitrary symbolic execution of
- *   user code.
+ * - It should not attempt arbitrary global purity inference or arbitrary symbolic execution of user
+ *   code.
  *
  * Safety / boundary rules:
  * - No cross-module inlining of user-authored codec logic.
- * - No cross-compilation-unit inlining of user-authored codec logic, even within the same module.
- *   A compilation unit here means a Kotlin source file.
- * - The pass may still reference stable external symbols directly:
- *   companion instances, top-level singleton instances, enum entries, constructors, getters,
- *   and pure plugin-generated transport helpers.
- * - If code lives in another compilation unit or module, generated code should call or load it,
- *   not clone its body.
+ * - No cross-compilation-unit inlining of user-authored codec logic, even within the same module. A
+ *   compilation unit here means a Kotlin source file.
+ * - The pass may still reference stable external symbols directly: companion instances, top-level
+ *   singleton instances, enum entries, constructors, getters, and pure plugin-generated transport
+ *   helpers.
+ * - If code lives in another compilation unit or module, generated code should call or load it, not
+ *   clone its body.
  * - This avoids invalidating unrelated files too aggressively, keeps dynamic-link behavior sane,
  *   and avoids baking dependency internals into generated bytecode.
  *
  * Allowed local specialization:
  * - Within the same compilation unit, the pass may inline or partially evaluate a conservative
- *   whitelist of shapes when their full bodies are available and obviously stable:
- *   `const` values, enum entries, direct constructor calls, transparent value-class unwrap/rewrap,
- *   direct property getters on local data/value classes, pure plugin-generated lambdas, and tiny
- *   helper functions that are syntactically first-order and side-effect-free.
+ *   whitelist of shapes when their full bodies are available and obviously stable: `const` values,
+ *   enum entries, direct constructor calls, transparent value-class unwrap/rewrap, direct property
+ *   getters on local data/value classes, pure plugin-generated lambdas, and tiny helper functions
+ *   that are syntactically first-order and side-effect-free.
  * - This is intentionally narrower than "arbitrary pure Kotlin".
  * - If the proof obligation is not trivial, keep a direct call boundary instead of guessing.
  *
@@ -113,13 +106,13 @@ import kotlin.test.Test
  * 3. Normalize transport plans and metadata access into a small internal SSA-like shape.
  * 4. Perform local, boundary-aware partial evaluation on that internal shape.
  * 5. Emit direct IR for products, sums, enums, and via-compositions.
- * 6. Run a tiny peephole pass to collapse identities, dead temporaries, redundant casts, and
- *    direct unwrap/rewrap pairs.
+ * 6. Run a tiny peephole pass to collapse identities, dead temporaries, redundant casts, and direct
+ *    unwrap/rewrap pairs.
  *
  * Evidence / invalidation model:
  * - Local generated code may depend structurally on the current file's ADT shape.
- * - It may depend nominally on external helpers and external prerequisite instances through
- *   stable calls and loads only.
+ * - It may depend nominally on external helpers and external prerequisite instances through stable
+ *   calls and loads only.
  * - Changes to an external helper implementation should not require the current file to be
  *   recompiled merely because the optimizer had previously cloned that implementation. The pass
  *   should therefore avoid such cloning.
@@ -354,7 +347,8 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
 
         context(codec: JsonCodec<A>)
         fun <A> encodeToString(value: A): String = compact(codec.encode(value))
-        """.trimIndent()
+        """
+            .trimIndent()
 
     @Test
     fun optimizesLocalProductJsonCodecsToStraightLineFieldCode() {
@@ -371,15 +365,20 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 println(roundTrip(Person("Ada", 3, true)))
                 println(snapshotOptimizationCounters())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         // Exact intended optimization semantics:
-        // - The optimized codec for Person should not iterate `metadata.fields` on each encode/decode call.
-        // - Encode should become straight-line code that reads `value.name`, `value.age`, and `value.admin`
+        // - The optimized codec for Person should not iterate `metadata.fields` on each
+        // encode/decode call.
+        // - Encode should become straight-line code that reads `value.name`, `value.age`, and
+        // `value.admin`
         //   directly and calls the three prerequisite codecs directly.
-        // - Decode should become a direct `Person(...)` constructor call, not `metadata.construct(...)`,
+        // - Decode should become a direct `Person(...)` constructor call, not
+        // `metadata.construct(...)`,
         //   whenever the primary constructor is directly available and stable.
-        // - The hot path should not read field names from metadata at runtime; JSON key strings should be
+        // - The hot path should not read field names from metadata at runtime; JSON key strings
+        // should be
         //   constant literals in the generated code.
         // - This is the canonical "be as close to handwritten as possible" product case.
         assertCompilesAndRuns(
@@ -389,7 +388,8 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 {"name":"Ada","age":3,"admin":true}
                 Person(name=Ada, age=3, admin=true)
                 0|0|0|0|0
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins = serializationRuntime,
         )
     }
@@ -410,13 +410,15 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 println(roundTrip(UserId(9)))
                 println(snapshotOptimizationCounters())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         // Exact intended optimization semantics:
         // - A directly derived value-class codec should be the simplest inline bridge possible.
         // - Encode should reduce to the field codec over `value.value`.
         // - Decode should reduce to `UserId(fieldCodec.decode(json))`.
-        // - No product metadata loop should remain, and no heap object should be required on the hot path.
+        // - No product metadata loop should remain, and no heap object should be required on the
+        // hot path.
         assertCompilesAndRuns(
             source = source,
             expectedStdout =
@@ -424,7 +426,8 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 7
                 UserId(value=9)
                 0|0|0|0|0
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins = serializationRuntime,
         )
     }
@@ -455,7 +458,8 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 println(roundTrip(inline))
                 println(snapshotOptimizationCounters())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         // Exact intended optimization semantics:
         // - Encode should become a direct `when (value)` over the sealed cases.
@@ -472,7 +476,8 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 {"type":"InlineLit","value":1}
                 InlineLit(value=1)
                 0|0|0|0|0
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins = serializationRuntime,
         )
     }
@@ -495,12 +500,15 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 println(roundTrip(Priority.LOW))
                 println(snapshotOptimizationCounters())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         // Exact intended optimization semantics:
-        // - Encode should be equivalent to a direct name-table lookup or direct `when` on the enum entry.
+        // - Encode should be equivalent to a direct name-table lookup or direct `when` on the enum
+        // entry.
         // - Decode should be equivalent to a direct string-switch or direct table lookup.
-        // - No generic `metadata.entries.indexOfFirst` loop should remain on the hot path once optimized.
+        // - No generic `metadata.entries.indexOfFirst` loop should remain on the hot path once
+        // optimized.
         // - This is the enum analogue of handwritten serializer code.
         assertCompilesAndRuns(
             source = source,
@@ -509,7 +517,8 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 "HIGH"
                 LOW
                 0|0|0|0|0
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins = serializationRuntime,
         )
     }
@@ -536,16 +545,19 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 println(roundTrip(value))
                 println(snapshotOptimizationCounters())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         // Exact intended optimization semantics:
-        // - Recursion cells or recursive resolver slots are allowed only on the recursive edges that
+        // - Recursion cells or recursive resolver slots are allowed only on the recursive edges
+        // that
         //   actually need them.
         // - Non-recursive field codecs such as `IntJsonCodec` should remain direct calls.
         // - The optimizer should not pessimize the entire codec into an indirect interpreter just
         //   because one branch is recursive.
         // - The current fixture only makes the ordinary metadata-loop counters observable.
-        // - True proof about recursive cells still requires future IR/bytecode assertions or dedicated
+        // - True proof about recursive cells still requires future IR/bytecode assertions or
+        // dedicated
         //   recursive-cell instrumentation.
         assertCompilesAndRuns(
             source = source,
@@ -554,7 +566,8 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 {"type":"Branch","left":{"type":"Leaf","value":1},"right":{"type":"Branch","left":{"type":"Leaf","value":2},"right":{"type":"Leaf","value":3}}}
                 Branch(left=Leaf(value=1), right=Branch(left=Leaf(value=2), right=Leaf(value=3)))
                 0|0|0|0|0
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins = serializationRuntime,
         )
     }
@@ -613,17 +626,23 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 println(codec.decode(buildJsonObject { put("value", JsonPrimitive(9)) }))
                 println("${'$'}{Counters.toFoo}|${'$'}{Counters.fromFoo}|${'$'}{Counters.encodeFoo}|${'$'}{Counters.decodeFoo}")
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         // Exact intended optimization semantics:
-        // - Current DeriveVia lowering already resolves the path at compile time and emits a bespoke adapter.
-        // - The optimization target here is therefore narrower than "eliminate runtime path search":
-        //   keep the hot path to one encode-side transport, one via-codec call, one decode-side via-codec call,
-        //   and one decode-side transport, with no redundant identity or unwrap/rewrap steps left over.
+        // - Current DeriveVia lowering already resolves the path at compile time and emits a
+        // bespoke adapter.
+        // - The optimization target here is therefore narrower than "eliminate runtime path
+        // search":
+        //   keep the hot path to one encode-side transport, one via-codec call, one decode-side
+        // via-codec call,
+        //   and one decode-side transport, with no redundant identity or unwrap/rewrap steps left
+        // over.
         // - Encode should be exactly `FooJsonCodec.encode(UserIdFooIso.to(value))`.
         // - Decode should be exactly `UserIdFooIso.from(FooJsonCodec.decode(json))`.
         // - Each transport boundary should be invoked once per direction on the hot path.
-        // - This fixture observes single-call boundaries only; future IR/bytecode or allocation assertions
+        // - This fixture observes single-call boundaries only; future IR/bytecode or allocation
+        // assertions
         //   are still needed to prove there is no nested dead adapter scaffolding left behind.
         assertCompilesAndRuns(
             source = source,
@@ -632,7 +651,8 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 {"value":7}
                 UserId(value=9)
                 1|1|1|1
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins = serializationRuntime,
         )
     }
@@ -677,13 +697,17 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 println(codec.decode(buildJsonObject { put("value", JsonPrimitive(5)) }))
                 println("${'$'}{Counters.encodeFoo}|${'$'}{Counters.decodeFoo}")
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         // Exact intended optimization semantics:
         // - This is the plain structural-waypoint DeriveVia case, not pinned-Iso plumbing.
-        // - The optimizer should normalize the structural Equiv<UserId, Foo> once and keep the hot path
-        //   to one via-codec encode and one via-codec decode, with direct structural unwrap/rewrap around them.
-        // - Like the pinned-Iso fixture above, this still only observes call counts; future shape assertions
+        // - The optimizer should normalize the structural Equiv<UserId, Foo> once and keep the hot
+        // path
+        //   to one via-codec encode and one via-codec decode, with direct structural unwrap/rewrap
+        // around them.
+        // - Like the pinned-Iso fixture above, this still only observes call counts; future shape
+        // assertions
         //   must prove the absence of dead wrapper scaffolding.
         assertCompilesAndRuns(
             source = source,
@@ -692,7 +716,8 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 {"value":4}
                 UserId(value=5)
                 1|1
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins = serializationRuntime,
         )
     }
@@ -769,18 +794,24 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 println(codec.decode(buildJsonObject { put("payload", JsonPrimitive("foo:mid:5")) }))
                 println("${'$'}{Counters.toMid}|${'$'}{Counters.fromMid}|${'$'}{Counters.toFoo}|${'$'}{Counters.fromFoo}")
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         // Exact intended optimization semantics:
         // - The optimizer should compose the local transport chain once and emit a direct composite
         //   path rather than nesting generic transport adapters.
-        // - `Mid` and `Foo` are intentionally plain nominal classes here so the pinned second segment is
+        // - `Mid` and `Foo` are intentionally plain nominal classes here so the pinned second
+        // segment is
         //   not already structurally transportable by the ordinary Equiv solver.
         // - Encode should morally be `FooJsonCodec.encode(MidFooIso.to(UserIdMidIso.to(value)))`.
-        // - Decode should morally be `UserIdMidIso.from(MidFooIso.from(FooJsonCodec.decode(json)))`.
-        // - The remaining optimization target is transport fusion and dead-step elimination, not runtime path search.
-        // - This fixture observes call counts, not allocation shape. Future shape assertions are still needed to
-        //   prove that the chain is represented as one fused plan rather than nested forwarding shells.
+        // - Decode should morally be
+        // `UserIdMidIso.from(MidFooIso.from(FooJsonCodec.decode(json)))`.
+        // - The remaining optimization target is transport fusion and dead-step elimination, not
+        // runtime path search.
+        // - This fixture observes call counts, not allocation shape. Future shape assertions are
+        // still needed to
+        //   prove that the chain is represented as one fused plan rather than nested forwarding
+        // shells.
         assertCompilesAndRuns(
             source = source,
             expectedStdout =
@@ -788,7 +819,8 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 {"payload":"foo:mid:4"}
                 UserId(value=5)
                 1|1|1|1
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             requiredPlugins = serializationRuntime,
         )
     }
@@ -816,13 +848,16 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
             fun main() {
                 println(encodeToString(Labelled("x")))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         // Exact intended optimization semantics:
         // - This fixture marks the positive side of the local-specialization boundary.
-        // - If the optimizer can trivially prove that `encodeStringSameFile` is a tiny pure helper in the same
+        // - If the optimizer can trivially prove that `encodeStringSameFile` is a tiny pure helper
+        // in the same
         //   compilation unit, it may inline or partially evaluate through it.
-        // - This is an allowance, not an obligation; the important point is that same-file purity is where
+        // - This is an allowance, not an obligation; the important point is that same-file purity
+        // is where
         //   aggressive local specialization may begin.
         assertCompilesAndRuns(
             source = source,
@@ -859,13 +894,16 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
             fun main() {
                 println(encodeToString(Labelled("x")))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         // Exact intended optimization semantics:
         // - Same-file visibility alone is not enough.
-        // - The helper here reads mutable state, so the optimizer should keep a direct call boundary unless
+        // - The helper here reads mutable state, so the optimizer should keep a direct call
+        // boundary unless
         //   it has a proof stronger than the current spec is willing to require.
-        // - This fixture is therefore the negative counterpart to the tiny-pure-helper allowance above.
+        // - This fixture is therefore the negative counterpart to the tiny-pure-helper allowance
+        // above.
         assertCompilesAndRuns(
             source = source,
             expectedStdout = """{"value":"stateful:x"}""",
@@ -901,7 +939,8 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
 
                         override fun decode(json: JsonElement): LabelText = LabelText(decodeLabelTextPayload(json))
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "Sample.kt" to
                     """
                     package demo
@@ -914,18 +953,24 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                     fun main() {
                         println(encodeToString(Labelled(LabelText("x"))))
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         // Exact intended optimization semantics:
         // - The optimizer may still specialize `Labelled` as a product codec.
-        // - `LabelTextJsonCodec` is legal here because it is declared in the same file as `LabelText`.
-        // - The forbidden transformation is cloning `LabelTextJsonCodec.encode` / `decode` into the generated
+        // - `LabelTextJsonCodec` is legal here because it is declared in the same file as
+        // `LabelText`.
+        // - The forbidden transformation is cloning `LabelTextJsonCodec.encode` / `decode` into the
+        // generated
         //   `Labelled` codec merely because the prerequisite codec is visible in the same module.
-        // - The helper function is secondary; future shape assertions should target symbol references to
+        // - The helper function is secondary; future shape assertions should target symbol
+        // references to
         //   `LabelTextJsonCodec.encode` / `decode`, not just the helper call.
-        // - This fixture is only a semantic scaffold today; future work should add IR/bytecode assertions
-        //   proving that the generated product codec still calls the codec object rather than a cloned body.
+        // - This fixture is only a semantic scaffold today; future work should add IR/bytecode
+        // assertions
+        //   proving that the generated product codec still calls the codec object rather than a
+        // cloned body.
         assertCompilesAndRuns(
             sources = sources,
             mainClass = "demo.SampleKt",
@@ -964,7 +1009,8 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
 
                                 override fun decode(json: JsonElement): Foo = Foo(0)
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
                 requiredPlugins = serializationRuntime,
             )
@@ -995,7 +1041,8 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 println(codec.encode(UserId(6)))
                 println(codec.decode(JsonPrimitive("dep:7")))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         // Exact intended optimization semantics:
         // - Cross-module prerequisite codecs remain stable symbol references.
@@ -1004,8 +1051,10 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
         //   current compilation output, and the same applies to `FooJsonCodec.decode`.
         // - This fixture's one-shot stdout check is only a semantic scaffold.
         // - The real boundary proof should eventually be a dependency-swap harness:
-        //   compile upstream v1 + consumer, run; recompile upstream only with changed helper behavior;
-        //   rerun the unchanged consumer against the new upstream jar; behavior must change if the call
+        //   compile upstream v1 + consumer, run; recompile upstream only with changed helper
+        // behavior;
+        //   rerun the unchanged consumer against the new upstream jar; behavior must change if the
+        // call
         //   boundary was preserved.
         assertCompilesAndRuns(
             sources = mapOf("Sample.kt" to source),
@@ -1013,7 +1062,8 @@ class DerivationOptimizationSpec : IntegrationTestSupport() {
                 """
                 "dep:6"
                 UserId(value=0)
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             mainClass = "demo.SampleKt",
             dependencies = listOf(dependency),
             requiredPlugins = serializationRuntime,

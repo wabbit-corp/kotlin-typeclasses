@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 @file:OptIn(
     org.jetbrains.kotlin.fir.PrivateSessionConstructor::class,
@@ -8,6 +8,11 @@
 
 package one.wabbit.typeclass.plugin
 
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.fir.FirBinaryDependenciesModuleData
 import org.jetbrains.kotlin.fir.FirSession
@@ -37,11 +42,6 @@ import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.types.Variance
 import org.jetbrains.kotlin.types.model.CaptureStatus
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertTrue
 
 class FirDerivationFeasibilityTest {
     @Test
@@ -97,10 +97,9 @@ class FirDerivationFeasibilityTest {
         val targets = listOf("first", "second")
 
         val assignments =
-            uniquePerfectAssignmentPreservingMultiplicity(
-                sources = sources,
-                targets = targets,
-            ) { source, target ->
+            uniquePerfectAssignmentPreservingMultiplicity(sources = sources, targets = targets) {
+                source,
+                target ->
                 source.takeIf { it.identity == target }
             }
 
@@ -144,9 +143,9 @@ class FirDerivationFeasibilityTest {
 
         assertEquals(
             mapOf("wideTarget" to "intCase", "textTarget" to "textCase"),
-            assignments?.associate { it.targetIndex to it.value }?.mapKeys { (targetIndex, _) ->
-                listOf("wideTarget", "textTarget")[targetIndex]
-            },
+            assignments
+                ?.associate { it.targetIndex to it.value }
+                ?.mapKeys { (targetIndex, _) -> listOf("wideTarget", "textTarget")[targetIndex] },
         )
     }
 
@@ -160,11 +159,12 @@ class FirDerivationFeasibilityTest {
                 targets = listOf("firstString", "int", "secondString"),
             ) { source, target ->
                 when (target) {
-                    "firstString", "secondString" -> source.takeIf { it != "count" }
+                    "firstString",
+                    "secondString" -> source.takeIf { it != "count" }
                     "int" -> source.takeIf { it == "count" }
                     else -> null
                 }
-            } != null,
+            } != null
         )
     }
 
@@ -176,44 +176,41 @@ class FirDerivationFeasibilityTest {
             FirBinaryDependenciesModuleData(Name.special("<fir-derivation-test>")).apply {
                 bindSession(session)
             }
-        val statelessClass =
-            buildRegularClass {
+        val statelessClass = buildRegularClass {
+            this.moduleData = moduleData
+            origin = FirDeclarationOrigin.Library
+            name = classId.shortClassName
+            symbol = FirRegularClassSymbol(classId)
+            status = FirResolvedDeclarationStatusImpl.DEFAULT_STATUS_FOR_STATUSLESS_DECLARATIONS
+            scopeProvider = DerivationTestFirScopeProvider
+            classKind = ClassKind.CLASS
+            superTypeRefs += session.builtinTypes.anyType
+        }
+        val statefulClass = buildRegularClass {
+            this.moduleData = moduleData
+            origin = FirDeclarationOrigin.Library
+            name = classId.shortClassName
+            symbol = FirRegularClassSymbol(classId)
+            status = FirResolvedDeclarationStatusImpl.DEFAULT_STATUS_FOR_STATUSLESS_DECLARATIONS
+            scopeProvider = DerivationTestFirScopeProvider
+            classKind = ClassKind.CLASS
+            superTypeRefs += session.builtinTypes.anyType
+            declarations += buildField {
                 this.moduleData = moduleData
                 origin = FirDeclarationOrigin.Library
-                name = classId.shortClassName
-                symbol = FirRegularClassSymbol(classId)
+                name = Name.identifier("hidden")
+                symbol = FirFieldSymbol(CallableId(classId, name))
                 status = FirResolvedDeclarationStatusImpl.DEFAULT_STATUS_FOR_STATUSLESS_DECLARATIONS
-                scopeProvider = DerivationTestFirScopeProvider
-                classKind = ClassKind.CLASS
-                superTypeRefs += session.builtinTypes.anyType
-            }
-        val statefulClass =
-            buildRegularClass {
-                this.moduleData = moduleData
-                origin = FirDeclarationOrigin.Library
-                name = classId.shortClassName
-                symbol = FirRegularClassSymbol(classId)
-                status = FirResolvedDeclarationStatusImpl.DEFAULT_STATUS_FOR_STATUSLESS_DECLARATIONS
-                scopeProvider = DerivationTestFirScopeProvider
-                classKind = ClassKind.CLASS
-                superTypeRefs += session.builtinTypes.anyType
-                declarations +=
-                    buildField {
-                        this.moduleData = moduleData
-                        origin = FirDeclarationOrigin.Library
-                        name = Name.identifier("hidden")
-                        symbol = FirFieldSymbol(CallableId(classId, name))
-                        status = FirResolvedDeclarationStatusImpl.DEFAULT_STATUS_FOR_STATUSLESS_DECLARATIONS
-                        returnTypeRef = session.builtinTypes.intType
-                        isVar = false
-                        javaClass.methods
-                            .singleOrNull { method ->
-                                method.name == "setLocal" &&
-                                    method.parameterTypes.singleOrNull() == Boolean::class.javaPrimitiveType
-                            }
-                            ?.invoke(this, false)
+                returnTypeRef = session.builtinTypes.intType
+                isVar = false
+                javaClass.methods
+                    .singleOrNull { method ->
+                        method.name == "setLocal" &&
+                            method.parameterTypes.singleOrNull() == Boolean::class.javaPrimitiveType
                     }
+                    ?.invoke(this, false)
             }
+        }
 
         assertFalse(statelessClass.hasNonPropertyBackingFields())
         assertTrue(statefulClass.hasNonPropertyBackingFields())
@@ -222,7 +219,8 @@ class FirDerivationFeasibilityTest {
     @Test
     fun `unsupported transported cone shape is rejected instead of ignored`() {
         val transported = boundTypeParameterSymbol("A")
-        val transportedType = ConeTypeParameterTypeImpl(transported.toLookupTag(), false, ConeAttributes.Empty)
+        val transportedType =
+            ConeTypeParameterTypeImpl(transported.toLookupTag(), false, ConeAttributes.Empty)
         val capturedType =
             ConeCapturedType(
                 constructor =
@@ -232,7 +230,7 @@ class FirDerivationFeasibilityTest {
                         captureStatus = CaptureStatus.FROM_EXPRESSION,
                         supertypes = emptyList(),
                         typeParameterMarker = null,
-                    ),
+                    )
             )
 
         val status =
@@ -250,19 +248,13 @@ class FirDerivationFeasibilityTest {
     }
 }
 
-private class CollapsingField(
-    val identity: String,
-    private val kind: String,
-) {
+private class CollapsingField(val identity: String, private val kind: String) {
     override fun equals(other: Any?): Boolean = other is CollapsingField && kind == other.kind
 
     override fun hashCode(): Int = kind.hashCode()
 }
 
-private data class NamedField(
-    val identity: String,
-    val kind: String,
-)
+private data class NamedField(val identity: String, val kind: String)
 
 private object DerivationTestFirScopeProvider : FirScopeProvider() {
     override fun getUseSiteMemberScope(
@@ -276,9 +268,13 @@ private object DerivationTestFirScopeProvider : FirScopeProvider() {
         typeAlias: org.jetbrains.kotlin.fir.declarations.FirTypeAlias,
         useSiteSession: FirSession,
         scopeSession: ScopeSession,
-    ): FirScope = object : FirScope() {
-        override fun withReplacedSessionOrNull(newSession: FirSession, newScopeSession: ScopeSession): FirScope? = null
-    }
+    ): FirScope =
+        object : FirScope() {
+            override fun withReplacedSessionOrNull(
+                newSession: FirSession,
+                newScopeSession: ScopeSession,
+            ): FirScope? = null
+        }
 
     override fun getStaticCallableMemberScope(
         klass: org.jetbrains.kotlin.fir.declarations.FirClass,
@@ -313,7 +309,7 @@ private fun boundTypeParameterSymbol(name: String): FirTypeParameterSymbol {
     return symbol
 }
 
-private val TEST_MODULE_DATA = FirBinaryDependenciesModuleData(Name.special("<fir-derive-via-test>"))
+private val TEST_MODULE_DATA =
+    FirBinaryDependenciesModuleData(Name.special("<fir-derive-via-test>"))
 
-private val TEST_CONTAINING_DECLARATION_SYMBOL =
-    object : FirBasedSymbol<FirDeclaration>() {}
+private val TEST_CONTAINING_DECLARATION_SYMBOL = object : FirBasedSymbol<FirDeclaration>() {}

@@ -1,14 +1,14 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin
 
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import one.wabbit.typeclass.plugin.model.ResolutionPlan
 import one.wabbit.typeclass.plugin.model.ResolutionSearchResult
 import one.wabbit.typeclass.plugin.model.TcType
 import one.wabbit.typeclass.plugin.model.TypeclassResolutionPlanner
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
 
 class DerivedRefinementPriorityTest {
     @Test
@@ -33,7 +33,8 @@ class DerivedRefinementPriorityTest {
                 priority = specificExprTarget.gadtSpecificityScore(),
             )
 
-        val result = TypeclassResolutionPlanner(listOf(genericRule, specificRule)).resolve(goal, emptyList())
+        val result =
+            TypeclassResolutionPlanner(listOf(genericRule, specificRule)).resolve(goal, emptyList())
 
         val success = assertIs<ResolutionSearchResult.Success>(result)
         val appliedRule = assertIs<ResolutionPlan.ApplyRule>(success.plan)
@@ -62,7 +63,8 @@ class DerivedRefinementPriorityTest {
                 priority = 0,
             )
 
-        val result = TypeclassResolutionPlanner(listOf(genericRule, specificRule)).resolve(goal, emptyList())
+        val result =
+            TypeclassResolutionPlanner(listOf(genericRule, specificRule)).resolve(goal, emptyList())
 
         assertIs<ResolutionSearchResult.Ambiguous>(result)
     }
@@ -71,10 +73,8 @@ class DerivedRefinementPriorityTest {
         val genericExprTarget = constructor("demo/Expr", variable("A"))
         val specificExprTarget = constructor("demo/Expr", constructor("kotlin/Int"))
 
-        fun constructor(
-            classifierId: String,
-            vararg arguments: TcType,
-        ) = TcType.Constructor(classifierId = classifierId, arguments = arguments.toList())
+        fun constructor(classifierId: String, vararg arguments: TcType) =
+            TcType.Constructor(classifierId = classifierId, arguments = arguments.toList())
 
         fun variable(name: String) = TcType.Variable(id = "test:$name", displayName = name)
     }

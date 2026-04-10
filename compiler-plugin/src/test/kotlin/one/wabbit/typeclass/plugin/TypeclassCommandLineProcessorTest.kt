@@ -1,14 +1,14 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin
 
-import org.jetbrains.kotlin.compiler.plugin.CliOptionProcessingException
-import org.jetbrains.kotlin.config.CompilerConfiguration
 import java.lang.reflect.InvocationTargetException
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import org.jetbrains.kotlin.compiler.plugin.CliOptionProcessingException
+import org.jetbrains.kotlin.config.CompilerConfiguration
 
 class TypeclassCommandLineProcessorTest {
     private val processor = TypeclassCommandLineProcessor()
@@ -75,7 +75,8 @@ private fun TypeclassCommandLineProcessor.invokeProcessOption(
                 org.jetbrains.kotlin.compiler.plugin.AbstractCliOption::class.java,
                 String::class.java,
                 CompilerConfiguration::class.java,
-            ).invoke(this, option, value, configuration)
+            )
+            .invoke(this, option, value, configuration)
     } catch (error: InvocationTargetException) {
         when (val cause = error.targetException) {
             is RuntimeException -> throw cause

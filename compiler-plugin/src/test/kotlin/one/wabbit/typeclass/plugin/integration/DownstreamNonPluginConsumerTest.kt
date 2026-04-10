@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
-import org.jetbrains.kotlin.cli.common.ExitCode
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import org.jetbrains.kotlin.cli.common.ExitCode
 
 class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
     @Test
@@ -35,7 +35,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
                             fun render(value: Int): String = show.show(value)
 
                             fun renderExplicit(show: Show<Int>, value: Int): String = show.show(value)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -49,7 +50,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
                 println(IntShow.show(1))
                 println(renderExplicit(IntShow, 2))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -57,7 +59,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
                 """
                 dep:1
                 dep:2
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             dependencies = listOf(dependency),
             useTypeclassPlugin = false,
             enableContextParameters = false,
@@ -97,7 +100,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
                             fun render(value: Box): String = show.show(value)
 
                             fun renderExplicit(show: Show<Box>, value: Box): String = show.show(value)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -111,7 +115,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
                 println(Box.show.show(Box(1)))
                 println(renderExplicit(Box.show, Box(2)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -119,7 +124,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
                 """
                 box:1
                 box:2
-                """.trimIndent(),
+                """
+                    .trimIndent(),
             dependencies = listOf(dependency),
             useTypeclassPlugin = false,
             enableContextParameters = false,
@@ -152,7 +158,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
 
                             context(show: Show<Int>)
                             fun render(value: Int): String = show.show(value)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -167,7 +174,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
                     println(render(7))
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -216,7 +224,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
 
                             @Derive(Show::class)
                             data class Token(val value: Int)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -234,7 +243,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Token(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -285,7 +295,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
 
                             context(show: Show<A>)
                             fun <A> render(value: A): String = show.show(value)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -303,13 +314,10 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(ShownInt(1))))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        val result =
-            compileSourceResult(
-                source = source,
-                dependencies = listOf(dependency),
-            )
+        val result = compileSourceResult(source = source, dependencies = listOf(dependency))
 
         assertEquals(ExitCode.COMPILATION_ERROR, result.exitCode, result.stdout)
         assertOutputContains(
@@ -362,7 +370,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
                                 kind = "derive",
                             )
                             data class Box(val value: Int)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -378,7 +387,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1))) // E:TC_NO_CONTEXT_ARGUMENT unvalidated generated derive metadata must not create binary shape-derived evidence
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -419,7 +429,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
                             @JvmInline
                             @DeriveVia(Show::class, Wire::class)
                             value class Token(val value: Int)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -437,7 +448,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Token(2)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -465,7 +477,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
 
                             @DeriveEquiv(Wire::class)
                             data class Token(val value: Int)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -486,7 +499,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Token(3)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -521,7 +535,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
                             sealed interface Token {
                                 data class One(val value: Int) : Token
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -541,7 +556,8 @@ class DownstreamNonPluginConsumerTest : IntegrationTestSupport() {
                 val token: Token = Token.One(4)
                 println(render(token)) // E:TC_NO_CONTEXT_ARGUMENT forged binary DeriveEquiv metadata must not make FIR hide a missing Equiv<Token, Wire>
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,

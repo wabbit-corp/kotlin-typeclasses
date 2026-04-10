@@ -7,16 +7,15 @@
 
 package one.wabbit.typeclass.plugin
 
+import one.wabbit.typeclass.plugin.model.ResolutionSearchResult
 import one.wabbit.typeclass.plugin.model.ResolutionTrace
 import one.wabbit.typeclass.plugin.model.ResolutionTraceCandidate
 import one.wabbit.typeclass.plugin.model.ResolutionTraceCandidateState
-import one.wabbit.typeclass.plugin.model.ResolutionSearchResult
 import one.wabbit.typeclass.plugin.model.TcType
 import one.wabbit.typeclass.plugin.model.TypeclassResolutionPlanner
 import one.wabbit.typeclass.plugin.model.referencedVariableIds
 import one.wabbit.typeclass.plugin.model.substituteType
 import one.wabbit.typeclass.plugin.model.unifyTypes
-import org.jetbrains.kotlin.fir.originalOrSelf
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.FirFunction
 import org.jetbrains.kotlin.fir.declarations.hasAnnotation
@@ -26,28 +25,23 @@ import org.jetbrains.kotlin.fir.expressions.builder.buildFunctionCallCopy
 import org.jetbrains.kotlin.fir.expressions.impl.FirResolvedArgumentList
 import org.jetbrains.kotlin.fir.expressions.resolvedArgumentMapping
 import org.jetbrains.kotlin.fir.extensions.FirFunctionCallRefinementExtension
+import org.jetbrains.kotlin.fir.originalOrSelf
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
 import org.jetbrains.kotlin.fir.references.builder.buildResolvedNamedReference
 import org.jetbrains.kotlin.fir.resolve.calls.candidate.CallInfo
-import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
 import org.jetbrains.kotlin.fir.symbols.impl.FirNamedFunctionSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
 import org.jetbrains.kotlin.fir.toFirResolvedTypeRef
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
-import org.jetbrains.kotlin.fir.types.coneType
-import org.jetbrains.kotlin.fir.types.ConeClassLikeType
 import org.jetbrains.kotlin.fir.types.ConeKotlinTypeProjectionIn
 import org.jetbrains.kotlin.fir.types.ConeKotlinTypeProjectionOut
 import org.jetbrains.kotlin.fir.types.ConeStarProjection
-import org.jetbrains.kotlin.fir.types.ConeTypeParameterType
-import org.jetbrains.kotlin.fir.types.ConeTypeVariableType
 import org.jetbrains.kotlin.fir.types.FirTypeProjectionWithVariance
-import org.jetbrains.kotlin.fir.types.ProjectionKind
 import org.jetbrains.kotlin.fir.types.builder.buildTypeProjectionWithVariance
+import org.jetbrains.kotlin.fir.types.coneType
 import org.jetbrains.kotlin.fir.types.constructClassLikeType
 import org.jetbrains.kotlin.fir.types.constructType
-import org.jetbrains.kotlin.fir.types.lowerBoundIfFlexible
 import org.jetbrains.kotlin.fir.types.resolvedType
 import org.jetbrains.kotlin.fir.types.type
 import org.jetbrains.kotlin.name.ClassId
@@ -58,12 +52,10 @@ internal class TypeclassFirFunctionCallRefinementExtension(
     session: FirSession,
     private val sharedState: TypeclassPluginSharedState,
 ) : FirFunctionCallRefinementExtension(session) {
-    private val inferredTypeArgumentsByCallKey = linkedMapOf<RefinementCallKey, Map<String, ConeKotlinType>>()
+    private val inferredTypeArgumentsByCallKey =
+        linkedMapOf<RefinementCallKey, Map<String, ConeKotlinType>>()
 
-    override fun intercept(
-        callInfo: CallInfo,
-        symbol: FirNamedFunctionSymbol,
-    ): CallReturnType? {
+    override fun intercept(callInfo: CallInfo, symbol: FirNamedFunctionSymbol): CallReturnType? {
         if (shouldDeferToNativeContextResolution(callInfo, symbol)) {
             return null
         }
@@ -73,28 +65,32 @@ internal class TypeclassFirFunctionCallRefinementExtension(
         }
 
         val originalSymbol = symbol.originalOrSelf()
-        (callInfo.callSite as? FirFunctionCall)
-            ?.refinementCallKey(originalSymbol)
-            ?.let { key ->
-                inferredTypeArgumentsByCallKey[key] =
-                    typeclassContextResolution.inferredTypeArguments.mapKeys { (typeParameter, _) ->
-                        typeParameter.name.asString()
-                    }
-            }
+        (callInfo.callSite as? FirFunctionCall)?.refinementCallKey(originalSymbol)?.let { key ->
+            inferredTypeArgumentsByCallKey[key] =
+                typeclassContextResolution.inferredTypeArguments.mapKeys { (typeParameter, _) ->
+                    typeParameter.name.asString()
+                }
+        }
 
-        val visibleTypeParameterNames = symbol.wrapperVisibleTypeParameterNames(session, sharedState)
-        val shouldDropInvisibleTypeParameters = callInfo.typeArguments.size <= visibleTypeParameterNames.size
+        val visibleTypeParameterNames =
+            symbol.wrapperVisibleTypeParameterNames(session, sharedState)
+        val shouldDropInvisibleTypeParameters =
+            callInfo.typeArguments.size <= visibleTypeParameterNames.size
         return CallReturnType(symbol.resolvedReturnTypeRef) { refinedSymbol ->
             val refinedFunction = refinedSymbol.fir
             refinedFunction.replaceContextParameters(
-                refinedFunction.contextParameters.filterIndexed { index, _ -> !typeclassContextResolution.mask.getOrElse(index) { false } },
+                refinedFunction.contextParameters.filterIndexed { index, _ ->
+                    !typeclassContextResolution.mask.getOrElse(index) { false }
+                }
             )
             if (shouldDropInvisibleTypeParameters) {
                 val visibleTypeParameterNameSet = visibleTypeParameterNames.toSet()
                 @Suppress("UNCHECKED_CAST")
-                (refinedFunction.typeParameters as MutableList<org.jetbrains.kotlin.fir.declarations.FirTypeParameter>).retainAll { typeParameter ->
-                    typeParameter.symbol.name.asString() in visibleTypeParameterNameSet
-                }
+                (refinedFunction.typeParameters
+                        as MutableList<org.jetbrains.kotlin.fir.declarations.FirTypeParameter>)
+                    .retainAll { typeParameter ->
+                        typeParameter.symbol.name.asString() in visibleTypeParameterNameSet
+                    }
             }
         }
     }
@@ -104,18 +100,21 @@ internal class TypeclassFirFunctionCallRefinementExtension(
         originalSymbol: FirNamedFunctionSymbol,
     ): FirFunctionCall {
         val restoredOriginalSymbol = originalSymbol.originalOrSelf()
-        val refinedSymbol = (call.calleeReference as? FirResolvedNamedReference)?.resolvedSymbol as? FirNamedFunctionSymbol
-        val restoredTypeArguments = restoreTypeArguments(call, restoredOriginalSymbol, refinedSymbol)
+        val refinedSymbol =
+            (call.calleeReference as? FirResolvedNamedReference)?.resolvedSymbol
+                as? FirNamedFunctionSymbol
+        val restoredTypeArguments =
+            restoreTypeArguments(call, restoredOriginalSymbol, refinedSymbol)
         return buildFunctionCallCopy(call) {
-            calleeReference =
-                buildResolvedNamedReference {
-                    source = call.calleeReference.source
-                    name = call.calleeReference.name
-                    resolvedSymbol = restoredOriginalSymbol
-                }
+            calleeReference = buildResolvedNamedReference {
+                source = call.calleeReference.source
+                name = call.calleeReference.name
+                resolvedSymbol = restoredOriginalSymbol
+            }
             typeArguments.clear()
             typeArguments += restoredTypeArguments
-            argumentList = rewriteArgumentList(call.argumentList, refinedSymbol, restoredOriginalSymbol)
+            argumentList =
+                rewriteArgumentList(call.argumentList, refinedSymbol, restoredOriginalSymbol)
         }
     }
 
@@ -124,10 +123,7 @@ internal class TypeclassFirFunctionCallRefinementExtension(
     override fun anchorElement(symbol: FirRegularClassSymbol) =
         error("Typeclass function-call refinement does not own local classes")
 
-    override fun restoreSymbol(
-        call: FirFunctionCall,
-        name: Name,
-    ): FirRegularClassSymbol? = null
+    override fun restoreSymbol(call: FirFunctionCall, name: Name): FirRegularClassSymbol? = null
 
     private fun typeclassContextResolution(
         symbol: FirNamedFunctionSymbol,
@@ -146,9 +142,14 @@ internal class TypeclassFirFunctionCallRefinementExtension(
 
         val typeContext = buildTypeContext(callInfo, symbol)
         val inferredTypeArguments = inferFunctionTypeArguments(callInfo, symbol, typeContext)
-        val inferredTypeArgumentsWithContextResolution = linkedMapOf<FirTypeParameterSymbol, ConeKotlinType>()
+        val inferredTypeArgumentsWithContextResolution =
+            linkedMapOf<FirTypeParameterSymbol, ConeKotlinType>()
         inferredTypeArgumentsWithContextResolution.putAll(inferredTypeArguments)
-        val eligibleTypeParameters = function.typeParameters.mapTo(linkedSetOf(), org.jetbrains.kotlin.fir.declarations.FirTypeParameterRef::symbol)
+        val eligibleTypeParameters =
+            function.typeParameters.mapTo(
+                linkedSetOf(),
+                org.jetbrains.kotlin.fir.declarations.FirTypeParameterRef::symbol,
+            )
         val exactBuiltinGoalContext = typeContext.exactBuiltinGoalContext()
         val planner =
             TypeclassResolutionPlanner(
@@ -156,67 +157,79 @@ internal class TypeclassFirFunctionCallRefinementExtension(
                     sharedState.refinementRulesForGoal(
                         session = session,
                         goal = goal,
-                        canMaterializeVariable = typeContext.runtimeMaterializableVariableIds::contains,
+                        canMaterializeVariable =
+                            typeContext.runtimeMaterializableVariableIds::contains,
                         exactBuiltinGoalContext = exactBuiltinGoalContext,
                     )
                 },
                 bindableDesiredVariableIds = typeContext.bindableVariableIds,
             )
 
-        val mask = function.contextParameters.map { parameter ->
-            val substitutedType =
-                substituteInferredTypes(
-                    type = parameter.returnTypeRef.coneType,
-                    substitutions = inferredTypeArgumentsWithContextResolution,
-                    session = session,
-                )
-            val isTypeclass = sharedState.isTypeclassType(session, substitutedType)
-            if (!isTypeclass) {
-                return@map false
-            }
-            val goalModel = coneTypeToModel(substitutedType, typeContext.typeParameterModels) ?: return@map false
-            val tracedResolution =
-                planner.resolveWithTrace(
-                    desiredType = goalModel,
-                    localContextTypes = typeContext.directlyAvailableContextModels,
-                )
-            when (tracedResolution.result) {
-                is ResolutionSearchResult.Success -> {
-                    inferredTypeArgumentsWithContextResolution.mergeResolutionInferredTypeArguments(
-                        trace = tracedResolution.trace,
-                        variableSymbolsById = exactBuiltinGoalContext.variableSymbolsById,
-                        eligibleSymbols = eligibleTypeParameters,
-                    )
-                    goalModel.hasAllEligibleBindings(
-                        variableSymbolsById = exactBuiltinGoalContext.variableSymbolsById,
-                        eligibleSymbols = eligibleTypeParameters,
-                        inferredTypeArguments = inferredTypeArgumentsWithContextResolution,
-                    )
-                }
-                is ResolutionSearchResult.Missing ->
-                    sharedState.canDeriveGoal(
+        val mask =
+            function.contextParameters.map { parameter ->
+                val substitutedType =
+                    substituteInferredTypes(
+                        type = parameter.returnTypeRef.coneType,
+                        substitutions = inferredTypeArgumentsWithContextResolution,
                         session = session,
-                        goal = goalModel,
-                        availableContexts = typeContext.directlyAvailableContextModels,
-                        canMaterializeVariable = typeContext.runtimeMaterializableVariableIds::contains,
-                        builtinGoalAcceptance = BuiltinGoalAcceptance.PROVABLE_ONLY,
-                        exactBuiltinGoalContext = exactBuiltinGoalContext,
                     )
-                is ResolutionSearchResult.Ambiguous -> {
-                    if (tracedResolution.result.matchingPlans.all { plan -> plan is one.wabbit.typeclass.plugin.model.ResolutionPlan.LocalContext }) {
-                        return@map false
-                    }
-                    inferredTypeArgumentsWithContextResolution.mergeAmbiguousResolutionInferredTypeArguments(
-                        goal = goalModel,
-                        ambiguous = tracedResolution.result,
-                        variableSymbolsById = exactBuiltinGoalContext.variableSymbolsById,
-                        eligibleSymbols = eligibleTypeParameters,
-                    )
-                    function.typeParameters.isNotEmpty()
+                val isTypeclass = sharedState.isTypeclassType(session, substitutedType)
+                if (!isTypeclass) {
+                    return@map false
                 }
-                else -> false
+                val goalModel =
+                    coneTypeToModel(substitutedType, typeContext.typeParameterModels)
+                        ?: return@map false
+                val tracedResolution =
+                    planner.resolveWithTrace(
+                        desiredType = goalModel,
+                        localContextTypes = typeContext.directlyAvailableContextModels,
+                    )
+                when (tracedResolution.result) {
+                    is ResolutionSearchResult.Success -> {
+                        inferredTypeArgumentsWithContextResolution
+                            .mergeResolutionInferredTypeArguments(
+                                trace = tracedResolution.trace,
+                                variableSymbolsById = exactBuiltinGoalContext.variableSymbolsById,
+                                eligibleSymbols = eligibleTypeParameters,
+                            )
+                        goalModel.hasAllEligibleBindings(
+                            variableSymbolsById = exactBuiltinGoalContext.variableSymbolsById,
+                            eligibleSymbols = eligibleTypeParameters,
+                            inferredTypeArguments = inferredTypeArgumentsWithContextResolution,
+                        )
+                    }
+                    is ResolutionSearchResult.Missing ->
+                        sharedState.canDeriveGoal(
+                            session = session,
+                            goal = goalModel,
+                            availableContexts = typeContext.directlyAvailableContextModels,
+                            canMaterializeVariable =
+                                typeContext.runtimeMaterializableVariableIds::contains,
+                            builtinGoalAcceptance = BuiltinGoalAcceptance.PROVABLE_ONLY,
+                            exactBuiltinGoalContext = exactBuiltinGoalContext,
+                        )
+                    is ResolutionSearchResult.Ambiguous -> {
+                        if (
+                            tracedResolution.result.matchingPlans.all { plan ->
+                                plan is
+                                    one.wabbit.typeclass.plugin.model.ResolutionPlan.LocalContext
+                            }
+                        ) {
+                            return@map false
+                        }
+                        inferredTypeArgumentsWithContextResolution
+                            .mergeAmbiguousResolutionInferredTypeArguments(
+                                goal = goalModel,
+                                ambiguous = tracedResolution.result,
+                                variableSymbolsById = exactBuiltinGoalContext.variableSymbolsById,
+                                eligibleSymbols = eligibleTypeParameters,
+                            )
+                        function.typeParameters.isNotEmpty()
+                    }
+                    else -> false
+                }
             }
-        }
         return TypeclassContextResolution(
             mask = mask,
             inferredTypeArguments = inferredTypeArgumentsWithContextResolution,
@@ -231,14 +244,21 @@ internal class TypeclassFirFunctionCallRefinementExtension(
         val resolvedArgumentList = argumentList as? FirResolvedArgumentList ?: return argumentList
         val originalParameters = originalSymbol.fir.valueParameters
         val remapped =
-            LinkedHashMap<org.jetbrains.kotlin.fir.expressions.FirExpression, org.jetbrains.kotlin.fir.declarations.FirValueParameter>()
+            LinkedHashMap<
+                org.jetbrains.kotlin.fir.expressions.FirExpression,
+                org.jetbrains.kotlin.fir.declarations.FirValueParameter,
+            >()
         resolvedArgumentList.mapping.forEach { (argument, parameter) ->
             val remappedParameter =
-                refinedSymbol?.fir?.valueParameters?.indexOf(parameter)?.takeIf { index -> index in originalParameters.indices }?.let { index ->
-                    originalParameters[index]
-                } ?: originalParameters.singleOrNull { originalParameter ->
-                    originalParameter.name == parameter.name
-                }
+                refinedSymbol
+                    ?.fir
+                    ?.valueParameters
+                    ?.indexOf(parameter)
+                    ?.takeIf { index -> index in originalParameters.indices }
+                    ?.let { index -> originalParameters[index] }
+                    ?: originalParameters.singleOrNull { originalParameter ->
+                        originalParameter.name == parameter.name
+                    }
             if (remappedParameter != null) {
                 remapped[argument] = remappedParameter
             }
@@ -267,7 +287,9 @@ internal class TypeclassFirFunctionCallRefinementExtension(
                             session = session,
                         )
                     }
-                    ?.let { requiredType -> coneTypeToModel(requiredType, typeContext.typeParameterModels) }
+                    ?.let { requiredType ->
+                        coneTypeToModel(requiredType, typeContext.typeParameterModels)
+                    }
             }
         return requiredContextModels.isNotEmpty() &&
             requiredContextModels.all { requiredContext ->
@@ -292,8 +314,11 @@ internal class TypeclassFirFunctionCallRefinementExtension(
             containingClassTypeParameters =
                 callInfo.containingDeclarations
                     .filterIsInstance<org.jetbrains.kotlin.fir.declarations.FirRegularClass>()
-                    .flatMap { declaration -> declaration.typeParameters.map { typeParameter -> typeParameter.symbol } },
-            calleeTypeParameters = symbol.fir.typeParameters.map { typeParameter -> typeParameter.symbol },
+                    .flatMap { declaration ->
+                        declaration.typeParameters.map { typeParameter -> typeParameter.symbol }
+                    },
+            calleeTypeParameters =
+                symbol.fir.typeParameters.map { typeParameter -> typeParameter.symbol },
         )
 
     private fun inferFunctionTypeArguments(
@@ -302,15 +327,21 @@ internal class TypeclassFirFunctionCallRefinementExtension(
         typeContext: FirTypeclassResolutionContext,
     ): Map<FirTypeParameterSymbol, org.jetbrains.kotlin.fir.types.ConeKotlinType> {
         val containingFunctions =
-            callInfo.containingDeclarations
-                .filterIsInstance<FirFunction>()
-                .mapNotNull { declaration -> declaration.symbol as? FirNamedFunctionSymbol }
+            callInfo.containingDeclarations.filterIsInstance<FirFunction>().mapNotNull { declaration
+                ->
+                declaration.symbol as? FirNamedFunctionSymbol
+            }
         val containingFunction =
-            callInfo.containingDeclarations.filterIsInstance<FirTypeclassFunctionDeclaration>().lastOrNull()?.symbol
+            callInfo.containingDeclarations
+                .filterIsInstance<FirTypeclassFunctionDeclaration>()
+                .lastOrNull()
+                ?.symbol
         val containingClassTypeParameters =
             callInfo.containingDeclarations
                 .filterIsInstance<org.jetbrains.kotlin.fir.declarations.FirRegularClass>()
-                .flatMap { declaration -> declaration.typeParameters.map { typeParameter -> typeParameter.symbol } }
+                .flatMap { declaration ->
+                    declaration.typeParameters.map { typeParameter -> typeParameter.symbol }
+                }
         val functionCall = callInfo.callSite as? FirFunctionCall
         if (functionCall != null) {
             return inferFunctionTypeArgumentsFromCallSite(
@@ -325,34 +356,50 @@ internal class TypeclassFirFunctionCallRefinementExtension(
         }
 
         val function = symbol.fir
-        val inferred = linkedMapOf<FirTypeParameterSymbol, org.jetbrains.kotlin.fir.types.ConeKotlinType>()
-        val functionTypeParameters = function.typeParameters.mapTo(linkedSetOf(), org.jetbrains.kotlin.fir.declarations.FirTypeParameterRef::symbol)
+        val inferred =
+            linkedMapOf<FirTypeParameterSymbol, org.jetbrains.kotlin.fir.types.ConeKotlinType>()
+        val functionTypeParameters =
+            function.typeParameters.mapTo(
+                linkedSetOf(),
+                org.jetbrains.kotlin.fir.declarations.FirTypeParameterRef::symbol,
+            )
         val inferenceTypeParameterModels = typeContext.typeParameterModels.toMutableMap()
-        val directConstraints = linkedMapOf<FirTypeParameterSymbol, MutableTypeBindingConstraints<org.jetbrains.kotlin.fir.types.ConeKotlinType>>()
+        val directConstraints =
+            linkedMapOf<
+                FirTypeParameterSymbol,
+                MutableTypeBindingConstraints<org.jetbrains.kotlin.fir.types.ConeKotlinType>,
+            >()
 
-        symbol.explicitCallTypeParameters(callInfo.typeArguments.size, session, sharedState).zip(callInfo.typeArguments).forEach { (typeParameter, typeArgument) ->
-            val explicitType = (typeArgument as? FirTypeProjectionWithVariance)?.typeRef?.coneType ?: return@forEach
-            inferred[typeParameter.symbol] = explicitType
-        }
+        symbol
+            .explicitCallTypeParameters(callInfo.typeArguments.size, session, sharedState)
+            .zip(callInfo.typeArguments)
+            .forEach { (typeParameter, typeArgument) ->
+                val explicitType =
+                    (typeArgument as? FirTypeProjectionWithVariance)?.typeRef?.coneType
+                        ?: return@forEach
+                inferred[typeParameter.symbol] = explicitType
+            }
 
         function.receiverParameter?.typeRef?.coneType?.let { receiverType ->
-            callInfo.explicitReceiver?.safeResolvedOrInferredTypeOrNull(
-                session = session,
-                containingFunction = containingFunction,
-                containingClassTypeParameters = containingClassTypeParameters,
-                containingFunctions = containingFunctions,
-            )?.let { explicitReceiverType ->
-                collectFunctionTypeArgumentConstraintsForInference(
+            callInfo.explicitReceiver
+                ?.safeResolvedOrInferredTypeOrNull(
                     session = session,
-                    sharedState = sharedState,
-                    typeParameterModels = inferenceTypeParameterModels,
-                    parameterType = receiverType,
-                    argumentType = explicitReceiverType,
-                    functionTypeParameters = functionTypeParameters,
-                    excludedSymbols = inferred.keys,
-                    constraintsBySymbol = directConstraints,
+                    containingFunction = containingFunction,
+                    containingClassTypeParameters = containingClassTypeParameters,
+                    containingFunctions = containingFunctions,
                 )
-            }
+                ?.let { explicitReceiverType ->
+                    collectFunctionTypeArgumentConstraintsForInference(
+                        session = session,
+                        sharedState = sharedState,
+                        typeParameterModels = inferenceTypeParameterModels,
+                        parameterType = receiverType,
+                        argumentType = explicitReceiverType,
+                        functionTypeParameters = functionTypeParameters,
+                        excludedSymbols = inferred.keys,
+                        constraintsBySymbol = directConstraints,
+                    )
+                }
         }
 
         function.valueParameters.zip(callInfo.arguments).forEach { (parameter, argument) ->
@@ -375,17 +422,23 @@ internal class TypeclassFirFunctionCallRefinementExtension(
             )
         }
         resolveFirTypeBindingConstraints(
-            session = session,
-            sharedState = sharedState,
-            typeParameterModels = inferenceTypeParameterModels,
-            constraintsBySymbol = directConstraints,
-        ).resolvedByKey.forEach { (symbol, type) ->
-            if (symbol !in inferred) {
-                inferred[symbol] = type
+                session = session,
+                sharedState = sharedState,
+                typeParameterModels = inferenceTypeParameterModels,
+                constraintsBySymbol = directConstraints,
+            )
+            .resolvedByKey
+            .forEach { (symbol, type) ->
+                if (symbol !in inferred) {
+                    inferred[symbol] = type
+                }
             }
-        }
 
-        val localContextConstraints = linkedMapOf<FirTypeParameterSymbol, MutableTypeBindingConstraints<org.jetbrains.kotlin.fir.types.ConeKotlinType>>()
+        val localContextConstraints =
+            linkedMapOf<
+                FirTypeParameterSymbol,
+                MutableTypeBindingConstraints<org.jetbrains.kotlin.fir.types.ConeKotlinType>,
+            >()
         function.contextParameters.forEach { parameter ->
             typeContext.directlyAvailableContextTypes.forEach { availableType ->
                 collectFunctionTypeArgumentConstraintsForInference(
@@ -401,15 +454,17 @@ internal class TypeclassFirFunctionCallRefinementExtension(
             }
         }
         resolveFirTypeBindingConstraints(
-            session = session,
-            sharedState = sharedState,
-            typeParameterModels = inferenceTypeParameterModels,
-            constraintsBySymbol = localContextConstraints,
-        ).resolvedByKey.forEach { (symbol, type) ->
-            if (symbol !in inferred) {
-                inferred[symbol] = type
+                session = session,
+                sharedState = sharedState,
+                typeParameterModels = inferenceTypeParameterModels,
+                constraintsBySymbol = localContextConstraints,
+            )
+            .resolvedByKey
+            .forEach { (symbol, type) ->
+                if (symbol !in inferred) {
+                    inferred[symbol] = type
+                }
             }
-        }
 
         return inferred
     }
@@ -427,24 +482,31 @@ internal class TypeclassFirFunctionCallRefinementExtension(
             return call.typeArguments
         }
 
-        val functionTypeParameters = originalFunction.typeParameters.mapTo(linkedSetOf(), org.jetbrains.kotlin.fir.declarations.FirTypeParameterRef::symbol)
-        val inferred = linkedMapOf<FirTypeParameterSymbol, org.jetbrains.kotlin.fir.types.ConeKotlinType>()
-        call.refinementCallKey(originalSymbol)
+        val functionTypeParameters =
+            originalFunction.typeParameters.mapTo(
+                linkedSetOf(),
+                org.jetbrains.kotlin.fir.declarations.FirTypeParameterRef::symbol,
+            )
+        val inferred =
+            linkedMapOf<FirTypeParameterSymbol, org.jetbrains.kotlin.fir.types.ConeKotlinType>()
+        call
+            .refinementCallKey(originalSymbol)
             ?.let(inferredTypeArgumentsByCallKey::remove)
             .orEmpty()
             .forEach { (typeParameterName, inferredType) ->
-                originalFunction.typeParameters.singleOrNull { candidate ->
-                    candidate.symbol.name.asString() == typeParameterName
-                }?.let { typeParameter ->
-                    inferred[typeParameter.symbol] = inferredType
-                }
+                originalFunction.typeParameters
+                    .singleOrNull { candidate ->
+                        candidate.symbol.name.asString() == typeParameterName
+                    }
+                    ?.let { typeParameter -> inferred[typeParameter.symbol] = inferredType }
             }
         val containingClassTypeParameters =
             generateSequence(originalSymbol.callableId.classId) { classId -> classId.outerClassId }
                 .toList()
                 .asReversed()
                 .flatMap { classId ->
-                    session.regularClassSymbolOrNull(classId)?.fir?.typeParameters.orEmpty().map { typeParameter ->
+                    session.regularClassSymbolOrNull(classId)?.fir?.typeParameters.orEmpty().map {
+                        typeParameter ->
                         typeParameter.symbol
                     }
                 }
@@ -454,15 +516,25 @@ internal class TypeclassFirFunctionCallRefinementExtension(
                 containingFunction = null,
                 containingClassTypeParameters = containingClassTypeParameters,
             )
-        val directConstraints = linkedMapOf<FirTypeParameterSymbol, MutableTypeBindingConstraints<org.jetbrains.kotlin.fir.types.ConeKotlinType>>()
+        val directConstraints =
+            linkedMapOf<
+                FirTypeParameterSymbol,
+                MutableTypeBindingConstraints<org.jetbrains.kotlin.fir.types.ConeKotlinType>,
+            >()
         val originalParametersByName = originalFunction.valueParameters.associateBy { it.name }
         val refinedParameters = refinedSymbol?.fir?.valueParameters.orEmpty()
 
         val currentTypeParameters =
             refinedSymbol?.fir?.typeParameters
-                ?: originalSymbol.explicitCallTypeParameters(call.typeArguments.size, session, sharedState)
+                ?: originalSymbol.explicitCallTypeParameters(
+                    call.typeArguments.size,
+                    session,
+                    sharedState,
+                )
         currentTypeParameters.zip(call.typeArguments).forEach { (typeParameter, typeArgument) ->
-            val explicitType = (typeArgument as? FirTypeProjectionWithVariance)?.typeRef?.coneType ?: return@forEach
+            val explicitType =
+                (typeArgument as? FirTypeProjectionWithVariance)?.typeRef?.coneType
+                    ?: return@forEach
             val originalTypeParameter =
                 originalFunction.typeParameters.singleOrNull { candidate ->
                     candidate.symbol.name == typeParameter.symbol.name
@@ -483,9 +555,11 @@ internal class TypeclassFirFunctionCallRefinementExtension(
 
         call.resolvedArgumentMapping?.forEach { (argument, parameter) ->
             val originalParameter =
-                refinedParameters.indexOf(parameter).takeIf { index -> index >= 0 }?.let { index ->
-                    originalFunction.valueParameters.getOrNull(index)
-                } ?: originalParametersByName[parameter.name]
+                refinedParameters
+                    .indexOf(parameter)
+                    .takeIf { index -> index >= 0 }
+                    ?.let { index -> originalFunction.valueParameters.getOrNull(index) }
+                    ?: originalParametersByName[parameter.name]
             if (originalParameter != null) {
                 collectFunctionTypeArgumentConstraintsForInference(
                     session = session,
@@ -500,15 +574,17 @@ internal class TypeclassFirFunctionCallRefinementExtension(
             }
         }
         resolveFirTypeBindingConstraints(
-            session = session,
-            sharedState = sharedState,
-            typeParameterModels = inferenceTypeParameterModels,
-            constraintsBySymbol = directConstraints,
-        ).resolvedByKey.forEach { (symbol, type) ->
-            if (symbol !in inferred) {
-                inferred[symbol] = type
+                session = session,
+                sharedState = sharedState,
+                typeParameterModels = inferenceTypeParameterModels,
+                constraintsBySymbol = directConstraints,
+            )
+            .resolvedByKey
+            .forEach { (symbol, type) ->
+                if (symbol !in inferred) {
+                    inferred[symbol] = type
+                }
             }
-        }
 
         return originalFunction.typeParameters.map { typeParameter ->
             val inferredType = inferred[typeParameter.symbol] ?: return call.typeArguments
@@ -520,11 +596,15 @@ internal class TypeclassFirFunctionCallRefinementExtension(
         }
     }
 
-    private fun FirTypeclassResolutionContext.exactBuiltinGoalContext(): FirBuiltinGoalExactContext =
+    private fun FirTypeclassResolutionContext.exactBuiltinGoalContext():
+        FirBuiltinGoalExactContext =
         FirBuiltinGoalExactContext(
             session = session,
             typeParameterModels = typeParameterModels,
-            variableSymbolsById = typeParameterModels.entries.associate { (symbol, parameter) -> parameter.id to symbol },
+            variableSymbolsById =
+                typeParameterModels.entries.associate { (symbol, parameter) ->
+                    parameter.id to symbol
+                },
         )
 }
 
@@ -543,9 +623,8 @@ internal fun refinementCallKey(
     symbol: FirNamedFunctionSymbol,
 ): RefinementCallKey? = sourceElement?.let { source -> RefinementCallKey(source, symbol) }
 
-private fun FirFunctionCall.refinementCallKey(
-    symbol: FirNamedFunctionSymbol,
-): RefinementCallKey? = refinementCallKey(source, symbol)
+private fun FirFunctionCall.refinementCallKey(symbol: FirNamedFunctionSymbol): RefinementCallKey? =
+    refinementCallKey(source, symbol)
 
 private fun MutableMap<FirTypeParameterSymbol, ConeKotlinType>.mergeResolutionInferredTypeArguments(
     trace: ResolutionTrace,
@@ -567,7 +646,8 @@ private fun MutableMap<FirTypeParameterSymbol, ConeKotlinType>.mergeResolutionIn
     }
 }
 
-private fun MutableMap<FirTypeParameterSymbol, ConeKotlinType>.mergeAmbiguousResolutionInferredTypeArguments(
+private fun MutableMap<FirTypeParameterSymbol, ConeKotlinType>
+    .mergeAmbiguousResolutionInferredTypeArguments(
     goal: TcType,
     ambiguous: ResolutionSearchResult.Ambiguous,
     variableSymbolsById: Map<String, FirTypeParameterSymbol>,
@@ -613,9 +693,7 @@ private fun TcType.hasAllEligibleBindings(
         symbol !in eligibleSymbols || symbol in inferredTypeArguments
     }
 
-private fun ResolutionTrace.collectSelectedBindings(
-    bindings: MutableMap<String, TcType>,
-): Boolean {
+private fun ResolutionTrace.collectSelectedBindings(bindings: MutableMap<String, TcType>): Boolean {
     val selectedCandidate = selectedCandidateOrNull() ?: return true
     val selectedBindings =
         unifyTypes(
@@ -641,9 +719,7 @@ private fun ResolutionTrace.selectedCandidateOrNull(): ResolutionTraceCandidate?
         candidate.state == ResolutionTraceCandidateState.SELECTED
     }
 
-private fun MutableMap<String, TcType>.mergeModelBindings(
-    incoming: Map<String, TcType>,
-): Boolean {
+private fun MutableMap<String, TcType>.mergeModelBindings(incoming: Map<String, TcType>): Boolean {
     incoming.forEach { (key, value) ->
         val normalizedValue = value.substituteType(this)
         val current = this[key]
@@ -666,37 +742,34 @@ private fun MutableMap<String, TcType>.mergeModelBindings(
         }
     }
     val snapshot = toMap()
-    snapshot.forEach { (key, value) ->
-        this[key] = value.substituteType(snapshot)
-    }
+    snapshot.forEach { (key, value) -> this[key] = value.substituteType(snapshot) }
     return true
 }
 
 private fun TcType.toConeKotlinType(
-    variableSymbolsById: Map<String, FirTypeParameterSymbol>,
+    variableSymbolsById: Map<String, FirTypeParameterSymbol>
 ): ConeKotlinType? =
     when (this) {
         TcType.StarProjection -> null
         is TcType.Projected -> null
 
-        is TcType.Variable ->
-            variableSymbolsById[id]?.constructType(isMarkedNullable = isNullable)
+        is TcType.Variable -> variableSymbolsById[id]?.constructType(isMarkedNullable = isNullable)
 
         is TcType.Constructor -> {
-            val classId = runCatching { ClassId.fromString(classifierId) }.getOrNull() ?: return null
+            val classId =
+                runCatching { ClassId.fromString(classifierId) }.getOrNull() ?: return null
             val arguments =
-                this.arguments.map { argument ->
-                    argument.toConeTypeProjection(variableSymbolsById) ?: return null
-                }.toTypedArray()
-            classId.constructClassLikeType(
-                typeArguments = arguments,
-                isMarkedNullable = isNullable,
-            )
+                this.arguments
+                    .map { argument ->
+                        argument.toConeTypeProjection(variableSymbolsById) ?: return null
+                    }
+                    .toTypedArray()
+            classId.constructClassLikeType(typeArguments = arguments, isMarkedNullable = isNullable)
         }
     }
 
 private fun TcType.toConeTypeProjection(
-    variableSymbolsById: Map<String, FirTypeParameterSymbol>,
+    variableSymbolsById: Map<String, FirTypeParameterSymbol>
 ): org.jetbrains.kotlin.fir.types.ConeTypeProjection? =
     when (this) {
         TcType.StarProjection -> ConeStarProjection
@@ -711,6 +784,5 @@ private fun TcType.toConeTypeProjection(
         }
 
         is TcType.Variable,
-        is TcType.Constructor,
-        -> toConeKotlinType(variableSymbolsById)
+        is TcType.Constructor -> toConeKotlinType(variableSymbolsById)
     }

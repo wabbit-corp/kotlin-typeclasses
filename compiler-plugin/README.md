@@ -9,7 +9,15 @@ Most projects should apply `one.wabbit.typeclass` through the companion Gradle p
 - Kotlin-version-specific plugin debugging
 - Dokka/API documentation for compiler-side behavior
 
-## Artifact
+## Why This Module Exists
+
+Kotlin compiler plugins are tied to compiler internals. This module isolates the K2/FIR/IR implementation from the stable runtime annotations and from Gradle wiring, so consumers can use the normal Gradle path while compiler-side behavior remains inspectable and testable.
+
+## Status
+
+This module is experimental, K2-only, and published per Kotlin compiler line. The current documented variants target Kotlin `2.3.10` and `2.4.0-Beta1`.
+
+## Installation
 
 The compiler plugin is published as a Kotlin-line-specific artifact:
 
@@ -24,11 +32,28 @@ The current release train publishes compiler-plugin variants for:
 
 If you use Gradle, the companion plugin resolves the matching variant automatically.
 
+## Quick Start
+
+For normal projects, do not wire this artifact directly. Use the Gradle plugin and runtime dependency:
+
+```kotlin
+plugins {
+    kotlin("jvm") version "2.3.10"
+    id("one.wabbit.typeclass") version "0.0.1"
+}
+
+dependencies {
+    implementation("one.wabbit:kotlin-typeclasses:0.0.1")
+}
+```
+
+Use direct CLI wiring only for custom build tools, compiler-plugin debugging, or Kotlin-version compatibility testing.
+
 ## What The Compiler Plugin Adds
 
 The compiler plugin is responsible for:
 
-- implicit resolution for `context(...)` parameters whose interface is annotated with `@Typeclass`
+- implicit resolution for `context(...)` parameters whose head is annotated with `@Typeclass`
 - instance search through top-level `@Instance` declarations and associated companions
 - built-in proof materialization such as `Same`, `Subtype`, `KnownType`, and `TypeId`
 - derivation through `@Derive`, `@DeriveVia`, and `@DeriveEquiv`
@@ -39,7 +64,8 @@ The compiler plugin is responsible for:
 
 Important current boundaries:
 
-- only interfaces marked with `@Typeclass` participate in typeclass search
+- only supported heads marked with `@Typeclass` participate in typeclass search
+- ordinary user-defined typeclasses should be interfaces; subclassable class heads are limited to advanced/compiler-owned surfaces and `@DeriveVia` adapter generation where a zero-argument superclass constructor is accessible
 - directly available contextual evidence is preferred before global rule search
 - ambiguity is an error; there is no hidden global coherence policy
 - `@DeriveVia` and `@DeriveEquiv` are intentionally conservative and currently focus on monomorphic target classes
@@ -78,7 +104,7 @@ If you are wiring the compiler plugin directly:
 
 If source code imports `one.wabbit.typeclass.*`, the runtime library still needs to be present on the compilation classpath:
 
-- `one.wabbit:kotlin-typeclasses:<version>`
+- `one.wabbit:kotlin-typeclasses:0.0.1`
 
 ## Preferred Gradle Usage
 
@@ -87,11 +113,11 @@ Most consumers should use the Gradle plugin instead:
 ```kotlin
 plugins {
     kotlin("jvm") version "2.3.10"
-    id("one.wabbit.typeclass") version "<version>"
+    id("one.wabbit.typeclass") version "0.0.1"
 }
 
 dependencies {
-    implementation("one.wabbit:kotlin-typeclasses:<version>")
+    implementation("one.wabbit:kotlin-typeclasses:0.0.1")
 }
 ```
 
@@ -103,7 +129,7 @@ That is the normal consumer path because it:
 
 ## Resolution Model
 
-Instances resolve only for `@Typeclass` interfaces.
+Instances resolve only for supported `@Typeclass` heads. For ordinary application and library code, that means `@Typeclass` interfaces.
 
 Allowed instance locations for `Foo<A, B>`:
 
@@ -204,17 +230,25 @@ fun <A> render(value: A): String = summon<Show<A>>().show(value)
 Useful commands from the repo root:
 
 ```bash
-./gradlew :compiler-plugin:test
-./gradlew -PkotlinVersion=2.3.10 :compiler-plugin:test
-./gradlew -PkotlinVersion=2.3.10 :compiler-plugin:publishToMavenLocal
+./gradlew :kotlin-typeclasses-plugin:test
+./gradlew -PkotlinVersion=2.3.10 :kotlin-typeclasses-plugin:test
+./gradlew -PkotlinVersion=2.3.10 :kotlin-typeclasses-plugin:publishToMavenLocal
 ```
 
 If you are doing local downstream testing, publish the runtime first and then the compiler plugin variant:
 
 ```bash
 ./gradlew :kotlin-typeclasses:publishToMavenLocal
-./gradlew -PkotlinVersion=2.3.10 :compiler-plugin:publishToMavenLocal
+./gradlew -PkotlinVersion=2.3.10 :kotlin-typeclasses-plugin:publishToMavenLocal
 ```
+
+## Changelog
+
+Compiler-plugin compatibility and breaking source semantics are tracked in [`../docs/migration.md`](../docs/migration.md). Kotlin-version support is pinned in [`../gradle.properties`](../gradle.properties).
+
+## Support
+
+For user-facing failures, start with [`../docs/troubleshooting.md`](../docs/troubleshooting.md). Report bugs through the repository issue tracker with Kotlin version, Gradle plugin version, and a minimal reproducer. For direct compiler-plugin development, use [`../docs/development.md`](../docs/development.md) and the integration tests under [`./src/test/`](./src/test/).
 
 ## When To Use This Module Directly
 
@@ -228,6 +262,8 @@ Use this artifact directly when:
 If you are using Gradle, prefer [`../gradle-plugin/README.md`](../gradle-plugin/README.md).
 
 ## Related Docs
+
+Suggested reading order for new users: root README, user guide, typeclass model, troubleshooting, then this module README only if direct compiler-plugin details are needed.
 
 - [`../README.md`](../README.md)
 - [`../docs/user-guide.md`](../docs/user-guide.md)

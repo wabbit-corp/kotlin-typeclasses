@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
@@ -7,8 +7,8 @@ import kotlin.test.Test
 /**
  * Locks high-risk semantic seams where FIR and IR have historically drifted.
  *
- * Positive cases compile and run, proving both phases agree on the accepted behavior.
- * Negative cases require an explicit FIR diagnostic so backend-only failures cannot regress back in.
+ * Positive cases compile and run, proving both phases agree on the accepted behavior. Negative
+ * cases require an explicit FIR diagnostic so backend-only failures cannot regress back in.
  */
 class FirIrParityTest : IntegrationTestSupport() {
     @Test
@@ -49,12 +49,10 @@ class FirIrParityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "demo.Box",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "demo.Box")
     }
 
     @Test
@@ -88,7 +86,8 @@ class FirIrParityTest : IntegrationTestSupport() {
 
                             context(show: Show<Box>)
                             fun render(value: Box): String = show.show(value)
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -101,7 +100,8 @@ class FirIrParityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -139,7 +139,8 @@ class FirIrParityTest : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE concrete forwarded context members must be transportable
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -149,14 +150,10 @@ class FirIrParityTest : IntegrationTestSupport() {
                         "context parameters",
                         "transported type parameter",
                         phase = null,
-                    ),
+                    )
                 ),
             unexpectedMessages =
-                listOf(
-                    "no context argument",
-                    "required instance",
-                    "overload resolution ambiguity",
-                ),
+                listOf("no context argument", "required instance", "overload resolution ambiguity"),
         )
     }
 
@@ -189,7 +186,8 @@ class FirIrParityTest : IntegrationTestSupport() {
             @JvmInline
             @DeriveVia(Fancy::class, Foo::class) // E:TC_CANNOT_DERIVE inherited method bounds mentioning the transported type parameter are unsupported
             value class UserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -199,14 +197,10 @@ class FirIrParityTest : IntegrationTestSupport() {
                         "type-parameter bounds",
                         "transported type parameter",
                         phase = null,
-                    ),
+                    )
                 ),
             unexpectedMessages =
-                listOf(
-                    "no context argument",
-                    "required instance",
-                    "overload resolution ambiguity",
-                ),
+                listOf("no context argument", "required instance", "overload resolution ambiguity"),
         )
     }
 
@@ -232,7 +226,8 @@ class FirIrParityTest : IntegrationTestSupport() {
                 println(notNull<String>())
                 println(subtype<Animal, Dog>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -240,7 +235,8 @@ class FirIrParityTest : IntegrationTestSupport() {
                 """
                 not-nullable
                 subtype
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -260,14 +256,13 @@ class FirIrParityTest : IntegrationTestSupport() {
             fun main() {
                 println(choose("not-a-number"))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedNoContextArgument("subtype", phase = DiagnosticPhase.FIR),
-                ),
+                listOf(expectedNoContextArgument("subtype", phase = DiagnosticPhase.FIR)),
             unexpectedMessages = listOf("invalid builtin evidence"),
         )
     }
@@ -305,12 +300,10 @@ class FirIrParityTest : IntegrationTestSupport() {
             fun main() {
                 println(render(B("x", 1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "1|x",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "1|x")
     }
 
     @Test
@@ -359,7 +352,8 @@ class FirIrParityTest : IntegrationTestSupport() {
                 println(render(empty))
                 println(render(nonEmpty))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -367,7 +361,8 @@ class FirIrParityTest : IntegrationTestSupport() {
                 """
                 empty
                 1|x
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -397,20 +392,14 @@ class FirIrParityTest : IntegrationTestSupport() {
             @DeriveEquiv(RightShape::class) // E:TC_CANNOT_DERIVE repeated field types keep the product transport ambiguous
             @DeriveVia(Show::class, RightShape::class) // E:TC_CANNOT_DERIVE repeated field types keep the transport path ambiguous
             data class LeftShape(val first: String, val amount: Int, val second: String)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("equiv", "leftshape", "rightshape"),
-                ),
+            expectedDiagnostics = listOf(expectedCannotDerive("equiv", "leftshape", "rightshape")),
             unexpectedMessages =
-                listOf(
-                    "no context argument",
-                    "required instance",
-                    "overload resolution ambiguity",
-                ),
+                listOf("no context argument", "required instance", "overload resolution ambiguity"),
         )
     }
 }

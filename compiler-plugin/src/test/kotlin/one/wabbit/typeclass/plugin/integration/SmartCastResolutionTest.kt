@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
@@ -33,12 +33,10 @@ class SmartCastResolutionTest : IntegrationTestSupport() {
                     println(render(value))
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int:1",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int:1")
     }
 
     @Test
@@ -72,12 +70,10 @@ class SmartCastResolutionTest : IntegrationTestSupport() {
                     else -> println("miss")
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "foo:2",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "foo:2")
     }
 
     @Test
@@ -108,12 +104,10 @@ class SmartCastResolutionTest : IntegrationTestSupport() {
                     println(render(value))
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "string:hello",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "string:hello")
     }
 
     @Test
@@ -153,7 +147,8 @@ class SmartCastResolutionTest : IntegrationTestSupport() {
                     println(run { render(value) })
                 }
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -162,7 +157,8 @@ class SmartCastResolutionTest : IntegrationTestSupport() {
                 string:hi
                 int:3
                 int:3
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -195,7 +191,8 @@ class SmartCastResolutionTest : IntegrationTestSupport() {
                 }
                 println(render(value)) // E:TC_NO_CONTEXT_ARGUMENT smart-cast evidence must not leak outside the branch
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,

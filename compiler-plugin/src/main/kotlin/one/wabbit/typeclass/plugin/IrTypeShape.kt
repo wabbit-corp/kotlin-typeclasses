@@ -35,9 +35,7 @@ internal fun IrType.transportTypeShapeKey(): TransportTypeShapeKey {
 }
 
 internal sealed interface TransportTypeShapeKey {
-    data class NonSimple(
-        val type: IrType,
-    ) : TransportTypeShapeKey
+    data class NonSimple(val type: IrType) : TransportTypeShapeKey
 
     data class Simple(
         val classifier: IrClassifierSymbol,
@@ -52,11 +50,7 @@ internal sealed interface TransportTypeArgumentShapeKey {
         val type: TransportTypeShapeKey,
     ) : TransportTypeArgumentShapeKey
 
-    data class Type(
-        val type: TransportTypeShapeKey,
-    ) : TransportTypeArgumentShapeKey
+    data class Type(val type: TransportTypeShapeKey) : TransportTypeArgumentShapeKey
 
-    data class Kind(
-        val klass: Class<*>,
-    ) : TransportTypeArgumentShapeKey
+    data class Kind(val klass: Class<*>) : TransportTypeArgumentShapeKey
 }

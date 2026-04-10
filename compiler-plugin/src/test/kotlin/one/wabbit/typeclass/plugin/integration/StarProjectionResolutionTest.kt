@@ -1,12 +1,13 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
-import org.junit.Ignore
 import kotlin.test.Test
+import org.junit.Ignore
 
 class StarProjectionResolutionTest : IntegrationTestSupport() {
-    @Test fun reportsMissingInstanceForStarProjectedGoalsWithoutCrashing() {
+    @Test
+    fun reportsMissingInstanceForStarProjectedGoalsWithoutCrashing() {
         val source =
             """
             package demo
@@ -22,7 +23,8 @@ class StarProjectionResolutionTest : IntegrationTestSupport() {
             fun main() {
                 println(render<List<*>>()) // E:TC_NO_CONTEXT_ARGUMENT no Show<List<*>> instance exists; this should fail cleanly
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -51,7 +53,8 @@ class StarProjectionResolutionTest : IntegrationTestSupport() {
                 println(provenSubtype<UserId, Any>())
                 println(provenSubtype<List<String>, List<*>>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -61,7 +64,8 @@ class StarProjectionResolutionTest : IntegrationTestSupport() {
                 subtype
                 subtype
                 subtype
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -92,7 +96,8 @@ class StarProjectionResolutionTest : IntegrationTestSupport() {
                 println(proof<FeatureFlag>())
                 println(proof<Foo<*>>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -101,7 +106,8 @@ class StarProjectionResolutionTest : IntegrationTestSupport() {
                 typeclass
                 typeclass
                 typeclass
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 }

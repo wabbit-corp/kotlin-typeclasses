@@ -15,9 +15,9 @@ The repository already pins the main build settings in [`gradle.properties`](../
 Gradle project names:
 
 - `:kotlin-typeclasses`
-- `:compiler-plugin`
-- `:gradle-plugin`
-- `:ij-plugin`
+- `:kotlin-typeclasses-plugin`
+- `:kotlin-typeclasses-gradle-plugin`
+- `:kotlin-typeclasses-ij-plugin`
 
 The runtime module is physically under `library/`, but its Gradle project name is `:kotlin-typeclasses`.
 
@@ -29,17 +29,17 @@ From the repository root:
 ./gradlew build
 ./gradlew projects
 ./gradlew :kotlin-typeclasses:jvmTest
-./gradlew :compiler-plugin:test
-./gradlew :gradle-plugin:test
-./gradlew :ij-plugin:test
+./gradlew :kotlin-typeclasses-plugin:test
+./gradlew :kotlin-typeclasses-gradle-plugin:test
+./gradlew :kotlin-typeclasses-ij-plugin:test
 ```
 
 Targeted examples:
 
 ```bash
-./gradlew :compiler-plugin:test --tests 'one.wabbit.typeclass.plugin.integration.ResolutionTest'
+./gradlew :kotlin-typeclasses-plugin:test --tests 'one.wabbit.typeclass.plugin.integration.ResolutionTest'
 ./gradlew :kotlin-typeclasses:jvmTest --tests 'one.wabbit.typeclass.ProofsTest'
-./gradlew :gradle-plugin:test --tests 'one.wabbit.typeclass.gradle.TypeclassGradlePluginVersioningTest'
+./gradlew :kotlin-typeclasses-gradle-plugin:test --tests 'one.wabbit.typeclass.gradle.TypeclassGradlePluginVersioningTest'
 ```
 
 ## Testing Against Different Kotlin Versions
@@ -54,8 +54,8 @@ Both are defined in [`gradle.properties`](../gradle.properties).
 To run the compiler-plugin module against a specific supported Kotlin version:
 
 ```bash
-./gradlew -PkotlinVersion=2.3.10 :compiler-plugin:test
-./gradlew -PkotlinVersion=2.4.0-Beta1 :compiler-plugin:test
+./gradlew -PkotlinVersion=2.3.10 :kotlin-typeclasses-plugin:test
+./gradlew -PkotlinVersion=2.4.0-Beta1 :kotlin-typeclasses-plugin:test
 ```
 
 The compiler plugin publishes a distinct artifact for each Kotlin version in that matrix.
@@ -66,8 +66,8 @@ For local development against another project, publish the runtime first and the
 
 ```bash
 ./gradlew :kotlin-typeclasses:publishToMavenLocal
-./gradlew -PkotlinVersion=2.3.10 :compiler-plugin:publishToMavenLocal
-./gradlew :gradle-plugin:publishToMavenLocal
+./gradlew -PkotlinVersion=2.3.10 :kotlin-typeclasses-plugin:publishToMavenLocal
+./gradlew :kotlin-typeclasses-gradle-plugin:publishToMavenLocal
 ```
 
 The Gradle plugin functional test is a good reference for local consumer wiring:
@@ -95,7 +95,7 @@ Then publish the runtime and compiler plugin to Maven Local so the consumer buil
 
 ```bash
 ./gradlew :kotlin-typeclasses:publishToMavenLocal
-./gradlew -PkotlinVersion=2.3.10 :compiler-plugin:publishToMavenLocal
+./gradlew -PkotlinVersion=2.3.10 :kotlin-typeclasses-plugin:publishToMavenLocal
 ```
 
 ## Versioning Model
@@ -171,7 +171,9 @@ If you are new to the codebase, this reading order usually works well:
 
 1. [`README.md`](../README.md)
 2. [`docs/user-guide.md`](./user-guide.md)
-3. [`docs/architecture.md`](./architecture.md)
-4. [`compiler-plugin/README.md`](../compiler-plugin/README.md)
-5. [`compiler-plugin/PLAN.md`](../compiler-plugin/PLAN.md)
-6. [`compiler-plugin/LEARNINGS.md`](../compiler-plugin/LEARNINGS.md)
+3. [`docs/api-reference.md`](./api-reference.md)
+4. [`docs/migration.md`](./migration.md)
+5. [`docs/architecture.md`](./architecture.md)
+6. [`compiler-plugin/README.md`](../compiler-plugin/README.md)
+7. [`compiler-plugin/PLAN.md`](../compiler-plugin/PLAN.md)
+8. [`compiler-plugin/LEARNINGS.md`](../compiler-plugin/LEARNINGS.md)

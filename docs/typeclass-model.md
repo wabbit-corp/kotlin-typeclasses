@@ -4,7 +4,7 @@ This guide describes the core programming model of `kotlin-typeclasses`: what co
 
 ## What Counts As A Typeclass
 
-A type participates in typeclass search only when its interface is annotated with `@Typeclass`.
+For normal user code, a type participates in typeclass search when its interface is annotated with `@Typeclass`.
 
 ```kotlin
 @Typeclass
@@ -16,8 +16,14 @@ interface Show<A> {
 Important implication:
 
 - plain context parameters are not automatically treated as typeclass lookups
-- interfaces that merely "look like" typeclasses by shape do not participate
+- interfaces or classes that merely "look like" typeclasses by shape do not participate
 - the model is annotation-driven, not structural
+
+Advanced boundary:
+
+- ordinary application and library typeclasses should be interfaces
+- subclassable abstract/open class heads are supported only in narrow cases where generated code can subclass the head through an accessible zero-argument constructor
+- compiler-owned surfaces such as `Equiv` use this advanced class-head path
 
 ## Evidence Sources
 
@@ -218,7 +224,7 @@ What does not happen:
 The typeclass model is intentionally narrower than "search anywhere":
 
 - arbitrary member declarations are not part of global typeclass search
-- interfaces without `@Typeclass` are ignored by the resolver
+- unannotated interfaces and classes are ignored by the resolver
 - local helper functions are not automatically published as global rules
 - the plugin does not infer a package-wide orphan-instance scope beyond the allowed associated owners
 

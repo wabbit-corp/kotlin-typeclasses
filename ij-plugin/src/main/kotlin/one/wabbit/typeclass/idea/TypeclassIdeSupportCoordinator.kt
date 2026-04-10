@@ -2,11 +2,11 @@
 
 package one.wabbit.typeclass.idea
 
-import com.intellij.ide.trustedProjects.TrustedProjects
-import com.intellij.notification.NotificationType
-import com.intellij.notification.NotificationGroupManager
-import com.intellij.openapi.diagnostic.Logger
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
+import com.intellij.ide.trustedProjects.TrustedProjects
+import com.intellij.notification.NotificationGroupManager
+import com.intellij.notification.NotificationType
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.externalSystem.util.ExternalSystemUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.registry.Registry
@@ -22,7 +22,8 @@ internal data class TypeclassIdeSupportResult(
 
 internal object TypeclassIdeSupportCoordinator {
     private val logger = Logger.getInstance(TypeclassIdeSupportCoordinator::class.java)
-    internal var gradleImportRequester: TypeclassGradleImportRequester = DefaultTypeclassGradleImportRequester
+    internal var gradleImportRequester: TypeclassGradleImportRequester =
+        DefaultTypeclassGradleImportRequester
     internal var analysisRestarter: TypeclassAnalysisRestarter = DefaultTypeclassAnalysisRestarter
 
     fun enableIfNeeded(project: Project, userInitiated: Boolean): TypeclassIdeSupportResult {
@@ -75,7 +76,7 @@ internal object TypeclassIdeSupportCoordinator {
         var registryUpdated = false
         if (enablePlan.enableExternalCompilerPlugins) {
             logger.info(
-                "Temporarily enabling non-bundled K2 compiler plugins for project ${project.name}",
+                "Temporarily enabling non-bundled K2 compiler plugins for project ${project.name}"
             )
             registryValue.setValue(false, project)
             registryUpdated = true
@@ -119,14 +120,13 @@ internal object TypeclassIdeSupportCoordinator {
         registryUpdated: Boolean,
         gradleImportRequested: Boolean,
     ): String {
-        val owners =
-            buildList {
-                scan.projectLevelMatch?.let { add("project settings") }
-                addAll(scan.moduleMatches.map { match -> "module ${match.ownerName}" })
-                if (scan.gradleBuildFiles.isNotEmpty()) {
-                    add("Gradle build files")
-                }
+        val owners = buildList {
+            scan.projectLevelMatch?.let { add("project settings") }
+            addAll(scan.moduleMatches.map { match -> "module ${match.ownerName}" })
+            if (scan.gradleBuildFiles.isNotEmpty()) {
+                add("Gradle build files")
             }
+        }
         val prefix =
             if (registryUpdated) {
                 "Enabled non-bundled K2 compiler plugins for this project session."
@@ -147,12 +147,7 @@ internal object TypeclassIdeSupportCoordinator {
         return "$prefix Detected kotlin-typeclasses-plugin in $ownerSummary.$refreshMessage"
     }
 
-    private fun notify(
-        project: Project,
-        type: NotificationType,
-        title: String,
-        content: String,
-    ) {
+    private fun notify(project: Project, type: NotificationType, title: String, content: String) {
         NotificationGroupManager.getInstance()
             .getNotificationGroup("TypeclassIdeSupport")
             .createNotification(title, content, type)
@@ -195,13 +190,13 @@ internal object DefaultTypeclassGradleImportRequester : TypeclassGradleImportReq
     override fun requestImport(project: Project): Boolean {
         val basePath = project.basePath ?: return false
         return runCatching {
-            ExternalSystemUtil.requestImport(project, basePath, GradleConstants.SYSTEM_ID)
-        }.onFailure { throwable ->
-            Logger.getInstance(TypeclassIdeSupportCoordinator::class.java).warn(
-                "Could not request Gradle import for ${project.name}",
-                throwable,
-            )
-        }.isSuccess
+                ExternalSystemUtil.requestImport(project, basePath, GradleConstants.SYSTEM_ID)
+            }
+            .onFailure { throwable ->
+                Logger.getInstance(TypeclassIdeSupportCoordinator::class.java)
+                    .warn("Could not request Gradle import for ${project.name}", throwable)
+            }
+            .isSuccess
     }
 }
 

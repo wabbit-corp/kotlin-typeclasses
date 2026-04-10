@@ -1,13 +1,14 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.proofs
 
+import kotlin.test.Test
 import one.wabbit.typeclass.plugin.integration.ExpectedDiagnostic
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
-import kotlin.test.Test
 
 class NullabilityProofTest : IntegrationTestSupport() {
-    @Test fun materializesNullableAndNotNullableProofsForProvableCases() {
+    @Test
+    fun materializesNullableAndNotNullableProofsForProvableCases() {
         val source =
             """
             package demo
@@ -24,7 +25,8 @@ class NullabilityProofTest : IntegrationTestSupport() {
                 println(summon<NotNullable<String>>() != null)
                 println(summon<NotNullable<List<String?>>>() != null)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -34,11 +36,13 @@ class NullabilityProofTest : IntegrationTestSupport() {
                 true
                 true
                 true
-            """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun materializesNullableAndNotNullableProofsForExactGenericCases() {
+    @Test
+    fun materializesNullableAndNotNullableProofsForExactGenericCases() {
         val source =
             """
             package demo
@@ -55,7 +59,8 @@ class NullabilityProofTest : IntegrationTestSupport() {
                 println(proveNullable<String>() != null)
                 println(proveNotNullable<String>() != null)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -63,14 +68,14 @@ class NullabilityProofTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun rejectsNullableAndNotNullableProofsWhenNullabilityIsUnknownOrWrong() {
-        fun assertNullabilityFailure(
-            declaration: String,
-        ) {
+    @Test
+    fun rejectsNullableAndNotNullableProofsWhenNullabilityIsUnknownOrWrong() {
+        fun assertNullabilityFailure(declaration: String) {
             val source =
                 """
                 package demo
@@ -85,14 +90,13 @@ class NullabilityProofTest : IntegrationTestSupport() {
                 fun <T> needsNotNullable(): String = "not-nullable"
 
                 $declaration
-                """.trimIndent()
+                """
+                    .trimIndent()
 
             assertDoesNotCompile(
                 source = source,
                 expectedDiagnostics =
-                    listOf(
-                        ExpectedDiagnostic.Error(messageRegex = "(?i)(nullable|notnullable)"),
-                    ),
+                    listOf(ExpectedDiagnostic.Error(messageRegex = "(?i)(nullable|notnullable)")),
             )
         }
 
@@ -100,31 +104,36 @@ class NullabilityProofTest : IntegrationTestSupport() {
             """
             fun <T> impossibleNullable(): String =
                 needsNullable<T>() // E:TC_NO_CONTEXT_ARGUMENT the compiler cannot prove that T admits null
-            """.trimIndent(),
+            """
+                .trimIndent()
         )
         assertNullabilityFailure(
             """
             fun <T> impossibleNotNullable(): String =
                 needsNotNullable<T>() // E:TC_NO_CONTEXT_ARGUMENT the compiler cannot prove that T excludes null
-            """.trimIndent(),
+            """
+                .trimIndent()
         )
         assertNullabilityFailure(
             """
             fun wrongNullableCall() {
                 println(needsNullable<String>()) // E:TC_NO_CONTEXT_ARGUMENT String is not nullable
             }
-            """.trimIndent(),
+            """
+                .trimIndent()
         )
         assertNullabilityFailure(
             """
             fun wrongNotNullableCall() {
                 println(needsNotNullable<String?>()) // E:TC_NO_CONTEXT_ARGUMENT String? is nullable
             }
-            """.trimIndent(),
+            """
+                .trimIndent()
         )
     }
 
-    @Test fun rejectsNotNullableProofForJavaPlatformType() {
+    @Test
+    fun rejectsNotNullableProofForJavaPlatformType() {
         val sources =
             mapOf(
                 "demo/JavaApi.java" to
@@ -138,7 +147,8 @@ class NullabilityProofTest : IntegrationTestSupport() {
                             return null;
                         }
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "Sample.kt" to
                     """
                     package demo
@@ -150,7 +160,8 @@ class NullabilityProofTest : IntegrationTestSupport() {
 
                     fun fail(): String =
                         requiresNotNullable(JavaApi.platformString()) // E:TC_NO_CONTEXT_ARGUMENT platform nullability is unknown
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertDoesNotCompile(
@@ -159,7 +170,8 @@ class NullabilityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun nullableProofSupportsNullValueContradictionAndTransportAcrossSameAndSubtype() {
+    @Test
+    fun nullableProofSupportsNullValueContradictionAndTransportAcrossSameAndSubtype() {
         val source =
             """
             package demo
@@ -188,7 +200,8 @@ class NullabilityProofTest : IntegrationTestSupport() {
                 println(anyNullable != null)
                 println(nullValue == null)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -197,11 +210,13 @@ class NullabilityProofTest : IntegrationTestSupport() {
                 true
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun notNullableProofSupportsContradictionAndTransportAcrossSameAndSubtype() {
+    @Test
+    fun notNullableProofSupportsContradictionAndTransportAcrossSameAndSubtype() {
         val source =
             """
             package demo
@@ -230,7 +245,8 @@ class NullabilityProofTest : IntegrationTestSupport() {
                 println(houndNotNull != null)
                 println(dogStillNotNull != null)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -238,11 +254,13 @@ class NullabilityProofTest : IntegrationTestSupport() {
                 """
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun nullableAndNotNullableProofsCanActAsPrerequisitesForOrdinaryRuleSearch() {
+    @Test
+    fun nullableAndNotNullableProofsCanActAsPrerequisitesForOrdinaryRuleSearch() {
         val source =
             """
             package demo
@@ -278,7 +296,8 @@ class NullabilityProofTest : IntegrationTestSupport() {
                 println(render<String?>())
                 println(render<String>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -286,7 +305,8 @@ class NullabilityProofTest : IntegrationTestSupport() {
                 """
                 nullable
                 not-nullable
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 }

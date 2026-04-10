@@ -33,6 +33,10 @@ tmp.*
 local.properties
 /settings.local.gradle.kts
 
+# IntelliJ Platform Gradle plugin local caches/artifacts
+/.intellijPlatform/
+**/.intellijPlatform/
+
 ### IntelliJ IDEA ###
 /.idea/**
 *.iws

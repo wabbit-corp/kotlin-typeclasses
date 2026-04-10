@@ -1,8 +1,6 @@
-- Better coherence/import control. Right now the orphan policy is strict, but there is still no really nice story for “these instances are in scope here, but not there”. A great library wants explicit instance imports, local instance packs, or named instance modules.
-
 - Typeclass-directed inference/improvement. Multi-parameter typeclasses are much weaker without functional dependencies, associated types, or some improvement mechanism.
 
-- Optimization of generated instances. You already started this with [DerivationOptimizationSpec.kt](/Users/wabbit/ws/datatron/kotlin-typeclasses-plugin/src/test/kotlin/one/wabbit/typeclass/plugin/integration/derivation/DerivationOptimizationSpec.kt). Getting derived codecs/equality/order instances close to handwritten code matters a lot.
+- Optimization of generated instances. You already started this with [DerivationOptimizationSpec.kt](compiler-plugin/src/test/kotlin/one/wabbit/typeclass/plugin/integration/derivation/DerivationOptimizationSpec.kt). Getting derived codecs/equality/order instances close to handwritten code matters a lot.
 
 A few categories, roughly ordered by "this would actually change how people write code" vs "nice polish."
 

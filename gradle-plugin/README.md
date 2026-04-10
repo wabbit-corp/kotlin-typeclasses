@@ -4,18 +4,26 @@
 
 It applies the compiler plugin to Kotlin compilations, enables `-Xcontext-parameters`, and resolves the Kotlin-matched compiler-plugin artifact automatically.
 
+## Why This Module Exists
+
+Compiler-plugin coordinates depend on the Kotlin compiler version. This module keeps that Kotlin-line-specific wiring out of application builds and gives users one stable Gradle plugin ID.
+
+## Status
+
+This module is experimental and follows the repository's pre-1.0 release policy. It supports the Kotlin compiler lines listed in [`../gradle.properties`](../gradle.properties); new Kotlin compiler lines require a matching compiler-plugin artifact before consumer builds can upgrade.
+
 ## Plugin Coordinates
 
 - plugin id: `one.wabbit.typeclass`
-- artifact: `one.wabbit:kotlin-typeclasses-gradle-plugin:<version>`
+- artifact: `one.wabbit:kotlin-typeclasses-gradle-plugin:0.0.1`
 
 The runtime library remains a normal dependency:
 
-- `one.wabbit:kotlin-typeclasses:<version>`
+- `one.wabbit:kotlin-typeclasses:0.0.1`
 
-## Installation
+## Quick Start
 
-Assuming Maven Central publication:
+For a JVM project, use:
 
 ```kotlin
 // settings.gradle.kts
@@ -25,23 +33,37 @@ pluginManagement {
         mavenCentral()
     }
 }
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        mavenCentral()
+    }
+}
 ```
 
 ```kotlin
 // build.gradle.kts
 plugins {
     kotlin("jvm") version "2.3.10"
-    id("one.wabbit.typeclass") version "<version>"
-}
-
-repositories {
-    mavenCentral()
+    application
+    id("one.wabbit.typeclass") version "0.0.1"
 }
 
 dependencies {
-    implementation("one.wabbit:kotlin-typeclasses:<version>")
+    implementation("one.wabbit:kotlin-typeclasses:0.0.1")
+}
+
+kotlin {
+    jvmToolchain(21)
 }
 ```
+
+For a complete source file that is compiled and run by the documentation consistency tests, see the root [Quick Start](../README.md#quick-start).
+
+## Installation Notes
+
+The plugin should be applied through `plugins { id("one.wabbit.typeclass") version "0.0.1" }`. The runtime library is still a normal dependency because source code imports `one.wabbit.typeclass.*`.
 
 ## What The Gradle Plugin Does
 
@@ -99,7 +121,7 @@ Then publish the runtime and compiler plugin to Maven Local so the consumer buil
 
 ```bash
 ./gradlew :kotlin-typeclasses:publishToMavenLocal
-./gradlew -PkotlinVersion=2.3.10 :compiler-plugin:publishToMavenLocal
+./gradlew -PkotlinVersion=2.3.10 :kotlin-typeclasses-plugin:publishToMavenLocal
 ```
 
 That matches what the functional test does and exercises the normal `plugins { id("one.wabbit.typeclass") }` path rather than a hand-injected compiler jar.
@@ -109,9 +131,17 @@ That matches what the functional test does and exercises the normal `plugins { i
 Useful commands from the repo root:
 
 ```bash
-./gradlew :gradle-plugin:test
-./gradlew :gradle-plugin:publishToMavenLocal
+./gradlew :kotlin-typeclasses-gradle-plugin:test
+./gradlew :kotlin-typeclasses-gradle-plugin:publishToMavenLocal
 ```
+
+## Changelog
+
+Gradle wiring changes and Kotlin-version migration notes live in [`../docs/migration.md`](../docs/migration.md).
+
+## Support
+
+For setup failures, check [`../docs/troubleshooting.md`](../docs/troubleshooting.md). Report bugs through the repository issue tracker with the Kotlin Gradle plugin version and dependency-resolution output. For local plugin development, use [`../docs/development.md`](../docs/development.md) and the functional tests under [`./src/test/`](./src/test/).
 
 ## Scope
 
@@ -124,6 +154,8 @@ This module is intentionally narrow:
 If you need direct compiler-plugin details or raw CLI option forms, see [`../compiler-plugin/README.md`](../compiler-plugin/README.md).
 
 ## Related Docs
+
+Suggested reading order for new users: root README, this Gradle plugin quick start, user guide, troubleshooting, then compiler-plugin README only for direct compiler integration.
 
 - [`../README.md`](../README.md)
 - [`../docs/user-guide.md`](../docs/user-guide.md)

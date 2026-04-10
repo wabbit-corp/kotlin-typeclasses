@@ -8,18 +8,19 @@
 
 package one.wabbit.typeclass.plugin
 
-import one.wabbit.typeclass.plugin.model.TcType
-import one.wabbit.typeclass.plugin.model.TcTypeParameter
 import one.wabbit.typeclass.plugin.model.ResolutionPlan
 import one.wabbit.typeclass.plugin.model.ResolutionSearchResult
+import one.wabbit.typeclass.plugin.model.TcType
+import one.wabbit.typeclass.plugin.model.TcTypeParameter
 import one.wabbit.typeclass.plugin.model.TypeclassResolutionPlanner
 import one.wabbit.typeclass.plugin.model.normalizedKey
-import one.wabbit.typeclass.plugin.model.render
 import one.wabbit.typeclass.plugin.model.references
-import org.jetbrains.kotlin.diagnostics.DiagnosticReporter
-import org.jetbrains.kotlin.diagnostics.reportOn
+import one.wabbit.typeclass.plugin.model.render
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.Modality
+import org.jetbrains.kotlin.diagnostics.DiagnosticReporter
+import org.jetbrains.kotlin.diagnostics.reportOn
+import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.analysis.checkers.MppCheckerKind
 import org.jetbrains.kotlin.fir.analysis.checkers.context.CheckerContext
@@ -28,21 +29,20 @@ import org.jetbrains.kotlin.fir.analysis.checkers.declaration.FirDeclarationChec
 import org.jetbrains.kotlin.fir.analysis.checkers.declaration.FirPropertyChecker
 import org.jetbrains.kotlin.fir.analysis.checkers.declaration.FirRegularClassChecker
 import org.jetbrains.kotlin.fir.analysis.extensions.FirAdditionalCheckersExtension
-import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.declarations.FirConstructor
 import org.jetbrains.kotlin.fir.declarations.FirFunction
 import org.jetbrains.kotlin.fir.declarations.FirProperty
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 import org.jetbrains.kotlin.fir.declarations.hasAnnotation
-import org.jetbrains.kotlin.fir.expressions.FirAnonymousFunctionExpression
 import org.jetbrains.kotlin.fir.expressions.FirAnnotation
+import org.jetbrains.kotlin.fir.expressions.FirAnonymousFunctionExpression
 import org.jetbrains.kotlin.fir.expressions.FirAnonymousObjectExpression
 import org.jetbrains.kotlin.fir.expressions.FirBlock
 import org.jetbrains.kotlin.fir.expressions.FirExpression
 import org.jetbrains.kotlin.fir.expressions.FirFunctionCall
 import org.jetbrains.kotlin.fir.expressions.FirPropertyAccessExpression
-import org.jetbrains.kotlin.fir.expressions.FirReturnExpression
 import org.jetbrains.kotlin.fir.expressions.FirResolvedQualifier
+import org.jetbrains.kotlin.fir.expressions.FirReturnExpression
 import org.jetbrains.kotlin.fir.expressions.FirSmartCastExpression
 import org.jetbrains.kotlin.fir.expressions.FirTryExpression
 import org.jetbrains.kotlin.fir.expressions.FirTypeOperatorCall
@@ -50,26 +50,23 @@ import org.jetbrains.kotlin.fir.expressions.FirWhenExpression
 import org.jetbrains.kotlin.fir.references.FirErrorNamedReference
 import org.jetbrains.kotlin.fir.references.FirResolvedErrorReference
 import org.jetbrains.kotlin.fir.references.FirResolvedNamedReference
-import org.jetbrains.kotlin.fir.resolve.providers.firProvider
 import org.jetbrains.kotlin.fir.resolve.calls.AmbiguousContextArgument
 import org.jetbrains.kotlin.fir.resolve.calls.NoContextArgument
 import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeInapplicableCandidateError
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirNamedFunctionSymbol
-import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirValueParameterSymbol
-import org.jetbrains.kotlin.fir.types.coneType
 import org.jetbrains.kotlin.fir.types.ConeClassLikeType
 import org.jetbrains.kotlin.fir.types.ConeDefinitelyNotNullType
 import org.jetbrains.kotlin.fir.types.ConeIntersectionType
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
-import org.jetbrains.kotlin.fir.types.classId
 import org.jetbrains.kotlin.fir.types.ConeStarProjection
+import org.jetbrains.kotlin.fir.types.classId
+import org.jetbrains.kotlin.fir.types.coneType
 import org.jetbrains.kotlin.fir.types.lowerBoundIfFlexible
 import org.jetbrains.kotlin.fir.types.type
 import org.jetbrains.kotlin.fir.visitors.FirDefaultVisitorVoid
-import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
 
 internal class TypeclassFirCheckersExtension(
@@ -88,21 +85,21 @@ internal class TypeclassFirCheckersExtension(
                 }
                 if (
                     declaration.hasAnnotation(DERIVE_VIA_ANNOTATION_CLASS_ID, session) ||
-                    declaration.hasAnnotation(DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID, session)
+                        declaration.hasAnnotation(DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID, session)
                 ) {
                     validateDeriveViaDeclarations(declaration)
                 }
                 if (
                     declaration.hasAnnotation(DERIVE_EQUIV_ANNOTATION_CLASS_ID, session) ||
-                    declaration.hasAnnotation(DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID, session)
+                        declaration.hasAnnotation(
+                            DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID,
+                            session,
+                        )
                 ) {
                     validateDeriveEquivDeclarations(declaration)
                 }
                 if (declaration.directlyExtendsEquiv()) {
-                    reportInvalidEquiv(
-                        declaration,
-                        invalidEquivSubclassing(),
-                    )
+                    reportInvalidEquiv(declaration, invalidEquivSubclassing())
                     return
                 }
                 if (!declaration.hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID, session)) {
@@ -115,7 +112,8 @@ internal class TypeclassFirCheckersExtension(
 
                 validateAssociatedScope(
                     ownerContext = firInstanceOwnerContext(session, declaration.symbol.classId),
-                    providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration),
+                    providedTypes =
+                        declaration.instanceProvidedTypes(session, sharedState.configuration),
                     declaration = declaration,
                 )
             }
@@ -146,12 +144,10 @@ internal class TypeclassFirCheckersExtension(
                     }
                 }
 
-                val providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration)
+                val providedTypes =
+                    declaration.instanceProvidedTypes(session, sharedState.configuration)
                 if (providedTypes.validTypes.any(::isEquivType)) {
-                    reportInvalidEquiv(
-                        declaration,
-                        invalidEquivPublishedInstance(),
-                    )
+                    reportInvalidEquiv(declaration, invalidEquivPublishedInstance())
                     return
                 }
 
@@ -193,12 +189,10 @@ internal class TypeclassFirCheckersExtension(
                     }
                 }
 
-                val providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration)
+                val providedTypes =
+                    declaration.instanceProvidedTypes(session, sharedState.configuration)
                 if (providedTypes.validTypes.any(::isEquivType)) {
-                    reportInvalidEquiv(
-                        declaration,
-                        invalidEquivPublishedInstance(),
-                    )
+                    reportInvalidEquiv(declaration, invalidEquivPublishedInstance())
                     return
                 }
 
@@ -212,25 +206,29 @@ internal class TypeclassFirCheckersExtension(
 
     override val declarationCheckers: DeclarationCheckers =
         object : DeclarationCheckers() {
-            override val regularClassCheckers: Set<FirRegularClassChecker> = setOf(regularClassChecker)
-            override val simpleFunctionCheckers: Set<FirDeclarationChecker<FirTypeclassFunctionDeclaration>> = setOf(simpleFunctionChecker)
+            override val regularClassCheckers: Set<FirRegularClassChecker> =
+                setOf(regularClassChecker)
+            override val simpleFunctionCheckers:
+                Set<FirDeclarationChecker<FirTypeclassFunctionDeclaration>> =
+                setOf(simpleFunctionChecker)
             override val propertyCheckers: Set<FirPropertyChecker> = setOf(propertyChecker)
         }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
     private fun maybeReportFunctionBodyResolutionTrace(
-        declaration: FirTypeclassFunctionDeclaration,
+        declaration: FirTypeclassFunctionDeclaration
     ) {
         val activation =
             context.resolveTypeclassTraceActivation(
                 currentContainer = declaration,
                 globalMode = sharedState.configuration.traceMode,
             ) ?: return
-        val containingFunctions =
-            buildList {
-                addAll(context.containingDeclarations.mapNotNull { symbol -> symbol.firFunctionOrNull() })
-                add(declaration)
-            }
+        val containingFunctions = buildList {
+            addAll(
+                context.containingDeclarations.mapNotNull { symbol -> symbol.firFunctionOrNull() }
+            )
+            add(declaration)
+        }
         val typeContext =
             buildFirTypeclassResolutionContext(
                 session = session,
@@ -239,7 +237,9 @@ internal class TypeclassFirCheckersExtension(
                 containingClassTypeParameters =
                     context.containingDeclarations
                         .mapNotNull { symbol -> symbol.firRegularClassOrNull() }
-                        .flatMap { declaration -> declaration.typeParameters.map { typeParameter -> typeParameter.symbol } },
+                        .flatMap { declaration ->
+                            declaration.typeParameters.map { typeParameter -> typeParameter.symbol }
+                        },
                 calleeTypeParameters = emptyList(),
             )
         declaration.body?.acceptChildren(
@@ -252,7 +252,9 @@ internal class TypeclassFirCheckersExtension(
                     return
                 }
 
-                override fun visitAnonymousFunctionExpression(anonymousFunctionExpression: FirAnonymousFunctionExpression) {
+                override fun visitAnonymousFunctionExpression(
+                    anonymousFunctionExpression: FirAnonymousFunctionExpression
+                ) {
                     return
                 }
 
@@ -269,7 +271,7 @@ internal class TypeclassFirCheckersExtension(
                     )
                     functionCall.acceptChildren(this)
                 }
-            },
+            }
         )
     }
 
@@ -321,7 +323,11 @@ internal class TypeclassFirCheckersExtension(
                 sharedState = sharedState,
                 containingFunctions =
                     buildList {
-                        addAll(context.containingDeclarations.mapNotNull { symbol -> (symbol.fir as? FirFunction)?.symbol as? FirNamedFunctionSymbol })
+                        addAll(
+                            context.containingDeclarations.mapNotNull { symbol ->
+                                (symbol.fir as? FirFunction)?.symbol as? FirNamedFunctionSymbol
+                            }
+                        )
                         add(declaration.symbol)
                     },
             )
@@ -334,9 +340,7 @@ internal class TypeclassFirCheckersExtension(
         if (!sharedState.isTypeclassType(session, substitutedType)) {
             return
         }
-        val goal =
-            coneTypeToModel(substitutedType, typeContext.typeParameterModels)
-                ?: return
+        val goal = coneTypeToModel(substitutedType, typeContext.typeParameterModels) ?: return
         val exactBuiltinGoalContext =
             FirBuiltinGoalExactContext(
                 session = session,
@@ -352,7 +356,8 @@ internal class TypeclassFirCheckersExtension(
                     sharedState.refinementRulesForGoal(
                         session = session,
                         goal = desiredGoal,
-                        canMaterializeVariable = typeContext.runtimeMaterializableVariableIds::contains,
+                        canMaterializeVariable =
+                            typeContext.runtimeMaterializableVariableIds::contains,
                         exactBuiltinGoalContext = exactBuiltinGoalContext,
                     )
                 },
@@ -405,7 +410,10 @@ internal class TypeclassFirCheckersExtension(
                         TypeclassDiagnostic.AmbiguousInstance(
                             goal = goal.render().replace('/', '.'),
                             scope = "",
-                            candidates = tracedResult.result.matchingPlans.map { plan -> plan.renderForFirDiagnostic() },
+                            candidates =
+                                tracedResult.result.matchingPlans.map { plan ->
+                                    plan.renderForFirDiagnostic()
+                                },
                         ),
                     trace =
                         renderResolutionTrace(
@@ -440,7 +448,12 @@ internal class TypeclassFirCheckersExtension(
         when {
             ownerContext.isTopLevel -> {
                 if (!declaration.isLegalTopLevelInstanceLocation(session, providedTypes)) {
-                    reportInvalid(declaration, invalidInstanceTopLevelOrphan(providedTypes.topLevelInstanceHostDisplayNames().toList()))
+                    reportInvalid(
+                        declaration,
+                        invalidInstanceTopLevelOrphan(
+                            providedTypes.topLevelInstanceHostDisplayNames().toList()
+                        ),
+                    )
                 }
             }
             !ownerContext.isCompanionScope -> {
@@ -449,7 +462,13 @@ internal class TypeclassFirCheckersExtension(
 
             else -> {
                 providedTypes.validTypes.forEach { providedType ->
-                    if (ownerContext.associatedOwner !in sharedState.allowedAssociatedOwnersForProvidedType(session, providedType)) {
+                    if (
+                        ownerContext.associatedOwner !in
+                            sharedState.allowedAssociatedOwnersForProvidedType(
+                                session,
+                                providedType,
+                            )
+                    ) {
                         reportInvalid(declaration, invalidInstanceAssociatedOwnerMismatch())
                         return
                     }
@@ -459,26 +478,26 @@ internal class TypeclassFirCheckersExtension(
     }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
-    private fun validateFunctionRuleSemantics(
-        declaration: FirTypeclassFunctionDeclaration,
-    ) {
-        declaration.contextParameters.firstNotNullOfOrNull { parameter ->
-            invalidInstancePrerequisiteMessage(parameter.returnTypeRef.coneType)
-        }?.let { message ->
-            reportInvalid(
-                declaration,
-                when (message) {
-                    "instance function context parameters must be typeclass prerequisites" ->
-                        invalidInstanceNonTypeclassPrerequisites()
-                    "instance function typeclass prerequisites must not use star projections" ->
-                        invalidInstanceStarProjectedPrerequisites()
-                    "instance function typeclass prerequisites must not use definitely-non-null type arguments" ->
-                        invalidInstanceDefinitelyNotNullPrerequisites()
-                    else -> invalidInstanceDiagnostic(message)
-                },
-            )
-            return
-        }
+    private fun validateFunctionRuleSemantics(declaration: FirTypeclassFunctionDeclaration) {
+        declaration.contextParameters
+            .firstNotNullOfOrNull { parameter ->
+                invalidInstancePrerequisiteMessage(parameter.returnTypeRef.coneType)
+            }
+            ?.let { message ->
+                reportInvalid(
+                    declaration,
+                    when (message) {
+                        "instance function context parameters must be typeclass prerequisites" ->
+                            invalidInstanceNonTypeclassPrerequisites()
+                        "instance function typeclass prerequisites must not use star projections" ->
+                            invalidInstanceStarProjectedPrerequisites()
+                        "instance function typeclass prerequisites must not use definitely-non-null type arguments" ->
+                            invalidInstanceDefinitelyNotNullPrerequisites()
+                        else -> invalidInstanceDiagnostic(message)
+                    },
+                )
+                return
+            }
 
         val ruleShape = declaration.instanceFunctionRuleShape(session, sharedState) ?: return
         val providedTypes = declaration.instanceProvidedTypes(session, sharedState.configuration)
@@ -497,47 +516,56 @@ internal class TypeclassFirCheckersExtension(
             return
         }
 
-        val recursiveProvidedType = providedTypes.validTypes.firstOrNull { providedType ->
-            ruleShape.prerequisites.any { prerequisite ->
-                prerequisite.normalizedKey() == providedType.normalizedKey()
+        val recursiveProvidedType =
+            providedTypes.validTypes.firstOrNull { providedType ->
+                ruleShape.prerequisites.any { prerequisite ->
+                    prerequisite.normalizedKey() == providedType.normalizedKey()
+                }
             }
-        }
         if (recursiveProvidedType != null) {
-            reportInvalid(declaration, invalidInstanceDirectRecursive(recursiveProvidedType.renderForMessage()))
+            reportInvalid(
+                declaration,
+                invalidInstanceDirectRecursive(recursiveProvidedType.renderForMessage()),
+            )
         }
     }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
-    private fun validateDeriveDeclaration(
-        declaration: FirRegularClass,
-    ) {
+    private fun validateDeriveDeclaration(declaration: FirRegularClass) {
         if (!declaration.supportsDeriveShape()) {
             reportCannotDerive(declaration, cannotDeriveUnsupportedShape())
             return
         }
         if (
             declaration.classKind != ClassKind.OBJECT &&
-            declaration.classKind != ClassKind.ENUM_CLASS &&
-            declaration.status.modality != Modality.SEALED &&
-            declaration.declarations
-                .filterIsInstance<FirConstructor>()
-                .none { constructor -> constructor.isPrimary }
+                declaration.classKind != ClassKind.ENUM_CLASS &&
+                declaration.status.modality != Modality.SEALED &&
+                declaration.declarations.filterIsInstance<FirConstructor>().none { constructor ->
+                    constructor.isPrimary
+                }
         ) {
             reportCannotDerive(declaration, cannotDeriveRequiresPrimaryConstructor())
             return
         }
 
         declaration.derivedAnnotationTargetClassIds(session).forEach { targetClassId ->
-            if (session.regularClassSymbolOrNull(targetClassId)?.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session) != true) {
+            if (
+                session
+                    .regularClassSymbolOrNull(targetClassId)
+                    ?.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session) != true
+            ) {
                 reportCannotDerive(
                     declaration,
-                    cannotDeriveDiagnostic("${targetClassId.shortClassName.asString()} is not annotated with @Typeclass"),
+                    cannotDeriveDiagnostic(
+                        "${targetClassId.shortClassName.asString()} is not annotated with @Typeclass"
+                    ),
                 )
             }
         }
 
         declaration.derivedTypeclassIds(session).forEach { typeclassIdString ->
-            val typeclassId = runCatching { ClassId.fromString(typeclassIdString) }.getOrNull() ?: return@forEach
+            val typeclassId =
+                runCatching { ClassId.fromString(typeclassIdString) }.getOrNull() ?: return@forEach
             if (typeclassTypeParameterCount(typeclassId, session) != 1) {
                 reportCannotDerive(declaration, cannotDeriveOnlyUnaryTypeclasses())
                 return@forEach
@@ -554,77 +582,73 @@ internal class TypeclassFirCheckersExtension(
                     } else {
                         "$targetName companion must implement $requiredName to derive products"
                     }
-                reportCannotDerive(
-                    declaration,
-                    cannotDeriveDiagnostic(message),
-                )
+                reportCannotDerive(declaration, cannotDeriveDiagnostic(message))
                 return@forEach
             }
             declaration.requiredDeriveMethodContractForDeriveShape()?.let { contract ->
                 if (typeclassCompanionResolveDeriveMethod(typeclassId, contract, session) == null) {
                     if (contract == DeriveMethodContract.ENUM) {
-                        reportCannotDerive(declaration, cannotDeriveMissingEnumOverride(typeclassId.shortClassName.asString()))
-                    } else {
-                        val companionId = typeclassCompanionSymbol(typeclassId, session)?.classId?.asString() ?: typeclassId.asString()
                         reportCannotDerive(
                             declaration,
-                            cannotDeriveDiagnostic("Typeclass deriver $companionId is missing ${contract.methodName}"),
+                            cannotDeriveMissingEnumOverride(typeclassId.shortClassName.asString()),
+                        )
+                    } else {
+                        val companionId =
+                            typeclassCompanionSymbol(typeclassId, session)?.classId?.asString()
+                                ?: typeclassId.asString()
+                        reportCannotDerive(
+                            declaration,
+                            cannotDeriveDiagnostic(
+                                "Typeclass deriver $companionId is missing ${contract.methodName}"
+                            ),
                         )
                     }
                     return@forEach
                 }
             }
-            sharedState.declarationShapeDerivationFailure(
-                session = session,
-                directTypeclassId = typeclassId.asString(),
-                declaration = declaration,
-            )?.let { failure ->
-                val storedPropertyMismatchMessage =
-                    "Cannot derive ${declaration.symbol.classId.asFqNameString()} because constructive product derivation requires constructor parameters to exactly match stored properties"
-                val narrative =
-                    if (failure == storedPropertyMismatchMessage) {
-                        cannotDeriveConstructiveProductStoredPropertyMismatch(declaration.symbol.classId.asFqNameString())
-                    } else {
-                        cannotDeriveDiagnostic(failure)
-                    }
-                reportCannotDerive(declaration, narrative)
-                return@forEach
-            }
+            sharedState
+                .declarationShapeDerivationFailure(
+                    session = session,
+                    directTypeclassId = typeclassId.asString(),
+                    declaration = declaration,
+                )
+                ?.let { failure ->
+                    val storedPropertyMismatchMessage =
+                        "Cannot derive ${declaration.symbol.classId.asFqNameString()} because constructive product derivation requires constructor parameters to exactly match stored properties"
+                    val narrative =
+                        if (failure == storedPropertyMismatchMessage) {
+                            cannotDeriveConstructiveProductStoredPropertyMismatch(
+                                declaration.symbol.classId.asFqNameString()
+                            )
+                        } else {
+                            cannotDeriveDiagnostic(failure)
+                        }
+                    reportCannotDerive(declaration, narrative)
+                    return@forEach
+                }
         }
     }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
-    private fun validateDeriveViaDeclarations(
-        declaration: FirRegularClass,
-    ) {
+    private fun validateDeriveViaDeclarations(declaration: FirRegularClass) {
         declaration.deriveViaAnnotationParseResults(session).forEach { result ->
             if (result is FirDeriveViaAnnotationParseResult.Invalid) {
-                reportCannotDerive(
-                    result.annotation,
-                    cannotDeriveDiagnostic(result.message),
-                )
+                reportCannotDerive(result.annotation, cannotDeriveDiagnostic(result.message))
             }
         }
     }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
-    private fun validateDeriveEquivDeclarations(
-        declaration: FirRegularClass,
-    ) {
+    private fun validateDeriveEquivDeclarations(declaration: FirRegularClass) {
         declaration.deriveEquivAnnotationParseResults(session).forEach { result ->
             if (result is FirDeriveEquivAnnotationParseResult.Invalid) {
-                reportCannotDerive(
-                    result.annotation,
-                    cannotDeriveDiagnostic(result.message),
-                )
+                reportCannotDerive(result.annotation, cannotDeriveDiagnostic(result.message))
             }
         }
     }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
-    private fun validateTypeclassDeriverCompanionContracts(
-        declaration: FirRegularClass,
-    ) {
+    private fun validateTypeclassDeriverCompanionContracts(declaration: FirRegularClass) {
         val companion =
             declaration.declarations
                 .filterIsInstance<FirRegularClass>()
@@ -633,63 +657,69 @@ internal class TypeclassFirCheckersExtension(
                 ?: return
         val typeclassId = declaration.symbol.classId
         val deriveMethods =
-            companion.symbol.implementedDeriveMethodContracts(session)
-                .mapNotNull { contract ->
-                    companion.symbol.resolveDeriveMethod(contract, session)?.let { function -> contract.methodName to function }
+            companion.symbol.implementedDeriveMethodContracts(session).mapNotNull { contract ->
+                companion.symbol.resolveDeriveMethod(contract, session)?.let { function ->
+                    contract.methodName to function
                 }
+            }
         for ((deriveMethodName, function) in deriveMethods) {
-                val declaredReturnConstructors =
-                    listOf(function.returnTypeRef.coneType)
-                        .expandProvidedTypes(session, emptyMap(), sharedState.configuration)
-                        .validTypes
-                        .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
-                        .distinct()
-                if (declaredReturnConstructors.isNotEmpty()) {
-                    if (typeclassId.asString() !in declaredReturnConstructors) {
-                        reportCannotDerive(
-                            function,
-                            cannotDeriveWrongDeriverReturnType(
-                                methodName = deriveMethodName,
-                                typeclassName = typeclassId.shortClassName.asString(),
-                                foundTypeclassName =
-                                    declaredReturnConstructors.joinToString { classifierId ->
-                                        classifierId.shortClassNameOrSelf()
-                                    },
-                            ),
-                        )
+            val declaredReturnConstructors =
+                listOf(function.returnTypeRef.coneType)
+                    .expandProvidedTypes(session, emptyMap(), sharedState.configuration)
+                    .validTypes
+                    .mapNotNull { providedType ->
+                        (providedType as? TcType.Constructor)?.classifierId
                     }
-                    continue
-                }
-                for (expression in function.knownFunctionReturnExpressions()) {
-                    val knownTypeclassConstructors =
-                        expression.knownReturnedTypeclassConstructors(session, sharedState.configuration)
-                    if (knownTypeclassConstructors.isEmpty()) {
-                        reportCannotDerive(
-                            function,
-                            cannotDeriveWrongDeriverReturnType(
-                                methodName = deriveMethodName,
-                                typeclassName = typeclassId.shortClassName.asString(),
-                            ),
-                        )
-                        break
-                    }
-                    if (typeclassId.asString() in knownTypeclassConstructors) {
-                        continue
-                    }
+                    .distinct()
+            if (declaredReturnConstructors.isNotEmpty()) {
+                if (typeclassId.asString() !in declaredReturnConstructors) {
                     reportCannotDerive(
                         function,
                         cannotDeriveWrongDeriverReturnType(
                             methodName = deriveMethodName,
                             typeclassName = typeclassId.shortClassName.asString(),
                             foundTypeclassName =
-                                knownTypeclassConstructors.joinToString { classifierId ->
+                                declaredReturnConstructors.joinToString { classifierId ->
                                     classifierId.shortClassNameOrSelf()
                                 },
                         ),
                     )
+                }
+                continue
+            }
+            for (expression in function.knownFunctionReturnExpressions()) {
+                val knownTypeclassConstructors =
+                    expression.knownReturnedTypeclassConstructors(
+                        session,
+                        sharedState.configuration,
+                    )
+                if (knownTypeclassConstructors.isEmpty()) {
+                    reportCannotDerive(
+                        function,
+                        cannotDeriveWrongDeriverReturnType(
+                            methodName = deriveMethodName,
+                            typeclassName = typeclassId.shortClassName.asString(),
+                        ),
+                    )
                     break
                 }
+                if (typeclassId.asString() in knownTypeclassConstructors) {
+                    continue
+                }
+                reportCannotDerive(
+                    function,
+                    cannotDeriveWrongDeriverReturnType(
+                        methodName = deriveMethodName,
+                        typeclassName = typeclassId.shortClassName.asString(),
+                        foundTypeclassName =
+                            knownTypeclassConstructors.joinToString { classifierId ->
+                                classifierId.shortClassNameOrSelf()
+                            },
+                    ),
+                )
+                break
             }
+        }
     }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
@@ -723,11 +753,7 @@ internal class TypeclassFirCheckersExtension(
         narrative: TypeclassDiagnostic,
     ) {
         val source = declaration.source ?: return
-        reporter.reportOn(
-            source,
-            TypeclassErrors.INVALID_EQUIV_DECLARATION,
-            narrative.renderBody(),
-        )
+        reporter.reportOn(source, TypeclassErrors.INVALID_EQUIV_DECLARATION, narrative.renderBody())
     }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
@@ -742,30 +768,17 @@ internal class TypeclassFirCheckersExtension(
         narrative: TypeclassDiagnostic,
     ) {
         val source = declaration.source ?: return
-        reporter.reportOn(
-            source,
-            TypeclassErrors.CANNOT_DERIVE,
-            narrative.renderBody(),
-        )
+        reporter.reportOn(source, TypeclassErrors.CANNOT_DERIVE, narrative.renderBody())
     }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
-    private fun reportCannotDerive(
-        annotation: FirAnnotation,
-        message: String,
-    ) = reportCannotDerive(annotation, cannotDeriveDiagnostic(message))
+    private fun reportCannotDerive(annotation: FirAnnotation, message: String) =
+        reportCannotDerive(annotation, cannotDeriveDiagnostic(message))
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
-    private fun reportCannotDerive(
-        annotation: FirAnnotation,
-        narrative: TypeclassDiagnostic,
-    ) {
+    private fun reportCannotDerive(annotation: FirAnnotation, narrative: TypeclassDiagnostic) {
         val source = annotation.source ?: return
-        reporter.reportOn(
-            source,
-            TypeclassErrors.CANNOT_DERIVE,
-            narrative.renderBody(),
-        )
+        reporter.reportOn(source, TypeclassErrors.CANNOT_DERIVE, narrative.renderBody())
     }
 
     context(context: CheckerContext, reporter: DiagnosticReporter)
@@ -805,7 +818,8 @@ internal class TypeclassFirCheckersExtension(
 
     private fun FirBasedSymbol<*>.firFunctionOrNull(): FirFunction? = fir as? FirFunction
 
-    private fun FirBasedSymbol<*>.firRegularClassOrNull(): FirRegularClass? = fir as? FirRegularClass
+    private fun FirBasedSymbol<*>.firRegularClassOrNull(): FirRegularClass? =
+        fir as? FirRegularClass
 
     private fun invalidInstancePrerequisiteMessage(type: ConeKotlinType): String? =
         when {
@@ -820,13 +834,10 @@ internal class TypeclassFirCheckersExtension(
 
             else -> null
         }
-
 }
 
 private fun FirRegularClass.directlyExtendsEquiv(): Boolean =
-    superTypeRefs.any { superTypeRef ->
-        superTypeRef.coneType.classId == EQUIV_CLASS_ID
-    }
+    superTypeRefs.any { superTypeRef -> superTypeRef.coneType.classId == EQUIV_CLASS_ID }
 
 private fun isEquivType(type: TcType): Boolean =
     (type as? TcType.Constructor)?.classifierId == EQUIV_CLASS_ID.asString()
@@ -850,7 +861,9 @@ private fun FirFunction.knownFunctionReturnExpressions(): List<FirExpression> {
                 return
             }
 
-            override fun visitAnonymousFunctionExpression(anonymousFunctionExpression: FirAnonymousFunctionExpression) {
+            override fun visitAnonymousFunctionExpression(
+                anonymousFunctionExpression: FirAnonymousFunctionExpression
+            ) {
                 return
             }
 
@@ -859,17 +872,20 @@ private fun FirFunction.knownFunctionReturnExpressions(): List<FirExpression> {
             }
 
             override fun visitReturnExpression(returnExpression: FirReturnExpression) {
-                if (returnExpression.target.labeledElement === this@knownFunctionReturnExpressions) {
+                if (
+                    returnExpression.target.labeledElement === this@knownFunctionReturnExpressions
+                ) {
                     expressions += returnExpression.result
                 }
                 returnExpression.result.acceptChildren(this)
             }
-        },
+        }
     )
     return expressions.toList()
 }
 
-private fun org.jetbrains.kotlin.fir.declarations.FirPropertyAccessor.knownGetterReturnExpressions(): List<FirExpression> {
+private fun org.jetbrains.kotlin.fir.declarations.FirPropertyAccessor
+    .knownGetterReturnExpressions(): List<FirExpression> {
     val expressions = linkedSetOf<FirExpression>()
     val body = body ?: return emptyList()
     body.statements.lastOrNull()?.let { statement ->
@@ -888,7 +904,9 @@ private fun org.jetbrains.kotlin.fir.declarations.FirPropertyAccessor.knownGette
                 return
             }
 
-            override fun visitAnonymousFunctionExpression(anonymousFunctionExpression: FirAnonymousFunctionExpression) {
+            override fun visitAnonymousFunctionExpression(
+                anonymousFunctionExpression: FirAnonymousFunctionExpression
+            ) {
                 return
             }
 
@@ -902,7 +920,7 @@ private fun org.jetbrains.kotlin.fir.declarations.FirPropertyAccessor.knownGette
                 }
                 returnExpression.result.acceptChildren(this)
             }
-        },
+        }
     )
     return expressions.toList()
 }
@@ -933,29 +951,31 @@ private fun FirExpression.knownReturnedTypeclassConstructors(
                 if (configuration.supportsReturnedTypeclassClassifierId(classifierId, session)) {
                     knownConstructors += classifierId
                 }
-                knownTypeclassConstructorsForImplementation(superTypeClassId, session, configuration)
+                knownTypeclassConstructorsForImplementation(
+                        superTypeClassId,
+                        session,
+                        configuration,
+                    )
                     .forEach(knownConstructors::add)
             }
     }
     fun addNested(nested: FirExpression) {
-        nested.knownReturnedTypeclassConstructors(session, configuration, visitedCallables)
+        nested
+            .knownReturnedTypeclassConstructors(session, configuration, visitedCallables)
             .forEach(knownConstructors::add)
     }
     when (expression) {
-        is FirWhenExpression ->
-            expression.branches.forEach { branch ->
-                addNested(branch.result)
-            }
+        is FirWhenExpression -> expression.branches.forEach { branch -> addNested(branch.result) }
 
         is FirTryExpression -> {
             addNested(expression.tryBlock)
-            expression.catches.forEach { catch ->
-                addNested(catch.block)
-            }
+            expression.catches.forEach { catch -> addNested(catch.block) }
         }
 
         is FirPropertyAccessExpression -> {
-            val symbol = (expression.calleeReference as? FirResolvedNamedReference)?.resolvedSymbol as? FirCallableSymbol<*> ?: return knownConstructors.toList()
+            val symbol =
+                (expression.calleeReference as? FirResolvedNamedReference)?.resolvedSymbol
+                    as? FirCallableSymbol<*> ?: return knownConstructors.toList()
             if (!visitedCallables.add(symbol)) {
                 return knownConstructors.toList()
             }
@@ -963,15 +983,13 @@ private fun FirExpression.knownReturnedTypeclassConstructors(
                 when (val declaration = symbol.fir) {
                     is FirProperty ->
                         buildList {
-                            declaration.initializer?.let(::add)
-                            declaration.getter
-                                ?.knownGetterReturnExpressions()
-                                ?.let(::addAll)
-                        }.forEach(::addNested)
+                                declaration.initializer?.let(::add)
+                                declaration.getter?.knownGetterReturnExpressions()?.let(::addAll)
+                            }
+                            .forEach(::addNested)
 
                     is FirTypeclassFunctionDeclaration ->
-                        declaration.knownFunctionReturnExpressions()
-                            .forEach(::addNested)
+                        declaration.knownFunctionReturnExpressions().forEach(::addNested)
 
                     else -> Unit
                 }
@@ -981,7 +999,9 @@ private fun FirExpression.knownReturnedTypeclassConstructors(
         }
 
         is FirFunctionCall -> {
-            val symbol = (expression.calleeReference as? FirResolvedNamedReference)?.resolvedSymbol as? FirCallableSymbol<*> ?: return knownConstructors.toList()
+            val symbol =
+                (expression.calleeReference as? FirResolvedNamedReference)?.resolvedSymbol
+                    as? FirCallableSymbol<*> ?: return knownConstructors.toList()
             if (!visitedCallables.add(symbol)) {
                 return knownConstructors.toList()
             }
@@ -1000,21 +1020,26 @@ private fun FirExpression.knownReturnedTypeclassConstructors(
 
 private fun FirExpression.knownReturnedExpressionOrSelf(): FirExpression =
     when (this) {
-        is FirTypeOperatorCall -> argumentList.arguments.singleOrNull()?.knownReturnedExpressionOrSelf() ?: this
+        is FirTypeOperatorCall ->
+            argumentList.arguments.singleOrNull()?.knownReturnedExpressionOrSelf() ?: this
         is FirSmartCastExpression -> originalExpression.knownReturnedExpressionOrSelf()
-        is FirBlock -> (statements.lastOrNull() as? FirExpression)?.knownReturnedExpressionOrSelf() ?: this
+        is FirBlock ->
+            (statements.lastOrNull() as? FirExpression)?.knownReturnedExpressionOrSelf() ?: this
         else -> this
     }
 
-private fun FirExpression.implementationClassIdForKnownReturn(
-    session: FirSession,
-): ClassId? =
+private fun FirExpression.implementationClassIdForKnownReturn(session: FirSession): ClassId? =
     when (this) {
         is FirResolvedQualifier -> symbol?.classId ?: classId
         is FirFunctionCall ->
-            ((calleeReference as? FirResolvedNamedReference)?.resolvedSymbol as? FirCallableSymbol<*>)?.callableId?.classId
+            ((calleeReference as? FirResolvedNamedReference)?.resolvedSymbol
+                    as? FirCallableSymbol<*>)
+                ?.callableId
+                ?.classId
         is FirPropertyAccessExpression ->
-            ((calleeReference as? FirResolvedNamedReference)?.resolvedSymbol as? FirCallableSymbol<*>)?.resolvedReturnType
+            ((calleeReference as? FirResolvedNamedReference)?.resolvedSymbol
+                    as? FirCallableSymbol<*>)
+                ?.resolvedReturnType
                 ?.lowerBoundIfFlexible()
                 ?.classId
         else -> null
@@ -1026,7 +1051,8 @@ private fun knownTypeclassConstructorsForImplementation(
     configuration: TypeclassConfiguration,
 ): List<String> {
     val classSymbol = session.regularClassSymbolOrNull(implementationClassId) ?: return emptyList()
-    return classSymbol.fir.declaredOrResolvedSuperTypes()
+    return classSymbol.fir
+        .declaredOrResolvedSuperTypes()
         .expandProvidedTypes(session, emptyMap(), configuration)
         .validTypes
         .mapNotNull { providedType -> (providedType as? TcType.Constructor)?.classifierId }
@@ -1056,7 +1082,8 @@ private fun containsStarProjection(type: ConeKotlinType): Boolean {
     return when (lowerBound) {
         is ConeClassLikeType ->
             lowerBound.typeArguments.any { argument ->
-                argument is ConeStarProjection || argument.type?.let(::containsStarProjection) == true
+                argument is ConeStarProjection ||
+                    argument.type?.let(::containsStarProjection) == true
             }
 
         is ConeDefinitelyNotNullType -> containsStarProjection(lowerBound.original)
@@ -1091,7 +1118,8 @@ private fun FirTypeclassFunctionDeclaration.instanceFunctionRuleShape(
     val typeParameters =
         typeParameters.mapIndexed { index, typeParameter ->
             TcTypeParameter(
-                id = "fir-function:${symbol.callableId}:$index:${typeParameter.symbol.name.asString()}",
+                id =
+                    "fir-function:${symbol.callableId}:$index:${typeParameter.symbol.name.asString()}",
                 displayName = typeParameter.symbol.name.asString(),
             )
         }
@@ -1099,7 +1127,8 @@ private fun FirTypeclassFunctionDeclaration.instanceFunctionRuleShape(
         this.typeParameters.zip(typeParameters).associate { (typeParameter, parameter) ->
             typeParameter.symbol to parameter
         }
-    val declaredProvidedType = coneTypeToModel(returnTypeRef.coneType, typeParameterBySymbol) ?: return null
+    val declaredProvidedType =
+        coneTypeToModel(returnTypeRef.coneType, typeParameterBySymbol) ?: return null
     val prerequisites =
         contextParameters.mapNotNull { parameter ->
             parameter.returnTypeRef.coneType

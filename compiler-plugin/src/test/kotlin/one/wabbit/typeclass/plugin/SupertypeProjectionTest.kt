@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin
 
@@ -20,10 +20,7 @@ class SupertypeProjectionTest {
                 directSupertypes = ::syntheticProjectionSupertypes,
             )
 
-        assertEquals(
-            SyntheticProjectionType(classifier = "Target", argument = "String"),
-            projected,
-        )
+        assertEquals(SyntheticProjectionType(classifier = "Target", argument = "String"), projected)
     }
 
     @Test
@@ -43,19 +40,22 @@ class SupertypeProjectionTest {
     }
 }
 
-private data class SyntheticProjectionType(
-    val classifier: String,
-    val argument: String,
-) {
+private data class SyntheticProjectionType(val classifier: String, val argument: String) {
     val identity: Pair<String, String>
         get() = classifier to argument
 }
 
-private fun syntheticProjectionSupertypes(type: SyntheticProjectionType): List<SyntheticProjectionType> =
+private fun syntheticProjectionSupertypes(
+    type: SyntheticProjectionType
+): List<SyntheticProjectionType> =
     when (type.classifier to type.argument) {
-        "Root" to "String" -> listOf(SyntheticProjectionType(classifier = "Bridge", argument = "List<String>"))
-        "Bridge" to "List<String>" -> listOf(SyntheticProjectionType(classifier = "Bridge", argument = "String"))
-        "Bridge" to "String" -> listOf(SyntheticProjectionType(classifier = "Target", argument = "String"))
-        "Loop" to "String" -> listOf(SyntheticProjectionType(classifier = "Loop", argument = "String"))
+        "Root" to "String" ->
+            listOf(SyntheticProjectionType(classifier = "Bridge", argument = "List<String>"))
+        "Bridge" to "List<String>" ->
+            listOf(SyntheticProjectionType(classifier = "Bridge", argument = "String"))
+        "Bridge" to "String" ->
+            listOf(SyntheticProjectionType(classifier = "Target", argument = "String"))
+        "Loop" to "String" ->
+            listOf(SyntheticProjectionType(classifier = "Loop", argument = "String"))
         else -> emptyList()
     }

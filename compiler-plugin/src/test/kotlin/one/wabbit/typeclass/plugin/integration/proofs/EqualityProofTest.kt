@@ -1,12 +1,13 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.proofs
 
-import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 import kotlin.test.Test
+import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
 
 class EqualityProofTest : IntegrationTestSupport() {
-    @Test fun materializesSameProofForIdenticalTypesAliasesAndReflexiveTypeParameters() {
+    @Test
+    fun materializesSameProofForIdenticalTypesAliasesAndReflexiveTypeParameters() {
         val source =
             """
             package demo
@@ -25,7 +26,8 @@ class EqualityProofTest : IntegrationTestSupport() {
                 println(provenSame<Int, Age>())
                 println(reflexive<String>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -34,11 +36,13 @@ class EqualityProofTest : IntegrationTestSupport() {
                 same
                 same
                 same
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun rejectsSameProofForDistinctTypes() {
+    @Test
+    fun rejectsSameProofForDistinctTypes() {
         val source =
             """
             package demo
@@ -51,7 +55,8 @@ class EqualityProofTest : IntegrationTestSupport() {
             fun main() {
                 println(provenSame<Int, String>()) // E:TC_NO_CONTEXT_ARGUMENT Int and String are not the same type
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -59,7 +64,8 @@ class EqualityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun materializesNotSameProofForProvablyDistinctTypes() {
+    @Test
+    fun materializesNotSameProofForProvablyDistinctTypes() {
         val source =
             """
             package demo
@@ -76,7 +82,8 @@ class EqualityProofTest : IntegrationTestSupport() {
                 println(provenDifferent<Int, String>())
                 println(provenDifferent<UserId, Int>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -84,11 +91,13 @@ class EqualityProofTest : IntegrationTestSupport() {
                 """
                 different
                 different
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun rejectsNotSameProofForAliasesToTheSameType() {
+    @Test
+    fun rejectsNotSameProofForAliasesToTheSameType() {
         val source =
             """
             package demo
@@ -103,7 +112,8 @@ class EqualityProofTest : IntegrationTestSupport() {
             fun main() {
                 println(provenDifferent<Int, Age>()) // E:TC_NO_CONTEXT_ARGUMENT Age is exactly Int
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -111,7 +121,8 @@ class EqualityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun rejectsNotSameProofForIdenticalTypes() {
+    @Test
+    fun rejectsNotSameProofForIdenticalTypes() {
         val source =
             """
             package demo
@@ -124,7 +135,8 @@ class EqualityProofTest : IntegrationTestSupport() {
             fun main() {
                 println(provenDifferent<Int, Int>()) // E:TC_NO_CONTEXT_ARGUMENT Int is not provably different from Int
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -132,7 +144,8 @@ class EqualityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun rejectsNotSameProofForUnconstrainedTypeParameters() {
+    @Test
+    fun rejectsNotSameProofForUnconstrainedTypeParameters() {
         val source =
             """
             package demo
@@ -144,7 +157,8 @@ class EqualityProofTest : IntegrationTestSupport() {
 
             fun <A, B> impossible(): String =
                 provenDifferent<A, B>() // E:TC_NO_CONTEXT_ARGUMENT the compiler cannot prove that A and B differ
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -152,7 +166,8 @@ class EqualityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun materializesNotSameProofForTypeParametersWithStrictUpperBounds() {
+    @Test
+    fun materializesNotSameProofForTypeParametersWithStrictUpperBounds() {
         val source =
             """
             package demo
@@ -168,15 +183,14 @@ class EqualityProofTest : IntegrationTestSupport() {
             fun main() {
                 println(proveDifferent<Dog>() != null)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun rejectsNotSameProofWhenUpperBoundStillAllowsEquality() {
+    @Test
+    fun rejectsNotSameProofWhenUpperBoundStillAllowsEquality() {
         val source =
             """
             package demo
@@ -185,7 +199,8 @@ class EqualityProofTest : IntegrationTestSupport() {
             import one.wabbit.typeclass.summon
 
             fun <T : Any> proveDifferent(): NotSame<T, Any> = summon<NotSame<T, Any>>() // E:TC_NO_CONTEXT_ARGUMENT T may still be exactly Any
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -193,7 +208,8 @@ class EqualityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun materializesNotSameProofForGenericDeclaredSupertypes() {
+    @Test
+    fun materializesNotSameProofForGenericDeclaredSupertypes() {
         val source =
             """
             package demo
@@ -207,15 +223,14 @@ class EqualityProofTest : IntegrationTestSupport() {
             fun main() {
                 println(summon<NotSame<Sub<String>, Base<String>>>() != null)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun materializesNotSameProofForStarProjectedAndFunctionTypes() {
+    @Test
+    fun materializesNotSameProofForStarProjectedAndFunctionTypes() {
         val source =
             """
             package demo
@@ -233,7 +248,8 @@ class EqualityProofTest : IntegrationTestSupport() {
                 println(summon<NotSame<(List<*>) -> Int, (List<String>) -> Int>>() != null)
                 println(proveProjectedDifferent<String>() != null)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -244,11 +260,13 @@ class EqualityProofTest : IntegrationTestSupport() {
                 true
                 true
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun sameTypeConstructorRecognizesMatchingOuterConstructors() {
+    @Test
+    fun sameTypeConstructorRecognizesMatchingOuterConstructors() {
         val source =
             """
             package demo
@@ -261,15 +279,14 @@ class EqualityProofTest : IntegrationTestSupport() {
             fun main() {
                 println(sameOuter<List<Int>, List<String>>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "same-outer",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "same-outer")
     }
 
-    @Test fun sameTypeConstructorRejectsDifferentOuterConstructors() {
+    @Test
+    fun sameTypeConstructorRejectsDifferentOuterConstructors() {
         val source =
             """
             package demo
@@ -282,7 +299,8 @@ class EqualityProofTest : IntegrationTestSupport() {
             fun main() {
                 println(sameOuter<List<Int>, Set<Int>>()) // E:TC_NO_CONTEXT_ARGUMENT List and Set have different outer constructors
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -291,7 +309,8 @@ class EqualityProofTest : IntegrationTestSupport() {
         )
     }
 
-    @Test fun sameProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
+    @Test
+    fun sameProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
         val source =
             """
             package demo
@@ -321,7 +340,8 @@ class EqualityProofTest : IntegrationTestSupport() {
                 println(render<Int, Int>())
                 println(render<Int, Age>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -329,11 +349,13 @@ class EqualityProofTest : IntegrationTestSupport() {
                 """
                 same-pair
                 same-pair
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun notSameProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
+    @Test
+    fun notSameProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
         val source =
             """
             package demo
@@ -360,15 +382,14 @@ class EqualityProofTest : IntegrationTestSupport() {
             fun main() {
                 println(render<Int, String>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "distinct-pair",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "distinct-pair")
     }
 
-    @Test fun sameTypeConstructorProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
+    @Test
+    fun sameTypeConstructorProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
         val source =
             """
             package demo
@@ -395,15 +416,14 @@ class EqualityProofTest : IntegrationTestSupport() {
             fun main() {
                 println(render<List<Int>, List<String>>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "same-outer-witness",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "same-outer-witness")
     }
 
-    @Test fun sameProofSupportsCoercionFlipCompositionAndSubtypeConversion() {
+    @Test
+    fun sameProofSupportsCoercionFlipCompositionAndSubtypeConversion() {
         val source =
             """
             package demo
@@ -427,7 +447,8 @@ class EqualityProofTest : IntegrationTestSupport() {
                 println(idAge.coerce(8))
                 println(widened)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -438,11 +459,13 @@ class EqualityProofTest : IntegrationTestSupport() {
                 7
                 8
                 42
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    @Test fun notSameProofSupportsFlipAndContradictionSurface() {
+    @Test
+    fun notSameProofSupportsFlipAndContradictionSurface() {
         val source =
             """
             package demo
@@ -459,15 +482,14 @@ class EqualityProofTest : IntegrationTestSupport() {
                 val flipped: NotSame<String, Int> = neq.flip()
                 println(flipped != null)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true")
     }
 
-    @Test fun bracketTurnsBidirectionalSubtypeIntoEquality() {
+    @Test
+    fun bracketTurnsBidirectionalSubtypeIntoEquality() {
         val source =
             """
             package demo
@@ -486,7 +508,8 @@ class EqualityProofTest : IntegrationTestSupport() {
                 println(eq.coerce(5))
                 println(eq.flip().coerce(6))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -494,7 +517,8 @@ class EqualityProofTest : IntegrationTestSupport() {
                 """
                 5
                 6
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 }

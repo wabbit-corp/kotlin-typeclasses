@@ -1,7 +1,12 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin
 
+import java.lang.reflect.Method
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import one.wabbit.typeclass.plugin.model.InstanceRule
 import one.wabbit.typeclass.plugin.model.TcType
 import org.jetbrains.kotlin.name.CallableId
@@ -11,11 +16,6 @@ import org.jetbrains.kotlin.name.Name
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.lang.reflect.Method
-import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 class TypeclassPluginSharedStateConcurrencyTest {
     @Test
@@ -29,11 +29,7 @@ class TypeclassPluginSharedStateConcurrencyTest {
                 recordMethod.invoke(state, listOf(rules[index]))
             }
 
-            assertEquals(
-                "round=$round",
-                rules.size,
-                state.importedTopLevelRulesForIr().size,
-            )
+            assertEquals("round=$round", rules.size, state.importedTopLevelRulesForIr().size)
         }
     }
 
@@ -57,10 +53,7 @@ class TypeclassPluginSharedStateConcurrencyTest {
         }
     }
 
-    private fun runConcurrently(
-        taskCount: Int,
-        action: (Int) -> Unit,
-    ) {
+    private fun runConcurrently(taskCount: Int, action: (Int) -> Unit) {
         val executor = Executors.newFixedThreadPool(taskCount)
         val start = CountDownLatch(1)
         val done = CountDownLatch(taskCount)
@@ -88,17 +81,20 @@ class TypeclassPluginSharedStateConcurrencyTest {
     }
 
     private fun recordImportedTopLevelRulesMethod(): Method =
-        TypeclassPluginSharedState::class.java.getDeclaredMethod(
-            "recordImportedTopLevelRulesForIr",
-            List::class.java,
-        ).apply { isAccessible = true }
+        TypeclassPluginSharedState::class
+            .java
+            .getDeclaredMethod("recordImportedTopLevelRulesForIr", List::class.java)
+            .apply { isAccessible = true }
 
     private fun recordImportedGeneratedMetadataMethod(): Method =
-        TypeclassPluginSharedState::class.java.getDeclaredMethod(
-            "recordImportedGeneratedDerivedMetadataForIr",
-            String::class.java,
-            List::class.java,
-        ).apply { isAccessible = true }
+        TypeclassPluginSharedState::class
+            .java
+            .getDeclaredMethod(
+                "recordImportedGeneratedDerivedMetadataForIr",
+                String::class.java,
+                List::class.java,
+            )
+            .apply { isAccessible = true }
 
     private fun dependencyVisibleRule(index: Int): VisibleInstanceRule =
         VisibleInstanceRule(
@@ -106,7 +102,11 @@ class TypeclassPluginSharedStateConcurrencyTest {
                 InstanceRule(
                     id = "rule:$index",
                     typeParameters = emptyList(),
-                    providedType = TcType.Constructor("demo/Show", listOf(TcType.Constructor("demo/Type$index", emptyList()))),
+                    providedType =
+                        TcType.Constructor(
+                            "demo/Show",
+                            listOf(TcType.Constructor("demo/Type$index", emptyList())),
+                        ),
                     prerequisiteTypes = emptyList(),
                 ),
             associatedOwner = null,

@@ -1,12 +1,12 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration
 
-import org.jetbrains.kotlin.cli.common.ExitCode
 import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import org.jetbrains.kotlin.cli.common.ExitCode
 
 /**
  * Specification for a future scoped typeclass-resolution tracing facility.
@@ -14,10 +14,10 @@ import kotlin.test.assertTrue
  * Motivation:
  * - Plugin-owned failure diagnostics are already much better than they used to be.
  * - What is still missing is an explanation mode for:
- *   * why a missing goal failed
- *   * why an ambiguity happened
- *   * why a successful goal chose one candidate
- *   * which prerequisite subgoals were searched while resolving a larger request
+ *     * why a missing goal failed
+ *     * why an ambiguity happened
+ *     * why a successful goal chose one candidate
+ *     * which prerequisite subgoals were searched while resolving a larger request
  * - A global mode-based compiler option such as `typeclassTraceMode=<mode>` is still useful for
  *   whole-project debugging, but it is too blunt for ordinary use. Most people want to trace one
  *   file, one function, or one property/local initializer without turning the build log into soup.
@@ -25,73 +25,56 @@ import kotlin.test.assertTrue
  * Proposed public surface:
  * - Add a source-retained annotation:
  *
- *   `@Target(FILE, CLASS, FUNCTION, PROPERTY, LOCAL_VARIABLE)`
- *   `@Retention(SOURCE)`
- *   `enum class TypeclassTraceMode {`
- *   `  INHERIT,`
- *   `  DISABLED,`
- *   `  FAILURES,`
- *   `  FAILURES_AND_ALTERNATIVES,`
- *   `  ALL,`
- *   `  ALL_AND_ALTERNATIVES,`
- *   `}`
- *   `annotation class DebugTypeclassResolution(`
- *   `  val mode: TypeclassTraceMode = TypeclassTraceMode.FAILURES,`
- *   `)`
+ *   `@Target(FILE, CLASS, FUNCTION, PROPERTY, LOCAL_VARIABLE)` `@Retention(SOURCE)` `enum class
+ *   TypeclassTraceMode {` ` INHERIT,` ` DISABLED,` ` FAILURES,` ` FAILURES_AND_ALTERNATIVES,` `
+ *   ALL,` ` ALL_AND_ALTERNATIVES,` `}` `annotation class DebugTypeclassResolution(` ` val mode:
+ *   TypeclassTraceMode = TypeclassTraceMode.FAILURES,` `)`
  *
  * Default model:
  * - The ambient global tracing mode is assumed `DISABLED` unless a test says otherwise.
  * - Bare `@DebugTypeclassResolution` therefore means:
- *   * tracing is enabled in that lexical scope
- *   * failed and ambiguous roots emit traces
- *   * successful roots do not emit traces
- *   * the trace is a faithful search trace, not a speculative "why not every other rule?" essay
+ *     * tracing is enabled in that lexical scope
+ *     * failed and ambiguous roots emit traces
+ *     * successful roots do not emit traces
+ *     * the trace is a faithful search trace, not a speculative "why not every other rule?" essay
  * - `mode = INHERIT` is the explicit defer-to-parent / defer-to-global-mode escape hatch.
  * - `mode = DISABLED` mutes that scope unless a nested scope explicitly re-enables tracing.
  * - A bare nested `@DebugTypeclassResolution` is not neutral inheritance; it resets that nested
  *   scope to `FAILURES`.
  *
  * Common recipes:
- * - `@DebugTypeclassResolution`
- *   = trace failures and ambiguities here
- * - `@DebugTypeclassResolution(mode = TypeclassTraceMode.ALL)`
- *   = also trace successful roots here
- * - `@DebugTypeclassResolution(mode = TypeclassTraceMode.FAILURES_AND_ALTERNATIVES)`
- *   = still trace only failures/ambiguities, but add the bounded explanatory pass
- * - `@DebugTypeclassResolution(mode = TypeclassTraceMode.ALL_AND_ALTERNATIVES)`
- *   = full local tracing
- * - `@DebugTypeclassResolution(mode = TypeclassTraceMode.INHERIT)`
- *   = inherit from an outer traced scope or global mode; do not force tracing on
- * - `@DebugTypeclassResolution(mode = TypeclassTraceMode.DISABLED)`
- *   = mute a noisy nested scope
+ * - `@DebugTypeclassResolution` = trace failures and ambiguities here
+ * - `@DebugTypeclassResolution(mode = TypeclassTraceMode.ALL)` = also trace successful roots here
+ * - `@DebugTypeclassResolution(mode = TypeclassTraceMode.FAILURES_AND_ALTERNATIVES)` = still trace
+ *   only failures/ambiguities, but add the bounded explanatory pass
+ * - `@DebugTypeclassResolution(mode = TypeclassTraceMode.ALL_AND_ALTERNATIVES)` = full local
+ *   tracing
+ * - `@DebugTypeclassResolution(mode = TypeclassTraceMode.INHERIT)` = inherit from an outer traced
+ *   scope or global mode; do not force tracing on
+ * - `@DebugTypeclassResolution(mode = TypeclassTraceMode.DISABLED)` = mute a noisy nested scope
  * - If an outer scope is already in `ALL`, a bare nested `@DebugTypeclassResolution` still resets
  *   that nested scope to `FAILURES`; use `mode = INHERIT` to keep the outer mode.
  *
  * Scope model:
- * - File scope:
- *   `@file:DebugTypeclassResolution`
- *   traces roots whose root sites are lexically inside that file.
- * - Class / object scope:
- *   `@DebugTypeclassResolution class Foo`
- *   traces roots inside member bodies, property initializers, nested declarations, and companion
- *   bodies enclosed by that class or object.
- * - Property scope:
- *   `@DebugTypeclassResolution val rendered = render(User(1))`
- *   traces roots in the initializer, delegate, and accessor bodies of that property.
- * - Local variable scope:
- *   `@DebugTypeclassResolution val rendered = render(User(1))`
- *   inside a function traces roots in that local initializer only.
- * - Function scope:
- *   `@DebugTypeclassResolution fun use()`
- *   traces roots inside that function body, including local lambdas and local functions.
- * - Expression scope is intentionally out of scope for now.
- *   FIR retains expression annotations, but the current IR pipeline does not preserve them in a
- *   form that makes scoped request-root tracing straightforward without a separate source-range
- *   bridge. The supported fine-grained substitute is local-variable scope.
- * - Ordinary declaration note:
- *   annotating a function, class, object, property, or local variable traces roots inside that
- *   declaration's own lexical body. It does not automatically trace caller-side resolution of that
- *   declaration's own context parameters; caller-side tracing is controlled at the caller root site.
+ * - File scope: `@file:DebugTypeclassResolution` traces roots whose root sites are lexically inside
+ *   that file.
+ * - Class / object scope: `@DebugTypeclassResolution class Foo` traces roots inside member bodies,
+ *   property initializers, nested declarations, and companion bodies enclosed by that class or
+ *   object.
+ * - Property scope: `@DebugTypeclassResolution val rendered = render(User(1))` traces roots in the
+ *   initializer, delegate, and accessor bodies of that property.
+ * - Local variable scope: `@DebugTypeclassResolution val rendered = render(User(1))` inside a
+ *   function traces roots in that local initializer only.
+ * - Function scope: `@DebugTypeclassResolution fun use()` traces roots inside that function body,
+ *   including local lambdas and local functions.
+ * - Expression scope is intentionally out of scope for now. FIR retains expression annotations, but
+ *   the current IR pipeline does not preserve them in a form that makes scoped request-root tracing
+ *   straightforward without a separate source-range bridge. The supported fine-grained substitute
+ *   is local-variable scope.
+ * - Ordinary declaration note: annotating a function, class, object, property, or local variable
+ *   traces roots inside that declaration's own lexical body. It does not automatically trace
+ *   caller-side resolution of that declaration's own context parameters; caller-side tracing is
+ *   controlled at the caller root site.
  *
  * Derivation-root model:
  * - Derivation events are rooted at the derived declaration site, not at a call expression.
@@ -99,45 +82,46 @@ import kotlin.test.assertTrue
  * - Direct annotation on the derived declaration is simply the nearest override.
  * - This covers `@Derive`, `@DeriveVia`, and `@DeriveEquiv`.
  * - Annotating a derived declaration traces derivation/planning events rooted there; it does not
- *   automatically trace unrelated later use-site resolution that merely consumes the derived instance.
+ *   automatically trace unrelated later use-site resolution that merely consumes the derived
+ *   instance.
  *
  * Precedence:
  * - The effective mode is chosen from the nearest enclosing lexical scope with a non-`INHERIT`
  *   value.
  * - This is ordinary lexical containment, not declaration-discovery order and not a fake universal
  *   total ordering.
- * - `DISABLED` acts as a barrier for inherited trace behavior. A nested scope may re-enable
- *   tracing explicitly, but it does not inherit a richer mode through the muted parent.
+ * - `DISABLED` acts as a barrier for inherited trace behavior. A nested scope may re-enable tracing
+ *   explicitly, but it does not inherit a richer mode through the muted parent.
  *
  * Mode semantics:
  * - `DISABLED`
- *   * no trace output is emitted for roots in that scope
- *   * ordinary resolution, ranking, ambiguity, derivation, and code generation are unchanged
+ *     * no trace output is emitted for roots in that scope
+ *     * ordinary resolution, ranking, ambiguity, derivation, and code generation are unchanged
  * - `FAILURES`
- *   * failed and ambiguous roots emit a trace
- *   * successful roots do not
- *   * the trace is a faithful search trace
+ *     * failed and ambiguous roots emit a trace
+ *     * successful roots do not
+ *     * the trace is a faithful search trace
  * - `FAILURES_AND_ALTERNATIVES`
- *   * same emission policy as `FAILURES`
- *   * after the real search finishes, the compiler may run a bounded explanatory pass that records
- *     alternatives that were not part of the actual winning/failing search
+ *     * same emission policy as `FAILURES`
+ *     * after the real search finishes, the compiler may run a bounded explanatory pass that
+ *       records alternatives that were not part of the actual winning/failing search
  * - `ALL`
- *   * successful roots emit traces too
- *   * the trace is still a faithful search trace
+ *     * successful roots emit traces too
+ *     * the trace is still a faithful search trace
  * - `ALL_AND_ALTERNATIVES`
- *   * successful roots emit traces too
- *   * the bounded explanatory pass is also enabled
+ *     * successful roots emit traces too
+ *     * the bounded explanatory pass is also enabled
  * - `INHERIT`
- *   * defer to the nearest enclosing explicit mode or the global compiler mode
+ *     * defer to the nearest enclosing explicit mode or the global compiler mode
  *
  * Observable contract:
  * - The annotation must not change:
- *   * candidate discovery
- *   * ranking
- *   * ambiguity behavior
- *   * derivation behavior
- *   * generated code shape
- *   * runtime output
+ *     * candidate discovery
+ *     * ranking
+ *     * ambiguity behavior
+ *     * derivation behavior
+ *     * generated code shape
+ *     * runtime output
  * - It changes only emitted trace output.
  *
  * Truthful trace versus explanatory pass:
@@ -148,23 +132,23 @@ import kotlin.test.assertTrue
  *
  * Trace content:
  * - Every trace should identify:
- *   * the requested goal, for example `Show<UserId>`
- *   * the root kind: `resolution` or `derivation`
- *   * the root site
- *   * the effective mode
- *   * the active traced scope and why tracing is enabled there
+ *     * the requested goal, for example `Show<UserId>`
+ *     * the root kind: `resolution` or `derivation`
+ *     * the root site
+ *     * the effective mode
+ *     * the active traced scope and why tracing is enabled there
  * - Candidate families should show:
- *   * local contexts
- *   * explicit `@Instance` rules
- *   * builtin rules
- *   * derived rules (`@Derive`, `@DeriveVia`, `@DeriveEquiv`)
- *   * why candidates were rejected
- *   * `not explored after decisive local match` where applicable
+ *     * local contexts
+ *     * explicit `@Instance` rules
+ *     * builtin rules
+ *     * derived rules (`@Derive`, `@DeriveVia`, `@DeriveEquiv`)
+ *     * why candidates were rejected
+ *     * `not explored after decisive local match` where applicable
  * - Recursive reuse / knot detection must be shown explicitly.
  *
  * Deterministic ordering:
- * - Declaration-backed candidates are ordered by stable canonical symbol identity, not by
- *   discovery order or hash-map iteration order.
+ * - Declaration-backed candidates are ordered by stable canonical symbol identity, not by discovery
+ *   order or hash-map iteration order.
  * - Local-context candidates use lexical binder order plus source anchor because they do not have
  *   stable declaration identities.
  * - Human-facing local-context display should prefer binder names when available, for example
@@ -176,18 +160,22 @@ import kotlin.test.assertTrue
  *
  * Output shape:
  * - Failed or ambiguous roots:
- *   * keep the existing primary `TC_*` error
- *   * emit the trace as a supplemental `[TC_TRACE]` note-like secondary diagnostic at the same anchor
- *   * the trace must not count as an extra error or warning
+ *     * keep the existing primary `TC_*` error
+ *     * emit the trace as a supplemental `[TC_TRACE]` note-like secondary diagnostic at the same
+ *       anchor
+ *     * the trace must not count as an extra error or warning
  * - Successful roots:
- *   * emit `[TC_TRACE]` as compiler `INFO` messages anchored at the root site
- *   * do not use warnings
- *   * still emit those `INFO` traces even if the overall compilation later fails for unrelated reasons
- * - Future machine-readable sinks such as JSONL are output-channel configuration, not annotation semantics.
+ *     * emit `[TC_TRACE]` as compiler `INFO` messages anchored at the root site
+ *     * do not use warnings
+ *     * still emit those `INFO` traces even if the overall compilation later fails for unrelated
+ *       reasons
+ * - Future machine-readable sinks such as JSONL are output-channel configuration, not annotation
+ *   semantics.
  *
  * Phase contract:
  * - Emit one logical trace per root, not one per compiler phase.
- * - FIR and IR may enrich the same in-flight trace record, but users should observe one final trace.
+ * - FIR and IR may enrich the same in-flight trace record, but users should observe one final
+ *   trace.
  *
  * Bounds:
  * - Trace size must be bounded.
@@ -200,8 +188,8 @@ import kotlin.test.assertTrue
  * - Derivation traces should present themselves as derivation-rooted traces, not ordinary
  *   call-expression resolution traces.
  * - `@DeriveVia` traces should show both:
- *   * the authored path segments exactly as written
- *   * the normalized transport plan after pinned-segment orientation and inserted `Equiv` edges
+ *     * the authored path segments exactly as written
+ *     * the normalized transport plan after pinned-segment orientation and inserted `Equiv` edges
  * - `@DeriveEquiv` traces should show whether the solver used exported evidence, transient local
  *   synthesis, composition, or inversion.
  *
@@ -212,12 +200,12 @@ import kotlin.test.assertTrue
  * - Phase-specific expectations in this suite refer only to today's primary diagnostic location,
  *   not to the future trace transport itself.
  * - Future harness helpers should assert trace blocks directly:
- *   * `assertTraceContains(...)`
- *   * `assertNoTraceForSite(...)`
- *   * `assertTraceScope(...)`
- *   * `assertTraceCandidateOrder(...)`
- *   * `assertSuccessTraceContains(...)`
- *   * `assertNoSuccessTraceForSite(...)`
+ *     * `assertTraceContains(...)`
+ *     * `assertNoTraceForSite(...)`
+ *     * `assertTraceScope(...)`
+ *     * `assertTraceCandidateOrder(...)`
+ *     * `assertSuccessTraceContains(...)`
+ *     * `assertNoSuccessTraceForSite(...)`
  */
 class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
     private fun String.countOccurrences(fragment: String): Int = split(fragment).size - 1
@@ -250,7 +238,8 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
             fun second(): String = summon<Show<Int>>().label()
 
             fun main() = println(first() + "/" + second())
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)
@@ -260,7 +249,13 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
             "[TC_TRACE] effective mode: ALL",
             "[TC_TRACE] traced scope: file Sample.kt",
         )
-        assertEquals(2, result.stdout.countOccurrences("[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"), result.stdout)
+        assertEquals(
+            2,
+            result.stdout.countOccurrences(
+                "[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"
+            ),
+            result.stdout,
+        )
         assertEquals("int/int", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
 
@@ -302,11 +297,18 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
                 println(Screen.tracedCompanion())
                 println(outside())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)
-        assertEquals(2, result.stdout.countOccurrences("[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"), result.stdout)
+        assertEquals(
+            2,
+            result.stdout.countOccurrences(
+                "[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"
+            ),
+            result.stdout,
+        )
         assertOutputContains(result.stdout, "[TC_TRACE] traced scope: class demo/Screen")
         assertEquals("int\nint\nint", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
@@ -344,11 +346,18 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
                 val screen = Screen()
                 println(screen.traced + "/" + screen.plain)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)
-        assertEquals(1, result.stdout.countOccurrences("[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"), result.stdout)
+        assertEquals(
+            1,
+            result.stdout.countOccurrences(
+                "[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"
+            ),
+            result.stdout,
+        )
         assertOutputContains(result.stdout, "[TC_TRACE] traced scope: property traced")
         assertEquals("int/int", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
@@ -385,11 +394,18 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
             fun main() {
                 println(tracedOnce())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)
-        assertEquals(1, result.stdout.countOccurrences("[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"), result.stdout)
+        assertEquals(
+            1,
+            result.stdout.countOccurrences(
+                "[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"
+            ),
+            result.stdout,
+        )
         assertOutputContains(result.stdout, "[TC_TRACE] traced scope: local variable traced")
         assertEquals("int/int", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
@@ -424,11 +440,18 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
             fun main() {
                 println(traced() + "/" + untraced())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)
-        assertEquals(1, result.stdout.countOccurrences("[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"), result.stdout)
+        assertEquals(
+            1,
+            result.stdout.countOccurrences(
+                "[TC_TRACE] Typeclass resolution trace for demo.Show<kotlin.Int>"
+            ),
+            result.stdout,
+        )
         assertOutputContains(result.stdout, "[TC_TRACE] traced scope: function")
         assertEquals("int/int", runCompiledMain(result.artifacts, "demo.SampleKt"))
     }
@@ -467,7 +490,8 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
             fun main() {
                 println(chosen())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)
@@ -515,12 +539,10 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
             fun main() {
                 println(chosen())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "int",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "int")
     }
 
     @Test
@@ -549,7 +571,8 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
 
             @DebugTypeclassResolution(mode = TypeclassTraceMode.FAILURES_AND_ALTERNATIVES)
             fun tracedFailure(): String = render(1) // E:TC_NO_CONTEXT_ARGUMENT
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.COMPILATION_ERROR, result.exitCode, result.stdout)
@@ -582,7 +605,8 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
             @DebugTypeclassResolution
             context(first: Show<Int>, second: Show<Int>)
             fun ambiguous(): String = summon<Show<Int>>().label() // E:TC_AMBIGUOUS_INSTANCE
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.COMPILATION_ERROR, result.exitCode, result.stdout)
@@ -623,7 +647,8 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
                                         }
                                 }
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "shared/ShownString.kt" to
                             """
                             package shared
@@ -639,7 +664,8 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
                                         }
                                 }
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "shared/Box.kt" to
                             """
                             package shared
@@ -657,7 +683,8 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
                                         }
                                 }
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent(),
                         "demo/Main.kt" to
                             """
                             package demo
@@ -675,8 +702,9 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
 
                             @DebugTypeclassResolution(mode = TypeclassTraceMode.FAILURES_AND_ALTERNATIVES)
                             fun tracedFailure(): String = render(Box(ShownString("clash"))) // E:TC_AMBIGUOUS_INSTANCE
-                            """.trimIndent(),
-                    ),
+                            """
+                                .trimIndent(),
+                    )
             )
         assertEquals(ExitCode.COMPILATION_ERROR, result.exitCode, result.stdout)
         assertOutputContains(
@@ -714,7 +742,8 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
             fun main() {
                 println(traced())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source, pluginOptions = listOf("typeclassTraceMode=all"))
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)
@@ -761,7 +790,8 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
                 println(traced())
                 println(missing()) // E:TC_NO_CONTEXT_ARGUMENT
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.COMPILATION_ERROR, result.exitCode, result.stdout)
@@ -801,14 +831,12 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
             sealed interface Expr
 
             data class Lit<T>(val value: T) : Expr
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.COMPILATION_ERROR, result.exitCode, result.stdout)
-        assertOutputContains(
-            result.stdout,
-            "[TC_CANNOT_DERIVE]",
-        )
+        assertOutputContains(result.stdout, "[TC_CANNOT_DERIVE]")
         assertOutputNotContains(
             result.stdout,
             "[TC_TRACE] Typeclass derivation trace for demo.Show<demo.Expr>",
@@ -856,7 +884,8 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
             object WireShow : Show<Wire> {
                 override fun show(value: Wire): String = value.raw
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)
@@ -884,7 +913,8 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
             @DebugTypeclassResolution(mode = TypeclassTraceMode.ALL)
             @DeriveEquiv(UserId::class)
             data class TaggedUserId(val value: Int)
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompiles(source = source)
     }
@@ -915,7 +945,8 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
                             object UserShow : Show<User> {
                                 override fun show(value: User): String = "dep:${'$'}{value.id}"
                             }
-                            """.trimIndent(),
+                            """
+                                .trimIndent()
                     ),
             )
         val source =
@@ -937,7 +968,8 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
             fun main() {
                 println(renderUser())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -971,7 +1003,8 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
         val traced =
             """
             package demo
@@ -998,7 +1031,8 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(1))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val baselineResult = compileSourceResult(baseline)
         assertEquals(ExitCode.OK, baselineResult.exitCode, baselineResult.stdout)
@@ -1057,7 +1091,8 @@ class DebugTypeclassResolutionSpec : IntegrationTestSupport() {
             fun main() {
                 println(render(Box(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         val result = compileSourceResult(source)
         assertEquals(ExitCode.OK, result.exitCode, result.stdout)

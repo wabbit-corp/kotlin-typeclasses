@@ -13,10 +13,7 @@ import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 
-internal fun impossibleSumTransportRuntimeMessage(
-    sourceType: String,
-    targetType: String,
-): String =
+internal fun impossibleSumTransportRuntimeMessage(sourceType: String, targetType: String): String =
     "Internal typeclass transport error: generated sum transport from $sourceType to $targetType reached an impossible fallback path. This usually means stale generated metadata or ABI drift."
 
 internal fun impossibleEnumOrdinalResolverRuntimeMessage(enumClassName: String): String =
@@ -39,10 +36,8 @@ internal fun IrBuilderWithScope.irTypeclassInternalError(
     message: String,
 ): IrExpression {
     val errorFunction =
-        pluginContext.referenceFunctions(CallableId(FqName("kotlin"), Name.identifier("error")))
-            .singleOrNull()
-            ?: error("Could not resolve kotlin.error(String)")
-    return irCall(errorFunction).apply {
-        putValueArgument(0, irString(message))
-    }
+        pluginContext
+            .referenceFunctions(CallableId(FqName("kotlin"), Name.identifier("error")))
+            .singleOrNull() ?: error("Could not resolve kotlin.error(String)")
+    return irCall(errorFunction).apply { putValueArgument(0, irString(message)) }
 }

@@ -1,146 +1,131 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.derivation
 
+import kotlin.test.Test
 import one.wabbit.typeclass.plugin.integration.DiagnosticPhase
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
-import kotlin.test.Test
 
 /**
  * Design notes for future variance-aware derivation support for a limited GADT-like fragment.
  *
  * Hidden premise:
- * - Derivation is producing generic erased evidence for `TC<Root<A, ...>>`, not
- *   monomorphizing a fresh instance per concrete use site such as `TC<Root<Int>>`.
- * - That is why contravariant consumers can tolerate unreachable specialized cases while
- *   covariant / invariant producers cannot.
- * - Effective variance is therefore only an observational classifier over the callable
- *   surface, not the final admissibility policy.
+ * - Derivation is producing generic erased evidence for `TC<Root<A, ...>>`, not monomorphizing a
+ *   fresh instance per concrete use site such as `TC<Root<Int>>`.
+ * - That is why contravariant consumers can tolerate unreachable specialized cases while covariant
+ *   / invariant producers cannot.
+ * - Effective variance is therefore only an observational classifier over the callable surface, not
+ *   the final admissibility policy.
  *
  * Proposed workflow:
  * 1. Classify the derived typeclass parameter as observationally effectively covariant,
  *    contravariant, invariant, or phantom.
- * 2. Apply any explicit GADT-derivation policy override for that typeclass or type
- *    parameter.
- * 3. Use the resulting admissibility policy to decide which constructor result-head
- *    refinements are admissible for the requested `TC<Root<...>>`.
+ * 2. Apply any explicit GADT-derivation policy override for that typeclass or type parameter.
+ * 3. Use the resulting admissibility policy to decide which constructor result-head refinements are
+ *    admissible for the requested `TC<Root<...>>`.
  *
  * Effective variance classification for the relevant typeclass parameter `A`:
  * - Declaration-site variance is authoritative:
- *   - `in A` means effectively contravariant
- *   - `out A` means effectively covariant
- * - Otherwise infer from the full inherited callable surface of the typeclass.
- *   Implementations / bodies are irrelevant; only signatures matter.
- * - Inherited members may be handled either by scanning expanded signatures directly or
- *   by caching each supertype parameter's effective variance and composing it through the
- *   subtype-to-supertype application.
+ *     - `in A` means effectively contravariant
+ *     - `out A` means effectively covariant
+ * - Otherwise infer from the full inherited callable surface of the typeclass. Implementations /
+ *   bodies are irrelevant; only signatures matter.
+ * - Inherited members may be handled either by scanning expanded signatures directly or by caching
+ *   each supertype parameter's effective variance and composing it through the subtype-to-supertype
+ *   application.
  * - Ignore occurrences wrapped in `@UnsafeVariance`; they contribute no constraints.
  * - Method parameter position contributes `ct`; method return position contributes `cv`.
- * - When traversing a nested generic type `F<T>`, compose through the referenced type
- *   constructor's declaration-site variance unless a use-site projection overrides it.
- *   Kotlin built-ins such as `List<out E>` and function types follow the same rule.
- * - Nested constructor variance must come from compiler symbols, not user-authored
- *   witness typeclasses such as `IsCovariant<T>`.
+ * - When traversing a nested generic type `F<T>`, compose through the referenced type constructor's
+ *   declaration-site variance unless a use-site projection overrides it. Kotlin built-ins such as
+ *   `List<out E>` and function types follow the same rule.
+ * - Nested constructor variance must come from compiler symbols, not user-authored witness
+ *   typeclasses such as `IsCovariant<T>`.
  * - Use-site projections are authoritative:
- *   - `out A` contributes `cv`
- *   - `in A` contributes `ct`
- *   - `*` contributes no occurrence
- * - Compose nested positions using the algebra from
- *   `https://wabbit.blog/posts/fp-variance.html`:
- *   - `cv * cv = cv`
- *   - `ct * ct = cv`
- *   - `cv * ct = ct`
- *   - `inv * X = inv`
- *   - `ph * X = ph`
+ *     - `out A` contributes `cv`
+ *     - `in A` contributes `ct`
+ *     - `*` contributes no occurrence
+ * - Compose nested positions using the algebra from `https://wabbit.blog/posts/fp-variance.html`:
+ *     - `cv * cv = cv`
+ *     - `ct * ct = cv`
+ *     - `cv * ct = ct`
+ *     - `inv * X = inv`
+ *     - `ph * X = ph`
  * - Combine independent occurrences with lattice meet / parallel composition:
- *   - `cv \/ ct = inv`
- *   - `ph \/ cv = cv`
- *   - `ph \/ ct = ct`
+ *     - `cv \/ ct = inv`
+ *     - `ph \/ cv = cv`
+ *     - `ph \/ ct = ct`
  * - Final classification:
- *   - no remaining occurrences => effectively phantom
- *   - only `ct` occurrences => effectively contravariant
- *   - only `cv` occurrences => effectively covariant
- *   - any mixture of `cv` and `ct`, or any `inv` edge => effectively invariant
+ *     - no remaining occurrences => effectively phantom
+ *     - only `ct` occurrences => effectively contravariant
+ *     - only `cv` occurrences => effectively covariant
+ *     - any mixture of `cv` and `ct`, or any `inv` edge => effectively invariant
  *
  * Proposed admissibility policy by effective variance:
  * - Default policy: trust the observational effective variance classifier.
  * - Override policy: some proof-like or case-sensitive typeclasses may need an explicit
- *   `CONSERVATIVE_ONLY` override even when their callable surface looks contravariant or
- *   phantom.
- * - Effectively covariant or invariant:
- *   allow only the conservative head-preserving fragment.
- * - Effectively contravariant:
- *   also allow constructor result-head refinements whose specialized result head unifies
- *   with the requested root head.
- * - Effectively phantom:
- *   start by enabling at least the contravariant fragment; it may admit an even larger
- *   subset because the type parameter is observationally irrelevant.
- * Phantom caveat:
- * - Observationally phantom typeclasses may be semantically able to admit a wider class
- *   of constructors than the current contract supports, because they may never inspect
- *   or require field evidence for hidden types.
- * - This spec still rejects such shapes until metadata can distinguish shape-only
- *   derivation from derivation that eagerly requires per-field evidence.
- * - Therefore "phantom may be more permissive" is a semantic design direction, not yet
- *   a blanket implementation rule.
+ *   `CONSERVATIVE_ONLY` override even when their callable surface looks contravariant or phantom.
+ * - Effectively covariant or invariant: allow only the conservative head-preserving fragment.
+ * - Effectively contravariant: also allow constructor result-head refinements whose specialized
+ *   result head unifies with the requested root head.
+ * - Effectively phantom: start by enabling at least the contravariant fragment; it may admit an
+ *   even larger subset because the type parameter is observationally irrelevant. Phantom caveat:
+ * - Observationally phantom typeclasses may be semantically able to admit a wider class of
+ *   constructors than the current contract supports, because they may never inspect or require
+ *   field evidence for hidden types.
+ * - This spec still rejects such shapes until metadata can distinguish shape-only derivation from
+ *   derivation that eagerly requires per-field evidence.
+ * - Therefore "phantom may be more permissive" is a semantic design direction, not yet a blanket
+ *   implementation rule.
  * - In every relaxed bucket, once a constructor result head is admitted, every required
- *   field-evidence type must be expressible solely in terms of the admitted root
- *   parameters and concrete types.
- * Recoverability criterion:
- * - Let the admitted constructor result head determine a visible environment consisting
- *   of the root type parameters instantiated by that head plus any concrete types
- *   appearing in that head.
- * - Every field-evidence type required by the constructor must be formulable using only
- *   that visible environment.
- * - Fresh subclass type parameters, existentially hidden types, or proof-mediated type
- *   equalities do not count as visible unless a future design explicitly introduces
- *   machinery to expose or transport them.
+ *   field-evidence type must be expressible solely in terms of the admitted root parameters and
+ *   concrete types. Recoverability criterion:
+ * - Let the admitted constructor result head determine a visible environment consisting of the root
+ *   type parameters instantiated by that head plus any concrete types appearing in that head.
+ * - Every field-evidence type required by the constructor must be formulable using only that
+ *   visible environment.
+ * - Fresh subclass type parameters, existentially hidden types, or proof-mediated type equalities
+ *   do not count as visible unless a future design explicitly introduces machinery to expose or
+ *   transport them.
  *
  * Conservative head-preserving fragment:
  * - The derived root is a sealed generic hierarchy.
- * - Each subclass result head is exactly the root head applied to the root's own
- *   parameters.
+ * - Each subclass result head is exactly the root head applied to the root's own parameters.
  *   Examples:
- *   - `FooInt<A> : Foo<A>` is allowed.
- *   - `Node<A> : Tree<A>` is allowed.
- *   - `IntLit : Expr<Int>` is not head-preserving.
- *   - `Many<A> : Container<List<A>>` is not head-preserving.
- * - Recursive field types are allowed when they are fully determined by the admitted
- *   result head.
+ *     - `FooInt<A> : Foo<A>` is allowed.
+ *     - `Node<A> : Tree<A>` is allowed.
+ *     - `IntLit : Expr<Int>` is not head-preserving.
+ *     - `Many<A> : Container<List<A>>` is not head-preserving.
+ * - Recursive field types are allowed when they are fully determined by the admitted result head.
  * - Phantom root parameters are allowed.
  *
- * Under the current metadata / evidence contract, still reject in every variance bucket
- * unless a later design adds explicit equality reasoning or relaxes eager field-evidence
- * requirements:
+ * Under the current metadata / evidence contract, still reject in every variance bucket unless a
+ * later design adds explicit equality reasoning or relaxes eager field-evidence requirements:
  * Important distinction:
- * - The rejections in this section are not all semantic impossibilities for every
- *   observational bucket.
- * - Some shapes, especially those with hidden subclass type parameters, may still be
- *   admissible for sufficiently shape-only or truly phantom typeclasses.
- * - They remain rejected here because the current derivation contract assumes eager
- *   field-evidence availability through metadata and does not yet support a weaker
- *   shape-only metadata mode.
+ * - The rejections in this section are not all semantic impossibilities for every observational
+ *   bucket.
+ * - Some shapes, especially those with hidden subclass type parameters, may still be admissible for
+ *   sufficiently shape-only or truly phantom typeclasses.
+ * - They remain rejected here because the current derivation contract assumes eager field-evidence
+ *   availability through metadata and does not yet support a weaker shape-only metadata mode.
  * - Fresh subclass type parameters that do not appear in the admitted result head.
  * - Field evidence that depends on a type variable hidden from the admitted result head.
- * - Constructor-local equalities / proof obligations not honestly encoded in the admitted
- *   result head.
- * Example of an out-of-scope proof-carrying constructor shape:
+ * - Constructor-local equalities / proof obligations not honestly encoded in the admitted result
+ *   head. Example of an out-of-scope proof-carrying constructor shape:
  * - `Store<X, A>(value: X, proof: Same<X, A>)`
  * - `Cast<A>(store: Store<*, A>) : Expr<A>`
  * - Here the result head `Expr<A>` does not expose the hidden witness type `X`.
- * - Admitting such a constructor would require existential unpacking plus equality
- *   transport from `Same<X, A>`, not merely ordinary root-parameter substitution.
+ * - Admitting such a constructor would require existential unpacking plus equality transport from
+ *   `Same<X, A>`, not merely ordinary root-parameter substitution.
  * - The current design intentionally excludes such proof-carrying cases.
  *
  * Fixture caveat:
- * - `Show<A>` is effectively contravariant because `A` only appears in
- *   `show(value: A)`.
+ * - `Show<A>` is effectively contravariant because `A` only appears in `show(value: A)`.
  * - In a variance-aware suite it belongs in the relaxed bucket alongside `JsonWriter`.
- * - Conservative rejection cases below should be exercised through effectively
- *   covariant or invariant harnesses such as `JsonReader` or `Codec`.
- * - Effective variance is only a derivation-admissibility classifier over the observable
- *   callable surface. Proof-like or case-sensitive APIs may still need a stricter future
- *   override if pure signature inference would classify them too permissively.
+ * - Conservative rejection cases below should be exercised through effectively covariant or
+ *   invariant harnesses such as `JsonReader` or `Codec`.
+ * - Effective variance is only a derivation-admissibility classifier over the observable callable
+ *   surface. Proof-like or case-sensitive APIs may still need a stricter future override if pure
+ *   signature inference would classify them too permissively.
  */
 class GADTDerivationTest : IntegrationTestSupport() {
     private val showDeriverPrelude =
@@ -208,7 +193,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         context(show: Show<A>)
         fun <A> render(value: A): String = show.show(value)
-        """.trimIndent()
+        """
+            .trimIndent()
 
     private val jsonWriterDeriverPrelude =
         """
@@ -274,7 +260,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         context(writer: JsonWriter<A>)
         fun <A> encode(value: A): String = writer.write(value)
-        """.trimIndent()
+        """
+            .trimIndent()
 
     private val jsonReaderDeriverPrelude =
         """
@@ -323,7 +310,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         context(reader: JsonReader<A>)
         fun <A> decode(json: String): A = reader.read(json)
-        """.trimIndent()
+        """
+            .trimIndent()
 
     private val codecDeriverPrelude =
         """
@@ -384,7 +372,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         context(codec: Codec<A>)
         fun <A> roundTrip(raw: String): A = codec.decode(raw)
-        """.trimIndent()
+        """
+            .trimIndent()
 
     private val phantomTagDeriverPrelude =
         """
@@ -415,7 +404,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         context(tag: Tag<A>)
         fun <A> tagName(): String = tag.tag()
-        """.trimIndent()
+        """
+            .trimIndent()
 
     private val constructorsDeriverPrelude =
         """
@@ -450,7 +440,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         context(constructors: Constructors<A>)
         fun <A> caseNames(): List<String> = constructors.caseNames()
-        """.trimIndent()
+        """
+            .trimIndent()
 
     private val inheritedSinkDeriverPrelude =
         """
@@ -483,7 +474,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         context(sink: InheritedSink<A>)
         fun <A> consume(value: A): String = sink.accept(value)
-        """.trimIndent()
+        """
+            .trimIndent()
 
     private val unsafeVarianceSinkDeriverPrelude =
         """
@@ -521,7 +513,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         context(sink: UnsafeSink<A>)
         fun <A> consumeUnsafe(value: A): String = sink.accept(value)
-        """.trimIndent()
+        """
+            .trimIndent()
 
     private val projectedSinkDeriverPrelude =
         """
@@ -640,7 +633,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
         context(tag: StarTag<A>)
         fun <A> starTagName(box: Box<*>): String = tag.tag() + ":" + tag.observe(box)
-        """.trimIndent()
+        """
+            .trimIndent()
 
     // NEW
     // Rationale: this is the `data Foo a = Foo Int` shape. The root parameter is phantom,
@@ -661,12 +655,10 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 val value: Foo<String> = FooInt<String>(1)
                 println(render(value))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "FooInt(value=1)",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "FooInt(value=1)")
     }
 
     // NEW
@@ -691,7 +683,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 val value: Expr<Int> = decode<Expr<Int>>("{}") // E:TC_NO_CONTEXT_ARGUMENT no derived JsonReader<Expr<Int>> should exist after rejection
                 println(value)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -725,7 +718,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 val value: Container<List<Int>> = roundTrip<Container<List<Int>>>("[]")
                 println(value)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -756,11 +750,13 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 val value: Tree<Int> = Branch(Leaf(1), Branch(Leaf(2), Leaf(3)))
                 println(render(value))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
-            expectedStdout = "Branch(left=Leaf(value=1), right=Branch(left=Leaf(value=2), right=Leaf(value=3)))",
+            expectedStdout =
+                "Branch(left=Leaf(value=1), right=Branch(left=Leaf(value=2), right=Leaf(value=3)))",
         )
     }
 
@@ -779,7 +775,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
                     @Target(AnnotationTarget.CLASS, AnnotationTarget.TYPE_PARAMETER)
                     annotation class GadtDerivationPolicy(val mode: GadtDerivationMode)
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
                 "Sample.kt" to
                     """
                     package demo
@@ -837,7 +834,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
                         val value: Expr<Int> = IntLit(1)
                         println(render(value))
                     }
-                    """.trimIndent(),
+                    """
+                        .trimIndent(),
             )
 
         assertCompilesAndRuns(
@@ -869,13 +867,15 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 val value: Tree<Int> = decode<Tree<Int>>("{}")
                 println(value)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompiles(source = source)
     }
 
     // NEW
-    // Rationale: `B` is existential from the viewpoint of `Packed<A>`, so derivation cannot know what evidence to use for `value`.
+    // Rationale: `B` is existential from the viewpoint of `Packed<A>`, so derivation cannot know
+    // what evidence to use for `value`.
     @Test
     fun rejectsConstructorsWithFreshTypeParametersHiddenFromTheSpecializedResultHead() {
         val source =
@@ -887,16 +887,19 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
             @Derive(Show::class)
             data class Hidden<A, B>(val value: B) : Packed<A>
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedCannotDerive("not quantified", "admitted result head")),
+            expectedDiagnostics =
+                listOf(expectedCannotDerive("not quantified", "admitted result head")),
         )
     }
 
     // NEW
-    // Rationale: the recursive field `Weird<B>` would require evidence for a hidden `B` that is not recoverable from `Weird<A>`.
+    // Rationale: the recursive field `Weird<B>` would require evidence for a hidden `B` that is not
+    // recoverable from `Weird<A>`.
     @Test
     fun rejectsRecursiveConstructorsWithHiddenTypeParametersInFieldEvidence() {
         val source =
@@ -914,11 +917,13 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 val left: Weird<A>,
                 val right: Weird<B>,
             ) : Weird<A>
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
-            expectedDiagnostics = listOf(expectedCannotDerive("not quantified", "admitted result head")),
+            expectedDiagnostics =
+                listOf(expectedCannotDerive("not quantified", "admitted result head")),
         )
     }
 
@@ -944,12 +949,10 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 val value: Expr<Int> = IntLit(1)
                 println(render(value))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "IntLit(value=1)",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "IntLit(value=1)")
     }
 
     // NEW
@@ -976,7 +979,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 println(encode(intExpr))
                 println(encode(boolExpr))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -984,7 +988,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 """
                 {"value":1}
                 {"value":true}
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -1009,12 +1014,10 @@ class GADTDerivationTest : IntegrationTestSupport() {
             fun main() {
                 println(tagName<Expr<Int>>())
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "Expr",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "Expr")
     }
 
     // NEW
@@ -1040,7 +1043,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
             fun main() {
                 println(caseNames<Expr<Int>>().joinToString()) // E:TC_NO_CONTEXT_ARGUMENT no derived Constructors<Expr<Int>> should exist after rejection
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1072,7 +1076,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
             fun main() {
                 println(tagName<Packed<Int>>()) // E:TC_NO_CONTEXT_ARGUMENT no derived Tag<Packed<Int>> should exist after rejection
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1106,12 +1111,10 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 val value: Expr<Int> = IntLit
                 println(consume(value))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "Expr",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "Expr")
     }
 
     // NEW
@@ -1136,12 +1139,10 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 val value: Expr<Int> = IntLit
                 println(consumeUnsafe(value))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "Expr",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "Expr")
     }
 
     // NEW
@@ -1166,12 +1167,10 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 val values: List<Expr<Int>> = listOf(IntLit)
                 println(consumeList(values))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "Expr",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "Expr")
     }
 
     // NEW
@@ -1196,12 +1195,10 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 val boxed: Box<out Expr<Int>> = Box(IntLit)
                 println(consumeProjected(boxed))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "Expr",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "Expr")
     }
 
     // NEW
@@ -1227,7 +1224,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 val boxed: Box<Expr<Int>> = Box(IntLit)
                 println(consumeInvariantBox(boxed)) // E:TC_NO_CONTEXT_ARGUMENT no derived InvariantBoxSink<Expr<Int>> should exist after rejection
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1258,7 +1256,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 val boxed: Box<in Expr<Int>> = Box<Any?>(IntLit)
                 println(consumeProjectedIn(boxed)) // E:TC_NO_CONTEXT_ARGUMENT no derived ReverseProjectedSink<Expr<Int>> should exist after rejection
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
@@ -1291,12 +1290,10 @@ class GADTDerivationTest : IntegrationTestSupport() {
             fun main() {
                 println(starTagName<Expr<Int>>(Box(IntLit)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "Expr:Expr",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "Expr:Expr")
     }
 
     // NEW
@@ -1324,7 +1321,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 println(encode(one))
                 println(encode(many))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -1332,7 +1330,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 """
                 {"value":1}
                 {"values":[1, 2]}
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -1366,11 +1365,13 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 val value: Expr<Int> = If(BoolLit(true), IntLit(1), IntLit(2))
                 println(encode(value))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
-            expectedStdout = "{\"cond\":{\"value\":true}, \"ifTrue\":{\"value\":1}, \"ifFalse\":{\"value\":2}}",
+            expectedStdout =
+                "{\"cond\":{\"value\":true}, \"ifTrue\":{\"value\":1}, \"ifFalse\":{\"value\":2}}",
         )
     }
 
@@ -1396,14 +1397,13 @@ class GADTDerivationTest : IntegrationTestSupport() {
 
             @Derive(Show::class)
             data class Cast<A>(val store: Store<*, A>) : Expr<A>
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,
             expectedDiagnostics =
-                listOf(
-                    expectedCannotDerive("proof/equality-carrying", "admitted result head"),
-                ),
+                listOf(expectedCannotDerive("proof/equality-carrying", "admitted result head")),
         )
     }
 
@@ -1426,7 +1426,8 @@ class GADTDerivationTest : IntegrationTestSupport() {
                 val value: Expr<Int> = roundTrip<Expr<Int>>("ignored")
                 println(value)
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertDoesNotCompile(
             source = source,

@@ -1,34 +1,21 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin
 
-import one.wabbit.typeclass.plugin.model.TcType
-import org.jetbrains.kotlin.types.Variance
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import one.wabbit.typeclass.plugin.model.TcType
+import org.jetbrains.kotlin.types.Variance
 
 class TypeArgumentInferenceSupportTest {
     @Test
     fun invariantNestedArgumentsStillProduceExactBindings() {
         val bindings =
             inferTypeBindings(
-                expected =
-                    constructor(
-                        "demo.Use",
-                        constructor(
-                            "demo.Box",
-                            variable("T"),
-                        ),
-                    ),
+                expected = constructor("demo.Use", constructor("demo.Box", variable("T"))),
                 actual =
-                    constructor(
-                        "demo.Use",
-                        constructor(
-                            "demo.Box",
-                            constructor("kotlin.String"),
-                        ),
-                    ),
+                    constructor("demo.Use", constructor("demo.Box", constructor("kotlin.String"))),
                 bindableVariableIds = setOf("T"),
                 variancesForClassifier = ::variancesFor,
                 isProvableSubtype = ::isSubtype,
@@ -41,21 +28,11 @@ class TypeArgumentInferenceSupportTest {
     fun covariantNestedArgumentsResolveSingleLowerBounds() {
         val bindings =
             inferTypeBindings(
-                expected =
-                    constructor(
-                        "demo.Use",
-                        constructor(
-                            "demo.CovBox",
-                            variable("T"),
-                        ),
-                    ),
+                expected = constructor("demo.Use", constructor("demo.CovBox", variable("T"))),
                 actual =
                     constructor(
                         "demo.Use",
-                        constructor(
-                            "demo.CovBox",
-                            constructor("kotlin.String"),
-                        ),
+                        constructor("demo.CovBox", constructor("kotlin.String")),
                     ),
                 bindableVariableIds = setOf("T"),
                 variancesForClassifier = ::variancesFor,
@@ -69,21 +46,11 @@ class TypeArgumentInferenceSupportTest {
     fun contravariantNestedArgumentsResolveSingleUpperBounds() {
         val bindings =
             inferTypeBindings(
-                expected =
-                    constructor(
-                        "demo.Use",
-                        constructor(
-                            "demo.ContraBox",
-                            variable("T"),
-                        ),
-                    ),
+                expected = constructor("demo.Use", constructor("demo.ContraBox", variable("T"))),
                 actual =
                     constructor(
                         "demo.Use",
-                        constructor(
-                            "demo.ContraBox",
-                            constructor("kotlin.Any"),
-                        ),
+                        constructor("demo.ContraBox", constructor("kotlin.Any")),
                     ),
                 bindableVariableIds = setOf("T"),
                 variancesForClassifier = ::variancesFor,
@@ -99,13 +66,21 @@ class TypeArgumentInferenceSupportTest {
         recordTypeBindingConstraint(
             constraintsByKey = constraints,
             key = "T",
-            candidate = TypeBindingBound(value = constructor("kotlin.String"), model = constructor("kotlin.String")),
+            candidate =
+                TypeBindingBound(
+                    value = constructor("kotlin.String"),
+                    model = constructor("kotlin.String"),
+                ),
             position = ExactTypeArgumentPosition.COVARIANT,
         )
         recordTypeBindingConstraint(
             constraintsByKey = constraints,
             key = "T",
-            candidate = TypeBindingBound(value = constructor("kotlin.Any"), model = constructor("kotlin.Any")),
+            candidate =
+                TypeBindingBound(
+                    value = constructor("kotlin.Any"),
+                    model = constructor("kotlin.Any"),
+                ),
             position = ExactTypeArgumentPosition.COVARIANT,
         )
 
@@ -185,10 +160,8 @@ class TypeArgumentInferenceSupportTest {
             else -> false
         }
 
-    private fun constructor(
-        classifierId: String,
-        vararg arguments: TcType,
-    ): TcType = TcType.Constructor(classifierId, arguments.toList())
+    private fun constructor(classifierId: String, vararg arguments: TcType): TcType =
+        TcType.Constructor(classifierId, arguments.toList())
 
     private fun variable(id: String): TcType = TcType.Variable(id = id, displayName = id)
 }

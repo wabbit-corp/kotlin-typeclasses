@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.derivation
 
+import kotlin.test.Test
 import one.wabbit.typeclass.plugin.integration.CompilerHarnessPlugin
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
-import kotlin.test.Test
 
 class DerivationSemanticsTest : IntegrationTestSupport() {
     private val serializationPlugins = listOf(CompilerHarnessPlugin.Serialization)
@@ -51,12 +51,10 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
             fun main() {
                 println(describe(Box))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "0|true|true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "0|true|true")
     }
 
     @Test
@@ -109,12 +107,10 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
             fun main() {
                 println(describe(Box(1, "ok")))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
-        assertCompilesAndRuns(
-            source = source,
-            expectedStdout = "true|true|true",
-        )
+        assertCompilesAndRuns(source = source, expectedStdout = "true|true|true")
     }
 
     @Test
@@ -195,7 +191,8 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
                 println(summon<Monoid<Stats>>().empty())
                 println(summon<Semigroup<Stats>>().combine(Stats(1, "x"), Stats(4, "y")))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -205,7 +202,8 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
                 Stats(count=5, label=abcd)
                 Stats(count=0, label=)
                 Stats(count=5, label=xy)
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -281,7 +279,8 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
                 println(same(Person("Ada", 1), Person("Ada", 2)))
                 println(same(Person("Ada", 1), Person("Bob", 1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -290,7 +289,8 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
                 true
                 false
                 false
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -376,7 +376,8 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
                 println(same<Token>(Word("a"), Number(1)))
                 println(same<Token>(End, End))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -386,7 +387,8 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
                 false
                 false
                 true
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -422,7 +424,8 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
                 false
                 false
                 false
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -467,7 +470,8 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
                 true
                 false
                 false
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -517,7 +521,8 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
                 true
                 false
                 false
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -573,7 +578,8 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
                 {"id":7,"priority":"HIGH","title":"ops"}
                 true
                 Ticket(id=TicketId(value=7), priority=HIGH, title=ops)
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -624,7 +630,8 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
                 {"mode":"FAST"}
                 true
                 Settings(mode=FAST)
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -672,7 +679,8 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
                 HIGH
                 {"type":"demo.Note","message":"ops"}
                 Note(message=ops)
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -730,7 +738,8 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
                 Add(left=Var(name=Name(value=x)), right=Add(left=Lit(value=1), right=End))
                 {"value":"y"}
                 Box(value=Name(value=y))
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -771,7 +780,8 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
                 Token(value=abc)
                 {}
                 Marker()
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
@@ -822,14 +832,12 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
                 Count(value=7)
                 {"payload":{"type":"demo.Count","value":9}}
                 Envelope(payload=Count(value=9))
-                """.trimIndent(),
+                """
+                    .trimIndent(),
         )
     }
 
-    private fun jsonCodecSource(
-        definitions: String,
-        mainBody: String,
-    ): String =
+    private fun jsonCodecSource(definitions: String, mainBody: String): String =
         """
         package demo
 
@@ -984,12 +992,10 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
         fun main() {
         ${mainBody.trimIndent().prependIndent("    ")}
         }
-        """.trimIndent()
+        """
+            .trimIndent()
 
-    private fun eqSource(
-        definitions: String,
-        mainBody: String,
-    ): String =
+    private fun eqSource(definitions: String, mainBody: String): String =
         """
         package demo
 
@@ -1056,5 +1062,6 @@ class DerivationSemanticsTest : IntegrationTestSupport() {
         fun main() {
         ${mainBody.trimIndent().prependIndent("    ")}
         }
-        """.trimIndent()
+        """
+            .trimIndent()
 }

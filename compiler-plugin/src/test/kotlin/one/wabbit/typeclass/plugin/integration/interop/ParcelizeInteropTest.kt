@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 package one.wabbit.typeclass.plugin.integration.interop
 
+import kotlin.test.Test
 import one.wabbit.typeclass.plugin.integration.CompilerHarnessPlugin
 import one.wabbit.typeclass.plugin.integration.IntegrationTestSupport
-import kotlin.test.Test
 
 /**
  * Parcelize compatibility design tests.
@@ -76,7 +76,8 @@ class ParcelizeInteropTest : IntegrationTestSupport() {
             fun main() {
                 println(render(User(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -117,7 +118,8 @@ class ParcelizeInteropTest : IntegrationTestSupport() {
             fun main() {
                 println(render(User(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,
@@ -156,7 +158,8 @@ class ParcelizeInteropTest : IntegrationTestSupport() {
             fun main() {
                 println(render(User(1)))
             }
-            """.trimIndent()
+            """
+                .trimIndent()
 
         assertCompilesAndRuns(
             source = source,

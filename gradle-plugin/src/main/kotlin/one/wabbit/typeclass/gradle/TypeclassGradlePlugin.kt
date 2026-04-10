@@ -19,15 +19,13 @@ private const val CONTEXT_PARAMETERS_FLAG = "-Xcontext-parameters"
 class TypeclassGradlePlugin : KotlinCompilerPluginSupportPlugin {
     override fun apply(target: Project) {
         super.apply(target)
-        target.tasks.configureEach { task ->
-            addContextParametersFlagIfSupported(task)
-        }
+        target.tasks.configureEach { task -> addContextParametersFlagIfSupported(task) }
     }
 
     override fun isApplicable(kotlinCompilation: KotlinCompilation<*>): Boolean = true
 
     override fun applyToCompilation(
-        kotlinCompilation: KotlinCompilation<*>,
+        kotlinCompilation: KotlinCompilation<*>
     ): Provider<List<SubpluginOption>> = kotlinCompilation.target.project.provider { emptyList() }
 
     override fun getCompilerPluginId(): String = TYPECLASS_COMPILER_PLUGIN_ID
@@ -46,12 +44,12 @@ class TypeclassGradlePlugin : KotlinCompilerPluginSupportPlugin {
 
 private fun addContextParametersFlagIfSupported(task: Task) {
     val compilerOptions =
-        runCatching {
-            task.javaClass.getMethod("getCompilerOptions").invoke(task)
-        }.getOrNull() ?: return
+        runCatching { task.javaClass.getMethod("getCompilerOptions").invoke(task) }.getOrNull()
+            ?: return
     val freeCompilerArgs =
         runCatching {
-            compilerOptions.javaClass.getMethod("getFreeCompilerArgs").invoke(compilerOptions)
-        }.getOrNull() as? ListProperty<String> ?: return
+                compilerOptions.javaClass.getMethod("getFreeCompilerArgs").invoke(compilerOptions)
+            }
+            .getOrNull() as? ListProperty<String> ?: return
     freeCompilerArgs.add(CONTEXT_PARAMETERS_FLAG)
 }

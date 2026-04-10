@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License
+// SPDX-License-Identifier: LicenseRef-Wabbit-Public-Test-License-1.1
 
 @file:OptIn(
     org.jetbrains.kotlin.fir.PrivateSessionConstructor::class,
@@ -7,6 +7,8 @@
 
 package one.wabbit.typeclass.plugin
 
+import kotlin.test.Test
+import kotlin.test.assertFalse
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.fir.FirSession
@@ -23,15 +25,14 @@ import org.jetbrains.kotlin.ir.types.impl.IrSimpleTypeImpl
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
-import kotlin.test.Test
-import kotlin.test.assertFalse
 
 class InstanceOwnerContextTest {
     @Test
     fun `fir callable owner context treats local callable ids as non-indexable`() {
         val session = object : FirSession(FirSession.Kind.Library) {}
 
-        val ownerContext = firInstanceOwnerContext(session, CallableId(Name.identifier("localInstance")))
+        val ownerContext =
+            firInstanceOwnerContext(session, CallableId(Name.identifier("localInstance")))
 
         assertFalse(ownerContext.isTopLevel)
         assertFalse(ownerContext.isIndexableScope)
@@ -70,7 +71,6 @@ class InstanceOwnerContextTest {
         assertFalse(ownerContext.isTopLevel)
         assertFalse(ownerContext.isIndexableScope)
     }
-
 }
 
 private fun testPackageFragment(packageName: String): IrExternalPackageFragmentImpl =
@@ -84,40 +84,38 @@ private fun irFunction(
     parent: org.jetbrains.kotlin.ir.declarations.IrDeclarationParent,
 ): IrSimpleFunction =
     IrFactoryImpl.buildFun {
-        this.name = Name.identifier(name)
-        returnType = placeholderAnyType()
-        visibility = DescriptorVisibilities.PUBLIC
-        modality = Modality.FINAL
-    }.also { function ->
-        function.parent = parent
-    }
+            this.name = Name.identifier(name)
+            returnType = placeholderAnyType()
+            visibility = DescriptorVisibilities.PUBLIC
+            modality = Modality.FINAL
+        }
+        .also { function -> function.parent = parent }
 
 private fun irProperty(
     name: String,
     parent: org.jetbrains.kotlin.ir.declarations.IrDeclarationParent,
 ): IrProperty =
     IrFactoryImpl.buildProperty {
-        this.name = Name.identifier(name)
-        visibility = DescriptorVisibilities.PUBLIC
-        modality = Modality.FINAL
-        isVar = false
-    }.also { property ->
-        property.parent = parent
-    }
+            this.name = Name.identifier(name)
+            visibility = DescriptorVisibilities.PUBLIC
+            modality = Modality.FINAL
+            isVar = false
+        }
+        .also { property -> property.parent = parent }
 
 private fun placeholderAnyType(): IrType =
     IrFactoryImpl.buildClass {
-        name = Name.identifier("PlaceholderAny")
-        visibility = DescriptorVisibilities.PUBLIC
-        modality = Modality.OPEN
-        kind = org.jetbrains.kotlin.descriptors.ClassKind.CLASS
-    }.also { klass ->
-        klass.parent = testPackageFragment("test.placeholder")
-    }.let { klass ->
-        IrSimpleTypeImpl(
-            classifier = klass.symbol,
-            hasQuestionMark = false,
-            arguments = emptyList(),
-            annotations = emptyList(),
-        )
-    }
+            name = Name.identifier("PlaceholderAny")
+            visibility = DescriptorVisibilities.PUBLIC
+            modality = Modality.OPEN
+            kind = org.jetbrains.kotlin.descriptors.ClassKind.CLASS
+        }
+        .also { klass -> klass.parent = testPackageFragment("test.placeholder") }
+        .let { klass ->
+            IrSimpleTypeImpl(
+                classifier = klass.symbol,
+                hasQuestionMark = false,
+                arguments = emptyList(),
+                annotations = emptyList(),
+            )
+        }

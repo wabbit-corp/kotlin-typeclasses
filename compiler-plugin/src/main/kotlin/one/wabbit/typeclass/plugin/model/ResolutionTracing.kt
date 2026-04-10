@@ -48,8 +48,7 @@ internal fun resolutionTraceCandidateFamily(ruleId: String): ResolutionTraceCand
         ruleId.startsWith("builtin:") -> ResolutionTraceCandidateFamily.BUILTIN_RULE
         ruleId.startsWith("derived:") ||
             ruleId.startsWith("derived-via:") ||
-            ruleId.startsWith("derived-equiv:") ->
-            ResolutionTraceCandidateFamily.DERIVED_RULE
+            ruleId.startsWith("derived-equiv:") -> ResolutionTraceCandidateFamily.DERIVED_RULE
 
         else -> ResolutionTraceCandidateFamily.INSTANCE_RULE
     }
