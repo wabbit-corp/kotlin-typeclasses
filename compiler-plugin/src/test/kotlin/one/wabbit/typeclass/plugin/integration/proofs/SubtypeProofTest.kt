@@ -17,18 +17,25 @@ class SubtypeProofTest : IntegrationTestSupport() {
             import one.wabbit.typeclass.summon
 
             fun <A, B : A> proveBound(): Subtype<B, A> = summon<Subtype<B, A>>()
+            fun <A : B, B : C, C> proveTransitiveBound(): Subtype<A, C> = summon<Subtype<A, C>>()
 
-            open class Animal
+            open class Creature
+            open class Animal : Creature()
             class Dog : Animal()
 
             fun main() {
                 println(proveBound<Animal, Dog>() != null)
+                println(proveTransitiveBound<Dog, Animal, Creature>() != null)
             }
             """.trimIndent()
 
         assertCompilesAndRuns(
             source = source,
-            expectedStdout = "true",
+            expectedStdout =
+                """
+                true
+                true
+                """.trimIndent(),
         )
     }
 
@@ -260,6 +267,39 @@ class SubtypeProofTest : IntegrationTestSupport() {
             source = source,
             expectedStdout =
                 """
+                true
+                true
+                """.trimIndent(),
+        )
+    }
+
+    @Test fun materializesStrictSubtypeProofForStarProjectedAndFunctionTypes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.StrictSubtype
+            import one.wabbit.typeclass.summon
+
+            fun <R> proveProjectedStrictSubtype(): StrictSubtype<Function1<Int, R>, Function1<*, R>> =
+                summon<StrictSubtype<Function1<Int, R>, Function1<*, R>>>()
+
+            fun main() {
+                println(summon<StrictSubtype<List<String>, List<*>>>() != null)
+                println(summon<StrictSubtype<Function1<Int, String>, Function1<*, String>>>() != null)
+                println(summon<StrictSubtype<Function1<Int, String>, Function1<*, *>>>() != null)
+                println(summon<StrictSubtype<(List<*>) -> Int, (List<String>) -> Int>>() != null)
+                println(proveProjectedStrictSubtype<String>() != null)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                true
                 true
                 true
                 """.trimIndent(),

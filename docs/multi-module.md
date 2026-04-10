@@ -7,6 +7,7 @@ The short version:
 - evidence can cross module boundaries
 - visibility still matters
 - derivation must have completed successfully in the producer before downstream code can use the exported result
+- cross-module derivation is metadata-driven rather than ordinary generated-declaration publishing
 - transient solver-only evidence is not automatically published
 
 ## What Actually Crosses A Module Boundary
@@ -15,10 +16,10 @@ These surfaces are designed to survive binary publication:
 
 - binary-retained annotations such as `@Typeclass`, `@Instance`, `@Derive`, `@DeriveVia`, and `@DeriveEquiv`
 - public `@Instance` declarations
-- public generated evidence declarations marked with compiler metadata
+- compiler-emitted metadata annotations describing successful derived evidence
 - public derivation metadata/runtime surfaces in `one.wabbit.typeclass`
 
-That is why the runtime library keeps these declarations public and why the compiler plugin re-discovers them in downstream compilations.
+That is why the runtime library keeps these declarations public and why the compiler plugin re-discovers them in downstream compilations. For derivation specifically, downstream modules mostly do not consume a normal generated declaration emitted by the upstream module. They read compiler metadata from the dependency and reconstruct the corresponding derived rule in the consuming compilation.
 
 ## Visibility Rules Still Apply
 
@@ -68,11 +69,11 @@ Derived evidence is exported only if derivation actually succeeded in the produc
 
 That matters for sealed roots in particular:
 
-- if a root `@Derive` succeeds, downstream code can use the exported derived root evidence
-- if the producer's sealed hierarchy is incomplete or contains an unsupported case, the root evidence is not exported downstream
+- if a root `@Derive` succeeds, the producer emits metadata that lets downstream compilers reconstruct the derived root rule
+- if the producer's sealed hierarchy is incomplete or contains an unsupported case, that metadata is not exported downstream
 - downstream use sites then fail just like any other missing-evidence case
 
-This is intentionally all-or-nothing at the exported root level. A partially valid hierarchy does not publish a misleading root instance.
+This is intentionally all-or-nothing at the exported root level. A partially valid hierarchy does not publish misleading derivation metadata.
 
 ## `@DeriveVia` Across Dependencies
 
@@ -82,13 +83,13 @@ Important supported shapes include:
 
 - a producer module deriving an instance via an upstream waypoint type
 - pinned `Iso` singleton objects that live in an upstream dependency module
-- downstream consumers using the already-exported derived instance
+- downstream consumers re-synthesizing the same derived rule from producer metadata
 
 What does not get exported:
 
 - transient local `Equiv` glue synthesized only while completing one `@DeriveVia` request
 
-So a producer may use local equivalence synthesis to finish one derivation, while downstream code still cannot later `summon<Equiv<A, B>>()` unless there is explicit exported `Equiv` evidence.
+So a producer may use local equivalence synthesis to finish one derivation, while downstream code still cannot later `summon<Equiv<A, B>>()` unless there is explicit exported `Equiv` evidence. The dependency boundary preserves the successful `DeriveVia` request through metadata, not through publication of all intermediate solver artifacts.
 
 ## `@DeriveEquiv` Across Dependencies
 
@@ -112,6 +113,8 @@ Important boundary:
 
 - only the requested target pair is exported
 - unrelated targets do not become derivable just because some other `@DeriveEquiv` exists nearby
+
+As with other derivation surfaces, the exported shape is metadata-driven. Downstream compilers reconstruct the `Equiv<B, A>` rule from dependency metadata rather than importing an ordinary user-authored declaration with that type.
 
 ## Consumer-Side Compiler Configuration
 

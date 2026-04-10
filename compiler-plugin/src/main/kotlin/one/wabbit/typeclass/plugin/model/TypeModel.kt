@@ -134,6 +134,14 @@ internal fun TcType.containsStarProjection(): Boolean =
         is TcType.Variable -> false
     }
 
+internal fun TcType.containsProjectionOrStar(): Boolean =
+    when (this) {
+        TcType.StarProjection -> true
+        is TcType.Projected -> true
+        is TcType.Constructor -> arguments.any(TcType::containsProjectionOrStar)
+        is TcType.Variable -> false
+    }
+
 internal fun TcType.render(): String =
     when (this) {
         TcType.StarProjection -> "*"

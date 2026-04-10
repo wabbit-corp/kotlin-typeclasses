@@ -309,6 +309,8 @@ For source-scoped tracing, annotate a file, class, function, property, or local 
 @file:DebugTypeclassResolution(TypeclassTraceMode.FAILURES_AND_ALTERNATIVES)
 ```
 
+The `*-and-alternatives` modes add alternative candidate summaries. Those summaries are useful for seeing nearby matches, but they are not a complete solvability proof for every non-selected candidate.
+
 For a practical debugging workflow, including how to interpret `TC_NO_CONTEXT_ARGUMENT`, `TC_AMBIGUOUS_INSTANCE`, and trace modes, see [Troubleshooting](./troubleshooting.md).
 
 ## Ambiguity, Coherence, And Failure Modes

@@ -147,6 +147,7 @@ What FIR does:
 - validates declarations such as `@Instance`, `@Derive`, `@DeriveVia`, and `@DeriveEquiv`
 - computes whether typeclass context parameters can be satisfied
 - refines function-call signatures so resolvable typeclass context parameters disappear from the user-facing call shape
+- injects limited implicit receivers derived from the containing function's extension receiver when that receiver expands to local typeclass evidence
 - emits user-facing diagnostics early, before IR
 
 What FIR does not do:
@@ -154,7 +155,7 @@ What FIR does not do:
 - it does not fully lower contextual calls
 - it does not own the final synthesized evidence values
 
-The empty `TypeclassFirExpressionResolutionExtension` is a reminder that this plugin currently relies on function-call refinement rather than synthetic implicit receivers for its active behavior.
+[`TypeclassFirExpressionResolutionExtension`](../compiler-plugin/src/main/kotlin/one/wabbit/typeclass/plugin/TypeclassFirExpressionResolutionExtension.kt) is not a placeholder. Its scope is just narrower than the call-refinement layer: it adds implicit receivers for typeclass-compatible expansions of the containing function's extension receiver, so receiver-style typeclass member access can resolve inside that body. It does not replace the main call-refinement path, and it does not perform backend rewriting.
 
 ## IR Responsibilities
 
@@ -168,7 +169,7 @@ IR responsibilities include:
 
 - rewriting wrapper-like calls back to the original declarations with synthesized evidence
 - materializing builtin proofs and optional builtins
-- generating derived metadata and derived instances
+- generating derived instances for the current compilation and recording successful derived-instance metadata for downstream recompilation
 - handling recursive derivation cells safely
 - emitting final diagnostics when a planner-success approximation still needs a backend validity check
 
@@ -195,7 +196,8 @@ The compiler plugin:
 - discovers `@Derive`, `@DeriveVia`, and `@DeriveEquiv`
 - validates that the target typeclass companion satisfies the required derivation contract
 - synthesizes metadata for products, sums, and enums
-- builds the generated instances and integrates them into normal rule search
+- builds the generated instances and integrates them into normal rule search for the current compilation
+- publishes successful cross-module derivations by emitting metadata annotations that downstream compiler runs reconstruct back into rules
 
 ## Current Semantic Boundaries
 

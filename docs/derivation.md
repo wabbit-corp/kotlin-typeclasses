@@ -72,8 +72,8 @@ The compiler plugin is responsible for:
 
 - validating that the companion satisfies the required contract
 - synthesizing the metadata object
-- generating the derived evidence declaration
-- publishing that generated evidence into normal typeclass search
+- generating the derived evidence used in the current compilation
+- publishing successful derivations for downstream compilations through compiler metadata, which later compiler runs reconstruct back into rules
 
 ## Root And Leaf Semantics
 
@@ -85,6 +85,8 @@ For sealed hierarchies, the current documented contract is:
 - mixed root + leaf derivation is legal and behaves like the union of those requests rather than becoming ambiguous
 
 This matters because "sealed derivation" is not just a local implementation detail; it affects what evidence downstream code can summon.
+
+Across module boundaries, that exported behavior is metadata-driven. The producer does not primarily publish an ordinary generated declaration that downstream code imports directly; it publishes successful derivation metadata, and the downstream compiler reconstructs the derivation rule from that metadata.
 
 ## `@DeriveVia`
 
@@ -179,6 +181,8 @@ This differs from `@DeriveVia` in an important way:
 - `@DeriveEquiv` exports regular resolution-visible equivalence evidence
 - local equivalence links synthesized only while satisfying one `@DeriveVia` request do not automatically become globally summonable
 
+Across module boundaries, that export is still metadata-driven. Downstream compilations reconstruct the `Equiv` rule from dependency metadata rather than relying on an ordinary handwritten-looking declaration being present in the dependency API surface.
+
 So if you want downstream code to be able to summon `Equiv<A, B>` directly, `@DeriveEquiv` is the explicit mechanism for that.
 
 Direct user code that names or summons `Equiv<..., ...>` must also opt into `InternalTypeclassApi`, because `Equiv` is a compiler-owned low-level surface even when it is legitimately exported.
@@ -250,6 +254,7 @@ Important current boundaries:
 - `@DeriveVia` and `@DeriveEquiv` currently focus on monomorphic classes
 - transparent structural equivalence is preferred over aggressive semantic guessing
 - derivation is not a substitute for a global coherence policy
+- cross-module derivation reuse depends on successful metadata export and downstream rule reconstruction, not on shipping every generated declaration as ordinary API
 - contextual property getter limitations in FIR can still affect source-level ergonomics around some contextual surfaces
 
 ## Where To Read The Actual Behavior

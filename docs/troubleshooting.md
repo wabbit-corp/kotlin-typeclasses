@@ -142,9 +142,9 @@ Source-scoped tracing:
 Useful modes:
 
 - `FAILURES`: trace failed and ambiguous roots
-- `FAILURES_AND_ALTERNATIVES`: same, plus rejected-alternative explanation
+- `FAILURES_AND_ALTERNATIVES`: same, plus alternative candidate summaries
 - `ALL`: also trace successful roots
-- `ALL_AND_ALTERNATIVES`: full local tracing
+- `ALL_AND_ALTERNATIVES`: full local tracing plus alternative candidate summaries
 - `INHERIT`: keep the parent or global mode
 - `DISABLED`: mute a nested scope
 
@@ -155,6 +155,12 @@ Important detail:
 - if you want to preserve an outer `ALL` or `ALL_AND_ALTERNATIVES` mode, use `mode = INHERIT`
 
 Tracing is rooted at the failing declaration or call site. Annotating a callee does not automatically trace every caller.
+
+Important limitation:
+
+- alternative output is shallow
+- candidates that were actually searched can report concrete reasons like missing or ambiguous prerequisites
+- candidates that were not fully searched may only report goal-shape applicability, not a complete proof of why they would ultimately fail
 
 ## Builtin Materialization Failures
 

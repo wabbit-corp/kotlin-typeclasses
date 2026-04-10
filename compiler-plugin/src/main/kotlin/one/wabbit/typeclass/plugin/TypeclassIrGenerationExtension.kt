@@ -13,6 +13,7 @@ import one.wabbit.typeclass.plugin.model.ResolutionSearchResult
 import one.wabbit.typeclass.plugin.model.TcType
 import one.wabbit.typeclass.plugin.model.TcTypeParameter
 import one.wabbit.typeclass.plugin.model.TypeclassResolutionPlanner
+import one.wabbit.typeclass.plugin.model.containsProjectionOrStar
 import one.wabbit.typeclass.plugin.model.containsStarProjection
 import one.wabbit.typeclass.plugin.model.isExactTypeIdentity
 import one.wabbit.typeclass.plugin.model.isProvablyNotNullable
@@ -136,9 +137,13 @@ internal class TypeclassIrGenerationExtension(
         moduleFragment: IrModuleFragment,
         pluginContext: IrPluginContext,
     ) {
-        val ruleIndex = IrRuleIndex.build(moduleFragment, pluginContext, sharedState)
-        val transformer = TypeclassIrCallTransformer(pluginContext, ruleIndex)
-        moduleFragment.transformChildrenVoid(transformer)
+        try {
+            val ruleIndex = IrRuleIndex.build(moduleFragment, pluginContext, sharedState)
+            val transformer = TypeclassIrCallTransformer(pluginContext, ruleIndex)
+            moduleFragment.transformChildrenVoid(transformer)
+        } finally {
+            sharedState.close()
+        }
     }
 }
 
@@ -5373,6 +5378,9 @@ private fun IrBuiltinGoalExactContext.exactSubtypeKnowledge(
     if (sub.normalizedKey() == sup.normalizedKey()) {
         return IrTypeRelationKnowledge.PROVABLE
     }
+    if (sub.containsProjectionOrStar() || sup.containsProjectionOrStar()) {
+        exactMaterializedSubtypeKnowledge(sub, sup)?.let { return it }
+    }
     when (sub) {
         TcType.StarProjection -> return IrTypeRelationKnowledge.UNKNOWN
         is TcType.Projected -> return IrTypeRelationKnowledge.UNKNOWN
@@ -5453,6 +5461,19 @@ private fun IrBuiltinGoalExactContext.exactSubtypeKnowledge(
     val supType =
         runCatching { modelToIrType(sup, visibleTypeParameters, pluginContext) }.getOrNull()
             ?: return IrTypeRelationKnowledge.UNKNOWN
+    return if (canProveSubtype(subType, supType, pluginContext)) {
+        IrTypeRelationKnowledge.PROVABLE
+    } else {
+        IrTypeRelationKnowledge.DISPROVABLE
+    }
+}
+
+private fun IrBuiltinGoalExactContext.exactMaterializedSubtypeKnowledge(
+    sub: TcType,
+    sup: TcType,
+): IrTypeRelationKnowledge? {
+    val subType = runCatching { modelToIrType(sub, visibleTypeParameters, pluginContext) }.getOrNull() ?: return null
+    val supType = runCatching { modelToIrType(sup, visibleTypeParameters, pluginContext) }.getOrNull() ?: return null
     return if (canProveSubtype(subType, supType, pluginContext)) {
         IrTypeRelationKnowledge.PROVABLE
     } else {

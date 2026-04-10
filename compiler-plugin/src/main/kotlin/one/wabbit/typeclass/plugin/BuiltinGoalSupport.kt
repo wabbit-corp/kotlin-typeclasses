@@ -6,6 +6,7 @@ package one.wabbit.typeclass.plugin
 
 import one.wabbit.typeclass.plugin.model.TcType
 import one.wabbit.typeclass.plugin.model.TcTypeParameter
+import one.wabbit.typeclass.plugin.model.containsProjectionOrStar
 import one.wabbit.typeclass.plugin.model.containsStarProjection
 import one.wabbit.typeclass.plugin.model.isProvablyNullable
 import one.wabbit.typeclass.plugin.model.isProvablyNotNullable
@@ -15,7 +16,15 @@ import one.wabbit.typeclass.plugin.model.substituteType
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
+import org.jetbrains.kotlin.fir.types.ConeKotlinType
+import org.jetbrains.kotlin.fir.types.ConeKotlinTypeProjectionIn
+import org.jetbrains.kotlin.fir.types.ConeKotlinTypeProjectionOut
+import org.jetbrains.kotlin.fir.types.ConeStarProjection
+import org.jetbrains.kotlin.fir.types.constructClassLikeType
+import org.jetbrains.kotlin.fir.types.constructType
+import org.jetbrains.kotlin.fir.types.typeContext
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.types.AbstractTypeChecker
 import org.jetbrains.kotlin.types.Variance
 
 internal enum class BuiltinGoalFeasibility {
@@ -670,6 +679,9 @@ private fun FirBuiltinGoalExactContext.exactSubtypeKnowledge(
     if (sub.normalizedKey() == sup.normalizedKey()) {
         return TypeRelationKnowledge.PROVABLE
     }
+    if (sub.containsProjectionOrStar() || sup.containsProjectionOrStar()) {
+        exactMaterializedSubtypeKnowledge(sub, sup)?.let { return it }
+    }
     when (sub) {
         TcType.StarProjection -> return TypeRelationKnowledge.UNKNOWN
         is TcType.Projected -> return TypeRelationKnowledge.UNKNOWN
@@ -796,6 +808,63 @@ private fun FirBuiltinGoalExactContext.exactSameClassifierSubtypeKnowledge(
     }
     return if (sawUnknown) TypeRelationKnowledge.UNKNOWN else TypeRelationKnowledge.PROVABLE
 }
+
+private fun FirBuiltinGoalExactContext.exactMaterializedSubtypeKnowledge(
+    sub: TcType,
+    sup: TcType,
+): TypeRelationKnowledge? {
+    val subType = sub.toConeKotlinType(variableSymbolsById) ?: return null
+    val supType = sup.toConeKotlinType(variableSymbolsById) ?: return null
+    return if (AbstractTypeChecker.isSubtypeOf(session.typeContext, subType, supType, false)) {
+        TypeRelationKnowledge.PROVABLE
+    } else {
+        TypeRelationKnowledge.DISPROVABLE
+    }
+}
+
+private fun TcType.toConeKotlinType(
+    variableSymbolsById: Map<String, FirTypeParameterSymbol>,
+): ConeKotlinType? =
+    when (this) {
+        TcType.StarProjection -> null
+
+        is TcType.Projected -> null
+
+        is TcType.Variable ->
+            variableSymbolsById[id]?.constructType(isMarkedNullable = isNullable)
+
+        is TcType.Constructor -> {
+            val classId = runCatching { ClassId.fromString(classifierId) }.getOrNull() ?: return null
+            val arguments =
+                this.arguments.map { argument ->
+                    argument.toConeTypeProjection(variableSymbolsById) ?: return null
+                }.toTypedArray()
+            classId.constructClassLikeType(
+                typeArguments = arguments,
+                isMarkedNullable = isNullable,
+            )
+        }
+    }
+
+private fun TcType.toConeTypeProjection(
+    variableSymbolsById: Map<String, FirTypeParameterSymbol>,
+): org.jetbrains.kotlin.fir.types.ConeTypeProjection? =
+    when (this) {
+        TcType.StarProjection -> ConeStarProjection
+
+        is TcType.Projected -> {
+            val nestedType = type.toConeKotlinType(variableSymbolsById) ?: return null
+            when (variance) {
+                Variance.IN_VARIANCE -> ConeKotlinTypeProjectionIn(nestedType)
+                Variance.OUT_VARIANCE -> ConeKotlinTypeProjectionOut(nestedType)
+                Variance.INVARIANT -> nestedType
+            }
+        }
+
+        is TcType.Variable,
+        is TcType.Constructor,
+        -> toConeKotlinType(variableSymbolsById)
+    }
 
 private fun FirBuiltinGoalExactContext.exactDeclaredSupertypeSubtypeKnowledge(
     sub: TcType.Constructor,

@@ -28,10 +28,14 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.isRegularFile
+import org.junit.Rule
+import org.junit.rules.TestWatcher
+import org.junit.runner.Description
 
 abstract class IntegrationTestSupport {
     private companion object {
         private const val DEFAULT_HARNESS_JVM_TARGET = "1.8"
+        private const val KEEP_TEST_TEMP_ENV = "TYPECLASS_KEEP_TEST_TEMP"
         private val locatedSupportJars = ConcurrentHashMap<String, Path>()
         private val locatedDiagnosticRegex = Regex("""^(.+):(\d+):(\d+):\s+(error|warning):\s+(.*)$""")
         private val globalDiagnosticRegex = Regex("""^(e|w|error|warning):\s+(.*)$""")
@@ -50,6 +54,28 @@ abstract class IntegrationTestSupport {
         private fun normalizeJvmTarget(value: String): Int =
             value.removePrefix("1.").toInt()
     }
+
+    private val tempRootsToCleanup = mutableListOf<Path>()
+    private var keepTempRootsForCurrentTest = false
+
+    @get:Rule
+    val cleanupHarnessTempRoots =
+        object : TestWatcher() {
+            override fun failed(
+                e: Throwable?,
+                description: Description,
+            ) {
+                keepTempRootsForCurrentTest = true
+            }
+
+            override fun finished(description: Description) {
+                try {
+                    cleanupRegisteredTempRoots()
+                } finally {
+                    keepTempRootsForCurrentTest = false
+                }
+            }
+        }
 
     protected fun assertCompiles(
         source: String,
@@ -853,7 +879,7 @@ abstract class IntegrationTestSupport {
         require(step.settings.useTypeclassPlugin || step.settings.pluginOptions.isEmpty()) {
             "Typeclass plugin options require the typeclass plugin for step ${step.name}"
         }
-        val workingDir = createTempDirectory(prefix = "typeclass-${step.id}-${sanitizeStepName(step.name)}-")
+        val workingDir = registerTempRootForCurrentTest(createTempDirectory(prefix = "typeclass-${step.id}-${sanitizeStepName(step.name)}-"))
         val outputDir = workingDir.resolve("out")
         outputDir.createDirectories()
         val supportSources =
@@ -972,6 +998,34 @@ abstract class IntegrationTestSupport {
 
     private fun sanitizeStepName(name: String): String =
         name.replace(Regex("[^A-Za-z0-9]+"), "-").trim('-').ifEmpty { "step" }
+
+    private fun registerTempRootForCurrentTest(path: Path): Path =
+        path.also { candidate ->
+            synchronized(tempRootsToCleanup) {
+                tempRootsToCleanup.add(candidate)
+            }
+        }
+
+    private fun cleanupRegisteredTempRoots() {
+        val roots =
+            synchronized(tempRootsToCleanup) {
+                tempRootsToCleanup.toList().also { tempRootsToCleanup.clear() }
+            }
+        if (keepTempRootsForCurrentTest || keepTestTempDirectories()) {
+            return
+        }
+        roots
+            .distinct()
+            .sortedByDescending { path -> path.nameCount }
+            .forEach(::deleteRecursivelyOrThrow)
+    }
+
+    private fun keepTestTempDirectories(): Boolean =
+        System.getenv(KEEP_TEST_TEMP_ENV)
+            ?.trim()
+            ?.lowercase()
+            ?.let { value -> value.isNotEmpty() && value != "0" && value != "false" && value != "no" }
+            ?: false
 
     private fun locateRepositoryRoot(): Path {
         val candidates =
@@ -1547,6 +1601,16 @@ private fun HarnessDependency.toSettings(): HarnessCompilationSettings =
         enableContextParameters = enableContextParameters,
         compilerArguments = compilerArguments,
     )
+
+private fun deleteRecursivelyOrThrow(path: Path) {
+    val file = path.toFile()
+    if (!file.exists()) {
+        return
+    }
+    check(file.deleteRecursively()) {
+        "Failed to delete temporary test directory $path"
+    }
+}
 
 enum class DiagnosticSeverity {
     ERROR,

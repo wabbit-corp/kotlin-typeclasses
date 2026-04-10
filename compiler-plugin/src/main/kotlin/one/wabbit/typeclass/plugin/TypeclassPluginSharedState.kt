@@ -70,7 +70,7 @@ import java.util.WeakHashMap
 internal class TypeclassPluginSharedState(
     internal val configuration: TypeclassConfiguration = TypeclassConfiguration(),
     private val binaryClassPathRoots: List<File> = emptyList(),
-) {
+) : AutoCloseable {
     private val discoveryIndexes = SessionScopedCache<FirSession, ResolutionIndex>()
     private val binaryGeneratedMetadataLoader = BinaryGeneratedDerivedMetadataLoader(binaryClassPathRoots)
     private val irImportedStateLock = Any()
@@ -228,6 +228,11 @@ internal class TypeclassPluginSharedState(
             recordImportedTopLevelRulesForIr = ::recordImportedTopLevelRulesForIr,
             recordImportedGeneratedDerivedMetadataForIr = ::recordImportedGeneratedDerivedMetadataForIr,
         )
+    }
+
+    override fun close() {
+        BinaryGeneratedDerivedMetadataRegistry.uninstall(binaryGeneratedMetadataLoader)
+        binaryGeneratedMetadataLoader.close()
     }
 }
 

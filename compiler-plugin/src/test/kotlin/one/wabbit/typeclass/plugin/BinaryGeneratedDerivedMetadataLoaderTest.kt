@@ -33,7 +33,7 @@ class BinaryGeneratedDerivedMetadataLoaderTest {
     }
 
     @Test
-    fun jarRootReusesASingleJarOpenAcrossDistinctEntryLookups() {
+    fun jarRootClosesJarAfterEachUncachedEntryLookup() {
         val ownerA = ClassId.fromString("demo/Alpha")
         val ownerB = ClassId.fromString("demo/Beta")
         val metadataA =
@@ -62,17 +62,20 @@ class BinaryGeneratedDerivedMetadataLoaderTest {
                 }
             }
 
-        try {
-            assertEquals(listOf(metadataA), root.generatedMetadataFor(ownerA).metadataForTest())
-            assertEquals(listOf(metadataA), root.generatedMetadataFor(ownerA).metadataForTest())
-            assertEquals(listOf(metadataB), root.generatedMetadataFor(ownerB).metadataForTest())
-            assertEquals(1, openCount.get())
-            assertEquals(0, closeCount.get())
-        } finally {
-            root.close()
-        }
-
+        assertEquals(listOf(metadataA), root.generatedMetadataFor(ownerA).metadataForTest())
+        assertEquals(1, openCount.get())
         assertEquals(1, closeCount.get())
+
+        assertEquals(listOf(metadataA), root.generatedMetadataFor(ownerA).metadataForTest())
+        assertEquals(1, openCount.get())
+        assertEquals(1, closeCount.get())
+
+        assertEquals(listOf(metadataB), root.generatedMetadataFor(ownerB).metadataForTest())
+        assertEquals(2, openCount.get())
+        assertEquals(2, closeCount.get())
+
+        root.close()
+        assertEquals(2, closeCount.get())
     }
 
     @Test
@@ -92,6 +95,30 @@ class BinaryGeneratedDerivedMetadataLoaderTest {
         val root = JarBinaryGeneratedDerivedMetadataRoot(jarFile)
 
         assertEquals(listOf(metadataA), root.generatedMetadataFor(ownerA).metadataForTest())
+    }
+
+    @Test
+    fun jarRootClosesJarAfterMissingEntryLookup() {
+        val ownerA = ClassId.fromString("demo/Alpha")
+        val ownerB = ClassId.fromString("demo/Beta")
+        val jarFile = createPlainClassJar(ownerA)
+        val openCount = AtomicInteger(0)
+        val closeCount = AtomicInteger(0)
+        val root =
+            JarBinaryGeneratedDerivedMetadataRoot(jarFile) { file ->
+                openCount.incrementAndGet()
+                CountingJarFile(file) {
+                    closeCount.incrementAndGet()
+                }
+            }
+
+        assertEquals(BinaryGeneratedDerivedMetadataLookupResult.NotFound, root.generatedMetadataFor(ownerB))
+        assertEquals(1, openCount.get())
+        assertEquals(1, closeCount.get())
+
+        assertEquals(BinaryGeneratedDerivedMetadataLookupResult.NotFound, root.generatedMetadataFor(ownerB))
+        assertEquals(1, openCount.get())
+        assertEquals(1, closeCount.get())
     }
 
     @Test

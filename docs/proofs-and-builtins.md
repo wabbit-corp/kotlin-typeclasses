@@ -374,7 +374,7 @@ When enabled, the compiler can materialize:
 The requested type must be:
 
 - runtime-materializable
-- serializable according to normal `kotlinx.serialization` rules
+- provably serializable to the plugin at typeclass-resolution time
 - not star-projected at the requested goal shape
 
 You still need the normal serialization ecosystem:
@@ -382,35 +382,40 @@ You still need the normal serialization ecosystem:
 - `kotlinx.serialization` runtime on the classpath
 - the serialization compiler plugin where required
 
-The builtin does not invent serializers for non-serializable types; it reuses the same serializer model that `serializer<T>()` uses.
+The builtin does not invent serializers for non-serializable types. It uses a conservative admissibility check during typeclass resolution and lowers successful resolutions to `kotlinx.serialization.serializer<T>()` later.
 
 ### Behavior notes
 
-The builtin respects the normal serialization model, including:
+The builtin is intentionally narrower than full `serializer<T>()` parity.
+
+Today it only proves builtin `KSerializer<T>` goals when the target is already admissible from the plugin's static model, namely:
 
 - generated serializers for `@Serializable` classes
 - nested serializers for container types when the element serializers exist
-- class-level custom serializers
-- property-level custom serializers as part of container serializers
-- serializer-relevant typealias annotations
+- recursively serializable type arguments for those shapes
+
+That means this builtin proof/search surface does not promise that every type accepted by `serializer<T>()` will also be admissible as builtin `KSerializer<T>` evidence.
 
 ### Common summoning patterns
 
 ```kotlin
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import one.wabbit.typeclass.summon
+
+@Serializable
+data class User(val name: String)
 
 context(serializer: KSerializer<T>)
 fun <T> contextualSerialName(): String = serializer.descriptor.serialName
 
-inline fun <reified T> reifiedSerialName(): String =
-    summon<KSerializer<T>>().descriptor.serialName
+fun directSerialName(): String =
+    summon<KSerializer<User>>().descriptor.serialName
 ```
 
 This works for:
 
 - concrete serializable types like `User`
-- reified generic helpers
 - nested serializable goals like `Box<List<Int?>>`
 
 Typical failures:
@@ -418,14 +423,14 @@ Typical failures:
 - flag disabled
 - non-serializable target type
 - star-projected serializer goals like `KSerializer<List<*>>`
-- unfixed generic `KSerializer<T>` without reified/runtime-materializable `T`
+- arbitrary generic `KSerializer<T>` goals, including inside `inline reified` helpers, when `T` is not already concrete and provably serializable during typeclass resolution
 
 Two details matter in practice:
 
 - class-level `@Serializable(with = ...)` affects the standalone builtin `KSerializer<MyType>`
 - property-level `@Serializable(with = ...)` affects the enclosing container serializer, not the standalone builtin `KSerializer<PropertyType>`
 
-The builtin is intended to match the official `serializer<T>()` model, not to introduce a second serializer system.
+This builtin is a conservative proof/search surface, not a full reimplementation of the official `serializer<T>()` admissibility model.
 
 ### Precedence
 

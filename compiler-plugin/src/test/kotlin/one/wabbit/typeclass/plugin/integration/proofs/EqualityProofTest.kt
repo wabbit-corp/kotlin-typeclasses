@@ -215,6 +215,39 @@ class EqualityProofTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun materializesNotSameProofForStarProjectedAndFunctionTypes() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.NotSame
+            import one.wabbit.typeclass.summon
+
+            fun <R> proveProjectedDifferent(): NotSame<Function1<Int, R>, Function1<*, R>> =
+                summon<NotSame<Function1<Int, R>, Function1<*, R>>>()
+
+            fun main() {
+                println(summon<NotSame<List<String>, List<*>>>() != null)
+                println(summon<NotSame<Function1<Int, String>, Function1<*, String>>>() != null)
+                println(summon<NotSame<Function1<Int, String>, Function1<*, *>>>() != null)
+                println(summon<NotSame<(List<*>) -> Int, (List<String>) -> Int>>() != null)
+                println(proveProjectedDifferent<String>() != null)
+            }
+            """.trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                true
+                true
+                true
+                true
+                true
+                """.trimIndent(),
+        )
+    }
+
     @Test fun sameTypeConstructorRecognizesMatchingOuterConstructors() {
         val source =
             """
