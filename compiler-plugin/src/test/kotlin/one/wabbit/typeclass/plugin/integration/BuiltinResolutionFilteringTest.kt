@@ -134,6 +134,29 @@ class BuiltinResolutionFilteringTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun projectedGenericSupertypeArgumentsRejectImpossibleSubtypeGoals() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Subtype
+
+            interface Foo : Iterable<String>
+
+            context(_: Subtype<Foo, Iterable<Int>>)
+            fun impossible(): String = "impossible"
+
+            fun test(): String = impossible() // E:TC_NO_CONTEXT_ARGUMENT Iterable<String> is not Iterable<Int>
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedNoContextArgument("subtype")),
+            unexpectedMessages = listOf("invalid builtin evidence"),
+        )
+    }
+
+    @Test
     fun speculativeSubtypeGoalFailsInFirInsteadOfIr() {
         val source =
             """

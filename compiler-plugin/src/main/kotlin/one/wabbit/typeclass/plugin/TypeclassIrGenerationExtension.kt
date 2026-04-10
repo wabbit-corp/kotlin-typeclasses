@@ -3032,6 +3032,7 @@ private class IrModuleScanner(
 
     val classesById = linkedMapOf<String, IrClass>()
     val declaredDerivationsByClassId = linkedMapOf<String, Set<ClassId>>()
+    private val expandedProjectedClassInfoById = linkedSetOf<String>()
     private val originalsByCallableId = linkedMapOf<CallableId, MutableList<IrSimpleFunction>>()
     private val topLevelRules = mutableListOf<ResolvedRule>()
     private val companionRules = mutableListOf<ResolvedRule>()
@@ -3169,19 +3170,14 @@ private class IrModuleScanner(
         val classId = declaration.classId ?: return
         val classKey = classId.asString()
         if (classesById.containsKey(classKey) && classInfoById.containsKey(classKey)) {
+            classInfoById[classKey]?.let { info -> registerDiscoveredClassesInProjectedSupertypes(classKey, info) }
             return
         }
         classesById[classKey] = declaration
         declaredDerivationsByClassId.putIfAbsent(classKey, declaration.shapeDerivedTypeclassIds())
-        classInfoById[classKey] =
-            VisibleClassHierarchyInfo(
-                superClassifiers =
-                    declaration.superTypes.mapNotNull { superType ->
-                        superType.classOrNull?.owner?.classId?.asString()
-                    }.toSet(),
-                isSealed = declaration.modality == Modality.SEALED,
-                typeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.variance },
-            )
+        val info = declaration.visibleClassHierarchyInfo()
+        classInfoById[classKey] = info
+        registerDiscoveredClassesInProjectedSupertypes(classKey, info)
         declaration.superTypes.mapNotNull { superType ->
             superType.classOrNull?.owner
         }.forEach(::registerDiscoveredClass)
@@ -3189,6 +3185,31 @@ private class IrModuleScanner(
             declaration.sealedSubclasses.mapNotNull { subclassSymbol ->
                 runCatching { subclassSymbol.owner }.getOrNull()
             }.forEach(::registerDiscoveredClass)
+        }
+    }
+
+    private fun registerDiscoveredClassesInProjectedSupertypes(
+        classifierId: String,
+        info: VisibleClassHierarchyInfo,
+    ) {
+        if (!expandedProjectedClassInfoById.add(classifierId)) {
+            return
+        }
+        info.directSuperTypes.forEach(::registerDiscoveredClassesInType)
+    }
+
+    private fun registerDiscoveredClassesInType(type: TcType) {
+        when (type) {
+            TcType.StarProjection -> Unit
+            is TcType.Projected -> registerDiscoveredClassesInType(type.type)
+            is TcType.Variable -> Unit
+            is TcType.Constructor -> {
+                val classId = runCatching { ClassId.fromString(type.classifierId) }.getOrNull()
+                if (classId != null) {
+                    runCatching { pluginContext.referenceClass(classId)?.owner }.getOrNull()?.let(::registerDiscoveredClass)
+                }
+                type.arguments.forEach(::registerDiscoveredClassesInType)
+            }
         }
     }
 
@@ -3273,15 +3294,9 @@ private class IrModuleScanner(
                     val supportedDerivedTypeclassIds = declaration.shapeDerivedTypeclassIds()
                     classesById[classId.asString()] = declaration
                     declaredDerivationsByClassId[classId.asString()] = supportedDerivedTypeclassIds
-                    classInfoById[classId.asString()] =
-                        VisibleClassHierarchyInfo(
-                            superClassifiers =
-                                declaration.superTypes.mapNotNull { superType ->
-                                    superType.classOrNull?.owner?.classId?.asString()
-                                }.toSet(),
-                            isSealed = declaration.modality == Modality.SEALED,
-                            typeParameterVariances = declaration.typeParameters.map { typeParameter -> typeParameter.variance },
-                        )
+                    val info = declaration.visibleClassHierarchyInfo()
+                    classInfoById[classId.asString()] = info
+                    registerDiscoveredClassesInProjectedSupertypes(classId.asString(), info)
                 }
 
                 val nextAssociatedOwner =
@@ -6367,6 +6382,34 @@ private inline fun <T> Iterable<T>.allIndexed(predicate: (index: Int, T) -> Bool
 
 private fun IrClass.isInstanceObject(): Boolean =
     hasAnnotation(INSTANCE_ANNOTATION_CLASS_ID) && isObject
+
+private fun IrClass.visibleClassHierarchyInfo(): VisibleClassHierarchyInfo {
+    val ownerClassId = classId ?: error("Cannot build visible hierarchy info for local class $name")
+    val typeParameterModels =
+        typeParameters.mapIndexed { index, typeParameter ->
+            TcTypeParameter(
+                id = "${ownerClassId.asString()}#$index",
+                displayName = typeParameter.name.asString(),
+            )
+        }
+    val typeParameterBySymbol =
+        typeParameters.zip(typeParameterModels).associate { (typeParameter, parameter) ->
+            typeParameter.symbol to parameter
+        }
+    return VisibleClassHierarchyInfo(
+        superClassifiers =
+            superTypes.mapNotNull { superType ->
+                superType.classOrNull?.owner?.classId?.asString()
+            }.toSet(),
+        isSealed = modality == Modality.SEALED,
+        typeParameterVariances = typeParameters.map { typeParameter -> typeParameter.variance },
+        typeParameters = typeParameterModels,
+        directSuperTypes =
+            superTypes.mapNotNull { superType ->
+                irTypeToModel(superType, typeParameterBySymbol) as? TcType.Constructor
+            },
+    )
+}
 
 private fun IrProperty.backingFieldOrGetterType(): IrType =
     backingField?.type ?: getter?.returnType ?: error("Property $name has neither backing field nor getter type")

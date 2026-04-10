@@ -474,6 +474,7 @@ private data class ResolutionIndex(
     private val lazilyDiscoveredAssociatedRulesByOwner: MutableMap<ClassId, List<VisibleInstanceRule>> = linkedMapOf()
     private val lazilyDiscoveredDerivableTypeclassIdsByOwner: MutableMap<String, Set<String>> = linkedMapOf()
     private val lazilyDiscoveredDeriveEquivTargetIdsByOwner: MutableMap<String, Set<String>> = linkedMapOf()
+    private val expandedProjectedClassInfoById: MutableSet<String> = linkedSetOf()
 
     private data class ShapeDerivationOption(
         val targetOwnerId: String,
@@ -2108,7 +2109,8 @@ private data class ResolutionIndex(
         classifierId: String,
         session: FirSession,
     ) {
-        if (classInfoById.containsKey(classifierId)) {
+        classInfoById[classifierId]?.let { info ->
+            discoverProjectedClassInfo(classifierId, info, session)
             return
         }
         val classId = runCatching { ClassId.fromString(classifierId) }.getOrNull() ?: return
@@ -2119,7 +2121,39 @@ private data class ResolutionIndex(
                 null
             } ?: return
         val declaration = classSymbol.fir
-        classInfoById[classifierId] = declaration.visibleClassHierarchyInfo()
+        val info = declaration.visibleClassHierarchyInfo()
+        classInfoById[classifierId] = info
+        discoverProjectedClassInfo(classifierId, info, session)
+    }
+
+    private fun discoverProjectedClassInfo(
+        classifierId: String,
+        info: VisibleClassHierarchyInfo,
+        session: FirSession,
+    ) {
+        if (!expandedProjectedClassInfoById.add(classifierId)) {
+            return
+        }
+        info.directSuperTypes.forEach { superType ->
+            discoverClassInfoForType(superType, session)
+        }
+    }
+
+    private fun discoverClassInfoForType(
+        type: TcType,
+        session: FirSession,
+    ) {
+        when (type) {
+            TcType.StarProjection -> Unit
+            is TcType.Projected -> discoverClassInfoForType(type.type, session)
+            is TcType.Variable -> Unit
+            is TcType.Constructor -> {
+                discoverClassInfo(type.classifierId, session)
+                type.arguments.forEach { argument ->
+                    discoverClassInfoForType(argument, session)
+                }
+            }
+        }
     }
 
     private fun discoverAssociatedRules(
@@ -2769,14 +2803,34 @@ private fun TransportSyntheticAccessContext.requiredDerivedShapeVisibilityDescri
     }
 
 private fun FirRegularClass.visibleClassHierarchyInfo(): VisibleClassHierarchyInfo =
-    VisibleClassHierarchyInfo(
-        superClassifiers =
-            declaredOrResolvedSuperTypes().mapNotNull { superType ->
-                superType.classId?.asString()
-            }.toSet(),
-        isSealed = status.modality == Modality.SEALED,
-        typeParameterVariances = typeParameters.map { typeParameter -> typeParameter.symbol.fir.variance },
-    )
+    declaredOrResolvedSuperTypes().let { superTypes ->
+        val typeParameterModels = visibleClassTypeParameterModels()
+        val typeParameterBySymbol =
+            typeParameters.zip(typeParameterModels).associate { (typeParameter, parameter) ->
+                typeParameter.symbol to parameter
+            }
+        VisibleClassHierarchyInfo(
+            superClassifiers =
+                superTypes.mapNotNull { superType ->
+                    superType.classId?.asString()
+                }.toSet(),
+            isSealed = status.modality == Modality.SEALED,
+            typeParameterVariances = typeParameters.map { typeParameter -> typeParameter.symbol.fir.variance },
+            typeParameters = typeParameterModels,
+            directSuperTypes =
+                superTypes.mapNotNull { superType ->
+                    coneTypeToModel(superType, typeParameterBySymbol) as? TcType.Constructor
+                },
+        )
+    }
+
+private fun FirRegularClass.visibleClassTypeParameterModels(): List<TcTypeParameter> =
+    typeParameters.mapIndexed { index, typeParameter ->
+        TcTypeParameter(
+            id = "${symbol.classId.asString()}#$index",
+            displayName = typeParameter.symbol.name.asString(),
+        )
+    }
 
 private fun FirRegularClass.toObjectRules(
     session: FirSession,

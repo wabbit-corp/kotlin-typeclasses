@@ -425,14 +425,54 @@ private fun constructorSubtypeFeasibility(
     }
     val pathFeasibility = hasSupertypePathFeasibility(sub.classifierId, sup.classifierId, classInfoById)
     if (sub.arguments.isNotEmpty() || sup.arguments.isNotEmpty()) {
-        return when (pathFeasibility) {
-            BuiltinGoalFeasibility.PROVABLE,
-            BuiltinGoalFeasibility.SPECULATIVE,
-            -> BuiltinGoalFeasibility.SPECULATIVE
-            BuiltinGoalFeasibility.IMPOSSIBLE -> BuiltinGoalFeasibility.IMPOSSIBLE
-        }
+        return projectedSupertypeSubtypeFeasibility(
+            sub = sub,
+            sup = sup,
+            classInfoById = classInfoById,
+            exactContext = exactContext,
+            pathFeasibility = pathFeasibility,
+        )
     }
     return pathFeasibility
+}
+
+private fun projectedSupertypeSubtypeFeasibility(
+    sub: TcType.Constructor,
+    sup: TcType.Constructor,
+    classInfoById: Map<String, VisibleClassHierarchyInfo>,
+    exactContext: FirBuiltinGoalExactContext?,
+    pathFeasibility: BuiltinGoalFeasibility,
+): BuiltinGoalFeasibility {
+    if (pathFeasibility == BuiltinGoalFeasibility.IMPOSSIBLE) {
+        return BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+    val classInfo = classInfoById[sub.classifierId] ?: return BuiltinGoalFeasibility.SPECULATIVE
+    if (classInfo.directSuperTypes.isEmpty()) {
+        return BuiltinGoalFeasibility.SPECULATIVE
+    }
+    if (classInfo.typeParameters.size != sub.arguments.size) {
+        return BuiltinGoalFeasibility.SPECULATIVE
+    }
+
+    val bindings =
+        classInfo.typeParameters.mapIndexed { index, parameter ->
+            parameter.id to sub.arguments[index]
+        }.toMap()
+    val modeledSuperClassifiers = classInfo.directSuperTypes.mapTo(linkedSetOf()) { superType -> superType.classifierId }
+    var sawSpeculative = !modeledSuperClassifiers.containsAll(classInfo.superClassifiers)
+    classInfo.directSuperTypes.forEach { directSuperType ->
+        val appliedSuperType = directSuperType.substituteType(bindings) as? TcType.Constructor
+        if (appliedSuperType == null) {
+            sawSpeculative = true
+            return@forEach
+        }
+        when (subtypeFeasibility(appliedSuperType, sup, classInfoById, exactContext)) {
+            BuiltinGoalFeasibility.PROVABLE -> return BuiltinGoalFeasibility.PROVABLE
+            BuiltinGoalFeasibility.SPECULATIVE -> sawSpeculative = true
+            BuiltinGoalFeasibility.IMPOSSIBLE -> Unit
+        }
+    }
+    return if (sawSpeculative) BuiltinGoalFeasibility.SPECULATIVE else BuiltinGoalFeasibility.IMPOSSIBLE
 }
 
 private fun sameClassifierSubtypeFeasibility(

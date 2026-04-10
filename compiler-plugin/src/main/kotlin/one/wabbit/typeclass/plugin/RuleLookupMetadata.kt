@@ -4,6 +4,7 @@ package one.wabbit.typeclass.plugin
 
 import one.wabbit.typeclass.plugin.model.InstanceRule
 import one.wabbit.typeclass.plugin.model.TcType
+import one.wabbit.typeclass.plugin.model.TcTypeParameter
 import org.jetbrains.kotlin.load.kotlin.JvmPackagePartSource
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
@@ -30,6 +31,8 @@ internal data class VisibleClassHierarchyInfo(
     val superClassifiers: Set<String>,
     val isSealed: Boolean,
     val typeParameterVariances: List<Variance>,
+    val typeParameters: List<TcTypeParameter> = emptyList(),
+    val directSuperTypes: List<TcType.Constructor> = emptyList(),
 )
 
 internal sealed interface VisibleRuleLookupReference {

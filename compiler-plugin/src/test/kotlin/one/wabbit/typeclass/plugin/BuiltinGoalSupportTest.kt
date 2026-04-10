@@ -219,20 +219,27 @@ class BuiltinGoalSupportTest {
     }
 
     @Test
-    fun `cross-classifier generic subtype goals are only speculative from raw classifier reachability`() {
-        val unsoundGoal =
+    fun `cross-classifier generic subtype goals reject incompatible projected supertype arguments`() {
+        val goal =
             typeConstructor(
                 SUBTYPE_CLASS_ID.asString(),
-                typeConstructor("kotlin.collections.List", typeConstructor("kotlin.String")),
+                typeConstructor("demo.Foo"),
                 typeConstructor("kotlin.collections.Collection", typeConstructor("kotlin.Int")),
             )
         val classInfo =
             mapOf(
-                "kotlin.collections.List" to
+                "demo.Foo" to
                     VisibleClassHierarchyInfo(
                         superClassifiers = setOf("kotlin.collections.Collection"),
                         isSealed = false,
-                        typeParameterVariances = listOf(Variance.OUT_VARIANCE),
+                        typeParameterVariances = emptyList(),
+                        directSuperTypes =
+                            listOf(
+                                typeConstructor(
+                                    "kotlin.collections.Collection",
+                                    typeConstructor("kotlin.String"),
+                                ) as TcType.Constructor,
+                            ),
                     ),
                 "kotlin.collections.Collection" to
                     VisibleClassHierarchyInfo(
@@ -240,10 +247,22 @@ class BuiltinGoalSupportTest {
                         isSealed = false,
                         typeParameterVariances = listOf(Variance.OUT_VARIANCE),
                     ),
+                "kotlin.String" to
+                    VisibleClassHierarchyInfo(
+                        superClassifiers = emptySet(),
+                        isSealed = false,
+                        typeParameterVariances = emptyList(),
+                    ),
+                "kotlin.Int" to
+                    VisibleClassHierarchyInfo(
+                        superClassifiers = emptySet(),
+                        isSealed = false,
+                        typeParameterVariances = emptyList(),
+                    ),
             )
 
-        assertTrue(supportsBuiltinSubtypeGoal(unsoundGoal, classInfo))
-        assertFalse(provablySupportsBuiltinSubtypeGoal(unsoundGoal, classInfo))
+        assertFalse(supportsBuiltinSubtypeGoal(goal, classInfo))
+        assertFalse(provablySupportsBuiltinSubtypeGoal(goal, classInfo))
     }
 
     @Test
