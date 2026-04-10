@@ -380,7 +380,7 @@ internal fun FirRegularClass.deriveViaAnnotationParseResults(session: FirSession
             annotationClassId = DERIVE_VIA_ANNOTATION_CLASS_ID,
             containerClassId = DERIVE_VIA_ANNOTATION_CONTAINER_CLASS_ID,
             session = session,
-        ).mapNotNull { annotation ->
+        ).map { annotation ->
             annotation.parseDeriveViaAnnotation(owner = this, session = session)
         }
     }
@@ -393,7 +393,7 @@ internal fun FirRegularClass.deriveEquivAnnotationParseResults(session: FirSessi
             annotationClassId = DERIVE_EQUIV_ANNOTATION_CLASS_ID,
             containerClassId = DERIVE_EQUIV_ANNOTATION_CONTAINER_CLASS_ID,
             session = session,
-        ).mapNotNull { annotation ->
+        ).map { annotation ->
             annotation.parseDeriveEquivAnnotation(owner = this, session = session)
         }
     }
@@ -867,16 +867,26 @@ private fun List<FirTypeParameter>.toMethodTypeParameterModels(
 private fun FirAnnotation.parseDeriveViaAnnotation(
     owner: FirRegularClass,
     session: FirSession,
-): FirDeriveViaAnnotationParseResult? {
+): FirDeriveViaAnnotationParseResult {
     if (owner.typeParameters.isNotEmpty()) {
         return FirDeriveViaAnnotationParseResult.Invalid(
             annotation = this,
             message = "@DeriveVia only supports monomorphic classes for now",
         )
     }
-    val typeclassId = getClassIdArgument("typeclass", session) ?: return null
-    val typeclassInterface = session.regularClassSymbolOrNull(typeclassId)?.fir
-    if (typeclassInterface?.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session) != true) {
+    val typeclassId =
+        getClassIdArgument("typeclass", session)
+            ?: return FirDeriveViaAnnotationParseResult.Invalid(
+                annotation = this,
+                message = "@DeriveVia typeclass argument must be a resolvable class literal",
+            )
+    val typeclassInterface =
+        session.regularClassSymbolOrNull(typeclassId)?.fir
+            ?: return FirDeriveViaAnnotationParseResult.Invalid(
+                annotation = this,
+                message = "@DeriveVia typeclass argument must be a resolvable class literal: ${typeclassId.asString()}",
+            )
+    if (!typeclassInterface.hasAnnotation(TYPECLASS_ANNOTATION_CLASS_ID, session)) {
         return FirDeriveViaAnnotationParseResult.Invalid(
             annotation = this,
             message = "${typeclassId.shortClassName.asString()} is not annotated with @Typeclass",
@@ -951,15 +961,25 @@ private fun FirAnnotation.parseDeriveViaAnnotation(
 private fun FirAnnotation.parseDeriveEquivAnnotation(
     owner: FirRegularClass,
     session: FirSession,
-): FirDeriveEquivAnnotationParseResult? {
+): FirDeriveEquivAnnotationParseResult {
     if (owner.typeParameters.isNotEmpty()) {
         return FirDeriveEquivAnnotationParseResult.Invalid(
             annotation = this,
             message = "@DeriveEquiv only supports monomorphic classes for now",
         )
     }
-    val otherClassId = getClassIdArgument("otherClass", session) ?: return null
-    val otherClass = session.regularClassSymbolOrNull(otherClassId)?.fir ?: return null
+    val otherClassId =
+        getClassIdArgument("otherClass", session)
+            ?: return FirDeriveEquivAnnotationParseResult.Invalid(
+                annotation = this,
+                message = "@DeriveEquiv otherClass argument must be a resolvable class literal",
+            )
+    val otherClass =
+        session.regularClassSymbolOrNull(otherClassId)?.fir
+            ?: return FirDeriveEquivAnnotationParseResult.Invalid(
+                annotation = this,
+                message = "@DeriveEquiv otherClass argument must be a resolvable class literal: ${otherClassId.asString()}",
+            )
     if (otherClass.typeParameters.isNotEmpty()) {
         return FirDeriveEquivAnnotationParseResult.Invalid(
             annotation = this,

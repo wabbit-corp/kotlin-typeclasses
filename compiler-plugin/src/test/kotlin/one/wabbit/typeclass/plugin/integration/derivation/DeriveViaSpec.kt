@@ -12,6 +12,57 @@ class DeriveViaSpec : IntegrationTestSupport() {
     private val coroutinesRuntime = listOf(CompilerHarnessPlugin.CoroutinesRuntime)
     private val serializationRuntime = listOf(CompilerHarnessPlugin.SerializationRuntime)
 
+    @Test fun rejectsUnresolvedDeriveViaTypeclassArgumentInsteadOfIgnoringAnnotation() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveVia
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @JvmInline
+            value class Foo(val value: Int)
+
+            @JvmInline
+            @DeriveVia(MissingShow::class, Foo::class) // E
+            value class UserId(val value: Int)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("@DeriveVia", "typeclass", "resolvable class literal", phase = null),
+                ),
+        )
+    }
+
+    @Test fun rejectsUnresolvedDeriveEquivOtherClassArgumentInsteadOfIgnoringAnnotation() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.DeriveEquiv
+
+            @JvmInline
+            @DeriveEquiv(MissingWire::class) // E
+            value class UserId(val value: Int)
+            """.trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics =
+                listOf(
+                    expectedCannotDerive("@DeriveEquiv", "otherClass", "resolvable class literal", phase = null),
+                ),
+        )
+    }
+
     // Exact intended semantics:
     // - Equiv<A, B> is compiler-owned canonical evidence the compiler can solve and compose.
     // - Users must not author @Instance values of Equiv<A, B>, subclass it directly, or manually construct it;
