@@ -49,6 +49,7 @@ import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirNamedFunctionSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
 import org.jetbrains.kotlin.fir.types.ConeClassLikeType
+import org.jetbrains.kotlin.fir.types.ConeFlexibleType
 import org.jetbrains.kotlin.fir.types.ConeIntegerLiteralType
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
 import org.jetbrains.kotlin.fir.types.ConeTypeParameterType
@@ -3084,7 +3085,11 @@ internal fun coneTypeToModel(
     type: ConeKotlinType,
     typeParameterBySymbol: Map<FirTypeParameterSymbol, TcTypeParameter>,
 ): TcType? {
-    val lowerBound = type.approximateIntegerLiteralType().lowerBoundIfFlexible()
+    val approximatedType = type.approximateIntegerLiteralType()
+    if (approximatedType is ConeFlexibleType) {
+        return null
+    }
+    val lowerBound = approximatedType.lowerBoundIfFlexible()
     return when (lowerBound) {
         is ConeClassLikeType -> {
             val classifierId = lowerBound.lookupTag.classId

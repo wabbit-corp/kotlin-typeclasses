@@ -124,6 +124,41 @@ class NullabilityProofTest : IntegrationTestSupport() {
         )
     }
 
+    @Test fun rejectsNotNullableProofForJavaPlatformType() {
+        val sources =
+            mapOf(
+                "demo/JavaApi.java" to
+                    """
+                    package demo;
+
+                    public final class JavaApi {
+                        private JavaApi() {}
+
+                        public static String platformString() {
+                            return null;
+                        }
+                    }
+                    """.trimIndent(),
+                "Sample.kt" to
+                    """
+                    package demo
+
+                    import one.wabbit.typeclass.NotNullable
+
+                    context(_: NotNullable<T>)
+                    fun <T> requiresNotNullable(value: T): String = "not-nullable"
+
+                    fun fail(): String =
+                        requiresNotNullable(JavaApi.platformString()) // E:TC_NO_CONTEXT_ARGUMENT platform nullability is unknown
+                    """.trimIndent(),
+            )
+
+        assertDoesNotCompile(
+            sources = sources,
+            expectedDiagnostics = listOf(expectedNoContextArgument("notnullable")),
+        )
+    }
+
     @Test fun nullableProofSupportsNullValueContradictionAndTransportAcrossSameAndSubtype() {
         val source =
             """
