@@ -20,7 +20,7 @@ The runtime proof surfaces are:
 | `NotNullable<T>` | `T` excludes `null` |
 | `IsTypeclassInstance<TC>` | `TC` is headed by a typeclass constructor |
 | `SameTypeConstructor<A, B>` | `A` and `B` share the same outer type constructor |
-| `KnownType<T>` | exact reflective `KType` for `T` |
+| `KnownType<T>` | exact reflective `KType` for `T` using multiplatform `kotlin.reflect`, not JVM-only `java.lang.reflect` |
 | `TypeId<T>` | stable semantic identity token for `T` |
 
 All of these can be used as prerequisites for ordinary rule search, not just as standalone summoned values.
@@ -43,7 +43,7 @@ fun <A> reflectiveWitness(): TypeWitness<A> =
     }
 ```
 
-That means builtin proofs are not only debugging conveniences. They are part of the ordinary resolution model.
+Builtin proofs are not only debugging conveniences. They are part of the ordinary resolution model.
 
 ## Equality-Like Proofs
 
@@ -66,11 +66,11 @@ Typical failures:
 
 Useful APIs:
 
-- `flip()`
-- `andThen(...)`
-- `compose(...)`
-- `toSubtype()`
-- `Same.bracket(...)`
+- `flip()`: reverse the proof from `Same<A, B>` to `Same<B, A>`
+- `andThen(...)`: compose equality transitively on the right
+- `compose(...)`: compose equality transitively on the left
+- `toSubtype()`: forget equality and keep the subtype proof
+- `Same.bracket(...)`: collapse bidirectional subtyping into equality
 
 ### `NotSame<A, B>`
 
@@ -91,9 +91,9 @@ Typical failures:
 
 Useful APIs:
 
-- `flip()`
-- `contradicts(...)`
-- `fromContradiction(...)`
+- `flip()`: reverse the proof from `NotSame<A, B>` to `NotSame<B, A>`
+- `contradicts(...)`: turn simultaneous equality and inequality proofs into a contradiction
+- `fromContradiction(...)`: build `NotSame<A, B>` from a function that would explode if equality ever appeared
 
 ### `SameTypeConstructor<A, B>`
 
@@ -129,11 +129,11 @@ The compiler can materialize this for ordinary subtyping, including:
 
 Useful APIs:
 
-- `coerce(...)`
-- `andThen(...)`
-- `compose(...)`
-- `Subtype.refl()`
-- `Subtype.reify()`
+- `coerce(...)`: cast a value through the proven subtype relationship
+- `andThen(...)`: compose subtyping transitively toward a larger supertype
+- `compose(...)`: compose subtyping transitively from a smaller subtype
+- `Subtype.refl()`: obtain reflexive subtyping for the same type
+- `Subtype.reify()`: materialize a proof from an ordinary Kotlin `where Sub : Super` relationship
 
 ### `StrictSubtype<Sub, Super>`
 
@@ -155,10 +155,10 @@ Typical failures:
 
 Useful APIs:
 
-- all `Subtype`-style composition
-- `toSubtype()`
-- `toNotSame()`
-- `contradicts(...)`
+- inherited `Subtype` composition helpers: keep using `coerce(...)`, `andThen(...)`, and `compose(...)`
+- `toSubtype()`: forget strictness and keep only the subtype proof
+- `toNotSame()`: forget subtyping and keep only the inequality proof
+- `contradicts(...)`: show that reverse subtyping would collapse strictness into a contradiction
 
 ## Nullability Proofs
 
@@ -178,13 +178,15 @@ Typical failures:
 - `Nullable<String>`
 - unconstrained `Nullable<T>`
 
+These helpers mostly move a nullability fact through equality or subtype relationships.
+
 Useful APIs:
 
-- `nullValue()`
-- `andThen(Same)`
-- `andThen(Subtype)`
-- `compose(Same)`
-- `contradicts(...)`
+- `nullValue()`: return `null` typed as `T`
+- `andThen(Same)`: if `T` equals `U`, turn `Nullable<T>` into `Nullable<U>`
+- `andThen(Subtype)`: if `T` is a subtype of `U`, widen `Nullable<T>` into `Nullable<U>`
+- `compose(Same)`: if `U` equals `T`, turn `Nullable<T>` into `Nullable<U>`
+- `contradicts(...)`: combine `Nullable<T>` with `NotNullable<T>` to derive a contradiction
 
 ### `NotNullable<T>`
 
@@ -202,12 +204,14 @@ Typical failures:
 - `NotNullable<String?>`
 - unconstrained `NotNullable<T>`
 
+These helpers move a non-nullability fact through equality, or push it down to a proven subtype.
+
 Useful APIs:
 
-- `andThen(Same)`
-- `compose(Same)`
-- `compose(Subtype)`
-- `contradicts(...)`
+- `andThen(Same)`: if `T` equals `U`, turn `NotNullable<T>` into `NotNullable<U>`
+- `compose(Same)`: if `U` equals `T`, turn `NotNullable<T>` into `NotNullable<U>`
+- `compose(Subtype)`: if `U` is a subtype of `T`, push `NotNullable<T>` down to `NotNullable<U>`
+- `contradicts(...)`: combine `NotNullable<T>` with `Nullable<T>` to derive a contradiction
 
 ## Meta Proofs
 
@@ -238,6 +242,7 @@ This proof is useful when you want to write generic rules that only apply to typ
 Meaning:
 
 - exact reflective `KType` for a fully known type
+- this is the multiplatform `kotlin.reflect.KType` surface, not a JVM-only `java.lang.reflect.Type` API
 
 Use it when you need:
 
@@ -287,7 +292,7 @@ Typical failure:
 | Surface | Preserves type arguments | Preserves nullability | Intended use |
 | --- | --- | --- | --- |
 | `KClass<T>` | no | no | runtime classifier identity |
-| `KnownType<T>` | yes | yes | exact reflection |
+| `KnownType<T>` | yes | yes | exact `KType` reflection via multiplatform `kotlin.reflect` |
 | `TypeId<T>` | yes | yes | stable semantic identity and hashing |
 
 In practical terms:
@@ -382,11 +387,11 @@ You still need the normal serialization ecosystem:
 - `kotlinx.serialization` runtime on the classpath
 - the serialization compiler plugin where required
 
-The builtin does not invent serializers for non-serializable types. It uses a conservative admissibility check during typeclass resolution and lowers successful resolutions to `kotlinx.serialization.serializer<T>()` later.
+The builtin does not invent serializers for non-serializable types; it checks admissibility conservatively during typeclass resolution, then lowers successful resolutions to `kotlinx.serialization.serializer<T>()`.
 
 ### Behavior notes
 
-The builtin is intentionally narrower than full `serializer<T>()` parity.
+The builtin is narrower than full `serializer<T>()` parity.
 
 Today it only proves builtin `KSerializer<T>` goals when the target is already admissible from the plugin's static model, namely:
 
@@ -394,7 +399,7 @@ Today it only proves builtin `KSerializer<T>` goals when the target is already a
 - nested serializers for container types when the element serializers exist
 - recursively serializable type arguments for those shapes
 
-That means this builtin proof/search surface does not promise that every type accepted by `serializer<T>()` will also be admissible as builtin `KSerializer<T>` evidence.
+This builtin proof/search surface does not promise that every type accepted by `serializer<T>()` will also be admissible as builtin `KSerializer<T>` evidence.
 
 ### Common summoning patterns
 
@@ -498,10 +503,3 @@ This example assumes:
 - [`TypeclassMetaProofTest.kt`](../compiler-plugin/src/test/kotlin/one/wabbit/typeclass/plugin/integration/proofs/TypeclassMetaProofTest.kt)
 - [`KClassBuiltinTest.kt`](../compiler-plugin/src/test/kotlin/one/wabbit/typeclass/plugin/integration/KClassBuiltinTest.kt)
 - [`KSerializerBuiltinTest.kt`](../compiler-plugin/src/test/kotlin/one/wabbit/typeclass/plugin/integration/KSerializerBuiltinTest.kt)
-
-## Related Docs
-
-- [Typeclass Model](./typeclass-model.md)
-- [Derivation](./derivation.md)
-- [User Guide](./user-guide.md)
-- [Troubleshooting](./troubleshooting.md)

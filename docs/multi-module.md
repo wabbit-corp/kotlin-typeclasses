@@ -19,7 +19,7 @@ These surfaces are designed to survive binary publication:
 - compiler-emitted metadata annotations describing successful derived evidence
 - public derivation metadata/runtime surfaces in `one.wabbit.typeclass`
 
-That is why the runtime library keeps these declarations public and why the compiler plugin re-discovers them in downstream compilations. For derivation specifically, downstream modules mostly do not consume a normal generated declaration emitted by the upstream module. They read compiler metadata from the dependency and reconstruct the corresponding derived rule in the consuming compilation.
+That is why the runtime library keeps these declarations public and why the compiler plugin re-discovers them in downstream compilations. For derivation specifically, downstream modules usually do not consume an ordinary generated declaration emitted by the upstream module; instead, they read compiler metadata from the dependency and reconstruct the corresponding derived rule in the consuming compilation.
 
 ## Visibility Rules Still Apply
 
@@ -52,16 +52,9 @@ then downstream code asking for `Show<Box>` can resolve that instance normally.
 
 ## Top-Level Instances Across Modules
 
-Top-level instances also work across modules, but they must satisfy the same ownership rule as local code.
+Top-level instances also work across modules, but they still have to live in a legal owner file. The dependency boundary does not relax the normal placement rule.
 
-A top-level `@Instance` must live in the same file as:
-
-- the typeclass head, or
-- one of the concrete provided classifiers in the target
-
-That restriction is not relaxed just because the instance lives in another module.
-
-For authoring guidance, see [Instance Authoring](./instance-authoring.md).
+For the canonical ownership rule and examples, see [Instance Authoring](./instance-authoring.md).
 
 ## Derived Evidence Across Dependencies
 
@@ -73,7 +66,7 @@ That matters for sealed roots in particular:
 - if the producer's sealed hierarchy is incomplete or contains an unsupported case, that metadata is not exported downstream
 - downstream use sites then fail just like any other missing-evidence case
 
-This is intentionally all-or-nothing at the exported root level. A partially valid hierarchy does not publish misleading derivation metadata.
+This is all-or-nothing at the exported root level, so a partially valid hierarchy does not publish misleading derivation metadata.
 
 ## `@DeriveVia` Across Dependencies
 
@@ -89,7 +82,7 @@ What does not get exported:
 
 - transient local `Equiv` glue synthesized only while completing one `@DeriveVia` request
 
-So a producer may use local equivalence synthesis to finish one derivation, while downstream code still cannot later `summon<Equiv<A, B>>()` unless there is explicit exported `Equiv` evidence. The dependency boundary preserves the successful `DeriveVia` request through metadata, not through publication of all intermediate solver artifacts.
+So a producer may use local equivalence synthesis to finish one derivation, while downstream code still cannot later `summon<Equiv<A, B>>()` unless there is explicit exported `Equiv` evidence. The dependency boundary preserves the successful `DeriveVia` request through metadata rather than by publishing all intermediate solver artifacts.
 
 ## `@DeriveEquiv` Across Dependencies
 
@@ -112,10 +105,7 @@ val equiv = summon<Equiv<B, A>>()
 val reverse = summon<Equiv<A, B>>()
 ```
 
-Important boundary:
-
-- only that equivalence pair is exported, though both orientations are available
-- unrelated targets do not become derivable just because some other `@DeriveEquiv` exists nearby
+Only that equivalence pair is exported, though both orientations are available. Unrelated targets do not become derivable just because some other `@DeriveEquiv` exists nearby.
 
 As with other derivation surfaces, the exported shape is metadata-driven. Downstream compilers reconstruct the equivalence rules from dependency metadata rather than importing ordinary user-authored declarations with those types.
 
@@ -123,7 +113,7 @@ As with other derivation surfaces, the exported shape is metadata-driven. Downst
 
 Published evidence and runtime annotations can cross module boundaries, but resolution still happens in the current compilation.
 
-That means downstream source code still needs:
+Downstream source code still needs:
 
 - the `kotlin-typeclasses` runtime on the classpath
 - the compiler plugin enabled for the downstream compilation
@@ -144,10 +134,3 @@ For reusable libraries:
 - keep top-level instances in legal owner files
 - avoid exporting both manual and derived evidence for the same head/target pair
 - keep visibility intentional so downstream behavior is unsurprising
-
-## Related Docs
-
-- [Typeclass Model](./typeclass-model.md)
-- [Derivation](./derivation.md)
-- [Instance Authoring](./instance-authoring.md)
-- [Troubleshooting](./troubleshooting.md)

@@ -16,7 +16,11 @@ flowchart TD
     I --> C
 ```
 
-The runtime library is intentionally small. Most behavior lives in the compiler plugin.
+The runtime library is intentionally small. Most behavior lives in the compiler plugin, which is easiest to think about as three layers:
+
+- discovery and indexing
+- FIR validation and call refinement
+- IR rewriting and code generation
 
 ## Repository Topology
 
@@ -65,11 +69,19 @@ Entry point:
 
 - [`TypeclassCompilerPluginRegistrar.kt`](../compiler-plugin/src/main/kotlin/one/wabbit/typeclass/plugin/TypeclassCompilerPluginRegistrar.kt)
 
-The compiler plugin has three main layers:
+The three layers described above are implemented here:
 
-1. discovery and indexing
-2. FIR validation and call refinement
-3. IR rewriting and code generation
+1. discovery and indexing:
+   [`TypeclassPluginSharedState.kt`](../compiler-plugin/src/main/kotlin/one/wabbit/typeclass/plugin/TypeclassPluginSharedState.kt),
+   [`TypeModel.kt`](../compiler-plugin/src/main/kotlin/one/wabbit/typeclass/plugin/model/TypeModel.kt),
+   [`WrapperPlanner.kt`](../compiler-plugin/src/main/kotlin/one/wabbit/typeclass/plugin/model/WrapperPlanner.kt)
+2. FIR validation and call refinement:
+   [`TypeclassFirCheckersExtension.kt`](../compiler-plugin/src/main/kotlin/one/wabbit/typeclass/plugin/TypeclassFirCheckersExtension.kt),
+   [`TypeclassFirFunctionCallRefinementExtension.kt`](../compiler-plugin/src/main/kotlin/one/wabbit/typeclass/plugin/TypeclassFirFunctionCallRefinementExtension.kt),
+   [`TypeclassFirExpressionResolutionExtension.kt`](../compiler-plugin/src/main/kotlin/one/wabbit/typeclass/plugin/TypeclassFirExpressionResolutionExtension.kt)
+3. IR rewriting and code generation:
+   [`TypeclassIrGenerationExtension.kt`](../compiler-plugin/src/main/kotlin/one/wabbit/typeclass/plugin/TypeclassIrGenerationExtension.kt),
+   [`DeriveSupport.kt`](../compiler-plugin/src/main/kotlin/one/wabbit/typeclass/plugin/DeriveSupport.kt)
 
 ### Gradle plugin
 
@@ -99,7 +111,7 @@ Responsibilities:
 - enable IntelliJ's external K2 compiler-plugin path for the current trusted project
 - request Gradle reimport when only the Gradle plugin declaration is visible
 
-It does not implement a separate typechecker. It enables the IDE to load the real compiler plugin.
+It does not implement a separate typechecker; instead, it enables the IDE to load the real compiler plugin.
 
 ## Configuration Flow
 
@@ -119,6 +131,8 @@ Examples:
 
 The plugin keeps a session-scoped index of relevant declarations.
 
+In this document, "typeclass scope" means the current goal's search space: direct local context plus eligible indexed rules, derived rules, and builtins.
+
 Important files:
 
 - [`TypeclassPluginSharedState.kt`](../compiler-plugin/src/main/kotlin/one/wabbit/typeclass/plugin/TypeclassPluginSharedState.kt)
@@ -132,7 +146,7 @@ Core ideas:
 - `TypeclassResolutionPlanner` resolves a desired goal against local context and available rules
 - ambiguity, missing evidence, and recursive resolution are modeled explicitly
 
-The planner is the shared "brain" used by both the FIR and IR sides. That keeps frontend masking and backend rewriting aligned.
+The planner is the shared "brain" used by both the FIR and IR sides, which keeps frontend masking and backend rewriting aligned.
 
 ## FIR Responsibilities
 
@@ -163,7 +177,7 @@ Important file:
 
 - [`TypeclassIrGenerationExtension.kt`](../compiler-plugin/src/main/kotlin/one/wabbit/typeclass/plugin/TypeclassIrGenerationExtension.kt)
 
-This is where the final semantics are enforced.
+This is where the final semantics are enforced, so it is usually the first place to look when generated behavior is wrong.
 
 IR responsibilities include:
 
@@ -172,8 +186,6 @@ IR responsibilities include:
 - generating derived instances for the current compilation and recording successful derived-instance metadata for downstream recompilation
 - handling recursive derivation cells safely
 - emitting final diagnostics when a planner-success approximation still needs a backend validity check
-
-In practical terms, if you are debugging "the program compiled but the generated call is wrong", IR is usually the first place to look.
 
 ## Derivation Pipeline
 
@@ -201,7 +213,7 @@ The compiler plugin:
 
 ## Current Semantic Boundaries
 
-These are intentional current boundaries, not silent accidents:
+These are intentional boundaries, not silent accidents:
 
 - resolution is annotation-driven; interfaces without `@Typeclass` do not participate
 - ambiguity is reported rather than broken by a hidden coherence policy

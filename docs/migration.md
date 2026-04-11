@@ -20,6 +20,7 @@ If you use the Gradle plugin, keep these versions aligned:
 
 ```kotlin
 plugins {
+    // See gradle.properties for the supported Kotlin matrix.
     kotlin("jvm") version "2.3.10"
     id("one.wabbit.typeclass") version "0.0.1"
 }
@@ -63,10 +64,3 @@ The repository currently keeps per-module changelogs:
 - [`ij-plugin/CHANGELOG.md`](../ij-plugin/CHANGELOG.md)
 
 Before cutting a release, move relevant `Unreleased` entries into a versioned section and call out breaking changes with mechanical upgrade steps.
-
-## Related Docs
-
-- [User Guide](./user-guide.md)
-- [Development](./development.md)
-- [API Reference](./api-reference.md)
-- [Troubleshooting](./troubleshooting.md)

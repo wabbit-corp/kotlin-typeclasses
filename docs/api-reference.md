@@ -49,11 +49,3 @@ Those support surfaces are public for cross-module generated code and compiler i
 Every public runtime symbol should have KDoc. If a public symbol exists only for generated code, the KDoc should say that directly and point users to the higher-level API.
 
 The guides should link to the reference for exact signatures instead of copying large API inventories by hand.
-
-## Related Docs
-
-- [User Guide](./user-guide.md)
-- [Typeclass Model](./typeclass-model.md)
-- [Derivation](./derivation.md)
-- [Proofs And Builtins](./proofs-and-builtins.md)
-- [Migration](./migration.md)

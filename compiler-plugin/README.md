@@ -15,7 +15,7 @@ Kotlin compiler plugins are tied to compiler internals. This module isolates the
 
 ## Status
 
-This module is experimental, K2-only, and published per Kotlin compiler line. The current documented variants target Kotlin `2.3.10` and `2.4.0-Beta1`.
+This module is experimental, K2-only, and published per Kotlin compiler line. The documented variants target Kotlin `2.3.10` and `2.4.0-Beta1`.
 
 ## Installation
 
@@ -25,7 +25,7 @@ The compiler plugin is published as a Kotlin-line-specific artifact:
 
 The `-kotlin-<kotlinVersion>` suffix is intentional. Compiler-plugin binaries are coupled to the Kotlin compiler APIs they were built against.
 
-The current release train publishes compiler-plugin variants for:
+This release train publishes compiler-plugin variants for:
 
 - `2.3.10`
 - `2.4.0-Beta1`
@@ -62,13 +62,13 @@ The compiler plugin is responsible for:
 
 ## Current Scope
 
-Important current boundaries:
+Important boundaries:
 
 - only supported heads marked with `@Typeclass` participate in typeclass search
 - ordinary user-defined typeclasses should be interfaces; subclassable class heads are limited to advanced/compiler-owned surfaces and `@DeriveVia` adapter generation where a zero-argument superclass constructor is accessible
 - directly available contextual evidence is preferred before global rule search
 - ambiguity is an error; there is no hidden global coherence policy
-- `@DeriveVia` and `@DeriveEquiv` are intentionally conservative and currently focus on monomorphic target classes
+- `@DeriveVia` and `@DeriveEquiv` focus on monomorphic target classes
 - contextual property getter reads are currently limited by the public FIR plugin API's lack of a property-read refinement hook
 
 For the property-read limitation, see [`ISSUE_PROPERTIES.md`](./ISSUE_PROPERTIES.md).
@@ -260,21 +260,3 @@ Use this artifact directly when:
 - reading the compiler-side Dokka surface
 
 If you are using Gradle, prefer [`../gradle-plugin/README.md`](../gradle-plugin/README.md).
-
-## Related Docs
-
-Suggested reading order for new users: root README, user guide, typeclass model, troubleshooting, then this module README only if direct compiler-plugin details are needed.
-
-- [`../README.md`](../README.md)
-- [`../docs/user-guide.md`](../docs/user-guide.md)
-- [`../docs/instance-authoring.md`](../docs/instance-authoring.md)
-- [`../docs/troubleshooting.md`](../docs/troubleshooting.md)
-- [`../docs/multi-module.md`](../docs/multi-module.md)
-- [`../docs/development.md`](../docs/development.md)
-- [`../docs/architecture.md`](../docs/architecture.md)
-- [`../library/README.md`](../library/README.md)
-- [`../gradle-plugin/README.md`](../gradle-plugin/README.md)
-- [`PLAN.md`](./PLAN.md)
-- [`LEARNINGS.md`](./LEARNINGS.md)
-- [`ISSUE_PROPERTIES.md`](./ISSUE_PROPERTIES.md)
-- [`ISSUE_SERIALIZABLE_TYPEALIASES.md`](./ISSUE_SERIALIZABLE_TYPEALIASES.md)

@@ -6,7 +6,7 @@ This guide covers the three derivation surfaces in `kotlin-typeclasses`:
 - `@DeriveVia`
 - `@DeriveEquiv`
 
-It also explains the runtime deriver interfaces and the current boundaries of the derivation model.
+It also explains the runtime deriver interfaces and the boundaries of the derivation model.
 
 ## `@Derive`
 
@@ -53,7 +53,7 @@ Typeclasses that want enum derivation must override `deriveEnum(...)`.
 
 ## Deriver Contracts
 
-Here is a complete `Show` deriver for products, sealed sums, and enums. This example is compiled and run by the documentation consistency tests.
+Here is a complete `Show` deriver for products, sealed sums, and enums; the documentation consistency tests compile and run this example.
 
 <!-- derive-example:start -->
 ```kotlin
@@ -160,7 +160,7 @@ The compiler plugin is responsible for:
 
 ## Root And Leaf Semantics
 
-For sealed hierarchies, the current documented contract is:
+For sealed hierarchies:
 
 - root `@Derive` on a sealed hierarchy derives the root instance and synthesizes the leaf/case evidence needed to build it
 - leaf-only `@Derive` derives only that leaf as a standalone type
@@ -202,15 +202,18 @@ The `path` entries are interpreted as:
 - via-type waypoints
 - pinned `Iso` singleton classes for exact user-authored conversion segments
 
+Concrete intuition:
+
+- given `@DeriveVia(Show::class, UserIdIso::class, String::class)`, the `UserIdIso` segment uses that exact user-authored conversion, while the `String::class` segment asks the compiler to find or synthesize the surrounding `Equiv` step automatically
+
 Current important rules:
 
 - empty paths are rejected
 - a waypoint like `Foo::class` means "solve an `Equiv<Current, Foo>` segment"
 - a pinned `Iso` object means "use exactly this reversible conversion for one segment"
-- only the `Iso` object itself is pinned; surrounding `Equiv` glue remains solver-driven
+- only the `Iso` object itself is pinned; any surrounding `Equiv` segments are still solver-driven
 - if a pinned `Iso` can attach in more than one way, derivation fails as ambiguous rather than guessing an orientation
-- the feature is intentionally conservative
-- the current implementation focuses on monomorphic target classes
+- the implementation focuses on monomorphic target classes
 - local equivalence steps the compiler synthesizes while completing one `@DeriveVia` request are not automatically exported as global evidence
 
 In other words, `@DeriveVia` is a focused transport mechanism, not a general-purpose search for "some equivalent type somewhere".
@@ -219,7 +222,7 @@ In other words, `@DeriveVia` is a focused transport mechanism, not a general-pur
 
 Today `@DeriveVia` transports only the last type parameter of the requested typeclass.
 
-That means:
+In practice:
 
 - single-parameter typeclasses like `Show<A>` and `Monoid<A>` fit naturally
 - multi-parameter typeclasses currently participate only when the transported slot is the final type parameter
@@ -273,7 +276,7 @@ Direct user code that names or summons `Equiv<..., ...>` must also opt into `Int
 
 ### Structural whitelist
 
-`@DeriveEquiv` is intentionally narrow. The compiler is trying to prove transparent reversible structure, not "close enough" semantic similarity.
+`@DeriveEquiv` uses a narrow structural whitelist. The compiler is trying to prove transparent reversible structure, not "close enough" semantic similarity.
 
 Current successful shapes are conservative, including things like:
 
@@ -290,7 +293,7 @@ Important rejection cases include:
 
 ## `Iso` Versus `Equiv`
 
-These two concepts are related but intentionally distinct.
+These two concepts are related but distinct.
 
 ### `Iso<A, B>`
 
@@ -330,12 +333,12 @@ This is a specialized override for GADT-like derivation fragments. Most users ca
 
 ## Current Boundaries
 
-Derivation is intentionally conservative.
+Derivation is conservative.
 
-Important current boundaries:
+Important boundaries:
 
 - ambiguity still applies: generated evidence shares the same resolution space as manual rules
-- `@DeriveVia` and `@DeriveEquiv` currently focus on monomorphic classes
+- `@DeriveVia` and `@DeriveEquiv` focus on monomorphic classes
 - transparent structural equivalence is preferred over aggressive semantic guessing
 - derivation is not a substitute for a global coherence policy
 - cross-module derivation reuse depends on successful metadata export and downstream rule reconstruction, not on shipping every generated declaration as ordinary API
@@ -343,17 +346,9 @@ Important current boundaries:
 
 ## Where To Read The Actual Behavior
 
-These are the best references when the precise current contract matters:
+These are the best references when the precise contract matters:
 
 - [`DerivationSurfaceTest.kt`](../compiler-plugin/src/test/kotlin/one/wabbit/typeclass/plugin/integration/derivation/DerivationSurfaceTest.kt)
 - [`DeriveViaSpec.kt`](../compiler-plugin/src/test/kotlin/one/wabbit/typeclass/plugin/integration/derivation/DeriveViaSpec.kt)
 - [`GADTDerivationTest.kt`](../compiler-plugin/src/test/kotlin/one/wabbit/typeclass/plugin/integration/derivation/GADTDerivationTest.kt)
 - [`PLAN.md`](../compiler-plugin/PLAN.md)
-
-## Related Docs
-
-- [Typeclass Model](./typeclass-model.md)
-- [Multi-Module Behavior](./multi-module.md)
-- [Proofs And Builtins](./proofs-and-builtins.md)
-- [Troubleshooting](./troubleshooting.md)
-- [Architecture](./architecture.md)

@@ -2,68 +2,6 @@
 
 `kotlin-typeclasses` is a K2 compiler-plugin stack for typeclass-oriented programming in Kotlin with context parameters.
 
-It combines:
-
-- a small runtime library with annotations, `summon()`, derivation metadata, and proof APIs
-- a K2 compiler plugin that resolves typeclass evidence and rewrites contextual calls
-- a Gradle plugin that wires the compiler plugin into Kotlin builds
-- an IntelliJ IDEA helper plugin that enables external compiler-plugin loading for projects that use this stack
-
-## Why This Exists
-
-Kotlin context parameters give the language a useful capability-passing syntax, but they do not by themselves provide a typeclass programming model.
-
-`kotlin-typeclasses` adds the missing pieces:
-
-- implicit evidence search for supported heads marked with `@Typeclass`
-- rule-style instance declarations with `@Instance`
-- companion-based associated lookup
-- derived instances for products, sums, enums, and equivalence-based shapes
-- builtin proofs such as `Same`, `Subtype`, `KnownType`, and `TypeId`
-- Gradle and IntelliJ integration so the feature is usable in real projects
-
-The goal is to make typeclass-style programming explicit and compile-time checked without forcing every call site to thread evidence manually.
-
-## Status
-
-This repository is experimental and pre-1.0.
-
-- Kotlin publish matrix is driven by `supportedKotlinVersions` in [`gradle.properties`](./gradle.properties). At the moment that matrix is `2.3.10` and `2.4.0-Beta1`.
-- The compiler plugin is K2-only.
-- Context parameters are required. The Gradle plugin enables `-Xcontext-parameters` automatically.
-- Runtime, compiler-plugin, and Gradle-plugin builds target JDK 21. The IntelliJ plugin targets JVM 17 and IntelliJ IDEA 2025.3.
-
-## Design Intent
-
-This project is trying to be powerful without becoming mystical.
-
-- Typeclass search is explicit and annotation-driven.
-- Resolution prefers directly available context before global rule search.
-- Ambiguity is an error, not something the plugin silently breaks by precedence heuristics.
-- The runtime stays small; most semantics live in the compiler plugin.
-- Current limits are documented instead of being treated as accidental quirks.
-
-## Modules
-
-| Module | Gradle project | Purpose |
-| --- | --- | --- |
-| [`library/`](./library/) | `:kotlin-typeclasses` | Public runtime API: `@Typeclass`, `@Instance`, `@Derive`, `summon()`, derivation metadata, and builtin proof types |
-| [`compiler-plugin/`](./compiler-plugin/) | `:kotlin-typeclasses-plugin` | K2 compiler plugin: discovery, resolution planning, FIR validation/refinement, and IR rewriting/codegen |
-| [`gradle-plugin/`](./gradle-plugin/) | `:kotlin-typeclasses-gradle-plugin` | Gradle integration for `one.wabbit.typeclass` |
-| [`ij-plugin/`](./ij-plugin/) | `:kotlin-typeclasses-ij-plugin` | IntelliJ IDEA integration for loading the compiler plugin into IDE analysis |
-
-## Published Modules
-
-Most consumers need the runtime library and the Gradle plugin ID.
-
-| Module | Coordinates or ID | Role |
-| --- | --- | --- |
-| Runtime library | `one.wabbit:kotlin-typeclasses:0.0.1` | Annotations, `summon()`, derivation metadata, and proof APIs |
-| Gradle plugin | plugin id `one.wabbit.typeclass` | Kotlin build integration and compiler-plugin wiring |
-| Gradle plugin artifact | `one.wabbit:kotlin-typeclasses-gradle-plugin:0.0.1` | Published Gradle plugin implementation artifact |
-| Compiler plugin | `one.wabbit:kotlin-typeclasses-plugin:0.0.1-kotlin-2.3.10` and `one.wabbit:kotlin-typeclasses-plugin:0.0.1-kotlin-2.4.0-Beta1` | Kotlin-line-specific K2 compiler plugin |
-| IntelliJ plugin | `one.wabbit:kotlin-typeclasses-ij-plugin:0.0.1` | IDE helper plugin for external compiler-plugin loading |
-
 ## Quick Start
 
 This is a complete JVM application for the current documented release line.
@@ -159,6 +97,68 @@ Expected output:
 
 If you want to load the compiler plugin manually instead of using Gradle, add both `-Xcontext-parameters` and the compiler plugin artifact `one.wabbit:kotlin-typeclasses-plugin:<baseVersion>-kotlin-<kotlinVersion>`.
 
+It combines:
+
+- a small runtime library with annotations, `summon()`, derivation metadata, and proof APIs
+- a K2 compiler plugin that resolves typeclass evidence and rewrites contextual calls
+- a Gradle plugin that wires the compiler plugin into Kotlin builds
+- an IntelliJ IDEA helper plugin that enables external compiler-plugin loading for projects that use this stack
+
+## Why This Exists
+
+Kotlin context parameters give the language a useful capability-passing syntax, but they do not by themselves provide a typeclass programming model.
+
+`kotlin-typeclasses` adds the missing pieces:
+
+- implicit evidence search for supported heads marked with `@Typeclass`
+- rule-style instance declarations with `@Instance`
+- companion-based associated lookup
+- derived instances for products, sums, enums, and equivalence-based shapes
+- builtin proofs such as `Same`, `Subtype`, `KnownType`, and `TypeId`
+- Gradle and IntelliJ integration so the feature is usable in real projects
+
+The goal is to make typeclass-style programming explicit and compile-time checked without forcing every call site to thread evidence manually.
+
+## Status
+
+This repository is experimental and pre-1.0.
+
+- Kotlin publish matrix is driven by `supportedKotlinVersions` in [`gradle.properties`](./gradle.properties). At the moment that matrix is `2.3.10` and `2.4.0-Beta1`.
+- The compiler plugin is K2-only.
+- Context parameters are required. The Gradle plugin enables `-Xcontext-parameters` automatically.
+- Runtime, compiler-plugin, and Gradle-plugin builds target JDK 21. The IntelliJ plugin targets JVM 17 and IntelliJ IDEA 2025.3.
+
+## Design Intent
+
+This project is trying to be powerful without becoming mystical.
+
+- Typeclass search is explicit and annotation-driven.
+- Resolution prefers directly available context before global rule search.
+- Ambiguity is an error, not something the plugin silently breaks by precedence heuristics.
+- The runtime stays small; most semantics live in the compiler plugin.
+- Current limits are documented instead of being treated as accidental quirks.
+
+## Modules
+
+| Module | Gradle project | Purpose |
+| --- | --- | --- |
+| [`library/`](./library/) | `:kotlin-typeclasses` | Public runtime API: `@Typeclass`, `@Instance`, `@Derive`, `summon()`, derivation metadata, and builtin proof types |
+| [`compiler-plugin/`](./compiler-plugin/) | `:kotlin-typeclasses-plugin` | K2 compiler plugin: discovery, resolution planning, FIR validation/refinement, and IR rewriting/codegen |
+| [`gradle-plugin/`](./gradle-plugin/) | `:kotlin-typeclasses-gradle-plugin` | Gradle integration for `one.wabbit.typeclass` |
+| [`ij-plugin/`](./ij-plugin/) | `:kotlin-typeclasses-ij-plugin` | IntelliJ IDEA integration for loading the compiler plugin into IDE analysis |
+
+## Published Modules
+
+Most consumers need the runtime library and the Gradle plugin ID.
+
+| Module | Coordinates or ID | Role |
+| --- | --- | --- |
+| Runtime library | `one.wabbit:kotlin-typeclasses:0.0.1` | Annotations, `summon()`, derivation metadata, and proof APIs |
+| Gradle plugin | plugin id `one.wabbit.typeclass` | Kotlin build integration and compiler-plugin wiring |
+| Gradle plugin artifact | `one.wabbit:kotlin-typeclasses-gradle-plugin:0.0.1` | Published Gradle plugin implementation artifact |
+| Compiler plugin | `one.wabbit:kotlin-typeclasses-plugin:0.0.1-kotlin-2.3.10` and `one.wabbit:kotlin-typeclasses-plugin:0.0.1-kotlin-2.4.0-Beta1` | Kotlin-line-specific K2 compiler plugin |
+| IntelliJ plugin | `one.wabbit:kotlin-typeclasses-ij-plugin:0.0.1` | IDE helper plugin for external compiler-plugin loading |
+
 ## Default Behavior
 
 Out of the box:
@@ -182,14 +182,14 @@ Out of the box:
 
 The important resolution rules are:
 
-- Only supported `@Typeclass` heads participate in implicit typeclass resolution.
-- Ordinary application/library typeclasses should be interfaces. Abstract/open class heads are an advanced path used by compiler-owned surfaces such as `Equiv` and by `@DeriveVia` only when the head is subclassable and has an accessible zero-argument constructor.
-- Directly available contextual evidence is considered before global rule search.
-- Global rules come from top-level `@Instance` objects, functions, and immutable properties, plus associated companions.
-- Top-level `@Instance` declarations are restricted by file ownership: they must live with the typeclass head or one of the concrete provided classifiers in the target.
-- For a goal like `Foo<A, B>`, associated search includes the companion of `Foo`, companions of sealed supertypes of `Foo`, and companions of `A` and `B` plus their sealed supertypes.
-- Derived rules created from `@Derive(...)` are part of the same search space.
-- There is no global coherence check. If multiple candidates match, resolution fails as ambiguous.
+- only supported `@Typeclass` heads participate in implicit typeclass resolution
+- ordinary application/library typeclasses should be interfaces; abstract/open class heads are an advanced path used by compiler-owned surfaces such as `Equiv` and by `@DeriveVia` only when the head is subclassable and has an accessible zero-argument constructor
+- directly available contextual evidence is considered before global rule search
+- global rules come from top-level `@Instance` objects, functions, and immutable properties, plus associated companions
+- top-level `@Instance` declarations are restricted by file ownership: they must live with the typeclass head or one of the concrete provided classifiers in the target
+- for a goal like `Foo<A, B>`, associated search includes the companion of `Foo`, companions of sealed supertypes of `Foo`, and companions of `A` and `B` plus their sealed supertypes
+- derived rules created from `@Derive(...)` are part of the same search space
+- there is no global coherence check; multiple matching candidates fail as ambiguous
 
 See the [User Guide](./docs/user-guide.md) for the full user-facing model.
 
@@ -201,7 +201,7 @@ Compiler-plugin coordinates use the form:
 
 - `one.wabbit:kotlin-typeclasses-plugin:<baseVersion>-kotlin-<kotlinVersion>`
 
-For the current release train, the repository is configured to publish compiler-plugin variants for:
+For this release train, the repository is configured to publish compiler-plugin variants for:
 
 - `2.3.10`
 - `2.4.0-Beta1`
@@ -232,13 +232,11 @@ Its current job is narrower:
 - enable IntelliJ's external K2 compiler-plugin loading path for the current trusted project
 - request Gradle reimport when only the Gradle plugin declaration is visible
 
-Important detail:
-
-- enabling support here enables non-bundled K2 compiler plugins for the current trusted project session, not just `kotlin-typeclasses`
+Enabling support here enables non-bundled K2 compiler plugins for the current trusted project session, not just `kotlin-typeclasses`.
 
 ## Current Boundaries
 
-These are important current boundaries rather than hidden surprises:
+These are important boundaries rather than hidden surprises:
 
 - there is no global coherence check across the whole program
 - ambiguity is a hard error when multiple rules match

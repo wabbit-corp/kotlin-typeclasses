@@ -50,7 +50,7 @@ Marks an object, function, or immutable property as a source of evidence.
 
 The compiler plugin treats instance functions as rule-like declarations: no ordinary value parameters, optional context-parameter prerequisites, and a provided typeclass result.
 
-Top-level instances are intentionally restricted: they must live in the same file as the typeclass head or one of the concrete provided classifiers in the target.
+Top-level instances are restricted: they must live in the same file as the typeclass head or one of the concrete provided classifiers in the target.
 
 ### `summon()`
 
@@ -153,18 +153,3 @@ Breaking changes and mechanical upgrade notes live in [`../docs/migration.md`](.
 ## Support
 
 Use [`../docs/troubleshooting.md`](../docs/troubleshooting.md) first for diagnostics, tracing, and known limits. Report bugs through the repository issue tracker, and use [`../docs/development.md`](../docs/development.md) plus the legal docs under [`../legal/`](../legal/) for contribution workflow.
-
-## Related Docs
-
-- [`../README.md`](../README.md) for the project overview
-- [`../docs/user-guide.md`](../docs/user-guide.md) for user-facing setup and semantics
-- [`../docs/api-reference.md`](../docs/api-reference.md) for generated API reference commands and reference-surface policy
-- [`../docs/typeclass-model.md`](../docs/typeclass-model.md) for typeclass scope and resolution
-- [`../docs/instance-authoring.md`](../docs/instance-authoring.md) for instance placement, ownership rules, and ambiguity avoidance
-- [`../docs/derivation.md`](../docs/derivation.md) for `@Derive`, `@DeriveVia`, and `@DeriveEquiv`
-- [`../docs/proofs-and-builtins.md`](../docs/proofs-and-builtins.md) for proof surfaces plus `KClass<T>` / `KSerializer<T>`
-- [`../docs/troubleshooting.md`](../docs/troubleshooting.md) for diagnostics and tracing workflow
-- [`../docs/multi-module.md`](../docs/multi-module.md) for dependency and export behavior
-- [`../docs/architecture.md`](../docs/architecture.md) for the repo-wide architecture
-- [`../gradle-plugin/README.md`](../gradle-plugin/README.md) for build integration
-- [`../compiler-plugin/README.md`](../compiler-plugin/README.md) for compiler-plugin behavior

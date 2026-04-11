@@ -145,21 +145,10 @@ For setup failures, check [`../docs/troubleshooting.md`](../docs/troubleshooting
 
 ## Scope
 
-This module is intentionally narrow:
+This module is narrow:
 
 - it is a Gradle bridge, not a second typeclass engine
 - it does not replace the runtime dependency; users still need `one.wabbit:kotlin-typeclasses`
 - it does not add custom DSL for resolution semantics; the typeclass model stays in source annotations and compiler-plugin behavior
 
 If you need direct compiler-plugin details or raw CLI option forms, see [`../compiler-plugin/README.md`](../compiler-plugin/README.md).
-
-## Related Docs
-
-Suggested reading order for new users: root README, this Gradle plugin quick start, user guide, troubleshooting, then compiler-plugin README only for direct compiler integration.
-
-- [`../README.md`](../README.md)
-- [`../docs/user-guide.md`](../docs/user-guide.md)
-- [`../docs/development.md`](../docs/development.md)
-- [`../docs/architecture.md`](../docs/architecture.md)
-- [`../library/README.md`](../library/README.md)
-- [`../compiler-plugin/README.md`](../compiler-plugin/README.md)

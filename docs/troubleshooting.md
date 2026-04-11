@@ -41,28 +41,16 @@ Check these first:
 - `@Derive` requested a typeclass that was never actually derived
 - builtin requests like `KClass<T>`, `KSerializer<T>`, `KnownType<T>`, or `TypeId<T>` are made for a non-reified or otherwise non-materializable `T`
 
-### Top-level instance ownership rule
+### Check owner-file placement
 
-Top-level `@Instance` declarations are intentionally constrained.
+Top-level `@Instance` declarations are constrained. A missing-evidence or invalid-instance error often means the declaration is not in a legal owner file.
 
-They must live in the same file as:
+Fast check:
 
-- the typeclass head, or
-- one of the concrete provided classifiers in the target type
+- the file must declare the typeclass head, or
+- the file must declare one of the concrete provided classifiers in the target type
 
-Examples:
-
-- `Show<AlphaId>` may live beside `Show` or beside `AlphaId`
-- `Show<Box<AlphaId>>` may live beside `Show`, `Box`, or `AlphaId`
-- `Rel<Foo, Boo<Baz>>` may live beside `Rel`, `Foo`, `Boo`, or `Baz`
-
-What is rejected:
-
-- placing `Show<AlphaId>` in an unrelated `beta/Instances.kt`
-- placing `Show<Box<AlphaId>>` in a file that owns none of `Show`, `Box`, or `AlphaId`
-- assuming an entailed supertype like `Eq<Foo>` makes `Ord<Foo>` legal in `Eq.kt`
-
-For placement strategy, see [Instance Authoring](./instance-authoring.md).
+Use [Instance Authoring](./instance-authoring.md) as the canonical placement guide, including examples of legal and illegal owner files.
 
 ## `TC_AMBIGUOUS_INSTANCE`
 
@@ -272,11 +260,3 @@ Contextual property getter reads are still limited by the public FIR plugin API'
 That means source shapes like contextual property reads can still fail even when analogous function calls work.
 
 See [compiler-plugin/ISSUE_PROPERTIES.md](../compiler-plugin/ISSUE_PROPERTIES.md) for the current status.
-
-## Related Docs
-
-- [Typeclass Model](./typeclass-model.md)
-- [Instance Authoring](./instance-authoring.md)
-- [Derivation](./derivation.md)
-- [Proofs And Builtins](./proofs-and-builtins.md)
-- [Multi-Module Behavior](./multi-module.md)

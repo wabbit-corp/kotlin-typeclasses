@@ -1,6 +1,18 @@
 # Typeclass Model
 
-This guide describes the core programming model of `kotlin-typeclasses`: what counts as a typeclass, where evidence comes from, what "typeclass scope" means in practice, and how resolution proceeds.
+This guide describes the core programming model of `kotlin-typeclasses`: what counts as a typeclass, where evidence comes from, what "typeclass scope" means, and how resolution proceeds.
+
+## Typeclass Scope
+
+In this repository, "typeclass scope" means the search space for one requested goal.
+
+That search space is made from:
+
+- direct local context already available at the use site
+- eligible indexed `@Instance` declarations from associated companions and legal top-level owner files
+- derived rules and builtins when they apply to the requested goal
+
+Later sections unpack those pieces in more detail, but this is the core definition.
 
 ## What Counts As A Typeclass
 
@@ -65,13 +77,13 @@ fun <A, B> pairShow(): Show<Pair<A, B>> =
     }
 ```
 
-The design intent is that an `@Instance` function behaves like a rule:
+`@Instance` functions use one rule-shaped form:
 
-- it provides one target typeclass value
-- it has no ordinary value parameters
-- its context parameters are prerequisite evidence that must be solved first
+- no ordinary value parameters
+- context parameters are prerequisites that must be solved first
+- the result is one provided typeclass value
 
-Top-level instances are not unconstrained orphans. They must live in the same file as the typeclass head or one of the concrete provided classifiers in the target. For placement guidance, see [Instance Authoring](./instance-authoring.md).
+Top-level instances are not unconstrained orphans. They must live in a legal owner file: the file that declares the typeclass head or one of the concrete provided classifiers in the target. The placement rules and examples live in [Instance Authoring](./instance-authoring.md).
 
 ### 3. Associated companion scope
 
@@ -86,17 +98,13 @@ For a goal like `Show<Box<Int>>`, the plugin may search:
 - `Int`'s companion
 - companions of sealed supertypes of `Int`, where relevant
 
-This is what "typeclass scope" usually means in this repository: the search space formed by direct local context plus allowed global and associated evidence locations for the current goal.
+Associated companions are one part of typeclass scope. They do not replace local context, derived rules, or builtins; they are one of the eligible non-local places the resolver can search.
 
 ### 4. Derived evidence
 
 Generated evidence from `@Derive`, `@DeriveVia`, and `@DeriveEquiv` enters the same search space as manual `@Instance` declarations.
 
-That means:
-
-- derivation can satisfy ordinary lookups
-- derived and manual rules can conflict
-- ambiguity rules apply to both equally
+That means derivation can satisfy ordinary lookups, but it can also conflict with manual rules and participate in the same ambiguity checks. For placement and conflict guidance, see [Coordinate Manual And Derived Evidence](./instance-authoring.md#coordinate-manual-and-derived-evidence).
 
 ### 5. Builtin evidence
 
@@ -116,6 +124,28 @@ The practical resolution order is:
 2. indexed global and associated `@Instance` rules
 3. derived rules where the target shape is derivable
 4. builtin evidence where the goal matches a builtin contract
+
+Visual mental model:
+
+```mermaid
+flowchart TD
+    A["Need evidence for goal G"] --> B{"direct local context solves G?"}
+    B -- yes --> L["use local evidence"]
+    B -- no --> C{"indexed global or associated rule solves G?"}
+    C -- yes --> D["solve rule prerequisites recursively"]
+    D --> E{"single viable indexed rule result?"}
+    E -- yes --> R["use resolved evidence"]
+    E -- no --> X["report missing or ambiguous resolution"]
+    C -- no --> F{"derived rule applies to G?"}
+    F -- yes --> G["validate and solve derived prerequisites"]
+    G --> H{"single viable derived result?"}
+    H -- yes --> R
+    H -- no --> X
+    F -- no --> I{"builtin contract matches G?"}
+    I -- yes --> J["materialize builtin evidence"]
+    I -- no --> X
+    J --> R
+```
 
 Two important constraints shape that order:
 
@@ -221,14 +251,12 @@ What does not happen:
 
 ## What Is Not In Scope
 
-The typeclass model is intentionally narrower than "search anywhere":
+The typeclass model is narrower than "search anywhere":
 
 - arbitrary member declarations are not part of global typeclass search
 - unannotated interfaces and classes are ignored by the resolver
 - local helper functions are not automatically published as global rules
 - the plugin does not infer a package-wide orphan-instance scope beyond the allowed associated owners
-
-That narrowness is deliberate. It keeps the resolution model explainable.
 
 ## Ambiguity And Failure
 
@@ -283,12 +311,3 @@ operator fun <A> A.plus(other: A): A = monoid.combine(this, other)
 2. global search finds `Box.boxMonoid()`
 3. that rule requires `Monoid<Int>`
 4. `IntMonoid` satisfies that prerequisite
-
-## Related Docs
-
-- [User Guide](./user-guide.md)
-- [Instance Authoring](./instance-authoring.md)
-- [Derivation](./derivation.md)
-- [Proofs And Builtins](./proofs-and-builtins.md)
-- [Troubleshooting](./troubleshooting.md)
-- [Architecture](./architecture.md)

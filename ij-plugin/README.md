@@ -78,14 +78,3 @@ IDE support changes are tracked with the repository release notes in [`../docs/m
 ## Support
 
 Use [`../docs/troubleshooting.md`](../docs/troubleshooting.md) for project setup issues. Report bugs through the repository issue tracker with IntelliJ version, Kotlin plugin version, and whether Gradle builds pass. For contribution workflow and local development, see [`../docs/development.md`](../docs/development.md) and the legal docs under [`../legal/`](../legal/).
-
-## Related Docs
-
-Suggested reading order for new users: root README, Gradle plugin README, troubleshooting, then this README for IDE-specific behavior.
-
-- [`../README.md`](../README.md)
-- [`../docs/user-guide.md`](../docs/user-guide.md)
-- [`../docs/development.md`](../docs/development.md)
-- [`../docs/architecture.md`](../docs/architecture.md)
-- [`../gradle-plugin/README.md`](../gradle-plugin/README.md)
-- [`../compiler-plugin/README.md`](../compiler-plugin/README.md)

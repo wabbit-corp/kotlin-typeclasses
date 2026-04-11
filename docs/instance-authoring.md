@@ -2,6 +2,8 @@
 
 This guide is about writing `@Instance` declarations that resolve predictably and stay maintainable across files and modules.
 
+It is also the canonical reference for where top-level `@Instance` declarations are allowed to live.
+
 ## The Goal
 
 Good instance placement should make these things true:
@@ -42,7 +44,7 @@ This works well with associated lookup because the resolver already searches the
 
 ## Top-Level Instances Are Not Arbitrary Orphans
 
-Top-level `@Instance` declarations are intentionally restricted.
+Top-level `@Instance` declarations are restricted.
 
 They must live in the same file as:
 
@@ -62,9 +64,9 @@ What is not allowed:
 
 This restriction exists to keep top-level instances explainable and prevent arbitrary orphan-instance sprawl.
 
-## Write Generic Rules As Rules
+## Generic Rule Shape
 
-Generic `@Instance` functions should read like logical rules:
+Generic `@Instance` functions should use the standard rule-shaped form:
 
 - no ordinary value parameters
 - context parameters are prerequisites
@@ -104,7 +106,7 @@ Prefer:
 
 `@Derive` publishes generated evidence into the same search space as manual `@Instance` declarations.
 
-That means:
+In practice:
 
 - a manual root instance and a derived root instance can conflict
 - exporting both from a library is usually a mistake
@@ -149,10 +151,3 @@ When adding a new instance:
 3. if it must be top-level, place it in a legal owner file
 4. check whether a derived instance already publishes the same target
 5. think about downstream visibility before making it `public`
-
-## Related Docs
-
-- [Typeclass Model](./typeclass-model.md)
-- [User Guide](./user-guide.md)
-- [Multi-Module Behavior](./multi-module.md)
-- [Troubleshooting](./troubleshooting.md)
