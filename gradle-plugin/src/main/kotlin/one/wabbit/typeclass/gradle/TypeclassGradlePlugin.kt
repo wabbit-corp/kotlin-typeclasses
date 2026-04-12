@@ -2,8 +2,6 @@
 
 package one.wabbit.typeclass.gradle
 
-import org.gradle.api.Project
-import org.gradle.api.Task
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Provider
 import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
@@ -14,19 +12,17 @@ import org.jetbrains.kotlin.gradle.plugin.SubpluginOption
 private const val TYPECLASS_COMPILER_PLUGIN_ID = "one.wabbit.typeclass"
 private const val TYPECLASS_COMPILER_PLUGIN_GROUP = "one.wabbit"
 private const val TYPECLASS_COMPILER_PLUGIN_ARTIFACT = "kotlin-typeclasses-plugin"
-private const val CONTEXT_PARAMETERS_FLAG = "-Xcontext-parameters"
+internal const val CONTEXT_PARAMETERS_FLAG = "-Xcontext-parameters"
 
 class TypeclassGradlePlugin : KotlinCompilerPluginSupportPlugin {
-    override fun apply(target: Project) {
-        super.apply(target)
-        target.tasks.configureEach { task -> addContextParametersFlagIfSupported(task) }
-    }
-
     override fun isApplicable(kotlinCompilation: KotlinCompilation<*>): Boolean = true
 
     override fun applyToCompilation(
         kotlinCompilation: KotlinCompilation<*>
-    ): Provider<List<SubpluginOption>> = kotlinCompilation.target.project.provider { emptyList() }
+    ): Provider<List<SubpluginOption>> {
+        configureContextParametersFlag(kotlinCompilation)
+        return kotlinCompilation.target.project.provider { emptyList() }
+    }
 
     override fun getCompilerPluginId(): String = TYPECLASS_COMPILER_PLUGIN_ID
 
@@ -40,16 +36,21 @@ class TypeclassGradlePlugin : KotlinCompilerPluginSupportPlugin {
                     kotlinVersion = currentKotlinGradlePluginVersion(),
                 ),
         )
+
+    private fun configureContextParametersFlag(kotlinCompilation: KotlinCompilation<*>) {
+        configureRequiredCompilerFlag(
+            kotlinCompilation = kotlinCompilation,
+            requiredCompilerFlag = CONTEXT_PARAMETERS_FLAG,
+            pluginDisplayName = "kotlin-typeclasses",
+        )
+    }
 }
 
-private fun addContextParametersFlagIfSupported(task: Task) {
-    val compilerOptions =
-        runCatching { task.javaClass.getMethod("getCompilerOptions").invoke(task) }.getOrNull()
-            ?: return
-    val freeCompilerArgs =
-        runCatching {
-                compilerOptions.javaClass.getMethod("getFreeCompilerArgs").invoke(compilerOptions)
-            }
-            .getOrNull() as? ListProperty<String> ?: return
-    freeCompilerArgs.add(CONTEXT_PARAMETERS_FLAG)
+internal fun addContextParametersFlag(freeCompilerArgs: ListProperty<String>, taskPath: String) {
+    addRequiredCompilerFlag(
+        freeCompilerArgs = freeCompilerArgs,
+        requiredCompilerFlag = CONTEXT_PARAMETERS_FLAG,
+        taskPath = taskPath,
+        pluginDisplayName = "kotlin-typeclasses",
+    )
 }

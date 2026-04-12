@@ -4,6 +4,12 @@ package one.wabbit.typeclass.gradle
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import org.gradle.api.DefaultTask
+import org.gradle.api.model.ObjectFactory
+import org.gradle.api.provider.ListProperty
+import org.gradle.api.tasks.Internal
+import org.gradle.testfixtures.ProjectBuilder
 
 class TypeclassGradlePluginVersioningTest {
     @Test
@@ -41,5 +47,42 @@ class TypeclassGradlePluginVersioningTest {
                 kotlinVersion = "2.4.0",
             ),
         )
+    }
+
+    @Test
+    fun `context parameters flag helper is idempotent`() {
+        val project = ProjectBuilder.builder().build()
+        val freeCompilerArgs = project.objects.listProperty(String::class.java)
+        freeCompilerArgs.add(CONTEXT_PARAMETERS_FLAG)
+
+        addContextParametersFlag(freeCompilerArgs, ":compileKotlin")
+
+        assertEquals(listOf(CONTEXT_PARAMETERS_FLAG), freeCompilerArgs.get())
+    }
+
+    @Test
+    fun `plugin does not patch non Kotlin tasks with compiler options shaped API`() {
+        val project = ProjectBuilder.builder().build()
+        val fakeTask =
+            project.tasks
+                .register("fakeCompilerOptionsTask", FakeCompilerOptionsTask::class.java)
+                .get()
+
+        project.pluginManager.apply(TypeclassGradlePlugin::class.java)
+
+        assertFalse(
+            fakeTask.compilerOptions.freeCompilerArgs
+                .getOrElse(emptyList())
+                .contains(CONTEXT_PARAMETERS_FLAG)
+        )
+    }
+
+    open class FakeCompilerOptionsTask : DefaultTask() {
+        @get:Internal
+        val compilerOptions: FakeCompilerOptions = FakeCompilerOptions(project.objects)
+    }
+
+    class FakeCompilerOptions(objects: ObjectFactory) {
+        val freeCompilerArgs: ListProperty<String> = objects.listProperty(String::class.java)
     }
 }

@@ -7,7 +7,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   determine-kotlin-matrix:
@@ -94,6 +97,50 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
         run: ./gradlew --no-daemon build :kotlin-typeclasses:publishAndReleaseToMavenCentral :kotlin-typeclasses-gradle-plugin:publishAndReleaseToMavenCentral
 
+
+      - name: Bundle core GitHub Release assets
+        if: github.event_name == 'push'
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import zipfile
+          from pathlib import Path
+
+          output_dir = Path("build/release-artifacts")
+          output_dir.mkdir(parents=True, exist_ok=True)
+
+          repo_name = os.environ["GITHUB_REPOSITORY"].split("/", 1)[1]
+          version_label = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          projects = json.loads(r'''[{"projectId": "kotlin-typeclasses/library", "assetSlug": "kotlin-typeclasses-library", "bundleKind": "gradle-publications", "archivePrefix": "publications", "sourceDir": "library/build/publications"}, {"projectId": "kotlin-typeclasses/gradle-plugin", "assetSlug": "kotlin-typeclasses-gradle-plugin", "bundleKind": "gradle-publications", "archivePrefix": "publications", "sourceDir": "gradle-plugin/build/publications"}]''')
+
+          for project in projects:
+              source_dir = Path(project["sourceDir"])
+              if not source_dir.is_dir():
+                  raise SystemExit(f"Missing release bundle source directory: {source_dir}")
+
+              files = sorted(path for path in source_dir.rglob("*") if path.is_file())
+              if not files:
+                  raise SystemExit(f"No release bundle inputs found under {source_dir}")
+
+              bundle_name = f"{repo_name}-{version_label}-{project['assetSlug']}.zip"
+              bundle_path = output_dir / bundle_name
+              with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                  for path in files:
+                      archive.write(path, Path(project["archivePrefix"]) / path.relative_to(source_dir))
+
+              hashlib.sha256(bundle_path.read_bytes()).hexdigest()
+          PY
+
+      - name: Upload core GitHub Release assets
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: github-release-assets-core
+          path: build/release-artifacts/*.zip
+
+
   publish-compiler-plugin:
     needs:
       - determine-kotlin-matrix
@@ -135,3 +182,148 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
         run: ./gradlew --no-daemon '-PkotlinVersion=${{ matrix.kotlin-version }}' :kotlin-typeclasses-plugin:publishAndReleaseToMavenCentral
+
+      - name: Bundle compiler GitHub Release assets
+        if: github.event_name == 'push'
+        env:
+          RELEASE_VARIANT_SUFFIX: kotlin-${{ matrix.kotlin-version }}
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import zipfile
+          from pathlib import Path
+
+          output_dir = Path("build/release-artifacts")
+          output_dir.mkdir(parents=True, exist_ok=True)
+
+          repo_name = os.environ["GITHUB_REPOSITORY"].split("/", 1)[1]
+          version_label = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          variant_suffix = os.environ["RELEASE_VARIANT_SUFFIX"]
+          projects = json.loads(r'''[{"projectId": "kotlin-typeclasses/compiler-plugin", "assetSlug": "kotlin-typeclasses-compiler-plugin", "bundleKind": "gradle-publications", "archivePrefix": "publications", "sourceDir": "compiler-plugin/build/publications"}]''')
+
+          for project in projects:
+              source_dir = Path(project["sourceDir"])
+              if not source_dir.is_dir():
+                  raise SystemExit(f"Missing release bundle source directory: {source_dir}")
+
+              files = sorted(path for path in source_dir.rglob("*") if path.is_file())
+              if not files:
+                  raise SystemExit(f"No release bundle inputs found under {source_dir}")
+
+              bundle_name = f"{repo_name}-{version_label}-{project['assetSlug']}-{variant_suffix}.zip"
+              bundle_path = output_dir / bundle_name
+              with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                  for path in files:
+                      archive.write(path, Path(project["archivePrefix"]) / path.relative_to(source_dir))
+
+              hashlib.sha256(bundle_path.read_bytes()).hexdigest()
+          PY
+
+      - name: Upload compiler GitHub Release assets
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: github-release-assets-kotlin-${{ matrix.kotlin-version }}
+          path: build/release-artifacts/*.zip
+
+  github-release:
+    if: github.event_name == 'push'
+    needs:
+      - publish-core
+      - publish-compiler-plugin
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download GitHub Release bundle artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: build/release-artifacts
+          pattern: github-release-assets-*
+          merge-multiple: true
+
+      - name: Build aggregate GitHub Release assets
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import shutil
+          import zipfile
+          from pathlib import Path
+
+          source_dir = Path("build/release-artifacts")
+          asset_paths = sorted(path for path in source_dir.rglob("*.zip"))
+          if not asset_paths:
+              raise SystemExit("No release bundle artifacts were downloaded")
+
+          output_dir = Path("build/releases")
+          output_dir.mkdir(parents=True, exist_ok=True)
+
+          copied_assets = []
+          assets = []
+          for source_path in asset_paths:
+              target_path = output_dir / source_path.name
+              shutil.copyfile(source_path, target_path)
+              digest = hashlib.sha256(target_path.read_bytes()).hexdigest()
+              copied_assets.append(target_path)
+              assets.append(
+                  {
+                      "fileName": target_path.name,
+                      "path": str(target_path.resolve()),
+                      "sha256": digest,
+                      "sizeBytes": target_path.stat().st_size,
+                  }
+              )
+
+          repo_name = os.environ["GITHUB_REPOSITORY"].split("/", 1)[1]
+          version_label = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          aggregate_path = output_dir / f"{repo_name}-{version_label}-all.zip"
+          with zipfile.ZipFile(aggregate_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+              for path in copied_assets:
+                  archive.write(path, path.name)
+
+          aggregate_digest = hashlib.sha256(aggregate_path.read_bytes()).hexdigest()
+          assets.append(
+              {
+                  "kind": "aggregate",
+                  "fileName": aggregate_path.name,
+                  "path": str(aggregate_path.resolve()),
+                  "sha256": aggregate_digest,
+                  "sizeBytes": aggregate_path.stat().st_size,
+              }
+          )
+
+          checksums_path = output_dir / "SHA256SUMS"
+          checksum_lines = [
+              f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}"
+              for path in sorted([*copied_assets, aggregate_path])
+          ]
+          checksums_path.write_text("\n".join(checksum_lines) + "\n", encoding="utf-8")
+
+          manifest_path = output_dir / "release-manifest.json"
+          manifest_path.write_text(
+              json.dumps(
+                  {
+                      "repo": {
+                          "name": repo_name,
+                          "githubRepo": os.environ["GITHUB_REPOSITORY"],
+                          "versionLabel": version_label,
+                      },
+                      "assets": assets,
+                  },
+                  indent=2,
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Publish GitHub Release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            build/releases/*.zip
+            build/releases/release-manifest.json
+            build/releases/SHA256SUMS

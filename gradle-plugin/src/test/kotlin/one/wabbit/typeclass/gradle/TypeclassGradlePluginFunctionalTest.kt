@@ -171,6 +171,10 @@ class TypeclassGradlePluginFunctionalTest {
             assertEquals(TaskOutcome.SUCCESS, result.task(":run")?.outcome)
             assertTrue(result.output.contains("TYPECLASS_ARGS_BEGIN"))
             assertTrue(result.output.contains("-Xcontext-parameters"))
+            assertEquals(
+                1,
+                result.output.lineSequence().count { line -> line.trim() == "-Xcontext-parameters" },
+            )
             assertTrue(result.output.contains("true"))
             assertTrue(result.output.contains("3"))
             assertTrue(projectDir.resolve("build/classes/kotlin/main/demo/MainKt.class").exists())

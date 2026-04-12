@@ -389,6 +389,90 @@ class EqualityProofTest : IntegrationTestSupport() {
     }
 
     @Test
+    fun notSameProofCanExcludeSpecificTypeFromGenericInstanceRule() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.NotSame
+            import one.wabbit.typeclass.Typeclass
+
+            class Secret(val value: String)
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            context(_: NotSame<A, Secret>)
+            fun <A> nonSecretShow(): Show<A> =
+                object : Show<A> {
+                    override fun show(value: A): String = "non-secret:${'$'}value"
+                }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(42))
+                println(render("ok"))
+            }
+            """
+                .trimIndent()
+
+        assertCompilesAndRuns(
+            source = source,
+            expectedStdout =
+                """
+                non-secret:42
+                non-secret:ok
+                """
+                    .trimIndent(),
+        )
+    }
+
+    @Test
+    fun notSameGuardedGenericInstanceDoesNotApplyToExcludedType() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.NotSame
+            import one.wabbit.typeclass.Typeclass
+
+            class Secret(val value: String)
+
+            @Typeclass
+            interface Show<A> {
+                fun show(value: A): String
+            }
+
+            @Instance
+            context(_: NotSame<A, Secret>)
+            fun <A> nonSecretShow(): Show<A> =
+                object : Show<A> {
+                    override fun show(value: A): String = "non-secret:${'$'}value"
+                }
+
+            context(show: Show<A>)
+            fun <A> render(value: A): String = show.show(value)
+
+            fun main() {
+                println(render(Secret("classified"))) // E:TC_NO_CONTEXT_ARGUMENT NotSame<Secret, Secret> is unprovable
+            }
+            """
+                .trimIndent()
+
+        assertDoesNotCompile(
+            source = source,
+            expectedDiagnostics = listOf(expectedErrorContaining("no context argument", "show")),
+        )
+    }
+
+    @Test
     fun sameTypeConstructorProofCanActAsPrerequisiteForOrdinaryRuleSearch() {
         val source =
             """

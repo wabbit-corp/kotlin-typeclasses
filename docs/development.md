@@ -114,7 +114,7 @@ Derived versions:
 This logic is implemented in:
 
 - [`compiler-plugin/build.gradle.kts`](../compiler-plugin/build.gradle.kts)
-- [`TypeclassCompilerPluginVersioning.kt`](../gradle-plugin/src/main/kotlin/one/wabbit/typeclass/gradle/TypeclassCompilerPluginVersioning.kt)
+- the shared `compilerPluginArtifactVersion(...)` helper from the included `kotlin-gradle-plugin-common` build
 
 ## Release And Snapshot Workflows
 

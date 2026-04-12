@@ -2,11 +2,6 @@
 
 package one.wabbit.typeclass.idea
 
-import com.intellij.openapi.project.Project
-import com.intellij.openapi.startup.ProjectActivity
+import one.wabbit.ijplugin.common.ConfiguredIdeSupportActivity
 
-class TypeclassIdeSupportActivity : ProjectActivity {
-    override suspend fun execute(project: Project) {
-        TypeclassIdeSupportCoordinator.enableIfNeeded(project = project, userInitiated = false)
-    }
-}
+class TypeclassIdeSupportActivity : ConfiguredIdeSupportActivity(TypeclassIdeSupportCoordinator)

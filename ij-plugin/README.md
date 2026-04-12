@@ -22,6 +22,8 @@ This plugin does not replace Kotlin analysis inside the IDE. Instead, it bridges
 
 That gives the Kotlin IDE plugin a chance to load the external compiler plugin registrar from the compiler plugin classpath already configured by the build.
 
+The Gradle/build-file scan is best-effort. It targets common literal and simple string-indirection forms in build scripts, settings scripts, and version catalogs. Highly dynamic or computed Gradle logic can still require a manual refresh or Gradle import before IDE support activates.
+
 Important detail: IntelliJ only exposes a coarse registry switch here. Enabling support for `kotlin-typeclasses` enables all non-bundled K2 compiler plugins for the current trusted project session, not only this one.
 
 ## Current Scope
