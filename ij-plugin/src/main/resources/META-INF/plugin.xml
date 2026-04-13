@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>one.wabbit.typeclass.ide</id>
     <name>Typeclass IDE Support</name>
-    <version>0.0.2</version>
+    <version>0.1.0</version>
     <vendor email="wabbit@wabbit.one" url="https://wabbit.one">Wabbit Consulting Corporation</vendor>
     <description>Enables IntelliJ-side support for one.wabbit kotlin-typeclasses projects by allowing the Kotlin IDE plugin to load the external compiler plugin registrar from imported compiler arguments.</description>
     <change-notes>Initial release.</change-notes>
