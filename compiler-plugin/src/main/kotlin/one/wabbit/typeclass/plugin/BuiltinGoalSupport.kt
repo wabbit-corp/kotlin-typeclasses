@@ -14,6 +14,7 @@ import one.wabbit.typeclass.plugin.model.normalizedKey
 import one.wabbit.typeclass.plugin.model.referencedVariableIds
 import one.wabbit.typeclass.plugin.model.substituteType
 import org.jetbrains.kotlin.fir.FirSession
+import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
@@ -25,6 +26,7 @@ import org.jetbrains.kotlin.fir.types.constructType
 import org.jetbrains.kotlin.fir.types.typeContext
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.types.AbstractTypeChecker
 import org.jetbrains.kotlin.types.Variance
 
@@ -72,6 +74,8 @@ internal fun builtinRuleCanMatchGoalHead(ruleId: String, goal: TcType): Boolean 
             "builtin:is-typeclass-instance" -> IS_TYPECLASS_INSTANCE_CLASS_ID.asString()
             "builtin:has-companion" -> HAS_COMPANION_CLASS_ID.asString()
             "builtin:is-enum" -> IS_ENUM_CLASS_ID.asString()
+            "builtin:has-annotation" -> HAS_ANNOTATION_CLASS_ID.asString()
+            "builtin:has-annotations" -> HAS_ANNOTATIONS_CLASS_ID.asString()
             "builtin:known-type" -> KNOWN_TYPE_CLASS_ID.asString()
             "builtin:type-id" -> TYPE_ID_CLASS_ID.asString()
             "builtin:same-type-constructor" -> SAME_TYPE_CONSTRUCTOR_CLASS_ID.asString()
@@ -248,6 +252,73 @@ internal fun builtinIsEnumGoalFeasibility(
         BuiltinGoalFeasibility.IMPOSSIBLE
     }
 }
+
+internal fun builtinHasAnnotationGoalFeasibility(
+    goal: TcType,
+    session: FirSession,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != HAS_ANNOTATION_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val targetClass =
+        constructor.arguments.getOrNull(0).asRequestedAnnotationTarget(session)
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val annotationClassId =
+        constructor.arguments.getOrNull(1).asRequestedAnnotationClassId(session)
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    return if (targetClass.requestedAnnotations(annotationClassId, session).size == 1) {
+        BuiltinGoalFeasibility.PROVABLE
+    } else {
+        BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+}
+
+internal fun builtinHasAnnotationsGoalFeasibility(
+    goal: TcType,
+    session: FirSession,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != HAS_ANNOTATIONS_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val targetClass =
+        constructor.arguments.getOrNull(0).asRequestedAnnotationTarget(session)
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val annotationClassId =
+        constructor.arguments.getOrNull(1).asRequestedAnnotationClassId(session)
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    return if (targetClass.requestedAnnotations(annotationClassId, session).isNotEmpty()) {
+        BuiltinGoalFeasibility.PROVABLE
+    } else {
+        BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+}
+
+private fun TcType?.asRequestedAnnotationTarget(session: FirSession): FirRegularClass? {
+    val target = this as? TcType.Constructor ?: return null
+    val classId = runCatching { ClassId.fromString(target.classifierId) }.getOrNull() ?: return null
+    return session.regularClassSymbolOrNull(classId)?.fir
+}
+
+private fun TcType?.asRequestedAnnotationClassId(session: FirSession): ClassId? {
+    val annotationType = this as? TcType.Constructor ?: return null
+    val annotationClassId =
+        runCatching { ClassId.fromString(annotationType.classifierId) }.getOrNull() ?: return null
+    val annotationClass =
+        session.regularClassSymbolOrNull(annotationClassId)?.fir ?: return null
+    return annotationClassId.takeIf { annotationClass.classKind == ClassKind.ANNOTATION_CLASS }
+}
+
+private fun FirRegularClass.requestedAnnotations(
+    annotationClassId: ClassId,
+    session: FirSession,
+): List<org.jetbrains.kotlin.fir.expressions.FirAnnotation> =
+    resolvedRepeatableAnnotationsByClassId(
+        annotationClassId = annotationClassId,
+        containerClassId = annotationClassId.createNestedClassId(Name.identifier("Container")),
+        session = session,
+    )
 
 private fun builtinSubtypeGoalFeasibility(
     goal: TcType,

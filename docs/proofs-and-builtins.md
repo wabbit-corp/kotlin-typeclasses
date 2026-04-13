@@ -21,6 +21,8 @@ The runtime proof surfaces are:
 | `IsTypeclassInstance<TC>` | `TC` is headed by a typeclass constructor |
 | `HasCompanion<A, C>` | `A` declares a companion object whose singleton type is a subtype of `C` |
 | `IsEnum<A>` | `A` is an enum class and carries `entries`, `values()`, and `valueOf(name)` without reflection |
+| `HasAnnotation<C, A>` | `C` carries exactly one effective annotation of exact type `A` |
+| `HasAnnotations<C, A>` | `C` carries one or more effective annotations of exact type `A` |
 | `SameTypeConstructor<A, B>` | `A` and `B` share the same outer type constructor |
 | `KnownType<T>` | exact reflective `KType` for `T` using multiplatform `kotlin.reflect`, not JVM-only `java.lang.reflect` |
 | `TypeId<T>` | stable semantic identity token for `T` |
@@ -283,6 +285,58 @@ Useful APIs:
 - `valueOf(name)`: same name lookup semantics as ordinary enum `valueOf`
 
 This proof is useful when you want enum-specific behavior to participate in ordinary rule search without depending on reflection or reified helpers.
+
+### `HasAnnotation<C, A>`
+
+Meaning:
+
+- `C` is a concrete class-like declaration target
+- `A` is an exact annotation class
+- `C` carries exactly one effective annotation of type `A`
+- the proof carries the annotation payload directly as `annotation: A`
+
+Typical success:
+
+- `HasAnnotation<User, SerializableName>`
+- `HasAnnotation<Foo.Companion, Registry>`
+
+Typical failure:
+
+- `HasAnnotation<Plain, Info>` when `Plain` is not annotated
+- `HasAnnotation<Tagged, Tag>` when `Tag` is repeatable and appears more than once
+- `HasAnnotation<User, Annotation>` because the requested annotation type must be exact
+
+Useful APIs:
+
+- `annotation`: the carried annotation payload
+
+This proof is useful when one annotation should drive ordinary rule search and you want its payload without runtime reflection.
+Retention matters across module boundaries: within one compilation, `SOURCE`, `BINARY`, and `RUNTIME` annotations can all participate, but separate compilation only sees annotations that survive in dependency binaries, so downstream `HasAnnotation` and `HasAnnotations` proofs do not materialize for `SOURCE` retention.
+
+### `HasAnnotations<C, A>`
+
+Meaning:
+
+- `C` is a concrete class-like declaration target
+- `A` is an exact annotation class
+- `C` carries one or more effective annotations of type `A`
+- the proof carries the full effective payload list as `annotations: List<A>`
+
+Typical success:
+
+- `HasAnnotations<User, SerializableName>` with a singleton list
+- `HasAnnotations<Tagged, Tag>` for repeatable annotations
+
+Typical failure:
+
+- `HasAnnotations<Plain, Info>` when `Plain` is not annotated
+- `HasAnnotations<User, Annotation>` because the requested annotation type must be exact
+
+Useful APIs:
+
+- `annotations`: the full effective annotation list in source order
+
+Use this plural form for repeatable annotations or whenever a single exact witness would be arbitrary.
 
 ## Runtime Type Proofs
 

@@ -12,6 +12,9 @@ class BuiltinProofApiSurfaceTest : IntegrationTestSupport() {
             """
             package demo
 
+            import kotlin.annotation.Repeatable
+            import one.wabbit.typeclass.HasAnnotation
+            import one.wabbit.typeclass.HasAnnotations
             import one.wabbit.typeclass.KnownType
             import one.wabbit.typeclass.IsEnum
             import one.wabbit.typeclass.NotNullable
@@ -26,9 +29,20 @@ class BuiltinProofApiSurfaceTest : IntegrationTestSupport() {
 
             typealias Age = Int
 
+            @Retention(AnnotationRetention.BINARY)
+            annotation class Info(val label: String)
+
+            @Repeatable
+            @Retention(AnnotationRetention.BINARY)
+            annotation class Tag(val value: String)
+
             open class Animal
             class Dog : Animal()
             enum class Color { RED, BLUE }
+
+            @Info("dog")
+            @Tag("alpha")
+            class MarkedDog : Animal()
 
             fun main() {
                 val same = summon<Same<Int, Age>>()
@@ -36,6 +50,8 @@ class BuiltinProofApiSurfaceTest : IntegrationTestSupport() {
                 val subtype = summon<Subtype<Dog, Animal>>()
                 val strict = summon<StrictSubtype<Dog, Animal>>()
                 val isEnum = summon<IsEnum<Color>>()
+                val hasAnnotation = summon<HasAnnotation<MarkedDog, Info>>()
+                val hasAnnotations = summon<HasAnnotations<MarkedDog, Tag>>()
                 val sameCtor = summon<SameTypeConstructor<List<Int>, List<String>>>()
                 val known = summon<KnownType<List<String?>>>()
                 val nullable = summon<Nullable<String?>>()
@@ -47,6 +63,8 @@ class BuiltinProofApiSurfaceTest : IntegrationTestSupport() {
                 println(subtype.coerce(Dog()) is Animal)
                 println(strict.toNotSame() != null)
                 println(isEnum.valueOf("BLUE") == Color.BLUE && isEnum.values().size == 2)
+                println(hasAnnotation.annotation.label == "dog")
+                println(hasAnnotations.annotations.single().value == "alpha")
                 println(sameCtor.flip() != null)
                 println("List" in known.kType.toString() && "String" in known.kType.toString())
                 println(nullable.nullValue() == null)
@@ -61,6 +79,8 @@ class BuiltinProofApiSurfaceTest : IntegrationTestSupport() {
             expectedStdout =
                 """
                 1
+                true
+                true
                 true
                 true
                 true

@@ -61,6 +61,10 @@ internal const val IS_TYPECLASS_INSTANCE_PROOF_FQ_NAME: String =
 internal const val HAS_COMPANION_FQ_NAME: String = "one.wabbit.typeclass.HasCompanion"
 internal const val IS_ENUM_FQ_NAME: String = "one.wabbit.typeclass.IsEnum"
 internal const val IS_ENUM_FACTORY_FQ_NAME: String = "one.wabbit.typeclass.isEnum"
+internal const val HAS_ANNOTATION_FQ_NAME: String = "one.wabbit.typeclass.HasAnnotation"
+internal const val HAS_ANNOTATIONS_FQ_NAME: String = "one.wabbit.typeclass.HasAnnotations"
+internal const val HAS_ANNOTATION_FACTORY_FQ_NAME: String = "one.wabbit.typeclass.hasAnnotation"
+internal const val HAS_ANNOTATIONS_FACTORY_FQ_NAME: String = "one.wabbit.typeclass.hasAnnotations"
 internal const val SAME_TYPE_CONSTRUCTOR_FQ_NAME: String =
     "one.wabbit.typeclass.SameTypeConstructor"
 internal const val SAME_TYPE_CONSTRUCTOR_PROOF_FQ_NAME: String =
@@ -142,6 +146,9 @@ internal val IS_TYPECLASS_INSTANCE_PROOF_CLASS_ID: ClassId =
     ClassId.topLevel(FqName(IS_TYPECLASS_INSTANCE_PROOF_FQ_NAME))
 internal val HAS_COMPANION_CLASS_ID: ClassId = ClassId.topLevel(FqName(HAS_COMPANION_FQ_NAME))
 internal val IS_ENUM_CLASS_ID: ClassId = ClassId.topLevel(FqName(IS_ENUM_FQ_NAME))
+internal val HAS_ANNOTATION_CLASS_ID: ClassId = ClassId.topLevel(FqName(HAS_ANNOTATION_FQ_NAME))
+internal val HAS_ANNOTATIONS_CLASS_ID: ClassId =
+    ClassId.topLevel(FqName(HAS_ANNOTATIONS_FQ_NAME))
 internal val SAME_TYPE_CONSTRUCTOR_CLASS_ID: ClassId =
     ClassId.topLevel(FqName(SAME_TYPE_CONSTRUCTOR_FQ_NAME))
 internal val SAME_TYPE_CONSTRUCTOR_PROOF_CLASS_ID: ClassId =
@@ -160,6 +167,10 @@ internal val HAS_COMPANION_FACTORY_CALLABLE_ID: CallableId =
     CallableId(FqName("one.wabbit.typeclass"), Name.identifier("hasCompanion"))
 internal val IS_ENUM_FACTORY_CALLABLE_ID: CallableId =
     CallableId(FqName("one.wabbit.typeclass"), Name.identifier("isEnum"))
+internal val HAS_ANNOTATION_FACTORY_CALLABLE_ID: CallableId =
+    CallableId(FqName("one.wabbit.typeclass"), Name.identifier("hasAnnotation"))
+internal val HAS_ANNOTATIONS_FACTORY_CALLABLE_ID: CallableId =
+    CallableId(FqName("one.wabbit.typeclass"), Name.identifier("hasAnnotations"))
 internal val TYPE_ID_FACTORY_CALLABLE_ID: CallableId =
     CallableId(FqName("one.wabbit.typeclass"), Name.identifier("typeId"))
 internal val BUILTIN_SERIALIZABLE_CLASSIFIER_IDS: Set<String> =

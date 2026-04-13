@@ -32,7 +32,6 @@ This file is not a committed roadmap, but more of an "idea dump". Ideas are grou
 - **`ValueClass<A, Underlying>`.** Prove that `A` is a value class wrapping `Underlying`, with wrap/unwrap operations. This should connect to `DeriveVia` and representation-safe coercions.
 - **`Sealed<A>`.** Prove that `A` is sealed and optionally expose the known case list. Sum derivation already computes similar information.
 - **`DataClass<A>`.** Prove that `A` is a data class and expose structural operations such as components or `copy` where practical.
-- **`HasAnnotation<A, Ann>`.** Prove that `A` carries annotation `Ann` at compile time, avoiding runtime annotation reflection.
 - **`Arity<A, N>`.** Prove the arity of function types for generic middleware and interceptor patterns.
 - **`Coercible<A, B>`.** Prove that `A` and `B` have the same runtime representation, for value class wrapping, typealias collapse, and safe zero-cost transport.
 

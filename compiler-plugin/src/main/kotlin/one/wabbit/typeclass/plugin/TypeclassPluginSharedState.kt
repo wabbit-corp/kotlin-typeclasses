@@ -779,6 +779,24 @@ private data class ResolutionIndex(
                         )
                 }
                 .filter { visibleRule ->
+                    visibleRule.rule.id != "builtin:has-annotation" ||
+                        builtinGoalAcceptance.accepts(
+                            builtinHasAnnotationGoalFeasibility(
+                                goal = goal,
+                                session = session,
+                            )
+                        )
+                }
+                .filter { visibleRule ->
+                    visibleRule.rule.id != "builtin:has-annotations" ||
+                        builtinGoalAcceptance.accepts(
+                            builtinHasAnnotationsGoalFeasibility(
+                                goal = goal,
+                                session = session,
+                            )
+                        )
+                }
+                .filter { visibleRule ->
                     visibleRule.rule.id != "builtin:known-type" ||
                         supportsBuiltinKnownTypeGoal(goal, canMaterializeVariable)
                 }
@@ -2759,6 +2777,8 @@ private fun TypeclassConfiguration.builtinRules(): List<InstanceRule> = buildLis
     add(builtinIsTypeclassInstanceRule())
     add(builtinHasCompanionRule())
     add(builtinIsEnumRule())
+    add(builtinHasAnnotationRule())
+    add(builtinHasAnnotationsRule())
     add(builtinKnownTypeRule())
     add(builtinTypeIdRule())
     add(builtinSameTypeConstructorRule())
@@ -2937,6 +2957,44 @@ private fun builtinIsEnumRule(): InstanceRule {
             TcType.Constructor(
                 classifierId = IS_ENUM_CLASS_ID.asString(),
                 arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinHasAnnotationRule(): InstanceRule {
+    val carrier = TcTypeParameter(id = "builtin:has-annotation:C", displayName = "C")
+    val annotation = TcTypeParameter(id = "builtin:has-annotation:A", displayName = "A")
+    return InstanceRule(
+        id = "builtin:has-annotation",
+        typeParameters = listOf(carrier, annotation),
+        providedType =
+            TcType.Constructor(
+                classifierId = HAS_ANNOTATION_CLASS_ID.asString(),
+                arguments =
+                    listOf(
+                        TcType.Variable(carrier.id, carrier.displayName),
+                        TcType.Variable(annotation.id, annotation.displayName),
+                    ),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinHasAnnotationsRule(): InstanceRule {
+    val carrier = TcTypeParameter(id = "builtin:has-annotations:C", displayName = "C")
+    val annotation = TcTypeParameter(id = "builtin:has-annotations:A", displayName = "A")
+    return InstanceRule(
+        id = "builtin:has-annotations",
+        typeParameters = listOf(carrier, annotation),
+        providedType =
+            TcType.Constructor(
+                classifierId = HAS_ANNOTATIONS_CLASS_ID.asString(),
+                arguments =
+                    listOf(
+                        TcType.Variable(carrier.id, carrier.displayName),
+                        TcType.Variable(annotation.id, annotation.displayName),
+                    ),
             ),
         prerequisiteTypes = emptyList(),
     )

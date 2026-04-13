@@ -114,7 +114,7 @@ Kotlin context parameters give the language a useful capability-passing syntax, 
 - rule-style instance declarations with `@Instance`
 - companion-based associated lookup
 - derived instances for products, sums, enums, and equivalence-based shapes
-- builtin proofs such as `Same`, `Subtype`, `HasCompanion`, `IsEnum`, `KnownType`, and `TypeId`
+- builtin proofs such as `Same`, `Subtype`, `HasCompanion`, `IsEnum`, `HasAnnotation`, `KnownType`, and `TypeId`
 - Gradle and IntelliJ integration so the feature is usable in real projects
 
 The goal is to make typeclass-style programming explicit and compile-time checked without forcing every call site to thread evidence manually.
@@ -175,7 +175,7 @@ Out of the box:
 - Implicit resolution for `context(...)` parameters whose head is annotated with `@Typeclass`
 - Instance search through top-level `@Instance` declarations and associated companions
 - Derived instances via `@Derive`, `@DeriveVia`, and `@DeriveEquiv`
-- Builtin proof materialization for APIs such as `Same`, `Subtype`, `IsEnum`, `KnownType`, and `TypeId`
+- Builtin proof materialization for APIs such as `Same`, `Subtype`, `IsEnum`, `HasAnnotation`, `KnownType`, and `TypeId`
 - Scoped resolution tracing through `@DebugTypeclassResolution` and the compiler trace option
 
 ## Resolution Model

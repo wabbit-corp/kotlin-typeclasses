@@ -11,6 +11,8 @@ import kotlin.test.assertTrue
 
 @OptIn(InternalTypeclassApi::class)
 class ProofsTest {
+    private annotation class ProofLabel(val value: String)
+
     @Test
     fun sameSubtypeAndBracketSurfaceCompose() {
         val same = Same.refl<Int>()
@@ -95,6 +97,15 @@ class ProofsTest {
         assertEquals(listOf("RED", "BLUE"), proof.values().toList())
         assertEquals("BLUE", proof.valueOf("BLUE"))
         assertFailsWith<IllegalArgumentException> { proof.valueOf("GREEN") }
+    }
+
+    @Test
+    fun annotationFactoriesCarrySingleAndMultipleAnnotations() {
+        val single = hasAnnotation<String, ProofLabel>(ProofLabel("alpha"))
+        val multiple = hasAnnotations<String, ProofLabel>(listOf(ProofLabel("alpha"), ProofLabel("beta")))
+
+        assertEquals("alpha", single.annotation.value)
+        assertEquals(listOf("alpha", "beta"), multiple.annotations.map { it.value })
     }
 
     @OptIn(ExperimentalStdlibApi::class)

@@ -1231,6 +1231,191 @@ private class TypeclassIrCallTransformer(
         }
     }
 
+    private fun IrStatementsBuilder<*>.buildBuiltinHasAnnotationExpression(
+        plan: ResolutionPlan.ApplyRule,
+        visibleTypeParameters: VisibleTypeParameters,
+        diagnosticLocation: CompilerMessageSourceLocation?,
+    ): IrExpression {
+        val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
+        val ownerModel =
+            plan.appliedTypeArguments.getOrNull(0) as? TcType.Constructor
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message = "HasAnnotation proof requires an exact class-like target type.",
+                    diagnosticLocation = diagnosticLocation,
+                )
+        val annotationModel =
+            plan.appliedTypeArguments.getOrNull(1) as? TcType.Constructor
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message = "HasAnnotation proof requires an exact annotation class type.",
+                    diagnosticLocation = diagnosticLocation,
+                )
+        val ownerType =
+            runCatching { modelToIrType(ownerModel, visibleTypeParameters, pluginContext) }
+                .getOrNull() ?: return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message =
+                    "HasAnnotation proof requires an exact class-like target type, but found ${ownerModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
+            )
+        val annotationType =
+            runCatching { modelToIrType(annotationModel, visibleTypeParameters, pluginContext) }
+                .getOrNull() ?: return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message =
+                    "HasAnnotation proof requires an exact annotation class type, but found ${annotationModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
+            )
+        val targetClass =
+            resolveRequestedAnnotationTarget(ownerModel)
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message =
+                        "Could not resolve annotation target ${ownerModel.render()} for HasAnnotation proof.",
+                    diagnosticLocation = diagnosticLocation,
+                )
+        val requestedAnnotationClassId =
+            resolveRequestedAnnotationClassId(annotationModel) ?: return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message =
+                    "HasAnnotation proof requires an exact annotation class type, but found ${annotationModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
+            )
+        val annotations = targetClass.requestedAnnotations(requestedAnnotationClassId)
+        if (annotations.size != 1) {
+            return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message =
+                    if (annotations.isEmpty()) {
+                        "${ownerModel.render()} does not carry ${annotationModel.render()}."
+                    } else {
+                        "${ownerModel.render()} carries multiple ${annotationModel.render()} annotations; use HasAnnotations instead."
+                    },
+                diagnosticLocation = diagnosticLocation,
+            )
+        }
+        val hasAnnotationFactory =
+            pluginContext
+                .referenceFunctions(HAS_ANNOTATION_FACTORY_CALLABLE_ID)
+                .map { it.owner }
+                .singleOrNull { function ->
+                    function.typeParameters.size == 2 && function.valueParameters.size == 1
+                }
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message =
+                        "Could not resolve one.wabbit.typeclass.hasAnnotation(...) on the compilation classpath.",
+                    diagnosticLocation = diagnosticLocation,
+                )
+        return irCall(hasAnnotationFactory.symbol, expressionType).apply {
+            putTypeArgument(0, ownerType)
+            putTypeArgument(1, annotationType)
+            putValueArgument(0, annotations.single())
+        }
+    }
+
+    private fun IrStatementsBuilder<*>.buildBuiltinHasAnnotationsExpression(
+        plan: ResolutionPlan.ApplyRule,
+        visibleTypeParameters: VisibleTypeParameters,
+        diagnosticLocation: CompilerMessageSourceLocation?,
+    ): IrExpression {
+        val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
+        val ownerModel =
+            plan.appliedTypeArguments.getOrNull(0) as? TcType.Constructor
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message = "HasAnnotations proof requires an exact class-like target type.",
+                    diagnosticLocation = diagnosticLocation,
+                )
+        val annotationModel =
+            plan.appliedTypeArguments.getOrNull(1) as? TcType.Constructor
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message = "HasAnnotations proof requires an exact annotation class type.",
+                    diagnosticLocation = diagnosticLocation,
+                )
+        val ownerType =
+            runCatching { modelToIrType(ownerModel, visibleTypeParameters, pluginContext) }
+                .getOrNull() ?: return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message =
+                    "HasAnnotations proof requires an exact class-like target type, but found ${ownerModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
+            )
+        val annotationType =
+            runCatching { modelToIrType(annotationModel, visibleTypeParameters, pluginContext) }
+                .getOrNull() ?: return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message =
+                    "HasAnnotations proof requires an exact annotation class type, but found ${annotationModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
+            )
+        val targetClass =
+            resolveRequestedAnnotationTarget(ownerModel)
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message =
+                        "Could not resolve annotation target ${ownerModel.render()} for HasAnnotations proof.",
+                    diagnosticLocation = diagnosticLocation,
+                )
+        val requestedAnnotationClassId =
+            resolveRequestedAnnotationClassId(annotationModel) ?: return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message =
+                    "HasAnnotations proof requires an exact annotation class type, but found ${annotationModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
+            )
+        val annotations = targetClass.requestedAnnotations(requestedAnnotationClassId)
+        if (annotations.isEmpty()) {
+            return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message = "${ownerModel.render()} does not carry ${annotationModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
+            )
+        }
+        val hasAnnotationsFactory =
+            pluginContext
+                .referenceFunctions(HAS_ANNOTATIONS_FACTORY_CALLABLE_ID)
+                .map { it.owner }
+                .singleOrNull { function ->
+                    function.typeParameters.size == 2 && function.valueParameters.size == 1
+                }
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message =
+                        "Could not resolve one.wabbit.typeclass.hasAnnotations(...) on the compilation classpath.",
+                    diagnosticLocation = diagnosticLocation,
+                )
+        return irCall(hasAnnotationsFactory.symbol, expressionType).apply {
+            putTypeArgument(0, ownerType)
+            putTypeArgument(1, annotationType)
+            putValueArgument(
+                0,
+                irListOf(
+                    elements = annotations,
+                    elementType = annotationType,
+                ),
+            )
+        }
+    }
+
+    private fun resolveRequestedAnnotationTarget(ownerModel: TcType.Constructor): IrClass? {
+        val ownerClassId =
+            runCatching { ClassId.fromString(ownerModel.classifierId) }.getOrNull()
+                ?: return null
+        return pluginContext.referenceClass(ownerClassId)?.owner
+    }
+
+    private fun resolveRequestedAnnotationClassId(annotationModel: TcType.Constructor): ClassId? {
+        val annotationClassId =
+            runCatching { ClassId.fromString(annotationModel.classifierId) }.getOrNull()
+                ?: return null
+        val annotationClass =
+            pluginContext.referenceClass(annotationClassId)?.owner ?: return null
+        return annotationClassId.takeIf { annotationClass.kind == ClassKind.ANNOTATION_CLASS }
+    }
+
     private fun IrStatementsBuilder<*>.buildBuiltinKnownTypeExpression(
         plan: ResolutionPlan.ApplyRule,
         visibleTypeParameters: VisibleTypeParameters,
@@ -1593,6 +1778,20 @@ private class TypeclassIrCallTransformer(
 
                     RuleReference.BuiltinIsEnum ->
                         buildBuiltinIsEnumExpression(
+                            plan = plan,
+                            visibleTypeParameters = visibleTypeParameters,
+                            diagnosticLocation = diagnosticLocation,
+                        )
+
+                    RuleReference.BuiltinHasAnnotation ->
+                        buildBuiltinHasAnnotationExpression(
+                            plan = plan,
+                            visibleTypeParameters = visibleTypeParameters,
+                            diagnosticLocation = diagnosticLocation,
+                        )
+
+                    RuleReference.BuiltinHasAnnotations ->
+                        buildBuiltinHasAnnotationsExpression(
                             plan = plan,
                             visibleTypeParameters = visibleTypeParameters,
                             diagnosticLocation = diagnosticLocation,
@@ -2570,6 +2769,32 @@ private class TypeclassIrCallTransformer(
     }
 }
 
+private fun IrClass.requestedAnnotations(annotationClassId: ClassId): List<IrConstructorCall> {
+    val containerClassId = annotationClassId.createNestedClassId(Name.identifier("Container"))
+    return annotations.flatMap { annotation ->
+        annotation.requestedAnnotations(annotationClassId, containerClassId)
+    }
+}
+
+private fun IrConstructorCall.requestedAnnotations(
+    annotationClassId: ClassId,
+    containerClassId: ClassId,
+): List<IrConstructorCall> =
+    when (symbol.owner.parentAsClass.classId) {
+        annotationClassId -> listOf(this)
+        containerClassId ->
+            ((getValueArgument(0) as? IrVararg)?.elements.orEmpty()).mapNotNull { element ->
+                when (element) {
+                    is IrSpreadElement -> element.expression as? IrConstructorCall
+                    is IrExpression -> element as? IrConstructorCall
+                    else -> null
+                }
+            }
+                .filter { nested -> nested.symbol.owner.parentAsClass.classId == annotationClassId }
+
+        else -> emptyList()
+    }
+
 private fun IrPluginContext.reportTypeclassError(
     message: String,
     diagnosticId: String? = null,
@@ -3273,6 +3498,24 @@ private constructor(
                         )
                 }
                 .filter { resolvedRule ->
+                    resolvedRule.rule.id != "builtin:has-annotation" ||
+                        builtinGoalAcceptance.accepts(
+                            irBuiltinHasAnnotationFeasibility(
+                                goal = goal,
+                                pluginContext = pluginContext,
+                            )
+                        )
+                }
+                .filter { resolvedRule ->
+                    resolvedRule.rule.id != "builtin:has-annotations" ||
+                        builtinGoalAcceptance.accepts(
+                            irBuiltinHasAnnotationsFeasibility(
+                                goal = goal,
+                                pluginContext = pluginContext,
+                            )
+                        )
+                }
+                .filter { resolvedRule ->
                     resolvedRule.rule.id != "builtin:known-type" ||
                         supportsBuiltinKnownTypeGoal(goal, canMaterializeVariable)
                 }
@@ -3721,6 +3964,20 @@ private class IrModuleScanner(
             ResolvedRule(
                 rule = builtinIsEnumRule(),
                 reference = RuleReference.BuiltinIsEnum,
+                associatedOwner = null,
+            )
+        )
+        add(
+            ResolvedRule(
+                rule = builtinHasAnnotationRule(),
+                reference = RuleReference.BuiltinHasAnnotation,
+                associatedOwner = null,
+            )
+        )
+        add(
+            ResolvedRule(
+                rule = builtinHasAnnotationsRule(),
+                reference = RuleReference.BuiltinHasAnnotations,
                 associatedOwner = null,
             )
         )
@@ -5899,6 +6156,44 @@ private fun builtinIsEnumRule(): InstanceRule {
     )
 }
 
+private fun builtinHasAnnotationRule(): InstanceRule {
+    val carrier = TcTypeParameter(id = "builtin:has-annotation:C", displayName = "C")
+    val annotation = TcTypeParameter(id = "builtin:has-annotation:A", displayName = "A")
+    return InstanceRule(
+        id = "builtin:has-annotation",
+        typeParameters = listOf(carrier, annotation),
+        providedType =
+            TcType.Constructor(
+                classifierId = HAS_ANNOTATION_CLASS_ID.asString(),
+                arguments =
+                    listOf(
+                        TcType.Variable(carrier.id, carrier.displayName),
+                        TcType.Variable(annotation.id, annotation.displayName),
+                    ),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinHasAnnotationsRule(): InstanceRule {
+    val carrier = TcTypeParameter(id = "builtin:has-annotations:C", displayName = "C")
+    val annotation = TcTypeParameter(id = "builtin:has-annotations:A", displayName = "A")
+    return InstanceRule(
+        id = "builtin:has-annotations",
+        typeParameters = listOf(carrier, annotation),
+        providedType =
+            TcType.Constructor(
+                classifierId = HAS_ANNOTATIONS_CLASS_ID.asString(),
+                arguments =
+                    listOf(
+                        TcType.Variable(carrier.id, carrier.displayName),
+                        TcType.Variable(annotation.id, annotation.displayName),
+                    ),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
 private fun builtinKnownTypeRule(): InstanceRule {
     val parameter = TcTypeParameter(id = "builtin:known-type:T", displayName = "T")
     return InstanceRule(
@@ -6495,6 +6790,76 @@ private fun irBuiltinIsEnumFeasibility(
     }
 }
 
+private fun irBuiltinHasAnnotationFeasibility(
+    goal: TcType,
+    pluginContext: IrPluginContext,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != HAS_ANNOTATION_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val targetModel =
+        constructor.arguments.getOrNull(0) as? TcType.Constructor
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val annotationModel =
+        constructor.arguments.getOrNull(1) as? TcType.Constructor
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val targetClassId =
+        runCatching { ClassId.fromString(targetModel.classifierId) }.getOrNull()
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val annotationClassId =
+        runCatching { ClassId.fromString(annotationModel.classifierId) }.getOrNull()
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val targetClass =
+        pluginContext.referenceClass(targetClassId)?.owner ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val annotationClass =
+        pluginContext.referenceClass(annotationClassId)?.owner
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    if (annotationClass.kind != ClassKind.ANNOTATION_CLASS) {
+        return BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+    return if (targetClass.requestedAnnotations(annotationClassId).size == 1) {
+        BuiltinGoalFeasibility.PROVABLE
+    } else {
+        BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+}
+
+private fun irBuiltinHasAnnotationsFeasibility(
+    goal: TcType,
+    pluginContext: IrPluginContext,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != HAS_ANNOTATIONS_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val targetModel =
+        constructor.arguments.getOrNull(0) as? TcType.Constructor
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val annotationModel =
+        constructor.arguments.getOrNull(1) as? TcType.Constructor
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val targetClassId =
+        runCatching { ClassId.fromString(targetModel.classifierId) }.getOrNull()
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val annotationClassId =
+        runCatching { ClassId.fromString(annotationModel.classifierId) }.getOrNull()
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val targetClass =
+        pluginContext.referenceClass(targetClassId)?.owner ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val annotationClass =
+        pluginContext.referenceClass(annotationClassId)?.owner
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    if (annotationClass.kind != ClassKind.ANNOTATION_CLASS) {
+        return BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+    return if (targetClass.requestedAnnotations(annotationClassId).isNotEmpty()) {
+        BuiltinGoalFeasibility.PROVABLE
+    } else {
+        BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+}
+
 private fun canProveNullable(targetType: IrType, pluginContext: IrPluginContext): Boolean =
     pluginContext.irBuiltIns.nothingNType.isSubtypeOf(
         targetType,
@@ -6581,6 +6946,10 @@ private sealed interface RuleReference {
     data object BuiltinHasCompanion : RuleReference
 
     data object BuiltinIsEnum : RuleReference
+
+    data object BuiltinHasAnnotation : RuleReference
+
+    data object BuiltinHasAnnotations : RuleReference
 
     data object BuiltinKnownType : RuleReference
 

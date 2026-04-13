@@ -21,6 +21,8 @@ import kotlin.reflect.KVariance
  * - [HasCompanion] witnesses that a type's companion object exists and satisfies a requested
  *   supertype.
  * - [IsEnum] witnesses that a type is an enum class and carries its entries and lookup helpers.
+ * - [HasAnnotation] witnesses that a declaration carries exactly one requested annotation.
+ * - [HasAnnotations] witnesses that a declaration carries one or more requested annotations.
  * - [KnownType] carries an exact reflective [KType] for a fully known type.
  * - [TypeId] carries a stable, hashable token for semantic type identity.
  *
@@ -278,6 +280,44 @@ public fun <A> isEnum(
     values: () -> Array<A>,
     valueOf: (String) -> A,
 ): IsEnum<A> = IsEnumImpl(entries = entries, valuesFactory = values, valueOfResolver = valueOf)
+
+/**
+ * Witnesses that `C` carries exactly one annotation of type `A`.
+ *
+ * This proof is intended to expose annotation payloads through ordinary typeclass resolution
+ * without requiring runtime annotation reflection.
+ */
+@Typeclass
+public interface HasAnnotation<C, A : Annotation> {
+    /** The carried annotation payload. */
+    public val annotation: A
+}
+
+private data class HasAnnotationImpl<C, A : Annotation>(override val annotation: A) :
+    HasAnnotation<C, A>
+
+/** Wraps a compiler-resolved annotation payload into a [HasAnnotation] proof. */
+public fun <C, A : Annotation> hasAnnotation(annotation: A): HasAnnotation<C, A> =
+    HasAnnotationImpl(annotation)
+
+/**
+ * Witnesses that `C` carries one or more annotations of type `A`.
+ *
+ * This is the plural surface for repeatable annotations and for callers that want the full
+ * effective annotation list rather than a single exact witness.
+ */
+@Typeclass
+public interface HasAnnotations<C, A : Annotation> {
+    /** The carried effective annotation payloads. */
+    public val annotations: List<A>
+}
+
+private data class HasAnnotationsImpl<C, A : Annotation>(override val annotations: List<A>) :
+    HasAnnotations<C, A>
+
+/** Wraps compiler-resolved annotation payloads into a [HasAnnotations] proof. */
+public fun <C, A : Annotation> hasAnnotations(annotations: List<A>): HasAnnotations<C, A> =
+    HasAnnotationsImpl(annotations)
 
 /**
  * Witnesses that two applied types share the same outer type constructor.
