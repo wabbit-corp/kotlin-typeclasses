@@ -1923,7 +1923,6 @@ sealed interface CompilerHarnessPlugin {
     data object Compose : CompilerHarnessPlugin {
         override val runtimeClasspathJarMarkers: List<String> =
             listOf(
-                "runtime-metadata",
                 "runtime-desktop",
                 "runtime-annotation-jvm",
                 "collection-jvm",
