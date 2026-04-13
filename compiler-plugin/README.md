@@ -39,11 +39,11 @@ For normal projects, do not wire this artifact directly. Use the Gradle plugin a
 ```kotlin
 plugins {
     kotlin("jvm") version "2.3.10"
-    id("one.wabbit.typeclass") version "0.0.1"
+    id("one.wabbit.typeclass") version "0.1.0"
 }
 
 dependencies {
-    implementation("one.wabbit:kotlin-typeclasses:0.0.1")
+    implementation("one.wabbit:kotlin-typeclasses:0.1.0")
 }
 ```
 
@@ -104,7 +104,7 @@ If you are wiring the compiler plugin directly:
 
 If source code imports `one.wabbit.typeclass.*`, the runtime library still needs to be present on the compilation classpath:
 
-- `one.wabbit:kotlin-typeclasses:0.0.1`
+- `one.wabbit:kotlin-typeclasses:0.1.0`
 
 ## Preferred Gradle Usage
 
@@ -113,11 +113,11 @@ Most consumers should use the Gradle plugin instead:
 ```kotlin
 plugins {
     kotlin("jvm") version "2.3.10"
-    id("one.wabbit.typeclass") version "0.0.1"
+    id("one.wabbit.typeclass") version "0.1.0"
 }
 
 dependencies {
-    implementation("one.wabbit:kotlin-typeclasses:0.0.1")
+    implementation("one.wabbit:kotlin-typeclasses:0.1.0")
 }
 ```
 

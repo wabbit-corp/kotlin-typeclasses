@@ -4,14 +4,14 @@ This project is pre-1.0. Breaking changes can still happen, especially in compil
 
 The compatibility contract is intentionally explicit:
 
-- the runtime library uses the base project version, for example `one.wabbit:kotlin-typeclasses:0.0.1`
-- the compiler plugin is published per Kotlin compiler line, for example `one.wabbit:kotlin-typeclasses-plugin:0.0.1-kotlin-2.3.10`
+- the runtime library uses the base project version, for example `one.wabbit:kotlin-typeclasses:0.1.0`
+- the compiler plugin is published per Kotlin compiler line, for example `one.wabbit:kotlin-typeclasses-plugin:0.1.0-kotlin-2.3.10`
 - the Gradle plugin chooses the matching compiler-plugin variant from the applied Kotlin Gradle plugin version
 - supported Kotlin compiler lines are listed in [`gradle.properties`](../gradle.properties)
 
 ## Current Line
 
-These docs describe the `0.0.1` release line and the currently supported Kotlin matrix:
+These docs describe the `0.1.0` release line and the currently supported Kotlin matrix:
 
 - `2.3.10`
 - `2.4.0-Beta1`
@@ -22,11 +22,11 @@ If you use the Gradle plugin, keep these versions aligned:
 plugins {
     // See gradle.properties for the supported Kotlin matrix.
     kotlin("jvm") version "2.3.10"
-    id("one.wabbit.typeclass") version "0.0.1"
+    id("one.wabbit.typeclass") version "0.1.0"
 }
 
 dependencies {
-    implementation("one.wabbit:kotlin-typeclasses:0.0.1")
+    implementation("one.wabbit:kotlin-typeclasses:0.1.0")
 }
 ```
 

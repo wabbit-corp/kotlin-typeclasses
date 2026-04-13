@@ -30,11 +30,11 @@ rootProject.name = "typeclass-quickstart"
 plugins {
     kotlin("jvm") version "2.3.10"
     application
-    id("one.wabbit.typeclass") version "0.0.1"
+    id("one.wabbit.typeclass") version "0.1.0"
 }
 
 dependencies {
-    implementation("one.wabbit:kotlin-typeclasses:0.0.1")
+    implementation("one.wabbit:kotlin-typeclasses:0.1.0")
 }
 
 kotlin {
@@ -153,11 +153,11 @@ Most consumers need the runtime library and the Gradle plugin ID.
 
 | Module | Coordinates or ID | Role |
 | --- | --- | --- |
-| Runtime library | `one.wabbit:kotlin-typeclasses:0.0.1` | Annotations, `summon()`, derivation metadata, and proof APIs |
+| Runtime library | `one.wabbit:kotlin-typeclasses:0.1.0` | Annotations, `summon()`, derivation metadata, and proof APIs |
 | Gradle plugin | plugin id `one.wabbit.typeclass` | Kotlin build integration and compiler-plugin wiring |
-| Gradle plugin artifact | `one.wabbit:kotlin-typeclasses-gradle-plugin:0.0.1` | Published Gradle plugin implementation artifact |
-| Compiler plugin | `one.wabbit:kotlin-typeclasses-plugin:0.0.1-kotlin-2.3.10` and `one.wabbit:kotlin-typeclasses-plugin:0.0.1-kotlin-2.4.0-Beta1` | Kotlin-line-specific K2 compiler plugin |
-| IntelliJ plugin | `one.wabbit:kotlin-typeclasses-ij-plugin:0.0.1` | IDE helper plugin for external compiler-plugin loading |
+| Gradle plugin artifact | `one.wabbit:kotlin-typeclasses-gradle-plugin:0.1.0` | Published Gradle plugin implementation artifact |
+| Compiler plugin | `one.wabbit:kotlin-typeclasses-plugin:0.1.0-kotlin-2.3.10` and `one.wabbit:kotlin-typeclasses-plugin:0.1.0-kotlin-2.4.0-Beta1` | Kotlin-line-specific K2 compiler plugin |
+| IntelliJ plugin | `one.wabbit:kotlin-typeclasses-ij-plugin:0.1.0` | IDE helper plugin for external compiler-plugin loading |
 
 ## Default Behavior
 

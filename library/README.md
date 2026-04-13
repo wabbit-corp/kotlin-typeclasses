@@ -22,7 +22,7 @@ The typeclasses project family is split into four parts:
 
 Most consumers need this library together with the Gradle plugin.
 
-The runtime library keeps the base project version, while the compiler plugin is published as a Kotlin-specific variant such as `one.wabbit:kotlin-typeclasses-plugin:0.0.1-kotlin-2.3.10`.
+The runtime library keeps the base project version, while the compiler plugin is published as a Kotlin-specific variant such as `one.wabbit:kotlin-typeclasses-plugin:0.1.0-kotlin-2.3.10`.
 
 ## Status
 
@@ -30,7 +30,7 @@ This module is experimental and pre-1.0. Annotation names, generated metadata co
 
 ## Installation
 
-- coordinates: `one.wabbit:kotlin-typeclasses:0.0.1`
+- coordinates: `one.wabbit:kotlin-typeclasses:0.1.0`
 
 Most applications should add this dependency and apply the Gradle plugin from [`../gradle-plugin/README.md`](../gradle-plugin/README.md). The runtime alone does not enable compiler-plugin resolution.
 
@@ -133,7 +133,7 @@ plugins {
 }
 
 dependencies {
-    implementation("one.wabbit:kotlin-typeclasses:0.0.1")
+    implementation("one.wabbit:kotlin-typeclasses:0.1.0")
 }
 ```
 

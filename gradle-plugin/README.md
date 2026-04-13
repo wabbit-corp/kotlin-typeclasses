@@ -15,11 +15,11 @@ This module is experimental and follows the repository's pre-1.0 release policy.
 ## Plugin Coordinates
 
 - plugin id: `one.wabbit.typeclass`
-- artifact: `one.wabbit:kotlin-typeclasses-gradle-plugin:0.0.1`
+- artifact: `one.wabbit:kotlin-typeclasses-gradle-plugin:0.1.0`
 
 The runtime library remains a normal dependency:
 
-- `one.wabbit:kotlin-typeclasses:0.0.1`
+- `one.wabbit:kotlin-typeclasses:0.1.0`
 
 ## Quick Start
 
@@ -47,11 +47,11 @@ dependencyResolutionManagement {
 plugins {
     kotlin("jvm") version "2.3.10"
     application
-    id("one.wabbit.typeclass") version "0.0.1"
+    id("one.wabbit.typeclass") version "0.1.0"
 }
 
 dependencies {
-    implementation("one.wabbit:kotlin-typeclasses:0.0.1")
+    implementation("one.wabbit:kotlin-typeclasses:0.1.0")
 }
 
 kotlin {
@@ -63,7 +63,7 @@ For a complete source file that is compiled and run by the documentation consist
 
 ## Installation Notes
 
-The plugin should be applied through `plugins { id("one.wabbit.typeclass") version "0.0.1" }`. The runtime library is still a normal dependency because source code imports `one.wabbit.typeclass.*`.
+The plugin should be applied through `plugins { id("one.wabbit.typeclass") version "0.1.0" }`. The runtime library is still a normal dependency because source code imports `one.wabbit.typeclass.*`.
 
 ## What The Gradle Plugin Does
 
