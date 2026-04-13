@@ -1058,6 +1058,92 @@ private class TypeclassIrCallTransformer(
         )
     }
 
+    private fun IrStatementsBuilder<*>.buildBuiltinHasCompanionExpression(
+        plan: ResolutionPlan.ApplyRule,
+        visibleTypeParameters: VisibleTypeParameters,
+        diagnosticLocation: CompilerMessageSourceLocation?,
+    ): IrExpression {
+        val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
+        val ownerModel =
+            plan.appliedTypeArguments.getOrNull(0) as? TcType.Constructor
+                ?: return invalidBuiltinProofExpression(
+                    expressionType,
+                    "HasCompanion proof requires an exact class-like owner type.",
+                    diagnosticLocation,
+                )
+        val requestedModel =
+            plan.appliedTypeArguments.getOrNull(1)
+                ?: return invalidBuiltinProofExpression(
+                    expressionType,
+                    "HasCompanion proof requires two type arguments.",
+                    diagnosticLocation,
+                )
+        val ownerType =
+            runCatching { modelToIrType(ownerModel, visibleTypeParameters, pluginContext) }
+                .getOrNull() ?: return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message =
+                    "HasCompanion proof requires an exact class-like owner type, but found ${ownerModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
+            )
+        val requestedType =
+            runCatching { modelToIrType(requestedModel, visibleTypeParameters, pluginContext) }
+                .getOrNull() ?: return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message =
+                    "HasCompanion proof requires a materializable requested companion type, but found ${requestedModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
+            )
+        val ownerClassId =
+            runCatching { ClassId.fromString(ownerModel.classifierId) }.getOrNull()
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message =
+                        "HasCompanion proof requires an exact class-like owner type, but found ${ownerModel.render()}.",
+                    diagnosticLocation = diagnosticLocation,
+                )
+        val ownerClass =
+            pluginContext.referenceClass(ownerClassId)?.owner
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message = "Could not resolve owner type ${ownerModel.render()} for HasCompanion proof.",
+                    diagnosticLocation = diagnosticLocation,
+                )
+        val companionClass =
+            ownerClass.declarations.filterIsInstance<IrClass>().firstOrNull(IrClass::isCompanion)
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message = "HasCompanion proof requires ${ownerModel.render()} to declare a companion object.",
+                    diagnosticLocation = diagnosticLocation,
+                )
+        if (!canProveSubtype(companionClass.symbol.defaultType, requestedType, pluginContext)) {
+            return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message =
+                    "HasCompanion proof could not prove ${ownerModel.render()}'s companion is a subtype of ${requestedModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
+            )
+        }
+        val hasCompanionFactory =
+            pluginContext
+                .referenceFunctions(HAS_COMPANION_FACTORY_CALLABLE_ID)
+                .map { it.owner }
+                .singleOrNull { function ->
+                    function.typeParameters.size == 2 && function.valueParameters.size == 1
+                }
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message =
+                        "Could not resolve one.wabbit.typeclass.hasCompanion(...) on the compilation classpath.",
+                    diagnosticLocation = diagnosticLocation,
+                )
+        return irCall(hasCompanionFactory.symbol, expressionType).apply {
+            putTypeArgument(0, ownerType)
+            putTypeArgument(1, requestedType)
+            putValueArgument(0, irGetObject(companionClass.symbol))
+        }
+    }
+
     private fun IrStatementsBuilder<*>.buildBuiltinKnownTypeExpression(
         plan: ResolutionPlan.ApplyRule,
         visibleTypeParameters: VisibleTypeParameters,
@@ -1406,6 +1492,13 @@ private class TypeclassIrCallTransformer(
 
                     RuleReference.BuiltinIsTypeclassInstance ->
                         buildBuiltinIsTypeclassInstanceExpression(
+                            plan = plan,
+                            visibleTypeParameters = visibleTypeParameters,
+                            diagnosticLocation = diagnosticLocation,
+                        )
+
+                    RuleReference.BuiltinHasCompanion ->
+                        buildBuiltinHasCompanionExpression(
                             plan = plan,
                             visibleTypeParameters = visibleTypeParameters,
                             diagnosticLocation = diagnosticLocation,
@@ -2978,6 +3071,16 @@ private constructor(
                         )
                 }
                 .filter { resolvedRule ->
+                    resolvedRule.rule.id != "builtin:has-companion" ||
+                        builtinGoalAcceptance.accepts(
+                            irBuiltinHasCompanionFeasibility(
+                                goal = goal,
+                                pluginContext = pluginContext,
+                                exactBuiltinGoalContext = exactBuiltinGoalContext,
+                            )
+                        )
+                }
+                .filter { resolvedRule ->
                     resolvedRule.rule.id != "builtin:known-type" ||
                         supportsBuiltinKnownTypeGoal(goal, canMaterializeVariable)
                 }
@@ -3412,6 +3515,13 @@ private class IrModuleScanner(
             ResolvedRule(
                 rule = builtinIsTypeclassInstanceRule(),
                 reference = RuleReference.BuiltinIsTypeclassInstance,
+                associatedOwner = null,
+            )
+        )
+        add(
+            ResolvedRule(
+                rule = builtinHasCompanionRule(),
+                reference = RuleReference.BuiltinHasCompanion,
                 associatedOwner = null,
             )
         )
@@ -5557,6 +5667,25 @@ private fun builtinIsTypeclassInstanceRule(): InstanceRule {
     )
 }
 
+private fun builtinHasCompanionRule(): InstanceRule {
+    val owner = TcTypeParameter(id = "builtin:has-companion:A", displayName = "A")
+    val companion = TcTypeParameter(id = "builtin:has-companion:C", displayName = "C")
+    return InstanceRule(
+        id = "builtin:has-companion",
+        typeParameters = listOf(owner, companion),
+        providedType =
+            TcType.Constructor(
+                classifierId = HAS_COMPANION_CLASS_ID.asString(),
+                arguments =
+                    listOf(
+                        TcType.Variable(owner.id, owner.displayName),
+                        TcType.Variable(companion.id, companion.displayName),
+                    ),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
 private fun builtinKnownTypeRule(): InstanceRule {
     val parameter = TcTypeParameter(id = "builtin:known-type:T", displayName = "T")
     return InstanceRule(
@@ -6095,6 +6224,41 @@ private fun irBuiltinIsTypeclassInstanceFeasibility(
     }
 }
 
+private fun irBuiltinHasCompanionFeasibility(
+    goal: TcType,
+    pluginContext: IrPluginContext,
+    exactBuiltinGoalContext: IrBuiltinGoalExactContext?,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != HAS_COMPANION_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val ownerModel =
+        constructor.arguments.getOrNull(0) as? TcType.Constructor
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val requestedModel =
+        constructor.arguments.getOrNull(1) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val ownerClassId =
+        runCatching { ClassId.fromString(ownerModel.classifierId) }.getOrNull()
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val ownerClass =
+        pluginContext.referenceClass(ownerClassId)?.owner
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val companionClass =
+        ownerClass.declarations.filterIsInstance<IrClass>().firstOrNull(IrClass::isCompanion)
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val visibleTypeParameters =
+        exactBuiltinGoalContext?.visibleTypeParameters ?: VisibleTypeParameters(emptyMap(), emptyMap())
+    val requestedType =
+        runCatching { modelToIrType(requestedModel, visibleTypeParameters, pluginContext) }
+            .getOrNull() ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    return if (canProveSubtype(companionClass.symbol.defaultType, requestedType, pluginContext)) {
+        BuiltinGoalFeasibility.PROVABLE
+    } else {
+        BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+}
+
 private fun canProveNullable(targetType: IrType, pluginContext: IrPluginContext): Boolean =
     pluginContext.irBuiltIns.nothingNType.isSubtypeOf(
         targetType,
@@ -6177,6 +6341,8 @@ private sealed interface RuleReference {
     data object BuiltinNotNullable : RuleReference
 
     data object BuiltinIsTypeclassInstance : RuleReference
+
+    data object BuiltinHasCompanion : RuleReference
 
     data object BuiltinKnownType : RuleReference
 

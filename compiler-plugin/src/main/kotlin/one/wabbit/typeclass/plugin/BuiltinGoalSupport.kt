@@ -69,6 +69,7 @@ internal fun builtinRuleCanMatchGoalHead(ruleId: String, goal: TcType): Boolean 
             "builtin:nullable" -> NULLABLE_CLASS_ID.asString()
             "builtin:not-nullable" -> NOT_NULLABLE_CLASS_ID.asString()
             "builtin:is-typeclass-instance" -> IS_TYPECLASS_INSTANCE_CLASS_ID.asString()
+            "builtin:has-companion" -> HAS_COMPANION_CLASS_ID.asString()
             "builtin:known-type" -> KNOWN_TYPE_CLASS_ID.asString()
             "builtin:type-id" -> TYPE_ID_CLASS_ID.asString()
             "builtin:same-type-constructor" -> SAME_TYPE_CONSTRUCTOR_CLASS_ID.asString()
@@ -181,6 +182,47 @@ internal fun provablySupportsBuiltinNotNullableGoal(
     exactContext: FirBuiltinGoalExactContext? = null,
 ): Boolean =
     builtinNotNullableGoalFeasibility(goal, exactContext) == BuiltinGoalFeasibility.PROVABLE
+
+internal fun builtinHasCompanionGoalFeasibility(
+    goal: TcType,
+    session: FirSession,
+    exactContext: FirBuiltinGoalExactContext? = null,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != HAS_COMPANION_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val owner =
+        constructor.arguments.getOrNull(0) as? TcType.Constructor
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val requestedType =
+        constructor.arguments.getOrNull(1) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val ownerClassId =
+        runCatching { ClassId.fromString(owner.classifierId) }.getOrNull()
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val companionSymbol =
+        session.companionSymbolOrNull(ownerClassId) ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val companionType =
+        companionSymbol.classId.constructClassLikeType(
+            typeArguments = emptyArray(),
+            isMarkedNullable = false,
+        )
+    val requestedConeType =
+        requestedType.toConeKotlinType(exactContext?.variableSymbolsById.orEmpty())
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    return if (
+        AbstractTypeChecker.isSubtypeOf(
+            session.typeContext,
+            companionType,
+            requestedConeType,
+            false,
+        )
+    ) {
+        BuiltinGoalFeasibility.PROVABLE
+    } else {
+        BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+}
 
 private fun builtinSubtypeGoalFeasibility(
     goal: TcType,

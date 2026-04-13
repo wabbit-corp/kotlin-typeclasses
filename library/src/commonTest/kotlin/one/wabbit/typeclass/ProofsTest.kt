@@ -67,6 +67,15 @@ class ProofsTest {
         assertFailsWith<IllegalStateException> { nullable.contradicts(notNullable<String?>()) }
     }
 
+    @Test
+    fun hasCompanionFactoryCarriesResolvedSingleton() {
+        val marker = object { override fun toString(): String = "marker" }
+        val proof = hasCompanion<String, Any>(marker)
+
+        assertTrue(proof.companion === marker)
+        assertEquals("marker", proof.companion.toString())
+    }
+
     @OptIn(ExperimentalStdlibApi::class)
     @Test
     fun knownTypeAndTypeIdFactoriesPreserveExactVsSemanticIdentity() {

@@ -19,6 +19,7 @@ The runtime proof surfaces are:
 | `Nullable<T>` | `null` is a valid inhabitant of `T` |
 | `NotNullable<T>` | `T` excludes `null` |
 | `IsTypeclassInstance<TC>` | `TC` is headed by a typeclass constructor |
+| `HasCompanion<A, C>` | `A` declares a companion object whose singleton type is a subtype of `C` |
 | `SameTypeConstructor<A, B>` | `A` and `B` share the same outer type constructor |
 | `KnownType<T>` | exact reflective `KType` for `T` using multiplatform `kotlin.reflect`, not JVM-only `java.lang.reflect` |
 | `TypeId<T>` | stable semantic identity token for `T` |
@@ -234,6 +235,27 @@ Important detail:
 - this proof also recognizes optional builtin surfaces like `KClass<Int>` and `KSerializer<User>` only when those builtin modes are enabled
 
 This proof is useful when you want to write generic rules that only apply to typeclass-shaped arguments.
+
+### `HasCompanion<A, C>`
+
+Meaning:
+
+- `A` has a companion object
+- the companion singleton's concrete type is a subtype of `C`
+- the proof carries that singleton as `companion: C`
+
+Typical success:
+
+- `HasCompanion<Foo, Foo.Companion>`
+- `HasCompanion<Foo, Boo>` when `Foo.Companion : Boo`
+- `HasCompanion<Foo, Any>`
+
+Typical failure:
+
+- `HasCompanion<NoCompanion, Any>`
+- `HasCompanion<Foo, Bar>` when `Foo.Companion` does not implement `Bar`
+
+This proof is useful when companion objects act as registries, factories, codecs, or strategy singletons that you want to recover through ordinary typeclass search.
 
 ## Runtime Type Proofs
 

@@ -58,6 +58,7 @@ internal const val IS_TYPECLASS_INSTANCE_FQ_NAME: String =
     "one.wabbit.typeclass.IsTypeclassInstance"
 internal const val IS_TYPECLASS_INSTANCE_PROOF_FQ_NAME: String =
     "one.wabbit.typeclass.UnsafeAssertIsTypeclassInstance"
+internal const val HAS_COMPANION_FQ_NAME: String = "one.wabbit.typeclass.HasCompanion"
 internal const val SAME_TYPE_CONSTRUCTOR_FQ_NAME: String =
     "one.wabbit.typeclass.SameTypeConstructor"
 internal const val SAME_TYPE_CONSTRUCTOR_PROOF_FQ_NAME: String =
@@ -137,6 +138,7 @@ internal val IS_TYPECLASS_INSTANCE_CLASS_ID: ClassId =
     ClassId.topLevel(FqName(IS_TYPECLASS_INSTANCE_FQ_NAME))
 internal val IS_TYPECLASS_INSTANCE_PROOF_CLASS_ID: ClassId =
     ClassId.topLevel(FqName(IS_TYPECLASS_INSTANCE_PROOF_FQ_NAME))
+internal val HAS_COMPANION_CLASS_ID: ClassId = ClassId.topLevel(FqName(HAS_COMPANION_FQ_NAME))
 internal val SAME_TYPE_CONSTRUCTOR_CLASS_ID: ClassId =
     ClassId.topLevel(FqName(SAME_TYPE_CONSTRUCTOR_FQ_NAME))
 internal val SAME_TYPE_CONSTRUCTOR_PROOF_CLASS_ID: ClassId =
@@ -151,6 +153,8 @@ internal val SERIALIZABLE_ANNOTATION_CLASS_ID: ClassId =
     ClassId.topLevel(FqName(SERIALIZABLE_ANNOTATION_FQ_NAME))
 internal val KNOWN_TYPE_FACTORY_CALLABLE_ID: CallableId =
     CallableId(FqName("one.wabbit.typeclass"), Name.identifier("knownType"))
+internal val HAS_COMPANION_FACTORY_CALLABLE_ID: CallableId =
+    CallableId(FqName("one.wabbit.typeclass"), Name.identifier("hasCompanion"))
 internal val TYPE_ID_FACTORY_CALLABLE_ID: CallableId =
     CallableId(FqName("one.wabbit.typeclass"), Name.identifier("typeId"))
 internal val BUILTIN_SERIALIZABLE_CLASSIFIER_IDS: Set<String> =

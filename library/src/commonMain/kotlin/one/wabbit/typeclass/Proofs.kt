@@ -18,6 +18,8 @@ import kotlin.reflect.KVariance
  * - [StrictSubtype] witnesses proper subtyping: subtype but not equal.
  * - [Nullable] witnesses that `null` is a valid inhabitant of a type.
  * - [NotNullable] witnesses that a type excludes `null`.
+ * - [HasCompanion] witnesses that a type's companion object exists and satisfies a requested
+ *   supertype.
  * - [KnownType] carries an exact reflective [KType] for a fully known type.
  * - [TypeId] carries a stable, hashable token for semantic type identity.
  *
@@ -224,6 +226,23 @@ public object UnsafeAssertNotNullable : NotNullable<Any?>
 @InternalTypeclassApi
 /** Internal singleton carrier for compiler-synthesized [IsTypeclassInstance] evidence. */
 public object UnsafeAssertIsTypeclassInstance : IsTypeclassInstance<Any?>
+
+/**
+ * Witnesses that `A` has a companion object whose singleton type is a subtype of `C`.
+ *
+ * The carried [companion] value is the actual companion singleton, widened to the requested
+ * contract type `C`.
+ */
+@Typeclass
+public interface HasCompanion<A, C> {
+    /** The resolved companion singleton widened to the requested contract type. */
+    public val companion: C
+}
+
+private data class HasCompanionImpl<A, C>(override val companion: C) : HasCompanion<A, C>
+
+/** Wraps a resolved companion singleton into a [HasCompanion] proof. */
+public fun <A, C> hasCompanion(companion: C): HasCompanion<A, C> = HasCompanionImpl(companion)
 
 /**
  * Witnesses that two applied types share the same outer type constructor.

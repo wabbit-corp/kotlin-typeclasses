@@ -760,6 +760,16 @@ private data class ResolutionIndex(
                         )
                 }
                 .filter { visibleRule ->
+                    visibleRule.rule.id != "builtin:has-companion" ||
+                        builtinGoalAcceptance.accepts(
+                            builtinHasCompanionGoalFeasibility(
+                                goal = goal,
+                                session = session,
+                                exactContext = exactBuiltinGoalContext,
+                            )
+                        )
+                }
+                .filter { visibleRule ->
                     visibleRule.rule.id != "builtin:known-type" ||
                         supportsBuiltinKnownTypeGoal(goal, canMaterializeVariable)
                 }
@@ -2738,6 +2748,7 @@ private fun TypeclassConfiguration.builtinRules(): List<InstanceRule> = buildLis
     add(builtinNullableRule())
     add(builtinNotNullableRule())
     add(builtinIsTypeclassInstanceRule())
+    add(builtinHasCompanionRule())
     add(builtinKnownTypeRule())
     add(builtinTypeIdRule())
     add(builtinSameTypeConstructorRule())
@@ -2883,6 +2894,25 @@ private fun builtinIsTypeclassInstanceRule(): InstanceRule {
             TcType.Constructor(
                 classifierId = IS_TYPECLASS_INSTANCE_CLASS_ID.asString(),
                 arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinHasCompanionRule(): InstanceRule {
+    val owner = TcTypeParameter(id = "builtin:has-companion:A", displayName = "A")
+    val companion = TcTypeParameter(id = "builtin:has-companion:C", displayName = "C")
+    return InstanceRule(
+        id = "builtin:has-companion",
+        typeParameters = listOf(owner, companion),
+        providedType =
+            TcType.Constructor(
+                classifierId = HAS_COMPANION_CLASS_ID.asString(),
+                arguments =
+                    listOf(
+                        TcType.Variable(owner.id, owner.displayName),
+                        TcType.Variable(companion.id, companion.displayName),
+                    ),
             ),
         prerequisiteTypes = emptyList(),
     )

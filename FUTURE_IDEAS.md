@@ -27,7 +27,6 @@ This file is not a committed roadmap, but more of an "idea dump". Ideas are grou
 
 ## Materializable Proofs
 
-- **`HasCompanion<A, C>`.** Prove that `A` has a companion object of type `C`. Useful for generic factories, registries, and companion-as-strategy patterns.
 - **`Reified<A>`.** Prove that `A` is runtime-available without materializing a full `KType`. This is cheaper than `KnownType<A>` and useful as an admission gate.
 - **`DefaultValue<A>`.** Prove that `A` can be constructed with `A()` because its primary constructor exists and all parameters have defaults.
 - **`Enum<A>`.** Prove that `A` is an enum and expose `entries`, `values`, and `valueOf` style operations without reflection.
