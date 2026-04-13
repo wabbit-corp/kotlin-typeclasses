@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.isRegularFile
+import kotlin.io.path.readLines
 import kotlin.io.path.writeText
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -57,6 +58,7 @@ abstract class IntegrationTestSupport {
 
     private val tempRootsToCleanup = mutableListOf<Path>()
     private var keepTempRootsForCurrentTest = false
+    private val activeProjectVersion by lazy { locateProjectVersion(locateRepositoryRoot()) }
 
     @get:Rule
     val cleanupHarnessTempRoots =
@@ -1059,6 +1061,16 @@ abstract class IntegrationTestSupport {
         }
     }
 
+    private fun locateProjectVersion(repositoryRoot: Path): String =
+        repositoryRoot
+            .resolve("gradle.properties")
+            .readLines()
+            .firstOrNull { line -> line.startsWith("projectVersion=") }
+            ?.substringAfter('=')
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: error("Could not locate projectVersion in ${repositoryRoot.resolve("gradle.properties")}")
+
     private fun locateRuntimeProjectRoot(repositoryRoot: Path): Path {
         val multiModuleRuntimeRoot = repositoryRoot.resolve("library")
         if (multiModuleRuntimeRoot.resolve("build.gradle.kts").toFile().isFile) {
@@ -1511,7 +1523,23 @@ abstract class IntegrationTestSupport {
         }
 
     private fun preferredJarCandidate(candidates: List<Path>, description: String): Path? {
+        val versionMatchedCandidates =
+            candidates.filter { candidate ->
+                candidate.fileName.toString().contains("-$activeProjectVersion")
+            }
         if (description == "built kotlin-typeclasses-plugin jar") {
+            versionMatchedCandidates
+                .firstOrNull { candidate ->
+                    candidate.fileName.toString().contains("-kotlin-$activeKotlinVersion")
+                }
+                ?.let {
+                    return it
+                }
+            versionMatchedCandidates.firstOrNull { candidate ->
+                candidate.fileName.toString().contains("-kotlin-")
+            }?.let {
+                return it
+            }
             candidates
                 .firstOrNull { candidate ->
                     candidate.fileName.toString().contains("-kotlin-$activeKotlinVersion")
@@ -1521,6 +1549,11 @@ abstract class IntegrationTestSupport {
                 }
             return candidates.firstOrNull { candidate ->
                 candidate.fileName.toString().contains("-kotlin-")
+            }
+        }
+        if (description.startsWith("built ") && versionMatchedCandidates.isNotEmpty()) {
+            return versionMatchedCandidates.maxByOrNull { candidate ->
+                candidate.toFile().lastModified()
             }
         }
         if (description.startsWith("runtime-desktop ")) {

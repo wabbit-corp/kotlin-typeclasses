@@ -2,10 +2,11 @@
 
 package one.wabbit.typeclass.plugin.integration
 
+import java.io.UncheckedIOException
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import kotlin.io.path.readText
-import kotlin.streams.asStream
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -66,31 +67,51 @@ class DocumentationConsistencyTest : IntegrationTestSupport() {
     fun markdownUsesActualGradleProjectPaths() {
         val root = repositoryRoot()
         val forbiddenProjectPaths = listOf(":compiler-plugin", ":gradle-plugin", ":ij-plugin")
-        val offenders =
-            Files.walk(root).use { paths ->
-                paths
-                    .filter { path ->
-                        Files.isRegularFile(path) &&
-                            path.fileName.toString().endsWith(".md") &&
-                            !path.toString().contains("${Path.of("build")}") &&
-                            !path.toString().contains("${Path.of(".gradle")}")
+        val offenders = mutableListOf<String>()
+        Files.walk(root).use { paths ->
+            val iterator = paths.iterator()
+            while (true) {
+                val path =
+                    try {
+                        if (!iterator.hasNext()) {
+                            break
+                        }
+                        iterator.next()
+                    } catch (exception: UncheckedIOException) {
+                        if (exception.cause is NoSuchFileException) {
+                            break
+                        }
+                        throw exception
                     }
-                    .flatMap { path ->
-                        path
-                            .readText()
-                            .lineSequence()
-                            .mapIndexedNotNull { index, line ->
-                                val forbidden = forbiddenProjectPaths.firstOrNull { it in line }
-                                if (forbidden == null) {
-                                    null
-                                } else {
-                                    "${root.relativize(path)}:${index + 1}: $forbidden"
-                                }
-                            }
-                            .asStream()
+                if (
+                    !Files.isRegularFile(path) ||
+                        !path.fileName.toString().endsWith(".md") ||
+                        path.toString().contains("${Path.of("build")}") ||
+                        path.toString().contains("${Path.of(".gradle")}")
+                ) {
+                    continue
+                }
+                val markdown =
+                    try {
+                        path.readText()
+                    } catch (exception: NoSuchFileException) {
+                        continue
+                    } catch (exception: UncheckedIOException) {
+                        if (exception.cause is NoSuchFileException) {
+                            continue
+                        }
+                        throw exception
                     }
-                    .toList()
+                markdown.lineSequence().mapIndexedNotNullTo(offenders) { index, line ->
+                    val forbidden = forbiddenProjectPaths.firstOrNull { it in line }
+                    if (forbidden == null) {
+                        null
+                    } else {
+                        "${root.relativize(path)}:${index + 1}: $forbidden"
+                    }
+                }
             }
+        }
 
         assertTrue(offenders.isEmpty(), offenders.joinToString(separator = "\n"))
     }
