@@ -770,6 +770,15 @@ private data class ResolutionIndex(
                         )
                 }
                 .filter { visibleRule ->
+                    visibleRule.rule.id != "builtin:is-enum" ||
+                        builtinGoalAcceptance.accepts(
+                            builtinIsEnumGoalFeasibility(
+                                goal = goal,
+                                session = session,
+                            )
+                        )
+                }
+                .filter { visibleRule ->
                     visibleRule.rule.id != "builtin:known-type" ||
                         supportsBuiltinKnownTypeGoal(goal, canMaterializeVariable)
                 }
@@ -2749,6 +2758,7 @@ private fun TypeclassConfiguration.builtinRules(): List<InstanceRule> = buildLis
     add(builtinNotNullableRule())
     add(builtinIsTypeclassInstanceRule())
     add(builtinHasCompanionRule())
+    add(builtinIsEnumRule())
     add(builtinKnownTypeRule())
     add(builtinTypeIdRule())
     add(builtinSameTypeConstructorRule())
@@ -2913,6 +2923,20 @@ private fun builtinHasCompanionRule(): InstanceRule {
                         TcType.Variable(owner.id, owner.displayName),
                         TcType.Variable(companion.id, companion.displayName),
                     ),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
+private fun builtinIsEnumRule(): InstanceRule {
+    val parameter = TcTypeParameter(id = "builtin:is-enum:A", displayName = "A")
+    return InstanceRule(
+        id = "builtin:is-enum",
+        typeParameters = listOf(parameter),
+        providedType =
+            TcType.Constructor(
+                classifierId = IS_ENUM_CLASS_ID.asString(),
+                arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
             ),
         prerequisiteTypes = emptyList(),
     )

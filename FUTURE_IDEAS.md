@@ -29,7 +29,6 @@ This file is not a committed roadmap, but more of an "idea dump". Ideas are grou
 
 - **`Reified<A>`.** Prove that `A` is runtime-available without materializing a full `KType`. This is cheaper than `KnownType<A>` and useful as an admission gate.
 - **`DefaultValue<A>`.** Prove that `A` can be constructed with `A()` because its primary constructor exists and all parameters have defaults.
-- **`Enum<A>`.** Prove that `A` is an enum and expose `entries`, `values`, and `valueOf` style operations without reflection.
 - **`ValueClass<A, Underlying>`.** Prove that `A` is a value class wrapping `Underlying`, with wrap/unwrap operations. This should connect to `DeriveVia` and representation-safe coercions.
 - **`Sealed<A>`.** Prove that `A` is sealed and optionally expose the known case list. Sum derivation already computes similar information.
 - **`DataClass<A>`.** Prove that `A` is a data class and expose structural operations such as components or `copy` where practical.

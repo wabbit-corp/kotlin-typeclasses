@@ -20,6 +20,7 @@ import kotlin.reflect.KVariance
  * - [NotNullable] witnesses that a type excludes `null`.
  * - [HasCompanion] witnesses that a type's companion object exists and satisfies a requested
  *   supertype.
+ * - [IsEnum] witnesses that a type is an enum class and carries its entries and lookup helpers.
  * - [KnownType] carries an exact reflective [KType] for a fully known type.
  * - [TypeId] carries a stable, hashable token for semantic type identity.
  *
@@ -243,6 +244,40 @@ private data class HasCompanionImpl<A, C>(override val companion: C) : HasCompan
 
 /** Wraps a resolved companion singleton into a [HasCompanion] proof. */
 public fun <A, C> hasCompanion(companion: C): HasCompanion<A, C> = HasCompanionImpl(companion)
+
+/**
+ * Witnesses that `A` is an enum class.
+ *
+ * The carried operations are compiler-synthesized and do not rely on reflection.
+ */
+@Typeclass
+public interface IsEnum<A> {
+    /** Stable snapshot of the enum entries in declaration order. */
+    public val entries: List<A>
+
+    /** Returns the enum entries as a new array in declaration order. */
+    public fun values(): Array<A>
+
+    /** Resolves an enum entry by source name. */
+    public fun valueOf(name: String): A
+}
+
+private class IsEnumImpl<A>(
+    override val entries: List<A>,
+    private val valuesFactory: () -> Array<A>,
+    private val valueOfResolver: (String) -> A,
+) : IsEnum<A> {
+    override fun values(): Array<A> = valuesFactory()
+
+    override fun valueOf(name: String): A = valueOfResolver(name)
+}
+
+/** Wraps compiler-synthesized enum operations into an [IsEnum] proof. */
+public fun <A> isEnum(
+    entries: List<A>,
+    values: () -> Array<A>,
+    valueOf: (String) -> A,
+): IsEnum<A> = IsEnumImpl(entries = entries, valuesFactory = values, valueOfResolver = valueOf)
 
 /**
  * Witnesses that two applied types share the same outer type constructor.

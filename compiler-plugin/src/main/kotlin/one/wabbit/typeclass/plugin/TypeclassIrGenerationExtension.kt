@@ -1144,6 +1144,93 @@ private class TypeclassIrCallTransformer(
         }
     }
 
+    private fun IrStatementsBuilder<*>.buildBuiltinIsEnumExpression(
+        plan: ResolutionPlan.ApplyRule,
+        visibleTypeParameters: VisibleTypeParameters,
+        diagnosticLocation: CompilerMessageSourceLocation?,
+    ): IrExpression {
+        val expressionType = modelToIrType(plan.providedType, visibleTypeParameters, pluginContext)
+        val enumModel =
+            plan.appliedTypeArguments.singleOrNull() as? TcType.Constructor
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message = "IsEnum proof requires an exact enum class type argument.",
+                    diagnosticLocation = diagnosticLocation,
+                )
+        val enumType =
+            runCatching { modelToIrType(enumModel, visibleTypeParameters, pluginContext) }
+                .getOrNull() ?: return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message =
+                    "IsEnum proof requires a materializable enum class type, but found ${enumModel.render()}.",
+                diagnosticLocation = diagnosticLocation,
+            )
+        val enumClassId =
+            runCatching { ClassId.fromString(enumModel.classifierId) }.getOrNull()
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message = "IsEnum proof requires an exact enum class type argument.",
+                    diagnosticLocation = diagnosticLocation,
+                )
+        val enumClass =
+            pluginContext.referenceClass(enumClassId)?.owner
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message = "Could not resolve enum type ${enumModel.render()} for IsEnum proof.",
+                    diagnosticLocation = diagnosticLocation,
+                )
+        if (enumClass.kind != ClassKind.ENUM_CLASS) {
+            return invalidBuiltinProofExpression(
+                expressionType = expressionType,
+                message = "${enumModel.render()} is not an enum class.",
+                diagnosticLocation = diagnosticLocation,
+            )
+        }
+        val isEnumFactory =
+            pluginContext
+                .referenceFunctions(IS_ENUM_FACTORY_CALLABLE_ID)
+                .map { it.owner }
+                .singleOrNull { function ->
+                    function.typeParameters.size == 1 && function.valueParameters.size == 3
+                }
+                ?: return invalidBuiltinProofExpression(
+                    expressionType = expressionType,
+                    message =
+                        "Could not resolve one.wabbit.typeclass.isEnum(...) on the compilation classpath.",
+                    diagnosticLocation = diagnosticLocation,
+                )
+        val entries = enumClass.declarations.filterIsInstance<IrEnumEntry>()
+        val lambdaParent =
+            metadataLambdaParent(
+                currentDeclaration = declarationStack.lastOrNull() ?: enumClass,
+                currentFunction = functionStack.lastOrNull(),
+            )
+        return irCall(isEnumFactory.symbol, expressionType).apply {
+            putTypeArgument(0, enumType)
+            putValueArgument(
+                0,
+                irListOf(
+                    elements = entries.map { entry -> irEnumEntryValue(enumClass, entry) },
+                    elementType = enumType,
+                ),
+            )
+            putValueArgument(
+                1,
+                buildEnumValuesResolver(
+                    enumType = enumType,
+                    lambdaParent = lambdaParent,
+                ),
+            )
+            putValueArgument(
+                2,
+                buildEnumNameResolver(
+                    enumType = enumType,
+                    lambdaParent = lambdaParent,
+                ),
+            )
+        }
+    }
+
     private fun IrStatementsBuilder<*>.buildBuiltinKnownTypeExpression(
         plan: ResolutionPlan.ApplyRule,
         visibleTypeParameters: VisibleTypeParameters,
@@ -1499,6 +1586,13 @@ private class TypeclassIrCallTransformer(
 
                     RuleReference.BuiltinHasCompanion ->
                         buildBuiltinHasCompanionExpression(
+                            plan = plan,
+                            visibleTypeParameters = visibleTypeParameters,
+                            diagnosticLocation = diagnosticLocation,
+                        )
+
+                    RuleReference.BuiltinIsEnum ->
+                        buildBuiltinIsEnumExpression(
                             plan = plan,
                             visibleTypeParameters = visibleTypeParameters,
                             diagnosticLocation = diagnosticLocation,
@@ -2318,6 +2412,65 @@ private class TypeclassIrCallTransformer(
         )
     }
 
+    private fun IrBuilderWithScope.buildEnumValuesResolver(
+        enumType: IrType,
+        lambdaParent: IrDeclarationParent,
+    ): IrExpression {
+        val arrayType = pluginContext.irBuiltIns.arrayClass.typeWith(enumType)
+        val lambdaType = pluginContext.irBuiltIns.functionN(0).typeWith(arrayType)
+        val resolver =
+            context.irFactory
+                .buildFun {
+                    name = Name.special("<typeclass-enum-values>")
+                    origin = IrDeclarationOrigin.LOCAL_FUNCTION
+                    visibility = DescriptorVisibilities.LOCAL
+                    returnType = arrayType
+                }
+                .apply { parent = lambdaParent }
+        resolver.body =
+            DeclarationIrBuilder(pluginContext, resolver.symbol, startOffset, endOffset)
+                .irBlockBody {
+                    +irReturn(irEnumValuesCall(enumType))
+                }
+        return IrFunctionExpressionImpl(
+            startOffset = startOffset,
+            endOffset = endOffset,
+            type = lambdaType,
+            function = resolver,
+            origin = IrStatementOrigin.LAMBDA,
+        )
+    }
+
+    private fun IrBuilderWithScope.buildEnumNameResolver(
+        enumType: IrType,
+        lambdaParent: IrDeclarationParent,
+    ): IrExpression {
+        val stringType = pluginContext.irBuiltIns.stringType
+        val lambdaType = pluginContext.irBuiltIns.functionN(1).typeWith(stringType, enumType)
+        val resolver =
+            context.irFactory
+                .buildFun {
+                    name = Name.special("<typeclass-enum-name>")
+                    origin = IrDeclarationOrigin.LOCAL_FUNCTION
+                    visibility = DescriptorVisibilities.LOCAL
+                    returnType = enumType
+                }
+                .apply { parent = lambdaParent }
+        val nameParameter = resolver.addValueParameter("name", stringType)
+        resolver.body =
+            DeclarationIrBuilder(pluginContext, resolver.symbol, startOffset, endOffset)
+                .irBlockBody {
+                    +irReturn(irEnumValueOfCall(enumType, irGet(nameParameter)))
+                }
+        return IrFunctionExpressionImpl(
+            startOffset = startOffset,
+            endOffset = endOffset,
+            type = lambdaType,
+            function = resolver,
+            origin = IrStatementOrigin.LAMBDA,
+        )
+    }
+
     private fun IrBuilderWithScope.irEnumEntryValue(
         enumClass: IrClass,
         entry: IrEnumEntry,
@@ -2383,6 +2536,36 @@ private class TypeclassIrCallTransformer(
         return irCall(listOfFunction.symbol).apply {
             putTypeArgument(0, elementType)
             putValueArgument(0, irVararg(elementType, elements))
+        }
+    }
+
+    private fun IrBuilderWithScope.irEnumValuesCall(enumType: IrType): IrExpression {
+        val enumValuesFunction =
+            pluginContext
+                .referenceFunctions(CallableId(FqName("kotlin"), Name.identifier("enumValues")))
+                .map { it.owner }
+                .singleOrNull { function ->
+                    function.typeParameters.size == 1 && function.valueParameters.isEmpty()
+                } ?: error("Could not resolve kotlin.enumValues<T>()")
+        return irCall(enumValuesFunction.symbol).apply {
+            putTypeArgument(0, enumType)
+        }
+    }
+
+    private fun IrBuilderWithScope.irEnumValueOfCall(
+        enumType: IrType,
+        name: IrExpression,
+    ): IrExpression {
+        val enumValueOfFunction =
+            pluginContext
+                .referenceFunctions(CallableId(FqName("kotlin"), Name.identifier("enumValueOf")))
+                .map { it.owner }
+                .singleOrNull { function ->
+                    function.typeParameters.size == 1 && function.valueParameters.size == 1
+                } ?: error("Could not resolve kotlin.enumValueOf<T>(String)")
+        return irCall(enumValueOfFunction.symbol).apply {
+            putTypeArgument(0, enumType)
+            putValueArgument(0, name)
         }
     }
 }
@@ -3081,6 +3264,15 @@ private constructor(
                         )
                 }
                 .filter { resolvedRule ->
+                    resolvedRule.rule.id != "builtin:is-enum" ||
+                        builtinGoalAcceptance.accepts(
+                            irBuiltinIsEnumFeasibility(
+                                goal = goal,
+                                pluginContext = pluginContext,
+                            )
+                        )
+                }
+                .filter { resolvedRule ->
                     resolvedRule.rule.id != "builtin:known-type" ||
                         supportsBuiltinKnownTypeGoal(goal, canMaterializeVariable)
                 }
@@ -3522,6 +3714,13 @@ private class IrModuleScanner(
             ResolvedRule(
                 rule = builtinHasCompanionRule(),
                 reference = RuleReference.BuiltinHasCompanion,
+                associatedOwner = null,
+            )
+        )
+        add(
+            ResolvedRule(
+                rule = builtinIsEnumRule(),
+                reference = RuleReference.BuiltinIsEnum,
                 associatedOwner = null,
             )
         )
@@ -5686,6 +5885,20 @@ private fun builtinHasCompanionRule(): InstanceRule {
     )
 }
 
+private fun builtinIsEnumRule(): InstanceRule {
+    val parameter = TcTypeParameter(id = "builtin:is-enum:A", displayName = "A")
+    return InstanceRule(
+        id = "builtin:is-enum",
+        typeParameters = listOf(parameter),
+        providedType =
+            TcType.Constructor(
+                classifierId = IS_ENUM_CLASS_ID.asString(),
+                arguments = listOf(TcType.Variable(parameter.id, parameter.displayName)),
+            ),
+        prerequisiteTypes = emptyList(),
+    )
+}
+
 private fun builtinKnownTypeRule(): InstanceRule {
     val parameter = TcTypeParameter(id = "builtin:known-type:T", displayName = "T")
     return InstanceRule(
@@ -6259,6 +6472,29 @@ private fun irBuiltinHasCompanionFeasibility(
     }
 }
 
+private fun irBuiltinIsEnumFeasibility(
+    goal: TcType,
+    pluginContext: IrPluginContext,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != IS_ENUM_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val enumModel =
+        constructor.arguments.singleOrNull() as? TcType.Constructor
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val enumClassId =
+        runCatching { ClassId.fromString(enumModel.classifierId) }.getOrNull()
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val enumClass =
+        pluginContext.referenceClass(enumClassId)?.owner ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    return if (enumClass.kind == ClassKind.ENUM_CLASS) {
+        BuiltinGoalFeasibility.PROVABLE
+    } else {
+        BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+}
+
 private fun canProveNullable(targetType: IrType, pluginContext: IrPluginContext): Boolean =
     pluginContext.irBuiltIns.nothingNType.isSubtypeOf(
         targetType,
@@ -6343,6 +6579,8 @@ private sealed interface RuleReference {
     data object BuiltinIsTypeclassInstance : RuleReference
 
     data object BuiltinHasCompanion : RuleReference
+
+    data object BuiltinIsEnum : RuleReference
 
     data object BuiltinKnownType : RuleReference
 

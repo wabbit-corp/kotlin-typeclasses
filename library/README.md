@@ -7,7 +7,7 @@ It contains the public source and runtime surface used by normal Kotlin code:
 - annotations such as `@Typeclass`, `@Instance`, `@Derive`, `@DeriveVia`, and `@DeriveEquiv`
 - helper APIs such as `summon()`
 - derivation metadata and derivation interfaces
-- builtin proof interfaces such as `Same`, `Subtype`, `HasCompanion`, `KnownType`, and `TypeId`
+- builtin proof interfaces such as `Same`, `Subtype`, `HasCompanion`, `IsEnum`, `KnownType`, and `TypeId`
 
 There are no compiler internals in this module.
 
@@ -101,6 +101,7 @@ Current proof surfaces include:
 - `NotNullable`
 - `IsTypeclassInstance`
 - `HasCompanion`
+- `IsEnum`
 - `SameTypeConstructor`
 - `KnownType`
 - `TypeId`

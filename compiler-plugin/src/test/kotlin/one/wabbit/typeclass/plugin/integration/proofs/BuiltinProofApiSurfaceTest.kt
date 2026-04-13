@@ -13,6 +13,7 @@ class BuiltinProofApiSurfaceTest : IntegrationTestSupport() {
             package demo
 
             import one.wabbit.typeclass.KnownType
+            import one.wabbit.typeclass.IsEnum
             import one.wabbit.typeclass.NotNullable
             import one.wabbit.typeclass.NotSame
             import one.wabbit.typeclass.Nullable
@@ -27,12 +28,14 @@ class BuiltinProofApiSurfaceTest : IntegrationTestSupport() {
 
             open class Animal
             class Dog : Animal()
+            enum class Color { RED, BLUE }
 
             fun main() {
                 val same = summon<Same<Int, Age>>()
                 val notSame = summon<NotSame<Int, String>>()
                 val subtype = summon<Subtype<Dog, Animal>>()
                 val strict = summon<StrictSubtype<Dog, Animal>>()
+                val isEnum = summon<IsEnum<Color>>()
                 val sameCtor = summon<SameTypeConstructor<List<Int>, List<String>>>()
                 val known = summon<KnownType<List<String?>>>()
                 val nullable = summon<Nullable<String?>>()
@@ -43,6 +46,7 @@ class BuiltinProofApiSurfaceTest : IntegrationTestSupport() {
                 println(notSame.flip() != null)
                 println(subtype.coerce(Dog()) is Animal)
                 println(strict.toNotSame() != null)
+                println(isEnum.valueOf("BLUE") == Color.BLUE && isEnum.values().size == 2)
                 println(sameCtor.flip() != null)
                 println("List" in known.kType.toString() && "String" in known.kType.toString())
                 println(nullable.nullValue() == null)
@@ -57,6 +61,7 @@ class BuiltinProofApiSurfaceTest : IntegrationTestSupport() {
             expectedStdout =
                 """
                 1
+                true
                 true
                 true
                 true

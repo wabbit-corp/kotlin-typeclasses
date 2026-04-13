@@ -23,6 +23,7 @@ import org.jetbrains.kotlin.fir.types.ConeStarProjection
 import org.jetbrains.kotlin.fir.types.constructClassLikeType
 import org.jetbrains.kotlin.fir.types.constructType
 import org.jetbrains.kotlin.fir.types.typeContext
+import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.types.AbstractTypeChecker
 import org.jetbrains.kotlin.types.Variance
@@ -70,6 +71,7 @@ internal fun builtinRuleCanMatchGoalHead(ruleId: String, goal: TcType): Boolean 
             "builtin:not-nullable" -> NOT_NULLABLE_CLASS_ID.asString()
             "builtin:is-typeclass-instance" -> IS_TYPECLASS_INSTANCE_CLASS_ID.asString()
             "builtin:has-companion" -> HAS_COMPANION_CLASS_ID.asString()
+            "builtin:is-enum" -> IS_ENUM_CLASS_ID.asString()
             "builtin:known-type" -> KNOWN_TYPE_CLASS_ID.asString()
             "builtin:type-id" -> TYPE_ID_CLASS_ID.asString()
             "builtin:same-type-constructor" -> SAME_TYPE_CONSTRUCTOR_CLASS_ID.asString()
@@ -218,6 +220,29 @@ internal fun builtinHasCompanionGoalFeasibility(
             false,
         )
     ) {
+        BuiltinGoalFeasibility.PROVABLE
+    } else {
+        BuiltinGoalFeasibility.IMPOSSIBLE
+    }
+}
+
+internal fun builtinIsEnumGoalFeasibility(
+    goal: TcType,
+    session: FirSession,
+): BuiltinGoalFeasibility {
+    val constructor = goal as? TcType.Constructor ?: return BuiltinGoalFeasibility.PROVABLE
+    if (constructor.classifierId != IS_ENUM_CLASS_ID.asString()) {
+        return BuiltinGoalFeasibility.PROVABLE
+    }
+    val enumType =
+        constructor.arguments.singleOrNull() as? TcType.Constructor
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val enumClassId =
+        runCatching { ClassId.fromString(enumType.classifierId) }.getOrNull()
+            ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    val enumClass =
+        session.regularClassSymbolOrNull(enumClassId)?.fir ?: return BuiltinGoalFeasibility.IMPOSSIBLE
+    return if (enumClass.classKind == ClassKind.ENUM_CLASS) {
         BuiltinGoalFeasibility.PROVABLE
     } else {
         BuiltinGoalFeasibility.IMPOSSIBLE

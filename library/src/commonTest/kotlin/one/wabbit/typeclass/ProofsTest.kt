@@ -76,6 +76,27 @@ class ProofsTest {
         assertEquals("marker", proof.companion.toString())
     }
 
+    @Test
+    fun isEnumFactoryCarriesEntriesValuesAndValueOf() {
+        val proof =
+            isEnum(
+                entries = listOf("RED", "BLUE"),
+                values = { arrayOf("RED", "BLUE") },
+                valueOf = { name ->
+                    when (name) {
+                        "RED" -> "RED"
+                        "BLUE" -> "BLUE"
+                        else -> throw IllegalArgumentException("Unknown enum entry $name")
+                    }
+                },
+            )
+
+        assertEquals(listOf("RED", "BLUE"), proof.entries)
+        assertEquals(listOf("RED", "BLUE"), proof.values().toList())
+        assertEquals("BLUE", proof.valueOf("BLUE"))
+        assertFailsWith<IllegalArgumentException> { proof.valueOf("GREEN") }
+    }
+
     @OptIn(ExperimentalStdlibApi::class)
     @Test
     fun knownTypeAndTypeIdFactoriesPreserveExactVsSemanticIdentity() {
