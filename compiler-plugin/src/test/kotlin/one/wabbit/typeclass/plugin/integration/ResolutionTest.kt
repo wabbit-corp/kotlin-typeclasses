@@ -2204,6 +2204,76 @@ class ResolutionTest : IntegrationTestSupport() {
         )
     }
 
+    // FIXME: decide if this should even work or not
+    @Test
+    fun resolvesPairLikeInstanceGraphWithoutLoopingWhenRecursiveAlternativesExist() {
+        val source =
+            """
+            package demo
+
+            import one.wabbit.typeclass.Instance
+            import one.wabbit.typeclass.Typeclass
+
+            @Typeclass
+            interface Monoid<A> {
+                fun label(): String
+            }
+
+            @Typeclass
+            interface Show<A> {
+                fun label(): String
+            }
+
+            @Instance
+            val intMonoid: Monoid<Int> = object : Monoid<Int> {
+                override fun label(): String = "IntMonoid"
+            }
+
+            @Instance
+            val intShow: Show<Int> = object : Show<Int> {
+                override fun label(): String = "IntShow"
+            }
+
+            @Typeclass
+            interface TCPair<A, B> {
+                val first: A
+                val second: B
+                fun label(): String
+            }
+
+            @Instance
+            context(pair: TCPair<Show<A>, Monoid<A>>)
+            fun <A> firstFromPair(): Show<A> = pair.first
+
+            @Instance
+            context(pair: TCPair<Show<A>, Monoid<A>>)
+            fun <A> secondFromPair(): Monoid<A> = pair.second
+
+            @Instance
+            context(show: Show<A>, monoid: Monoid<A>)
+            fun <A> pairFromParts(): TCPair<Show<A>, Monoid<A>> =
+                object : TCPair<Show<A>, Monoid<A>> {
+                    override val first: Show<A> = show
+                    override val second: Monoid<A> = monoid
+                    override fun label(): String = "(${'$'}{first.label()}, ${'$'}{second.label()})"
+                }
+
+            context(pair: Show<A>)
+            fun <A> use2(): String = pair.label()
+
+            context(pair: TCPair<Show<A>, Monoid<A>>)
+            fun <A> use(): Pair<String, String> =
+                pair.label() to use2<A>()
+
+            fun main() {
+                println(use<Int>())
+            }
+            """
+                .trimIndent()
+
+        assertCompilesAndRuns(source = source, expectedStdout = "((IntShow, IntMonoid), IntShow)")
+    }
+
     @Test
     fun localEvidenceShadowsTopLevelInstance() {
         val source =
