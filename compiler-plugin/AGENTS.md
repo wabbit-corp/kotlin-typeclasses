@@ -1,15 +1,15 @@
 # AGENTS
 
-This file documents the local debugging context and reproducibility data that are most useful when working on `kotlin-typeclasses-plugin`, especially for IntelliJ/K2 integration failures.
+This file documents the local debugging context and reproducibility data that are most useful when working on the `kotlin-typeclasses` compiler plugin, especially for IntelliJ/K2 integration failures.
 
-Also follow the Kotlin coding conventions documented in `/Users/wabbit/ws/datatron/kotlin-typeclasses-plugin/KOTLIN_CONVENTIONS.md`.
+Also follow the Kotlin coding conventions documented in `/Users/wabbit/ws/datatron/kotlin-typeclasses/kotlin-conventions.md`.
 
 ## Scope
 
 These notes apply to:
 
-- `/Users/wabbit/ws/datatron/kotlin-typeclasses-plugin`
-- `/Users/wabbit/ws/datatron/kotlin-typeclasses-ij-plugin`
+- `/Users/wabbit/ws/datatron/kotlin-typeclasses/compiler-plugin`
+- `/Users/wabbit/ws/datatron/kotlin-typeclasses/ij-plugin`
 - downstream repro projects that consume the Gradle/compiler plugins
 
 ## IntelliJ Debugging Checklist
@@ -29,9 +29,10 @@ Do not trust editor squiggles alone. Always compare them against a real Gradle c
 
 ## Important Local Paths
 
-- Compiler plugin repo: `/Users/wabbit/ws/datatron/kotlin-typeclasses-plugin`
-- IntelliJ plugin repo: `/Users/wabbit/ws/datatron/kotlin-typeclasses-ij-plugin`
-- Runtime library repo: `/Users/wabbit/ws/datatron/kotlin-typeclasses`
+- Compiler plugin module: `/Users/wabbit/ws/datatron/kotlin-typeclasses/compiler-plugin`
+- IntelliJ plugin module: `/Users/wabbit/ws/datatron/kotlin-typeclasses/ij-plugin`
+- Runtime library module: `/Users/wabbit/ws/datatron/kotlin-typeclasses/library`
+- Gradle plugin module: `/Users/wabbit/ws/datatron/kotlin-typeclasses/gradle-plugin`
 - Downstream real-world repro project: `/Users/wabbit/ws/datatron/cc-plugin-main`
 - Example IntelliJ log path: `/Users/wabbit/Library/Logs/JetBrains/IntelliJIdea2025.3/idea.log`
 - Extracted IntelliJ app/jar dump: `/Users/wabbit/ij-contents`
@@ -72,7 +73,7 @@ When an IntelliJ issue is reported, try to reproduce it in this order:
 
 1. Reproduce in `/Users/wabbit/ws/datatron/cc-plugin-main` if possible.
 2. Run `./gradlew --no-daemon compileKotlin` in the failing project.
-3. Run the focused compiler integration tests in `kotlin-typeclasses-plugin`.
+3. Run the focused compiler integration tests in `/Users/wabbit/ws/datatron/kotlin-typeclasses/compiler-plugin`.
 4. If the failure is IDE-only, inspect `idea.log` and the extracted IDE contents in `/Users/wabbit/ij-contents`.
 5. If the failure is build-only, prefer fixing the compiler plugin first; IDE state may be a secondary symptom.
 
@@ -102,6 +103,6 @@ Real downstream patterns are more valuable than toy examples. If a bug appears i
 
 ## Where To Record New Findings
 
-- Put concrete implementation lessons in `/Users/wabbit/ws/datatron/kotlin-typeclasses-plugin/LEARNINGS.md`.
-- Keep `/Users/wabbit/ws/datatron/kotlin-typeclasses-plugin/CHANGELOG.md` updated when behavior changes.
+- Put concrete implementation lessons in `/Users/wabbit/ws/datatron/kotlin-typeclasses/compiler-plugin/LEARNINGS.md`.
+- Keep `/Users/wabbit/ws/datatron/kotlin-typeclasses/compiler-plugin/CHANGELOG.md` updated when behavior changes.
 - If a failure depends on a specific IDE build or log signature, add that fact here to keep the debugging checklist current.
